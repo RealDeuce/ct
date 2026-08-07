@@ -643,6 +643,13 @@ if(APPLE)
 elseif(UNIX)
   set(CT_CLIENT_INSTALL_RPATH "\$ORIGIN")
 endif()
+set_target_properties(
+  cepheus-trader-admin
+  cepheus-trader-client
+  cepheus-trader-door
+  cepheus-trader-sysop
+  PROPERTIES BUILD_RPATH_USE_ORIGIN ON
+)
 if(DEFINED CT_CLIENT_INSTALL_RPATH)
   set_target_properties(
     cepheus-trader-door

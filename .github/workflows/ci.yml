@@ -142,7 +142,8 @@ jobs:
           tar -C build/client-system \
             -czf "$GITHUB_WORKSPACE/client-system-binaries.tar.gz" \
             cepheus-trader-admin cepheus-trader-client \
-            cepheus-trader-door cepheus-trader-sysop
+            cepheus-trader-door cepheus-trader-sysop \
+            libcepheus-trader-client-core.so
       - uses: actions/upload-artifact@v7
         with:
           name: client-system-binaries
