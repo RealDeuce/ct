@@ -87,6 +87,7 @@ std::optional<ct::EncounterSnapshot> latest_encounter;
 std::vector<std::string> pending_traffic_notices;
 uint64_t phase_event_generation = 0;
 uint64_t displayed_phase_event_generation = 0;
+std::string active_prompt;
 
 void door_write(std::string_view text, ct::DoorTextRole role);
 void door_printf(const char* format, ...);
@@ -95,6 +96,7 @@ const char* travel_stage_name(ct::TravelStage stage);
 const char* ship_activity_name(ct::ShipActivityKind kind);
 const char* phase_name(ct::PlayerPhase phase);
 void wait_for_enter(const char* destination = "Previous menu");
+bool confirm_return_to_bbs();
 
 ct::DoorPresentation& output()
 {
@@ -145,6 +147,17 @@ void collect_player_events()
 
 void flush_player_events()
 {
+   const bool has_traffic_snapshot = latest_traffic_snapshot.has_value();
+   const bool has_traffic_notices = !pending_traffic_notices.empty();
+   const bool has_phase_notice =
+      latest_phase_status.has_value() &&
+      displayed_phase_event_generation != phase_event_generation;
+   if(!has_traffic_snapshot && !has_traffic_notices && !has_phase_notice) {
+      return;
+   }
+
+   const auto prompt = active_prompt;
+   output().resume_paging();
    if(latest_traffic_snapshot.has_value()) {
       door_write("\n\rTraffic control report: ", ct::DoorTextRole::Label);
       door_printf("%zu contact%s tracked in %s.\n\r",
@@ -166,6 +179,11 @@ void flush_player_events()
                   travel_stage_name(latest_phase_status->stage),
                   game_date(latest_phase_status->current_game_second).c_str());
       displayed_phase_event_generation = phase_event_generation;
+   }
+   output().suspend_paging();
+   active_prompt = prompt;
+   if(!active_prompt.empty()) {
+      output().write(active_prompt, ct::DoorTextRole::Prompt);
    }
 }
 
@@ -192,6 +210,7 @@ int door_get_translated_key()
 
 void door_clear_screen()
 {
+   active_prompt.clear();
    output().clear();
    output().resume_paging();
 }
@@ -199,12 +218,13 @@ void door_clear_screen()
 void door_write(const std::string_view text,
                 const ct::DoorTextRole role = ct::DoorTextRole::Normal)
 {
+   if(role != ct::DoorTextRole::Prompt) {
+      active_prompt.clear();
+   }
    output().write(text, role);
 }
 
-void door_printf_role(const ct::DoorTextRole role,
-                      const char* format,
-                      va_list arguments)
+std::string format_door_text(const char* format, va_list arguments)
 {
    va_list sizing_arguments;
    va_copy(sizing_arguments, arguments);
@@ -219,7 +239,14 @@ void door_printf_role(const ct::DoorTextRole role,
    if(written != size) {
       throw std::runtime_error("could not format door output");
    }
-   door_write(std::string_view(buffer.data(), static_cast<size_t>(written)), role);
+   return std::string(buffer.data(), static_cast<size_t>(written));
+}
+
+void door_printf_role(const ct::DoorTextRole role,
+                      const char* format,
+                      va_list arguments)
+{
+   door_write(format_door_text(format, arguments), role);
 }
 
 void door_printf(const char* format, ...)
@@ -235,8 +262,10 @@ void door_prompt(const char* format, ...)
    output().suspend_paging();
    va_list arguments;
    va_start(arguments, format);
-   door_printf_role(ct::DoorTextRole::Prompt, format, arguments);
+   const auto text = format_door_text(format, arguments);
    va_end(arguments);
+   active_prompt += text;
+   output().write(text, ct::DoorTextRole::Prompt);
 }
 
 void door_error(const char* format, ...)
@@ -376,6 +405,24 @@ const char* ship_activity_name(const ct::ShipActivityKind kind)
 // profile-aware sanitizer and wrapper.
 #define od_clr_scr() door_clear_screen()
 #define od_printf(...) door_printf(__VA_ARGS__)
+
+bool confirm_return_to_bbs()
+{
+   door_prompt(
+      "\n\rReturn to the BBS?  [Y] Yes  [N/Enter] Stay in Cepheus Trader: ");
+   while(true) {
+      const auto key = static_cast<char>(
+         std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
+      if(key == 'Y') {
+         od_printf("\n\r");
+         return true;
+      }
+      if(key == 'N' || key == '\r' || key == '\n') {
+         od_printf("\n\r");
+         return false;
+      }
+   }
+}
 
 const char* phase_name(const ct::PlayerPhase phase)
 {
@@ -1527,10 +1574,15 @@ std::optional<std::vector<ct::InitialCrewDraft>> edit_crew_roster(
 bool run_player_creation(ct::TlsConnection& connection,
                          const ct::ServerHello& hello)
 {
-   door_prompt("\n\r  [Enter] Register a captain  [Q] Return to BBS\n\r");
-   const auto opening = od_get_key(TRUE);
-   if(opening == 'q' || opening == 'Q') {
-      return false;
+   while(true) {
+      door_prompt("\n\r  [Enter] Register a captain  [Q] Return to BBS\n\r");
+      const auto opening = od_get_key(TRUE);
+      if(opening == '\r' || opening == '\n') {
+         break;
+      }
+      if((opening == 'q' || opening == 'Q') && confirm_return_to_bbs()) {
+         return false;
+      }
    }
    ct::CommandIdGenerator random;
    uint64_t request_id = 1;
@@ -4696,7 +4748,10 @@ bool run_command_console(
          show_open_game_license();
          render_command_console(hello);
       } else if(key == 'q' || key == 'Q') {
-         return true;
+         if(confirm_return_to_bbs()) {
+            return true;
+         }
+         render_command_console(hello);
       } else if(key == '\r' || key == '\n') {
          return false;
       }
@@ -5847,7 +5902,8 @@ void render_docked_menu(const ct::DockedSnapshot& snapshot)
    }
    door_prompt(
       "\n\r[Letter] Docked service  [U] Universal managers\n\r"
-      "[L] License  [Q] Return to BBS\n\r");
+      "[L] License  [Enter] Refresh\n\r"
+      "[Q] Return to BBS\n\r");
 }
 
 ct::PlayerPhase run_docked_menu(
@@ -5938,14 +5994,14 @@ ct::PlayerPhase run_docked_menu(
       } else if(key == 'U') {
          if(run_command_console(
                   connection, hello, random, request_id)) {
-            return ct::PlayerPhase::Docked;
+            return ct::PlayerPhase::Disconnected;
          }
          if(hello.phase != ct::PlayerPhase::Docked) {
             return hello.phase;
          }
       } else if(key == 'L') {
          show_open_game_license();
-      } else if(key == 'Q' || key == '\r' || key == '\n') {
+      } else if(key == 'Q' && confirm_return_to_bbs()) {
          return ct::PlayerPhase::Disconnected;
       }
    }
@@ -6696,10 +6752,16 @@ void run_operational_loop(ct::TlsConnection& connection, ct::ServerHello& hello)
          door_prompt("\n\r[R] Review recovery or succession  [Q] Leave game: ");
          const auto action = static_cast<char>(std::toupper(
             static_cast<unsigned char>(od_get_key(TRUE))));
-         od_printf("\n\r");
-         if(action != 'R') {
-            return;
+         if(action == 'Q') {
+            if(confirm_return_to_bbs()) {
+               return;
+            }
+            continue;
          }
+         if(action != 'R') {
+            continue;
+         }
+         od_printf("\n\r");
          const auto successor = input_text(
             "Successor name (leave empty if captain survived)", "", 80);
          if(!successor) {
@@ -6818,8 +6880,14 @@ int main(int argc, char** argv)
                render_error(error);
                door_prompt(
                   "\n\r  [L] License and copyright notices  [Q] Return to BBS\n\r");
-            } else if(key == 'q' || key == 'Q' || key == '\r' || key == '\n') {
+            } else if((key == 'q' || key == 'Q') &&
+                      confirm_return_to_bbs()) {
                break;
+            } else if(key == 'q' || key == 'Q') {
+               render_error(error);
+               door_prompt(
+                  "\n\r  [L] License and copyright notices  "
+                  "[Q] Return to BBS\n\r");
             }
          }
       }

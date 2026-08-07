@@ -153,6 +153,16 @@ impl DoorSession {
         input.flush().unwrap();
     }
 
+    fn return_to_bbs(&mut self) {
+        let occurrence = strip_ecma48(&self.output())
+            .matches("Return to the BBS?")
+            .count()
+            + 1;
+        self.send(b"q");
+        self.wait_for_occurrences("Return to the BBS?", occurrence);
+        self.send(b"y");
+    }
+
     fn output(&self) -> String {
         String::from_utf8_lossy(&self.output.lock().unwrap()).into_owned()
     }
@@ -459,7 +469,7 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
     session.wait_for("Ship's Navigation Library");
     session.send(b"\r");
     session.wait_for_occurrences("Captain's Command Console", 3);
-    session.send(b"q");
+    session.return_to_bbs();
     session.finish()
 }
 
@@ -562,7 +572,7 @@ fn complete_arrival_and_trade(
     session.wait_for_occurrences("Find market", 2);
     session.send(b"\r");
     session.wait_for_occurrences("Docked Operations", 3);
-    session.send(b"q");
+    session.return_to_bbs();
     session.finish()
 }
 
@@ -925,7 +935,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         let mut session = DoorSession::spawn(&door, data.path(), profile, columns);
         session.send(b"\r");
         session.wait_for("No captain is registered");
-        session.send(b"q");
+        session.return_to_bbs();
         let screen = session.finish();
         let semantic_screen = strip_ecma48(&screen);
         assert!(screen.contains("An Alternate Cepheus Engine"), "{screen:?}");
@@ -1137,7 +1147,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     docked_door.send(b"q");
     docked_door.wait_for_occurrences("Docked Operations", 2);
     docked_door.wait_for_occurrences("Return to BBS", 2);
-    docked_door.send(b"q");
+    docked_door.return_to_bbs();
     let docked_screen = docked_door.finish();
     for expected in [
         "Docked Operations",
@@ -1158,13 +1168,17 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     reconnected_door.send(b"\r");
     reconnected_door.wait_for("Docked Operations");
     reconnected_door.wait_for("Return to BBS");
+    // Enter refreshes the docked display; leaving the game requires Q and a
+    // separate affirmative confirmation.
+    reconnected_door.send(b"\r");
+    reconnected_door.wait_for_occurrences("Docked Operations", 2);
     reconnected_door.send(b"j");
     reconnected_door.wait_for("Task Ledger");
     reconnected_door.wait_for("Carriage declaration");
     reconnected_door.send(b"q");
-    reconnected_door.wait_for_occurrences("Docked Operations", 2);
-    reconnected_door.wait_for_occurrences("Return to BBS", 2);
-    reconnected_door.send(b"q");
+    reconnected_door.wait_for_occurrences("Docked Operations", 3);
+    reconnected_door.wait_for_occurrences("Return to BBS", 3);
+    reconnected_door.return_to_bbs();
     let reconnect_screen = reconnected_door.finish();
     assert!(reconnect_screen.contains("Accepted obligations"));
     assert!(reconnect_screen.contains("No.1 "));
@@ -1214,11 +1228,11 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     services_door.send(b"q");
     services_door.wait_for_occurrences("Captain's Command Console", 2);
     services_door.wait_for_occurrences("(C/S/T/M/K/O) Manager", 2);
-    services_door.send(b"q");
+    services_door.send(b"\r");
     let final_docked_occurrence = if banking_available { 3 } else { 2 };
     services_door.wait_for_occurrences("Docked Operations", final_docked_occurrence);
     services_door.wait_for_occurrences("Return to BBS", final_docked_occurrence);
-    services_door.send(b"q");
+    services_door.return_to_bbs();
     let services_screen = services_door.finish();
     for expected in ["Message Management", "accepted for physical"] {
         assert!(services_screen.contains(expected), "{services_screen:?}");
@@ -1404,7 +1418,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     voyage_door.wait_for("Voyage Status -");
     voyage_door.send(b"\r");
     voyage_door.wait_for("Captain's Command Console");
-    voyage_door.send(b"q");
+    voyage_door.return_to_bbs();
     let voyage_screen = voyage_door.finish();
     for expected in [
         "Cargo Exchange -",
