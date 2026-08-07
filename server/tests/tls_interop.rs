@@ -35,6 +35,13 @@ fn strip_ecma48(input: &str) -> String {
     String::from_utf8(plain).unwrap()
 }
 
+fn normalized_display_text(input: &str) -> String {
+    strip_ecma48(input)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn numeric_field(input: &str, name: &str) -> u64 {
     input
         .lines()
@@ -154,7 +161,7 @@ impl DoorSession {
     }
 
     fn return_to_bbs(&mut self) {
-        let occurrence = strip_ecma48(&self.output())
+        let occurrence = normalized_display_text(&self.output())
             .matches("Return to the BBS?")
             .count()
             + 1;
@@ -181,11 +188,12 @@ impl DoorSession {
 
     fn wait_for_occurrences(&mut self, text: &str, minimum: usize) -> String {
         let deadline = Instant::now() + Duration::from_secs(10);
+        let expected = normalized_display_text(text);
         loop {
             let output = self.output();
-            let semantic = strip_ecma48(&output);
+            let semantic = normalized_display_text(&output);
             self.acknowledge_page_prompts(&semantic);
-            if semantic.matches(text).count() >= minimum {
+            if semantic.matches(&expected).count() >= minimum {
                 return output;
             }
             assert!(
@@ -198,11 +206,15 @@ impl DoorSession {
 
     fn wait_for_any(&mut self, texts: &[&str]) -> (usize, String) {
         let deadline = Instant::now() + Duration::from_secs(10);
+        let expected = texts
+            .iter()
+            .map(|text| normalized_display_text(text))
+            .collect::<Vec<_>>();
         loop {
             let output = self.output();
-            let semantic = strip_ecma48(&output);
+            let semantic = normalized_display_text(&output);
             self.acknowledge_page_prompts(&semantic);
-            if let Some(index) = texts.iter().position(|text| semantic.contains(text)) {
+            if let Some(index) = expected.iter().position(|text| semantic.contains(text)) {
                 return (index, output);
             }
             assert!(
@@ -403,7 +415,7 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
             session.send(b"\r");
             session.wait_for("Claim signed offer");
             session.send(b"a");
-            session.wait_for("Offer claimed and entered");
+            session.wait_for("entered it in the task ledger");
             session.send(b"\r");
             claimed = true;
             page_number += 1;
@@ -1139,7 +1151,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     docked_door.send(b"a");
     docked_door.wait_for_occurrences("Offer (Q to cancel):", 2);
     docked_door.send(b"1\r");
-    docked_door.wait_for("entered in the task ledger.");
+    docked_door.wait_for("entered it in the task ledger.");
     docked_door.wait_for("(Enter) Previous menu");
     docked_door.send(b"\r");
     docked_door.wait_for_occurrences("Task Ledger", 3);
@@ -1149,6 +1161,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     docked_door.wait_for_occurrences("Return to BBS", 2);
     docked_door.return_to_bbs();
     let docked_screen = docked_door.finish();
+    let docked_semantic = normalized_display_text(&docked_screen);
     for expected in [
         "Docked Operations",
         "Cargo Exchange",
@@ -1159,10 +1172,10 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Universal",
         "Signed Offer Instrument",
         "Failure charge:",
-        "entered in the task ledger.",
+        "entered it in the task ledger.",
         "Accepted obligations",
     ] {
-        assert!(docked_screen.contains(expected), "{docked_screen:?}");
+        assert!(docked_semantic.contains(expected), "{docked_screen:?}");
     }
     let mut reconnected_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     reconnected_door.send(b"\r");
@@ -1570,11 +1583,11 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
             &profile_data,
         );
         let profile_screen = exercise_arrival_profile(&door, &profile_data, profile, columns);
-        let semantic = strip_ecma48(&profile_screen);
+        let semantic = normalized_display_text(&profile_screen);
         for expected in [
             "Arrival Packet -",
             "Communications Record",
-            "Offer claimed and entered",
+            "entered it in the task ledger",
             "Arrival Communications Receipt",
             "Message Management",
             "Review",
