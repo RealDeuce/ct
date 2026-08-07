@@ -225,6 +225,46 @@ impl DoorSession {
         }
     }
 
+    fn send_through_page_prompt(
+        &mut self,
+        bytes: &[u8],
+        rendered_text: &str,
+        active_prompt: &str,
+    ) -> String {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let rendered = normalized_display_text(rendered_text);
+        let prompt = normalized_display_text(active_prompt);
+        let initial = normalized_display_text(&self.output());
+        let rendered_before = initial.matches(&rendered).count();
+        let mut prompt_occurrences = initial.matches(&prompt).count();
+        let mut acknowledged_prompts = self.acknowledged_page_prompts;
+        let mut retry = false;
+        self.send(bytes);
+        loop {
+            let output = self.output();
+            let semantic = normalized_display_text(&output);
+            self.acknowledge_page_prompts(&semantic);
+            if semantic.matches(&rendered).count() > rendered_before {
+                return output;
+            }
+            if self.acknowledged_page_prompts > acknowledged_prompts {
+                acknowledged_prompts = self.acknowledged_page_prompts;
+                retry = true;
+            }
+            let current_prompt_occurrences = semantic.matches(&prompt).count();
+            if retry && current_prompt_occurrences > prompt_occurrences {
+                self.send(bytes);
+                retry = false;
+            }
+            prompt_occurrences = current_prompt_occurrences;
+            assert!(
+                Instant::now() < deadline,
+                "door did not render {rendered_text:?} after input; output: {output:?}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     fn finish(mut self) -> String {
         drop(self.input.take());
         let status = self.child.wait().unwrap();
@@ -445,16 +485,27 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
         session.send(b"a");
         let (watch_result, _) = session.wait_for_any(&["Voyage Status -", "Docked Operations -"]);
         if watch_result == 0 {
-            session.send(b"\r");
+            session.send_through_page_prompt(
+                b"\r",
+                "Captain's Command Console",
+                "[F] Revise Flight Plan  [Enter] Command console",
+            );
         } else {
-            session.send(b"u");
+            session.send_through_page_prompt(
+                b"u",
+                "Captain's Command Console",
+                "(Q) Return to BBS",
+            );
         }
     } else if arrival_result == 1 {
-        session.send(b"\r");
+        session.send_through_page_prompt(
+            b"\r",
+            "Captain's Command Console",
+            "[F] Revise Flight Plan  [Enter] Command console",
+        );
     } else {
-        session.send(b"u");
+        session.send_through_page_prompt(b"u", "Captain's Command Console", "(Q) Return to BBS");
     }
-    session.wait_for("Captain's Command Console");
     session.send(b"m");
     const MESSAGE_HEADING: &str = "Message Management\r\n==================";
     session.wait_for(MESSAGE_HEADING);
