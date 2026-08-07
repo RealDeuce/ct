@@ -41,11 +41,11 @@ For an alpha release:
 
 Every client archive contains `cepheus-trader-door`, `cepheus-trader-sysop`,
 their platform-specific `cepheus-trader-client-core` shared library, the
-example configuration and installation notes, all project and dependency
-notices, and `SOURCE-RELEASE.txt`. The tagged source is the OpenDoors
-corresponding-source distribution: it includes the vendored library, local
-modifications, schemas, and build files needed to rebuild and relink. Do not
-publish a binary if its source-release URL is empty.
+player and sysop guides, example configuration and installation notes, all
+project and dependency notices, and `SOURCE-RELEASE.txt`. The tagged source is
+the OpenDoors corresponding-source distribution: it includes the vendored
+library, local modifications, schemas, and build files needed to rebuild and
+relink. Do not publish a binary if its source-release URL is empty.
 
 The first alpha packages may be unsigned. Windows signing and macOS
 signing/notarization become separate release-only jobs after credentials are

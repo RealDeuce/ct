@@ -702,6 +702,12 @@ install(
   COMPONENT Client
 )
 install(
+  FILES "${CMAKE_CURRENT_SOURCE_DIR}/../docs/player-guide.md"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/cepheus-trader"
+  RENAME "PLAYER-GUIDE.md"
+  COMPONENT Client
+)
+install(
   FILES "${CMAKE_CURRENT_SOURCE_DIR}/../docs/sysop-guide.md"
   DESTINATION "${CMAKE_INSTALL_DATADIR}/cepheus-trader"
   RENAME "SYSOP-GUIDE.md"

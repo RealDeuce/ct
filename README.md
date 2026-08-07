@@ -91,6 +91,7 @@ by the [release process](docs/release-process.md).
 ## Documentation
 
 - [Development roadmap](ROADMAP.md)
+- [Player guide](docs/player-guide.md)
 - [BBS sysop installation and operations](docs/sysop-guide.md)
 - [Game design and implementation overview](docs/game-design.md)
 - [Milestone 7 field-alpha audit](docs/milestone-7-audit.md)

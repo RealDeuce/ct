@@ -18,6 +18,7 @@ REQUIRED_BASENAMES = {
     "cepheus-trader.conf.example",
     "install-xtrn.ini",
     "README.md",
+    "PLAYER-GUIDE.md",
     "SYSOP-GUIDE.md",
     "LICENSE.md",
     "OPEN_GAME_LICENSE.md",

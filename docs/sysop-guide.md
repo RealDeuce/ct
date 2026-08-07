@@ -35,8 +35,8 @@ directory contains:
 
 On Windows the two programs have an `.exe` suffix. Keep the shared client-core
 library in the same directory as the programs. The `share/cepheus-trader`
-directory contains this guide, the example configuration, source
-correspondence, and license notices.
+directory contains the player and sysop guides, the example configuration,
+source correspondence, and license notices.
 
 Check the installation before adding it to the BBS:
 

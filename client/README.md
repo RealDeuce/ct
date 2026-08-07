@@ -1,9 +1,9 @@
 # Cepheus Trader client
 
 This directory contains the C++20 player and management clients for Cepheus
-Trader. BBS operators installing a release package should start with the
-[sysop guide](../docs/sysop-guide.md), installed as `SYSOP-GUIDE.md` beside
-this file in packaged client kits.
+Trader. Players can start with the [player guide](../docs/player-guide.md),
+installed as `PLAYER-GUIDE.md` in packaged client kits. BBS operators should
+use the [sysop guide](../docs/sysop-guide.md), installed as `SYSOP-GUIDE.md`.
 
 ## Programs and libraries
 
@@ -61,10 +61,10 @@ moderation.
 Release builders set `CT_PORTABLE_CLIENT=ON`, build pinned Botan and Cap'n
 Proto, link OpenDoors statically, and use static GNU C and C++ runtimes on
 supported GNU targets. CPack includes only the player door, sysop utility,
-their shared client-core runtime, the sysop guide, configuration example,
-source correspondence, and license notices. The administrator and headless
-exerciser are development and server-operation programs, not BBS client-kit
-contents.
+their shared client-core runtime, the player and sysop guides, configuration
+example, source correspondence, and license notices. The administrator and
+headless exerciser are development and server-operation programs, not BBS
+client-kit contents.
 
 The packaged binaries must have an exact tagged source release and satisfy the
 obligations in [THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md). OpenDoors
