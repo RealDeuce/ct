@@ -488,23 +488,45 @@ fn complete_arrival_and_trade(
     }
     session.wait_for_occurrences("Docked Operations", 3);
 
-    // Arrival processing may add task-titled cargo ahead of the speculative
-    // lot, so resolve its current menu position only after arrival completes.
-    let cargo_selection = {
+    // Arrival processing may add task-titled cargo, and the wire snapshot is
+    // the authority for menu order. Identify the purchased lot by its rendered
+    // commodity name instead of assuming the stored vector has the same order.
+    let cargo_name = {
         let store = Store::open(data).unwrap();
         let player = store.player_record(identity).unwrap().unwrap();
-        store
+        let commodity_id = store
             .ship_record(player.ship_id)
             .unwrap()
             .unwrap()
             .cargo
             .iter()
-            .position(|lot| lot.cargo_lot_id == cargo_lot_id)
-            .map(|index| index + 1)
+            .find(|lot| lot.cargo_lot_id == cargo_lot_id)
             .expect("purchased speculative cargo must still be aboard")
+            .commodity_id;
+        cepheus_trader_server::commerce::commodity(commodity_id)
+            .expect("purchased cargo must use a catalog commodity")
+            .name
+            .to_owned()
     };
     session.send(b"c");
-    session.wait_for("Cargo Exchange -");
+    let exchange = session.wait_for("Cargo Exchange -");
+    let semantic = strip_ecma48(&exchange);
+    let cargo_section = semantic
+        .rsplit_once("Cargo Exchange -")
+        .and_then(|(_, page)| page.split_once("Cargo aboard"))
+        .and_then(|(_, cargo)| cargo.split_once("Port research"))
+        .map(|(cargo, _)| cargo)
+        .expect("cargo exchange omitted its cargo section");
+    let cargo_selection = cargo_section
+        .lines()
+        .find_map(|line| {
+            let (number, description) = line.trim().split_once(". ")?;
+            description
+                .contains(&cargo_name)
+                .then(|| number.parse::<usize>().ok())
+                .flatten()
+        })
+        .unwrap_or_else(|| panic!("cargo menu omitted {cargo_name:?}: {cargo_section:?}"));
     session.send(b"s");
     session.wait_for("Cargo lot (Q to cancel):");
     session.send(format!("{cargo_selection}\r").as_bytes());
