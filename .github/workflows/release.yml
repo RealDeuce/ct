@@ -29,7 +29,7 @@ jobs:
             runner: '["self-hosted", "macos", "x86_64"]'
     runs-on: ${{ fromJSON(matrix.runner) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
       - name: Configure, test, and package
@@ -50,7 +50,7 @@ jobs:
             build/release/cepheus-trader-door build/release/cepheus-trader-sysop \
             --report release-artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt
           python3 tools/collect_release_artifacts.py build/release release-artifacts --label ${{ matrix.platform }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.platform }}
           path: release-artifacts/
@@ -59,7 +59,7 @@ jobs:
   freebsd:
     runs-on: [self-hosted, freebsd14, amd64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
       - name: Configure, test, and package
@@ -73,7 +73,7 @@ jobs:
           python3 tools/verify_client_package.py release-artifacts/*.tar.xz --version 0.7.0 --run --require-source-url
           python3 tools/inspect_client_dependencies.py build/release/cepheus-trader-door build/release/cepheus-trader-sysop --report release-artifacts/DYNAMIC-DEPENDENCIES-freebsd14-amd64.txt
           python3 tools/collect_release_artifacts.py build/release release-artifacts --label freebsd14-amd64
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-freebsd14-amd64
           path: release-artifacts/
@@ -91,7 +91,7 @@ jobs:
             toolchain: client/cmake/toolchains/mingw-i686.cmake
     runs-on: ${{ fromJSON(matrix.runner) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
       - name: Configure, test, and package
@@ -111,7 +111,7 @@ jobs:
           python tools/verify_client_package.py $archive.FullName --version 0.7.0 --run --require-source-url
           python tools/inspect_client_dependencies.py build/release/cepheus-trader-door.exe build/release/cepheus-trader-sysop.exe --report "release-artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt"
           python tools/collect_release_artifacts.py build/release release-artifacts --label ${{ matrix.platform }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.platform }}
           path: release-artifacts/
@@ -123,7 +123,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: release-assets

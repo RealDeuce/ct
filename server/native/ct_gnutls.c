@@ -88,8 +88,7 @@ ct_gnutls_server* ct_gnutls_server_handshake(int fd,
         target->key_len = source->key_len;
     }
 
-    rc = gnutls_psk_allocate_server_credentials2(
-        &server->credentials, GNUTLS_MAC_SHA256);
+    rc = gnutls_psk_allocate_server_credentials(&server->credentials);
     if(rc < 0) {
         goto failed;
     }

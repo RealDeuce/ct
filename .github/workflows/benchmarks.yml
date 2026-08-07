@@ -38,7 +38,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, ct-benchmark]
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - env:
           CT_LOAD_HOST: ${{ inputs.host }}
           CT_LOAD_PORT: ${{ inputs.port }}
@@ -53,7 +53,7 @@ jobs:
           build/field-alpha/ct-field-alpha-load \
             "$CT_LOAD_HOST" "$CT_LOAD_PORT" 60 3 5 "${credentials[@]}" \
             | tee benchmark-reports/field-alpha.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: field-alpha-report
@@ -64,13 +64,13 @@ jobs:
     runs-on: [self-hosted, linux, x64, ct-benchmark]
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: |
           mkdir -p benchmark-reports
           cargo test --manifest-path server/Cargo.toml \
             settlement_footprint_supports_the_capacity_envelope \
             -- --ignored --nocapture | tee benchmark-reports/capacity.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: capacity-report
