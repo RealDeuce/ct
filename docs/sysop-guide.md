@@ -8,6 +8,11 @@ privately over Discord.
 The shared field-test server is `ct.bbsdev.net`. Player doors connect to port
 `7323`; the sysop utility connects to port `7325`.
 
+Feedback, bug reports, and attaboys should be filed as
+[GitHub issues](https://github.com/RealDeuce/ct/issues) during the field test.
+Include the client version, host operating system and architecture, BBS
+software, launch method, and relevant error text when reporting a problem.
+
 ## Install the client package
 
 Download the archive for the BBS host from the
@@ -110,11 +115,10 @@ registry. Use `real-name` or `handle`. Keep this choice stable after players
 have entered the game; use the identity-management commands below to resolve
 an intentional account rename.
 
-`terminal-profile` accepts `auto`, `iso646`, `iso646-color`, or
-`cp437-color`. With `auto`, the door selects colour when OpenDoors reports an
-ANSI-capable session. `terminal-columns` is `0` for the reported width or a
-fixed value from 40 through 255. `terminal-rows` is `0` for the reported height
-or a fixed value from 24 through 255.
+Leave `terminal-profile=auto`, `terminal-columns=0`, and `terminal-rows=0` for
+normal BBS operation. The door then uses the ANSI capability and terminal
+dimensions OpenDoors reads from the drop file. If a drop-file format does not
+provide credible dimensions, the door uses 80x24.
 
 ## Configure the BBS in the game
 
@@ -137,17 +141,10 @@ Review the committed configuration:
 bin/cepheus-trader-sysop get-config
 ```
 
-## Configure OpenDoors and the BBS launcher
+## Configure the BBS launcher
 
 With the standard working directory, the door reads `cepheus-trader.conf`
-without an OpenDoors configuration directive. An optional `door.cfg` in that
-directory may override presentation for every session:
-
-```text
-CTProfile iso646|iso646-color|cp437-color
-CTColumns 40..255
-CTRows 24..255
-```
+without an additional path option.
 
 Configure the BBS to start the process in the Cepheus Trader installation
 directory and pass the absolute path of the current session's drop file:
@@ -169,10 +166,6 @@ bin/cepheus-trader-door -SOCKET DESCRIPTOR
 `DESCRIPTOR` is the numeric socket descriptor or handle supplied by the BBS.
 OpenDoors also accepts its normal node, time, graphics, and silent-mode
 options. Quote paths according to the host operating system.
-
-An alternative layout may select another OpenDoors file with `-C FILE`, name
-another shared configuration with `CTConfig FILE`, and pass that same shared
-configuration to the sysop utility with `--config FILE`.
 
 The door reads the account name and, when available, the user-record index
 from OpenDoors. It records that local identity and sends only the assigned
@@ -284,9 +277,7 @@ architectures.
 
 Confirm that the BBS starts the door in the installation directory containing
 `cepheus-trader.conf`, and that its account can traverse and read that
-directory. If present, `door.cfg` must be readable there as well. For an
-alternative layout, check the paths supplied by `-C`, `CTConfig`, and
-`--config`.
+directory.
 
 ### The credential is rejected
 
