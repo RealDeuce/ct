@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -25,6 +29,7 @@ jobs:
           python3 -m unittest discover -s tools -p 'test_*.py'
 
   rust:
+    needs: client-system-dependencies
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -33,6 +38,15 @@ jobs:
           sudo apt-get update && sudo apt-get install -y
           build-essential cmake ninja-build pkg-config python3
           capnproto libbotan-3-dev libcapnp-dev libgnutls28-dev
+      - uses: actions/download-artifact@v8
+        with:
+          name: client-system-binaries
+          path: build/client-system-artifact
+      - name: Restore system client executables
+        run: |
+          mkdir -p build/client-system
+          tar -C build/client-system -xzf \
+            build/client-system-artifact/client-system-binaries.tar.gz
       - name: Select stable Rust with lint components
         run: |
           rustup update stable
@@ -44,12 +58,21 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             server/target
-          key: rust-${{ runner.os }}-${{ hashFiles('server/Cargo.lock') }}
+          key: >-
+            rust-v1-${{ runner.os }}-${{ runner.arch }}-${{
+            hashFiles('server/Cargo.lock') }}-${{
+            hashFiles('server/Cargo.toml', 'server/build.rs',
+            'server/src/**', 'server/native/**', 'protocol/**', 'catalog/**') }}
+          restore-keys: |
+            rust-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('server/Cargo.lock') }}-
+            rust-v1-${{ runner.os }}-${{ runner.arch }}-
       - name: Format
         run: cargo fmt --manifest-path server/Cargo.toml -- --check
       - name: Lint
         run: cargo clippy --manifest-path server/Cargo.toml --all-targets -- -D warnings
       - name: Test
+        env:
+          CT_INTEROP_CLIENT_BUILD: ${{ github.workspace }}/build/client-system
         run: cargo test --manifest-path server/Cargo.toml
       - name: Version probes
         run: |
@@ -57,15 +80,25 @@ jobs:
           cargo run --manifest-path server/Cargo.toml --bin cepheus-trader-universe-tour -- --version
 
   client-system-dependencies:
-    runs-on: ubuntu-latest
-    container: debian:13
+    runs-on: ubuntu-26.04
     steps:
+      - uses: actions/checkout@v7
       - name: Install native dependencies
         run: >-
-          apt-get update && apt-get install -y
-          build-essential ca-certificates cmake git ninja-build pkg-config python3
+          sudo apt-get update && sudo apt-get install -y
+          build-essential ca-certificates cmake ninja-build pkg-config python3
           capnproto libcapnp-dev libbotan-3-dev xz-utils
-      - uses: actions/checkout@v7
+      - name: Identify C/C++ toolchain
+        id: toolchain
+        run: >-
+          echo "key=$(cc -dumpmachine)-$(cc -dumpfullversion -dumpversion)"
+          >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: build/client-system
+          key: client-system-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}
+          restore-keys: |
+            client-system-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
       - name: Configure, build, and test
         shell: bash
         run: |
@@ -78,6 +111,16 @@ jobs:
           ctest --test-dir build/client-system --output-on-failure
           build/client-system/cepheus-trader-door --version
           build/client-system/cepheus-trader-sysop --version
+          tar -C build/client-system \
+            -czf "$GITHUB_WORKSPACE/client-system-binaries.tar.gz" \
+            cepheus-trader-admin cepheus-trader-client \
+            cepheus-trader-door cepheus-trader-sysop
+      - uses: actions/upload-artifact@v7
+        with:
+          name: client-system-binaries
+          path: client-system-binaries.tar.gz
+          if-no-files-found: error
+          retention-days: 1
 
   client-pinned-dependencies:
     runs-on: ubuntu-latest
@@ -87,6 +130,17 @@ jobs:
         run: >-
           sudo apt-get update && sudo apt-get install -y
           build-essential ca-certificates cmake ninja-build pkg-config python3 xz-utils
+      - name: Identify C/C++ toolchain
+        id: toolchain
+        run: >-
+          echo "key=$(cc -dumpmachine)-$(cc -dumpfullversion -dumpversion)"
+          >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: build/client-pinned
+          key: client-pinned-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}
+          restore-keys: |
+            client-pinned-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
       - name: Configure pinned source dependencies
         run: >-
           cmake -S client -B build/client-pinned -G Ninja
@@ -105,6 +159,17 @@ jobs:
         run: >-
           sudo apt-get update && sudo apt-get install -y
           build-essential ca-certificates cmake ninja-build pkg-config python3 xz-utils
+      - name: Identify C/C++ toolchain
+        id: toolchain
+        run: >-
+          echo "key=$(cc -dumpmachine)-$(cc -dumpfullversion -dumpversion)"
+          >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: build/package
+          key: client-package-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}
+          restore-keys: |
+            client-package-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
       - name: Build portable package
         env:
           SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}/archive/${{ github.sha }}.tar.gz

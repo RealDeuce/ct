@@ -446,19 +446,6 @@ fn complete_arrival_and_trade(
     identity: &PlayerIdentity,
     cargo_lot_id: u64,
 ) -> String {
-    let cargo_selection = {
-        let store = Store::open(data).unwrap();
-        let player = store.player_record(identity).unwrap().unwrap();
-        store
-            .ship_record(player.ship_id)
-            .unwrap()
-            .unwrap()
-            .cargo
-            .iter()
-            .position(|lot| lot.cargo_lot_id == cargo_lot_id)
-            .map(|index| index + 1)
-            .expect("purchased speculative cargo must still be aboard")
-    };
     let mut session = DoorSession::spawn(door, data, "iso646", "40");
     session.send(b"\r");
     session.wait_for("Arrival Packet -");
@@ -501,6 +488,21 @@ fn complete_arrival_and_trade(
     }
     session.wait_for_occurrences("Docked Operations", 3);
 
+    // Arrival processing may add task-titled cargo ahead of the speculative
+    // lot, so resolve its current menu position only after arrival completes.
+    let cargo_selection = {
+        let store = Store::open(data).unwrap();
+        let player = store.player_record(identity).unwrap().unwrap();
+        store
+            .ship_record(player.ship_id)
+            .unwrap()
+            .unwrap()
+            .cargo
+            .iter()
+            .position(|lot| lot.cargo_lot_id == cargo_lot_id)
+            .map(|index| index + 1)
+            .expect("purchased speculative cargo must still be aboard")
+    };
     session.send(b"c");
     session.wait_for("Cargo Exchange -");
     session.send(b"s");
