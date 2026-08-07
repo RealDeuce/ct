@@ -134,6 +134,9 @@ def main() -> int:
     vendor = ROOT / "client/third_party/opendoors"
     if not (vendor / "license.txt").is_file() or not (vendor / "README.md").is_file():
         errors.append("vendored OpenDoors license or provenance document is missing")
+    for resource in ("ODRes.rc", "ODApp.ico", "ODInfo.ico", "Toolbar.bmp"):
+        if not (vendor / resource).is_file():
+            errors.append(f"vendored OpenDoors Windows resource is missing: {resource}")
     vendor_names = {path.name for path in vendor.iterdir()} if vendor.is_dir() else set()
     if any(name.lower().startswith("ex_") for name in vendor_names):
         errors.append("vendored OpenDoors contains an excluded ex_* example")

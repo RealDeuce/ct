@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(cepheus_trader_client VERSION 0.7.1 LANGUAGES C CXX)
 
+if(WIN32)
+  enable_language(RC)
+endif()
+
 # The client core is shared on every platform and privately embeds static
 # fallback dependencies. Ensure in-tree Botan and Cap'n Proto builds are
 # suitable for that link even when this is an ordinary non-portable build.
@@ -482,6 +486,12 @@ target_compile_options(
 )
 
 add_executable(cepheus-trader-door src/door_main.cpp)
+if(WIN32)
+  target_sources(
+    cepheus-trader-door
+    PRIVATE "${OPENDOORS_ROOT}/ODRes.rc"
+  )
+endif()
 target_link_libraries(
   cepheus-trader-door
   PRIVATE

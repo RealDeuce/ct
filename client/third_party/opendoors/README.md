@@ -32,6 +32,8 @@ The copy contains the complete OpenDoors source and header surface compiled by
 - headers: `ODCom.h`, `ODCore.h`, `ODFrame.h`, `ODGen.h`, `ODInEx.h`,
   `ODInQue.h`, `ODKrnl.h`, `ODPlat.h`, `ODRes.h`, `ODScrn.h`, `ODStat.h`,
   `ODStr.h`, `ODSwap.h`, `ODTypes.h`, `ODUtil.h`, and `OpenDoor.h`; and
+- Windows resources: `ODRes.rc`, `ODApp.ico`, `ODInfo.ico`, and `Toolbar.bmp`;
+  and
 - license: `license.txt`.
 
 Prebuilt DLLs, libraries, generated resource intermediates, historical notes,
@@ -44,3 +46,6 @@ There are no local patches to the vendored OpenDoors files at initial import.
 Record every later source or header modification here with its date, affected
 files, and purpose. Build-system integration outside this directory is not an
 OpenDoors source patch.
+
+- 2026-08-07: added the previously omitted Windows resource script, icons,
+  and toolbar bitmap, byte-for-byte from the same pinned Synchronet checkout.
