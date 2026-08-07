@@ -571,4 +571,11 @@ jobs:
           gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
             gh release create "$RELEASE_TAG" --generate-notes \
               --title "Cepheus Trader $RELEASE_TAG"
-          gh release upload "$RELEASE_TAG" release-assets/* --clobber
+          mapfile -d '' assets < <(
+            find release-assets -maxdepth 1 -type f -print0
+          )
+          if (( ${#assets[@]} == 0 )); then
+            echo "No release assets were downloaded" >&2
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
