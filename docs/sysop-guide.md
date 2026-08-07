@@ -164,7 +164,7 @@ library:
 
 | Drop file | Supported variants | Identifies a Telnet connection? |
 | --- | --- | --- |
-| `DOOR32.SYS` | Local, serial, or Telnet communication types | Yes. Communication type `2` identifies a Telnet socket; the next line supplies its descriptor or handle. |
+| `DOOR32.SYS` | Local, serial, or Telnet communication types; there is no non-Telnet socket type | Yes. Communication type `2` identifies a Telnet socket; the next line supplies its descriptor or handle. |
 | `DOOR.SYS` | GAP/PCBoard, DoorWay, and Wildcat! | No. The GAP form can identify socket transport, but cannot distinguish a Telnet stream from a non-Telnet raw stream. |
 | `DORINFOx.DEF` | Node-specific DORINFO files | No |
 | `EXITINFO.BBS` | QuickBBS 2.6/2.75+ and RemoteAccess 1.x/2.x, with the accompanying `DORINFO1.DEF` | No |
@@ -172,6 +172,48 @@ library:
 | `SFDOORS.DAT` | Spitfire; `SFMAIN.DAT`, `SFFILE.DAT`, `SFMESS.DAT`, and `SFSYSOP.DAT` are also accepted entry filenames | No |
 | `CALLINFO.BBS` | Wildcat! | No |
 | `TRIBBS.SYS` | TriBBS | No |
+
+Cepheus Trader uses the account name, optional BBS user-record number, ANSI
+capability, and terminal dimensions that OpenDoors obtains at startup. The
+following table records what the current OpenDoors parser obtains from each
+format:
+
+| Drop file | Real name | Handle | User-record number | ANSI | Terminal dimensions |
+| --- | --- | --- | --- | --- | --- |
+| `DOOR32.SYS` | Yes | Yes | Yes | Yes | None |
+| `DOOR.SYS` | Yes | Wildcat! extended format only | GAP/PCBoard and Wildcat! only | Yes | Rows in GAP/PCBoard and Wildcat!; no columns |
+| `DORINFOx.DEF` | Yes | No | No | Yes | None |
+| `EXITINFO.BBS` | Yes | RemoteAccess 1.x extended and 2.x only | RemoteAccess 2.x only | Yes | Columns in RemoteAccess 1.x extended and 2.x; no rows |
+| `CHAIN.TXT` | Yes | Yes | Yes | Yes | Columns and rows |
+| `SFDOORS.DAT` and the other Spitfire entry files | Yes | No | Yes | Yes | None |
+| `CALLINFO.BBS` | Yes | No | No | Yes | Rows only |
+| `TRIBBS.SYS` | Yes | Yes | Yes | Yes | None |
+
+The generated configuration defaults to `identity-name=real-name`, which works
+with every supported format. Set `identity-name=handle` only when the selected
+format supplies a handle. `-USERNAME` supplies the real-name field, not the
+handle field. When a BBS cannot generate a handle-bearing format, either keep
+the real-name identity or generate a per-call OpenDoors configuration file
+containing `Alias CALLER_HANDLE` and pass that file with `-C`.
+
+The user-record number is optional. With a format that omits it, the identity
+registry consistently identifies the account by name alone. Do not add a
+record number to that mapping with `identity-reindex` unless the BBS is also
+changed to provide the same number on every subsequent launch.
+
+When dimensions are absent, or OpenDoors reports fewer than 40 columns or 24
+rows, the door uses 80x24. Fixed dimensions can be set with `terminal-columns`
+and `terminal-rows` in `cepheus-trader.conf`. For dimensions that vary by call,
+generate a per-call OpenDoors configuration file containing, for example:
+
+```text
+CTColumns 132
+CTRows 50
+```
+
+and pass it with `-C`. `CTProfile iso646`, `CTProfile iso646-color`, or
+`CTProfile cp437-color` can similarly override an incorrect ANSI/profile
+report for that call; `terminal-profile` supplies a fixed BBS-wide override.
 
 When the BBS passes the caller's raw Telnet socket directly to the door, it
 must generate `DOOR32.SYS` with communication type `2` and launch the door with
@@ -181,17 +223,24 @@ the path to that file:
 bin/cepheus-trader-door -D /absolute/path/to/bbs/node/DOOR32.SYS
 ```
 
-The other formats cannot indicate that Telnet IAC expansion is required. The
-standalone socket option:
+The other formats cannot indicate that Telnet IAC expansion is required.
+
+`DOOR32.SYS` does not define a communication type for a non-Telnet TCP socket.
+To pass an already-open non-Telnet socket, use another supported drop file for
+the caller and terminal information and add the socket option to the command
+line. For example:
 
 ```console
-bin/cepheus-trader-door -SOCKET DESCRIPTOR
+bin/cepheus-trader-door \
+  -D /absolute/path/to/bbs/node/DORINFO1.DEF \
+  -SOCKET DESCRIPTOR
 ```
 
-selects socket transport but does not identify the stream as Telnet, so do not
-use it to pass a raw Telnet connection. OpenDoors also accepts its normal node,
-time, graphics, and silent-mode options. Quote paths according to the host
-operating system.
+`DESCRIPTOR` is the numeric socket descriptor or handle inherited from the
+BBS. `-SOCKET` selects socket transport but does not identify the stream as
+Telnet, so do not use it to pass a raw Telnet connection. OpenDoors also
+accepts its normal node, time, graphics, and silent-mode options. Quote paths
+according to the host operating system.
 
 The door reads the account name and, when available, the user-record index
 from OpenDoors. It records that local identity and sends only the assigned
