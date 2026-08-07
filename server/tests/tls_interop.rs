@@ -494,19 +494,20 @@ fn complete_arrival_and_trade(
     let cargo_name = {
         let store = Store::open(data).unwrap();
         let player = store.player_record(identity).unwrap().unwrap();
-        let commodity_id = store
+        store
             .ship_record(player.ship_id)
             .unwrap()
             .unwrap()
             .cargo
             .iter()
-            .find(|lot| lot.cargo_lot_id == cargo_lot_id)
+            .find(|lot| {
+                lot.cargo_lot_id == cargo_lot_id
+                    && lot.title == cepheus_trader_server::wire::CargoTitle::PlayerOwned
+                    && lot.purchase_price_per_ton != 0
+            })
             .expect("purchased speculative cargo must still be aboard")
-            .commodity_id;
-        cepheus_trader_server::commerce::commodity(commodity_id)
-            .expect("purchased cargo must use a catalog commodity")
-            .name
-            .to_owned()
+            .commodity_name
+            .clone()
     };
     session.send(b"c");
     // The heading is written before the rest of the page.  Wait for the
