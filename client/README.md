@@ -180,6 +180,9 @@ generation while linking against the target libraries.
 
 The pinned Botan build uses all processors detected by CMake. Constrained
 builders may set `-DCT_BOTAN_BUILD_JOBS=N` to an explicit positive job count.
+Compatible build trees can share a completed pinned installation by setting
+`-DCT_BOTAN_INSTALL_DIR=path`; CMake requires both its static library and
+matching completed-install marker before reusing it.
 
 For a standard local installation, omit the final pathname from
 `init-credential`; it creates the parent directory, the shared configuration,

@@ -15,6 +15,9 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  CCACHE_BASEDIR: ${{ github.workspace }}
+  CCACHE_COMPILERCHECK: content
+  CCACHE_MAXSIZE: 1G
 
 jobs:
   repository:
@@ -86,7 +89,7 @@ jobs:
       - name: Install native dependencies
         run: >-
           sudo apt-get update && sudo apt-get install -y
-          build-essential ca-certificates cmake ninja-build pkg-config python3
+          build-essential ca-certificates ccache cmake ninja-build pkg-config python3
           capnproto libcapnp-dev libbotan-3-dev xz-utils
       - name: Identify C/C++ toolchain
         id: toolchain
@@ -95,15 +98,19 @@ jobs:
           >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v6
         with:
-          path: build/client-system
-          key: client-system-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}
+          path: ~/.cache/ccache
+          key: ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}-system
           restore-keys: |
-            client-system-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
+            ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}-
+            ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
       - name: Configure, build, and test
         shell: bash
         run: |
           mkdir -p build
-          cmake -S client -B build/client-system -G Ninja 2>&1 \
+          ccache --zero-stats
+          cmake -S client -B build/client-system -G Ninja \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache 2>&1 \
             | tee build/client-system-configure.log
           grep -F "Using installed Botan" build/client-system-configure.log
           grep -F "Using installed Cap'n Proto" build/client-system-configure.log
@@ -111,6 +118,7 @@ jobs:
           ctest --test-dir build/client-system --output-on-failure
           build/client-system/cepheus-trader-door --version
           build/client-system/cepheus-trader-sysop --version
+          ccache --show-stats
           tar -C build/client-system \
             -czf "$GITHUB_WORKSPACE/client-system-binaries.tar.gz" \
             cepheus-trader-admin cepheus-trader-client \
@@ -129,7 +137,7 @@ jobs:
       - name: Install build dependencies
         run: >-
           sudo apt-get update && sudo apt-get install -y
-          build-essential ca-certificates cmake ninja-build pkg-config python3 xz-utils
+          build-essential ca-certificates ccache cmake ninja-build pkg-config python3 xz-utils
       - name: Identify C/C++ toolchain
         id: toolchain
         run: >-
@@ -137,28 +145,41 @@ jobs:
           >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v6
         with:
-          path: build/client-pinned
-          key: client-pinned-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}
+          path: build/dependency-cache/botan
+          key: botan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt') }}
           restore-keys: |
-            client-pinned-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
+            botan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ccache
+          key: ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}-pinned
+          restore-keys: |
+            ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}-
+            ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
       - name: Configure pinned source dependencies
         run: >-
           cmake -S client -B build/client-pinned -G Ninja
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DCT_BOTAN_INSTALL_DIR=${{ github.workspace }}/build/dependency-cache/botan
           -DCT_USE_SYSTEM_BOTAN=OFF
           -DCT_USE_SYSTEM_CAPNPROTO=OFF
       - name: Build and test
         run: |
+          ccache --zero-stats
           cmake --build build/client-pinned
           ctest --test-dir build/client-pinned --output-on-failure
+          ccache --show-stats
 
   client-package:
+    needs: client-pinned-dependencies
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - name: Install build dependencies
         run: >-
           sudo apt-get update && sudo apt-get install -y
-          build-essential ca-certificates cmake ninja-build pkg-config python3 xz-utils
+          build-essential ca-certificates ccache cmake ninja-build pkg-config python3 xz-utils
       - name: Identify C/C++ toolchain
         id: toolchain
         run: >-
@@ -166,18 +187,32 @@ jobs:
           >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v6
         with:
-          path: build/package
-          key: client-package-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}
+          path: build/dependency-cache/botan
+          key: botan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt') }}
           restore-keys: |
-            client-package-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
+            botan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ccache
+          key: ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}-package
+          restore-keys: |
+            ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}-
+            ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
       - name: Build portable package
         env:
           SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}/archive/${{ github.sha }}.tar.gz
         run: |
           cmake -S client -B build/package -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCT_BOTAN_INSTALL_DIR=${{ github.workspace }}/build/dependency-cache/botan \
             -DCT_PORTABLE_CLIENT=ON \
-            -DCT_SOURCE_RELEASE_URL="$SOURCE_URL"
+            -DCT_SOURCE_RELEASE_URL="$SOURCE_URL" 2>&1 \
+            | tee build/package-configure.log
+          grep -F "Using reusable pinned Botan 3.12.0" \
+            build/package-configure.log
+          ccache --zero-stats
           cmake --build build/package
           ctest --test-dir build/package --output-on-failure
           cpack --config build/package/CPackConfig.cmake -B artifacts
@@ -187,6 +222,7 @@ jobs:
             build/package/cepheus-trader-door build/package/cepheus-trader-sysop \
             --report artifacts/DYNAMIC-DEPENDENCIES-linux-amd64.txt
           python3 tools/collect_release_artifacts.py build/package artifacts --label linux-amd64
+          ccache --show-stats
       - uses: actions/upload-artifact@v7
         with:
           name: cepheus-trader-client-0.7.0-linux-amd64

@@ -54,64 +54,80 @@ if(BOTAN_FOUND)
   set(CT_BOTAN_TARGET PkgConfig::BOTAN)
   message(STATUS "Using installed Botan ${BOTAN_VERSION}")
 else()
-  include(ExternalProject)
-  find_package(Python3 REQUIRED COMPONENTS Interpreter)
-  find_program(
-    CT_BOTAN_MAKE_EXECUTABLE
-    NAMES gmake make mingw32-make
-    REQUIRED
+  set(
+    CT_BOTAN_INSTALL_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/botan-install"
+    CACHE PATH
+    "Install or reusable cache directory for the pinned Botan build"
   )
-  set(CT_BOTAN_INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/botan-install")
-  set(CT_BOTAN_CROSS_ARGUMENTS)
-  if(CMAKE_CROSSCOMPILING AND WIN32)
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86|i[3-6]86)$")
-      set(CT_BOTAN_CPU x86_32)
-    else()
-      set(CT_BOTAN_CPU x86_64)
-    endif()
-    list(
-      APPEND CT_BOTAN_CROSS_ARGUMENTS
-      --os=mingw
-      "--cpu=${CT_BOTAN_CPU}"
-      "--ar-command=${CMAKE_AR}"
-    )
-  endif()
+  set(CT_BOTAN_LIBRARY "${CT_BOTAN_INSTALL_DIR}/lib/libbotan-3.a")
+  set(
+    CT_BOTAN_COMPLETE_MARKER
+    "${CT_BOTAN_INSTALL_DIR}/.ct-botan-${CT_BOTAN_VERSION}-complete"
+  )
   file(MAKE_DIRECTORY "${CT_BOTAN_INSTALL_DIR}/include/botan-3")
   add_library(ct-botan STATIC IMPORTED GLOBAL)
   set_target_properties(
     ct-botan
     PROPERTIES
-      IMPORTED_LOCATION "${CT_BOTAN_INSTALL_DIR}/lib/libbotan-3.a"
+      IMPORTED_LOCATION "${CT_BOTAN_LIBRARY}"
       INTERFACE_INCLUDE_DIRECTORIES "${CT_BOTAN_INSTALL_DIR}/include/botan-3"
   )
-  ExternalProject_Add(
-    ct-botan-project
-    URL "${CT_BOTAN_URL}"
-    URL_HASH "SHA256=${CT_BOTAN_SHA256}"
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    CONFIGURE_COMMAND
-      "${Python3_EXECUTABLE}" <SOURCE_DIR>/configure.py
-      "--prefix=${CT_BOTAN_INSTALL_DIR}"
-      "--with-build-dir=<BINARY_DIR>"
-      "--cc-bin=${CMAKE_CXX_COMPILER}"
-      ${CT_BOTAN_CROSS_ARGUMENTS}
-      --build-targets=static
-      --minimized-build
-      --enable-modules=tls13,auto_rng,system_rng,sha2_32,hex
-      --without-documentation
-      --disable-modules=bzip2,lzma,zlib,sqlite3,tpm,pkcs11
-    BUILD_COMMAND
-      "${CT_BOTAN_MAKE_EXECUTABLE}"
-      -C <BINARY_DIR>
-      "-j${CT_BOTAN_BUILD_JOBS}"
-    INSTALL_COMMAND
-      "${CT_BOTAN_MAKE_EXECUTABLE}" -C <BINARY_DIR> install
-    BUILD_BYPRODUCTS "${CT_BOTAN_INSTALL_DIR}/lib/libbotan-3.a"
-  )
-  add_dependencies(ct-botan ct-botan-project)
+  if(EXISTS "${CT_BOTAN_LIBRARY}" AND EXISTS "${CT_BOTAN_COMPLETE_MARKER}")
+    message(STATUS "Using reusable pinned Botan ${CT_BOTAN_VERSION}")
+  else()
+    include(ExternalProject)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    find_program(
+      CT_BOTAN_MAKE_EXECUTABLE
+      NAMES gmake make mingw32-make
+      REQUIRED
+    )
+    set(CT_BOTAN_CROSS_ARGUMENTS)
+    if(CMAKE_CROSSCOMPILING AND WIN32)
+      if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86|i[3-6]86)$")
+        set(CT_BOTAN_CPU x86_32)
+      else()
+        set(CT_BOTAN_CPU x86_64)
+      endif()
+      list(
+        APPEND CT_BOTAN_CROSS_ARGUMENTS
+        --os=mingw
+        "--cpu=${CT_BOTAN_CPU}"
+        "--ar-command=${CMAKE_AR}"
+      )
+    endif()
+    ExternalProject_Add(
+      ct-botan-project
+      URL "${CT_BOTAN_URL}"
+      URL_HASH "SHA256=${CT_BOTAN_SHA256}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+      CONFIGURE_COMMAND
+        "${Python3_EXECUTABLE}" <SOURCE_DIR>/configure.py
+        "--prefix=${CT_BOTAN_INSTALL_DIR}"
+        "--with-build-dir=<BINARY_DIR>"
+        "--cc-bin=${CMAKE_CXX_COMPILER}"
+        ${CT_BOTAN_CROSS_ARGUMENTS}
+        --build-targets=static
+        --minimized-build
+        --enable-modules=tls13,auto_rng,system_rng,sha2_32,hex
+        --without-documentation
+        --disable-modules=bzip2,lzma,zlib,sqlite3,tpm,pkcs11
+      BUILD_COMMAND
+        "${CT_BOTAN_MAKE_EXECUTABLE}"
+        -C <BINARY_DIR>
+        "-j${CT_BOTAN_BUILD_JOBS}"
+      INSTALL_COMMAND
+        "${CT_BOTAN_MAKE_EXECUTABLE}" -C <BINARY_DIR> install
+        COMMAND
+          "${CMAKE_COMMAND}" -E touch "${CT_BOTAN_COMPLETE_MARKER}"
+      BUILD_BYPRODUCTS "${CT_BOTAN_LIBRARY}"
+    )
+    add_dependencies(ct-botan ct-botan-project)
+    message(STATUS "Building pinned Botan ${CT_BOTAN_VERSION}")
+  endif()
   target_link_libraries(ct-botan INTERFACE Threads::Threads ${CMAKE_DL_LIBS})
   set(CT_BOTAN_TARGET ct-botan)
-  message(STATUS "Building pinned Botan ${CT_BOTAN_VERSION}")
 endif()
 
 if(WIN32 AND BOTAN_FOUND)
