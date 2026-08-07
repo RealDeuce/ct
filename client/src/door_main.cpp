@@ -717,6 +717,17 @@ void print_wrapped(
    }
 }
 
+void print_wrapped_field(
+   const char* label,
+   const std::string_view text,
+   const ct::DoorTextRole role = ct::DoorTextRole::Information)
+{
+   const auto label_width = std::strlen(label);
+   door_label("%s", label);
+   output().write_hanging(safe_field(text), label_width, role);
+   door_write("\n\r", role);
+}
+
 const char* career_name(const ct::Career career)
 {
    switch(career) {
@@ -1321,10 +1332,8 @@ void render_ship_detail(const ct::StartingShipOptions& options)
       door_label("; monthly payment Cr");
       door_number("%llu\n\r", static_cast<unsigned long long>(options.terms.monthly_payment_credits));
    }
-   door_label("Authority: ");
-   print_wrapped(options.terms.authority, "  ");
-   door_label("Exit terms: ");
-   print_wrapped(options.terms.exit_terms, "  ");
+   print_wrapped_field("Authority: ", options.terms.authority);
+   print_wrapped_field("Exit terms: ", options.terms.exit_terms);
 }
 
 char crew_menu_key(const size_t index)

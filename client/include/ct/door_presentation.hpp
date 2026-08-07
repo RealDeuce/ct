@@ -56,12 +56,18 @@ public:
    void clear();
    void write(std::string_view text,
               DoorTextRole role = DoorTextRole::Normal);
+   void write_hanging(std::string_view text,
+                      size_t continuation_indent,
+                      DoorTextRole role = DoorTextRole::Normal);
 
 private:
    void emit(std::string_view bytes);
    void flush();
-   void emit_encoded(std::string_view bytes, DoorTextRole role);
+   void emit_encoded(std::string_view bytes,
+                     DoorTextRole role,
+                     size_t continuation_indent);
    void newline(DoorTextRole role);
+   void wrapped_newline(DoorTextRole role, size_t continuation_indent);
    void pause_at_page_boundary(DoorTextRole role);
 
    DoorProfile profile_;

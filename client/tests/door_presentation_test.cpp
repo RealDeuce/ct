@@ -186,6 +186,26 @@ int main() {
    presentation.write("first\r\n\r\nsecond");
    check(page == "first\r\n\r\nsecond");
 
+   std::string hanging;
+   ct::DoorPresentation hanging_presentation(
+      ct::DoorProfile::Iso646,
+      40,
+      24,
+      [&hanging](const std::string_view bytes) { hanging.append(bytes); });
+   hanging_presentation.write("Authority: ", ct::DoorTextRole::Label);
+   hanging_presentation.write_hanging(
+      "Sponsor command under a limited local commission; prize rights "
+      "require adjudication",
+      11,
+      ct::DoorTextRole::Information);
+   check(
+      hanging ==
+      "Authority: Sponsor command under a\r\n"
+      "           limited local commission;\r\n"
+      "           prize rights require\r\n"
+      "           adjudication");
+   check(maximum_visible_width(hanging) <= 40);
+
    std::string paged;
    unsigned pauses = 0;
    ct::DoorPresentation pager(
