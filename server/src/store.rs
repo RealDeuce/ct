@@ -6242,9 +6242,15 @@ impl Store {
         let spec = creation::ship_status_spec(ship.catalog_id)
             .ok_or(StoreError::Corrupt("ship status data missing"))?;
         let mut changed = Vec::new();
-        for entry in self.tasks.iter(txn)? {
-            let (key, value) = entry?;
-            let mut stored = decode_stored_task(value)?;
+        let tasks = self
+            .tasks
+            .iter(txn)?
+            .map(|entry| {
+                let (key, value) = entry?;
+                Ok((key.to_vec(), decode_stored_task(value)?))
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for (key, mut stored) in tasks {
             if stored.identity != *identity
                 || stored.task.performing_ship_id != ship.ship_id
                 || stored.task.offer.origin_system_id != ship.system_id
@@ -6271,13 +6277,7 @@ impl Store {
                         && effective_cargo_capacity(ship, &spec).saturating_sub(used)
                             >= stored.task.offer.quantity_millitons
                     {
-                        let lot_id = ship
-                            .cargo
-                            .iter()
-                            .map(|lot| lot.cargo_lot_id)
-                            .max()
-                            .unwrap_or(0)
-                            .saturating_add(1);
+                        let lot_id = take_id_range(self.meta, txn, META_NEXT_CARGO_LOT_ID, 1)?;
                         ship.cargo.push(CargoLot {
                             cargo_lot_id: lot_id,
                             commodity_id: stored.task.offer.commodity_id,
@@ -6355,7 +6355,7 @@ impl Store {
                 }
                 _ => {}
             }
-            changed.push((key.to_vec(), stored));
+            changed.push((key, stored));
         }
         for (key, stored) in changed {
             self.tasks.put(txn, &key, &encode_stored_task(&stored)?)?;

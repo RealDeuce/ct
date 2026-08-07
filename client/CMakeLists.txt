@@ -105,6 +105,9 @@ else()
   endif()
   set(CT_BOTAN_INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/botan-install")
   set(CT_BOTAN_CROSS_ARGUMENTS)
+  if(NOT WIN32)
+    list(APPEND CT_BOTAN_CROSS_ARGUMENTS "--cc-abi-flags=-fPIC")
+  endif()
   if(CMAKE_CROSSCOMPILING AND WIN32)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86|i[3-6]86)$")
       set(CT_BOTAN_CPU x86_32)
@@ -177,6 +180,13 @@ option(
 if(CT_PORTABLE_CLIENT)
   set(CT_USE_SYSTEM_CAPNPROTO OFF CACHE BOOL "Use installed Cap'n Proto" FORCE)
   set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static dependencies" FORCE)
+  set(
+    CMAKE_POSITION_INDEPENDENT_CODE
+    ON
+    CACHE BOOL
+    "Build static dependencies for the shared client core"
+    FORCE
+  )
 endif()
 include(cmake/CapnProtoPinned.cmake)
 
@@ -390,9 +400,11 @@ capnp_generate_cpp(
 
 add_library(
   ct-client-core
+  SHARED
   src/admin_protocol.cpp
   src/bbs_config.cpp
   src/bbs_credential.cpp
+  src/crypto.cpp
   src/player_identity_registry.cpp
   src/protocol.cpp
   src/sysop_protocol.cpp
@@ -408,13 +420,13 @@ target_include_directories(
 )
 target_link_libraries(
   ct-client-core
-  PUBLIC
+  PRIVATE
     CapnProto::capnp
     ${CT_BOTAN_TARGET}
 )
 if(WIN32)
-  target_link_directories(ct-client-core PUBLIC ${BOTAN_LIBRARY_DIRS})
-  target_link_libraries(ct-client-core PUBLIC advapi32 ws2_32)
+  target_link_directories(ct-client-core PRIVATE ${BOTAN_LIBRARY_DIRS})
+  target_link_libraries(ct-client-core PRIVATE advapi32 ws2_32)
 endif()
 target_compile_options(
   ct-client-core
@@ -424,6 +436,21 @@ target_compile_options(
     -Wpedantic
     -Werror
 )
+set_target_properties(
+  ct-client-core
+  PROPERTIES
+    OUTPUT_NAME cepheus-trader-client-core
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
+)
+if(WIN32)
+  set_target_properties(ct-client-core PROPERTIES PREFIX "")
+endif()
+if(MINGW)
+  # MinGW auto-exports symbols pulled from static archives unless told not to.
+  # Keep Botan, Cap'n Proto/KJ, and the static GNU runtime private to the DLL;
+  # otherwise their import symbols collide with the executables' runtimes.
+  target_link_options(ct-client-core PRIVATE "-Wl,--exclude-libs,ALL")
+endif()
 
 add_library(
   ct-door-presentation
@@ -597,6 +624,7 @@ if(CT_PORTABLE_CLIENT AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   foreach(
     CT_PORTABLE_TARGET
     IN ITEMS
+      ct-client-core
       cepheus-trader-door
       cepheus-trader-sysop
   )
@@ -608,6 +636,19 @@ if(CT_PORTABLE_CLIENT AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       target_link_options(${CT_PORTABLE_TARGET} PRIVATE -static)
     endif()
   endforeach()
+endif()
+
+if(APPLE)
+  set(CT_CLIENT_INSTALL_RPATH "@loader_path")
+elseif(UNIX)
+  set(CT_CLIENT_INSTALL_RPATH "\$ORIGIN")
+endif()
+if(DEFINED CT_CLIENT_INSTALL_RPATH)
+  set_target_properties(
+    cepheus-trader-door
+    cepheus-trader-sysop
+    PROPERTIES INSTALL_RPATH "${CT_CLIENT_INSTALL_RPATH}"
+  )
 endif()
 
 set(
@@ -624,9 +665,11 @@ configure_file(
 
 install(
   TARGETS
+    ct-client-core
     cepheus-trader-door
     cepheus-trader-sysop
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+  LIBRARY DESTINATION "${CMAKE_INSTALL_BINDIR}"
   COMPONENT Client
 )
 install(

@@ -15,8 +15,10 @@ input. Authoritative phase changes are retained, while local traffic snapshots
 and named arrival/departure notices are presentation data and may be dropped
 under output backpressure.
 
-The user-facing `cepheus-trader-door` executable links that same client core
-to the vendored OpenDoors source as a static library.
+The four executables share `cepheus-trader-client-core`, a project runtime
+library (`.dll`, `.dylib`, or `.so`) containing the transport, protocol, and
+cryptographic implementation. The user-facing `cepheus-trader-door`
+additionally links the vendored OpenDoors source as a private static library.
 Its implemented local mode initializes the OpenDoors terminal,
 performs the authenticated hello and, in `newUser`, walks through captain
 name and skills, the three BBS-specific starting offers, detailed ship
@@ -198,16 +200,19 @@ For a standard local installation, omit the final pathname from
 and `/secure/path/cepheus-trader.credential`. Its output names both files and
 prints the shape of the next `set-config` command.
 
-The build keeps OpenDoors inside the door executable and copies the applicable
-OpenDoors, Botan, and Cap'n Proto notices into the package. Binary packaging
-must publish the matching tagged source and satisfy the obligations in
-[`THIRD_PARTY_LICENSES.md`](../THIRD_PARTY_LICENSES.md).
+The build keeps OpenDoors inside the door executable. Botan and Cap'n Proto/KJ
+are linked once into the shared client core instead of being duplicated in
+each program. Packaging places that runtime library beside the executables and
+copies the applicable OpenDoors, Botan, and Cap'n Proto notices. Binary
+packaging must publish the matching tagged source and satisfy the obligations
+in [`THIRD_PARTY_LICENSES.md`](../THIRD_PARTY_LICENSES.md).
 
 Release builders set `CT_PORTABLE_CLIENT=ON`. That forces the pinned Botan and
 Cap'n Proto source builds, static OpenDoors linkage, and static GNU C/C++
-runtime linkage on supported GNU targets. CPack installs only the player door
-and sysop utility; the administrator and headless exerciser are deliberately
-excluded from BBS client kits.
+runtime linkage on supported GNU targets. CPack installs the player door,
+sysop utility, and their shared client-core runtime; the administrator and
+headless exerciser are deliberately excluded from BBS client kits. Keep the
+shared library in the same directory as the installed executables.
 
 OpenDoors owns the door command line and drop-file parsing. The OpenDoors
 configuration names the shared Cepheus Trader configuration with

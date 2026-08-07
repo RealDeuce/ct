@@ -2,13 +2,12 @@
 #include "ct/bbs_credential.hpp"
 #include "ct/cargo_quantity.hpp"
 #include "ct/crew_presentation.hpp"
+#include "ct/crypto.hpp"
 #include "ct/door_presentation.hpp"
 #include "ct/legal_text.hpp"
 #include "ct/player_identity_registry.hpp"
 #include "ct/protocol.hpp"
 #include "ct/tls_connection.hpp"
-
-#include <botan/auto_rng.h>
 
 extern "C" {
 #include <OpenDoor.h>
@@ -194,6 +193,7 @@ int door_get_translated_key()
 void door_clear_screen()
 {
    output().clear();
+   output().resume_paging();
 }
 
 void door_write(const std::string_view text,
@@ -232,6 +232,7 @@ void door_printf(const char* format, ...)
 
 void door_prompt(const char* format, ...)
 {
+   output().suspend_paging();
    va_list arguments;
    va_start(arguments, format);
    door_printf_role(ct::DoorTextRole::Prompt, format, arguments);
@@ -472,6 +473,7 @@ void show_open_game_license()
    size_t offset = 0;
    while(offset < lines.size()) {
       od_clr_scr();
+      output().suspend_paging();
       door_heading("Open Game License and Copyright Notices\n\r");
       door_heading("---------------------------------------\n\r");
       const auto end = std::min(offset + page_lines, lines.size());
@@ -597,6 +599,15 @@ void initialize_presentation(const ct::BbsConfig& config)
       od_disp(
          bytes.data(), static_cast<INT>(bytes.size()), TRUE);
    });
+   presentation->configure_paging(4, [] {
+      door_prompt("[Enter/Space] Continue");
+      while(true) {
+         const auto key = od_get_key(TRUE);
+         if(key == '\r' || key == '\n' || key == ' ') {
+            return;
+         }
+      }
+   });
 }
 
 void render_hello(const ct::ServerHello& hello, const ct::TlsConnection& connection)
@@ -614,11 +625,9 @@ void render_hello(const ct::ServerHello& hello, const ct::TlsConnection& connect
    }
 }
 
-std::array<uint8_t, 16> random_command_id(Botan::AutoSeeded_RNG& random)
+std::array<uint8_t, 16> random_command_id(ct::CommandIdGenerator& random)
 {
-   std::array<uint8_t, 16> result{};
-   random.randomize(result.data(), result.size());
-   return result;
+   return random.next();
 }
 
 std::optional<std::string> input_text(const char* prompt,
@@ -1512,7 +1521,7 @@ bool run_player_creation(ct::TlsConnection& connection,
    if(opening == 'q' || opening == 'Q') {
       return false;
    }
-   Botan::AutoSeeded_RNG random;
+   ct::CommandIdGenerator random;
    uint64_t request_id = 1;
    auto captain_options = ct::get_captain_creation_options(
                              connection,
@@ -1602,6 +1611,7 @@ bool run_player_creation(ct::TlsConnection& connection,
          refit_option_ids.clear();
          bool refit_cancelled = false;
          for(const auto& group : ship_options.refit_groups) {
+            output().resume_paging();
             door_identifier("\n\r%s\n\r", safe_field(group.name).c_str());
             for(size_t index = 0; index < group.options.size(); ++index) {
                const auto& option = group.options[index];
@@ -1965,7 +1975,7 @@ std::optional<std::vector<uint16_t>> edit_duty_assignments(
 void show_crew_member(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id,
    ct::CrewManagementSnapshot& snapshot,
    const size_t index)
@@ -2144,7 +2154,7 @@ void show_crew_member(
 void show_crew_manager(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
    auto snapshot = ct::get_crew_management(
@@ -2344,7 +2354,7 @@ const char* ship_title_name(const ct::ShipTitleKind title)
 void transfer_fleet_stores(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id,
    ct::FleetSnapshot& fleet,
    const size_t source_index)
@@ -2354,6 +2364,7 @@ void transfer_fleet_stores(
       wait_for_enter();
       return;
    }
+   output().resume_paging();
    door_heading("Receiving Vessel\n\r================\n\r\n\r");
    std::vector<size_t> destinations;
    for(size_t index = 0; index < fleet.ships.size(); ++index) {
@@ -2392,6 +2403,7 @@ void transfer_fleet_stores(
          wait_for_enter();
          return;
       }
+      output().resume_paging();
       for(size_t index = 0; index < source.cargo.size(); ++index) {
          door_number("%zu", index + 1);
          door_label(". ");
@@ -2423,6 +2435,7 @@ void transfer_fleet_stores(
    } else if(*kind_choice == 3) {
       kind = ct::StoreTransferKind::Ammunition;
       std::vector<size_t> stocked;
+      output().resume_paging();
       for(size_t index = 0; index < source.ammunition.size(); ++index) {
          if(source.ammunition[index].remaining == 0) {
             continue;
@@ -2483,7 +2496,7 @@ void transfer_fleet_stores(
 void show_fleet_manager(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
    auto fleet = ct::get_fleet(
@@ -2577,6 +2590,7 @@ void show_fleet_manager(
                wait_for_enter();
                continue;
             }
+            output().resume_paging();
             for(size_t crew_index = 0; crew_index < crew.members.size(); ++crew_index) {
                door_number("%zu", crew_index + 1);
                door_label(". ");
@@ -2613,7 +2627,7 @@ void show_fleet_manager(
 void show_ship_manager(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
    auto snapshot = ct::get_ship_status(
@@ -2759,6 +2773,7 @@ void show_ship_manager(
             wait_for_enter();
             continue;
          }
+         output().resume_paging();
          for(size_t index = 0; index < services.repair.size(); ++index) {
             const auto& item = services.repair[index];
             door_number("%zu", index + 1);
@@ -2919,7 +2934,7 @@ void show_task_offer_detail(const ct::TaskOffer& offer)
 }
 
 void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epoch,
-                       Botan::AutoSeeded_RNG& random, uint64_t& request_id)
+                       ct::CommandIdGenerator& random, uint64_t& request_id)
 {
    while(true) {
       auto ledger = ct::get_task_ledger(connection, session_epoch, random_command_id(random),
@@ -3074,6 +3089,7 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
             }
          }
          door_information("\n\r0. Clear automatic carriage declaration\n\r");
+         output().resume_paging();
          for(size_t i = 0; i < destinations.size(); ++i) {
             door_number("%zu", i + 1);
             door_label(". ");
@@ -3140,7 +3156,7 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
 void show_finance(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
    auto finance = ct::get_finance(
@@ -3232,7 +3248,7 @@ void show_finance(
 }
 
 void run_shipyard_market(ct::TlsConnection& connection, const uint64_t epoch,
-                         Botan::AutoSeeded_RNG& random, uint64_t& request_id)
+                         ct::CommandIdGenerator& random, uint64_t& request_id)
 {
    while(true) {
       auto market = ct::get_ship_market(connection, epoch, random_command_id(random), request_id++);
@@ -3283,7 +3299,7 @@ void run_shipyard_market(ct::TlsConnection& connection, const uint64_t epoch,
 }
 
 void run_crew_exchange(ct::TlsConnection& connection, const uint64_t epoch,
-                       Botan::AutoSeeded_RNG& random, uint64_t& request_id)
+                       ct::CommandIdGenerator& random, uint64_t& request_id)
 {
    while(true) {
       auto market = ct::get_crew_market(connection, epoch, random_command_id(random), request_id++);
@@ -3380,7 +3396,7 @@ const char* message_classification_name(
 void change_message_classification(
    ct::TlsConnection& connection,
    uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id,
    uint64_t message_id,
    ct::MessageClassification classification);
@@ -3388,13 +3404,13 @@ void change_message_classification(
 std::optional<ct::PlayerPhase> show_combat_operations(
    ct::TlsConnection& connection,
    uint64_t epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id);
 
 void show_known_universe_manager(
    ct::TlsConnection& connection,
    uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id);
 
 std::optional<ct::MessageActionKind> show_message_detail(const ct::MessageItem& item)
@@ -3467,7 +3483,7 @@ std::optional<ct::MessageActionKind> show_message_detail(const ct::MessageItem& 
 void claim_message_offer(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id,
    const ct::MessageItem& item)
 {
@@ -3492,7 +3508,7 @@ void claim_message_offer(
 void invoke_message_action(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id,
    const ct::MessageItem& item,
    const ct::MessageActionKind action)
@@ -3523,7 +3539,7 @@ void invoke_message_action(
 void change_message_classification(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id,
    const uint64_t message_id,
    const ct::MessageClassification classification)
@@ -3540,7 +3556,7 @@ void change_message_classification(
 void configure_message_filters(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
    while(true) {
@@ -3599,7 +3615,7 @@ void configure_message_filters(
 void compose_private_message(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
    door_prompt("Recipient: [S]ystem office  [C]aptain  [Q] Cancel: ");
@@ -3666,7 +3682,7 @@ void compose_private_message(
 void show_message_manager(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
    size_t page = 0;
@@ -3762,7 +3778,7 @@ void show_message_manager(
 void show_arrival_packet(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
    const auto packet = ct::open_arrival_packet(
@@ -4072,7 +4088,7 @@ void show_course_plot(const ct::CoursePlot& plot)
 void run_course_plotter(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id,
    const ct::KnownDestinations& snapshot)
 {
@@ -4124,7 +4140,7 @@ return selected ? std::optional<uint64_t>{(*selected)->system_id} :
 void show_known_universe_manager(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
    auto snapshot = ct::get_known_destinations(
@@ -4349,7 +4365,7 @@ const char* career_order_state_name(const ct::CareerOpportunityState state)
 
 std::optional<ct::PlayerPhase> show_combat_operations(
    ct::TlsConnection& connection, const uint64_t epoch,
-   Botan::AutoSeeded_RNG& random, uint64_t& request_id)
+   ct::CommandIdGenerator& random, uint64_t& request_id)
 {
    auto snapshot = ct::get_combat_career(connection, epoch, random_command_id(random), request_id++);
    const auto charts = ct::get_known_destinations(
@@ -4620,7 +4636,7 @@ void render_command_console(const ct::ServerHello& hello)
 bool run_command_console(
    ct::TlsConnection& connection,
    ct::ServerHello& hello,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
    render_command_console(hello);
@@ -4817,7 +4833,7 @@ void render_market(const ct::MarketSnapshot& market)
 void run_cargo_exchange(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
    auto market = ct::get_market(
@@ -4903,6 +4919,7 @@ void run_cargo_exchange(
          if(!kind) {
             continue;
          }
+         output().resume_paging();
          for(size_t i = 0; i < goods.size(); ++i) {
             door_number("%zu", i + 1);
             door_label(". ");
@@ -5098,7 +5115,7 @@ void run_cargo_exchange(
 std::optional<ct::TravelStatus> run_fuel_service(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
    const auto account = ct::get_docked_snapshot(connection, session_epoch, random_command_id(random),
@@ -5135,6 +5152,7 @@ std::optional<ct::TravelStatus> run_fuel_service(
    ct::DockedServiceOrder order{};
    order.expected_ship_revision = services.ship_revision;
    if(key == 'F') {
+      output().resume_paging();
       for(size_t index = 0; index < services.fuel.size(); ++index) {
          const auto& item = services.fuel[index];
          door_number("%zu", index + 1);
@@ -5214,6 +5232,7 @@ std::optional<ct::TravelStatus> run_fuel_service(
          wait_for_enter();
          return std::nullopt;
       }
+      output().resume_paging();
       for(size_t index = 0; index < reloadable.size(); ++index) {
          const auto& lot = *reloadable[index];
          door_number("%zu", index + 1);
@@ -5421,7 +5440,7 @@ ct::FlightPlanStep primary_dock_step(
 std::optional<ct::TravelStatus> run_flight_plan_editor(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
    const auto destinations = ct::get_known_destinations(
@@ -5488,6 +5507,7 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
             wait_for_enter();
             continue;
          }
+         output().resume_paging();
          for(size_t index = 0; index < reachable.size(); ++index) {
             door_number("%zu", index + 1);
             door_label(". ");
@@ -5598,6 +5618,7 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
                wait_for_enter();
                continue;
             }
+            output().resume_paging();
             for(size_t index = 0; index < tasks.size(); ++index) {
                door_number("%zu", index + 1);
                door_label(". ");
@@ -5657,6 +5678,7 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
                wait_for_enter();
                continue;
             }
+            output().resume_paging();
             for(size_t index = 0; index < sources.size(); ++index) {
                door_number("%zu", index + 1);
                door_label(". ");
@@ -5821,7 +5843,7 @@ ct::PlayerPhase run_docked_menu(
    ct::TlsConnection& connection,
    ct::ServerHello& hello)
 {
-   Botan::AutoSeeded_RNG random;
+   ct::CommandIdGenerator random;
    uint64_t request_id = 1;
    while(true) {
       const auto snapshot = ct::get_docked_snapshot(
@@ -5921,7 +5943,7 @@ ct::PlayerPhase run_docked_menu(
 void show_travel_screen(
    ct::TlsConnection& connection,
    const ct::ServerHello& hello,
-   Botan::AutoSeeded_RNG& random,
+   ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
    auto status = ct::get_travel_status(
@@ -5989,7 +6011,7 @@ void show_travel_screen(
 }
 
 ct::PlayerPhase run_arrival_checkpoint(ct::TlsConnection& connection, const ct::ServerHello& hello,
-                                       Botan::AutoSeeded_RNG& random, uint64_t& request_id)
+                                       ct::CommandIdGenerator& random, uint64_t& request_id)
 {
    if(!latest_checkpoint) {
       return ct::PlayerPhase::Interplanetary;
@@ -6303,7 +6325,7 @@ std::optional<ct::CombatOrderSet> edit_combat_order(const ct::CombatSnapshot& co
 }
 
 ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello& hello,
-                           Botan::AutoSeeded_RNG& random, uint64_t& request_id)
+                           ct::CommandIdGenerator& random, uint64_t& request_id)
 {
    auto combat = ct::get_combat(connection, hello.assigned_epoch, random_command_id(random),
                                 request_id++);
@@ -6555,7 +6577,7 @@ ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello&
 }
 
 ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHello& hello,
-                              Botan::AutoSeeded_RNG& random, uint64_t& request_id)
+                              ct::CommandIdGenerator& random, uint64_t& request_id)
 {
    auto encounter = latest_encounter.value_or(ct::get_encounter(connection, hello.assigned_epoch,
       random_command_id(random), request_id++));
@@ -6609,7 +6631,7 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
 
 void run_operational_loop(ct::TlsConnection& connection, ct::ServerHello& hello)
 {
-   Botan::AutoSeeded_RNG random;
+   ct::CommandIdGenerator random;
    uint64_t request_id = 1000;
    uint64_t packet_generation = std::numeric_limits<uint64_t>::max();
    for(;;) {

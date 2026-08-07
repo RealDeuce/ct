@@ -1,12 +1,9 @@
 #include "ct/bbs_config.hpp"
 #include "ct/bbs_credential.hpp"
+#include "ct/crypto.hpp"
 #include "ct/player_identity_registry.hpp"
 #include "ct/sysop_protocol.hpp"
 #include "ct/tls_connection.hpp"
-
-#include <botan/auto_rng.h>
-#include <botan/hex.h>
-#include <botan/mem_ops.h>
 
 #include <algorithm>
 #include <array>
@@ -125,17 +122,14 @@ std::array<uint8_t, 16> parse_command_id(const std::string& text) {
       throw std::invalid_argument(
          "--command-id must be exactly 32 hexadecimal characters");
    }
-   const auto decoded = Botan::hex_decode(text);
+   const auto decoded = ct::hex_decode(text);
    std::array<uint8_t, 16> command_id{};
    std::copy(decoded.begin(), decoded.end(), command_id.begin());
    return command_id;
 }
 
 std::array<uint8_t, 16> generate_command_id() {
-   Botan::AutoSeeded_RNG random;
-   std::array<uint8_t, 16> command_id{};
-   random.randomize(command_id);
-   return command_id;
+   return ct::random_command_id();
 }
 
 uint8_t parse_orientation(const std::string& text, const char* name) {
@@ -323,14 +317,14 @@ int init_credential(const std::string& config_path,
    auto psk_text = read_required_line("BBS PSK", true);
    std::vector<uint8_t> psk;
    try {
-      psk = Botan::hex_decode(psk_text);
+      psk = ct::hex_decode(psk_text);
    } catch(...) {
-      Botan::secure_scrub_memory(psk_text.data(), psk_text.size());
+      ct::scrub_memory(psk_text);
       throw;
    }
-   Botan::secure_scrub_memory(psk_text.data(), psk_text.size());
+   ct::scrub_memory(psk_text);
    if(psk.size() != ct::BBS_PSK_BYTES) {
-      Botan::secure_scrub_memory(psk.data(), psk.size());
+      ct::scrub_memory(psk);
       throw std::invalid_argument("BBS PSK must encode exactly 32 bytes");
    }
    try {
@@ -347,10 +341,10 @@ int init_credential(const std::string& config_path,
       ct::create_bbs_credential_file(config.credential_path, bbs_id, psk);
       ct::create_player_identity_registry(config.identity_registry_path, bbs_id);
    } catch(...) {
-      Botan::secure_scrub_memory(psk.data(), psk.size());
+      ct::scrub_memory(psk);
       throw;
    }
-   Botan::secure_scrub_memory(psk.data(), psk.size());
+   ct::scrub_memory(psk);
    if(!config_exists) {
       std::cout << "installation configuration created: " << config_path << '\n';
    }
@@ -683,7 +677,7 @@ int main(int argc, char** argv) {
                << "If the update may have reached the server, retry with "
                   "--expected-revision "
                << expected_revision << " --command-id "
-               << Botan::hex_encode(command_id) << '\n';
+               << ct::hex_encode(command_id) << '\n';
          }
          return 1;
       }

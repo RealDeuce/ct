@@ -12,11 +12,15 @@ hosted runners to build only `cepheus-trader-door` and
 `cepheus-trader-sysop` for Linux amd64/arm64, macOS arm64/x86-64, and Windows
 x86-64/x86. Linux packages are built once per architecture on Ubuntu 22.04,
 then the same archives are exercised on Ubuntu 22.04, 24.04, and 26.04.
+Each client kit also contains the platform's `cepheus-trader-client-core`
+shared library, which holds the common project, Botan, and Cap'n Proto/KJ
+implementation used by those executables.
 
 Botan, Cap'n Proto/KJ, and OpenDoors each have an independent cache per
 platform ABI and toolchain. They are rebuilt only on a cold cache or when the
 corresponding pinned source/build recipe changes. Normal client jobs build
-the code owned by this repository and consume those cached static libraries.
+the code owned by this repository, including the shared client core, and
+consume those cached dependency libraries.
 
 There is no FreeBSD CI coverage. Field-alpha load and the full capacity
 fixture are manual benchmarks with retained reports.
@@ -31,17 +35,17 @@ For an alpha release:
 3. create the protected annotated tag, initially `v0.7.0-alpha.1`;
 4. let each native runner configure with `CT_PORTABLE_CLIENT=ON` and an exact
    GitHub release URL;
-5. unpack and inspect every archive, run native `--version` probes, inspect
-   dynamic dependencies, generate SHA-256 checksums, and retain separate debug
-   symbols where the platform produces them; and
+5. unpack and inspect every archive, run native `--version` probes, and inspect
+   dynamic dependencies; and
 6. keep GitHub's exact tagged source archive available beside all binaries.
 
-Every client archive contains only `cepheus-trader-door` and
-`cepheus-trader-sysop`, the example configuration and installation notes, all
-project and dependency notices, and `SOURCE-RELEASE.txt`. The tagged source is
-the OpenDoors corresponding-source distribution: it includes the vendored
-library, local modifications, schemas, and build files needed to rebuild and
-relink. Do not publish a binary if its source-release URL is empty.
+Every client archive contains `cepheus-trader-door`, `cepheus-trader-sysop`,
+their platform-specific `cepheus-trader-client-core` shared library, the
+example configuration and installation notes, all project and dependency
+notices, and `SOURCE-RELEASE.txt`. The tagged source is the OpenDoors
+corresponding-source distribution: it includes the vendored library, local
+modifications, schemas, and build files needed to rebuild and relink. Do not
+publish a binary if its source-release URL is empty.
 
 The first alpha packages may be unsigned. Windows signing and macOS
 signing/notarization become separate release-only jobs after credentials are

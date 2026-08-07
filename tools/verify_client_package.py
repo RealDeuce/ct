@@ -26,6 +26,11 @@ REQUIRED_BASENAMES = {
     "SOURCE-RELEASE.txt",
 }
 FORBIDDEN_PROGRAMS = {"cepheus-trader-admin", "cepheus-trader-client"}
+CLIENT_CORE_NAMES = {
+    "cepheus-trader-client-core.dll",
+    "libcepheus-trader-client-core.dylib",
+    "libcepheus-trader-client-core.so",
+}
 
 
 def normalize_program(name: str) -> str:
@@ -60,6 +65,8 @@ def main() -> int:
             raise SystemExit(f"package is missing: {', '.join(sorted(missing))}")
         if forbidden:
             raise SystemExit(f"package contains forbidden programs: {', '.join(sorted(forbidden))}")
+        if not any(path.name.lower() in CLIENT_CORE_NAMES for path in paths):
+            raise SystemExit("package is missing the shared client core library")
 
         source_release = next(path for path in paths if path.name == "SOURCE-RELEASE.txt")
         source_text = source_release.read_text(encoding="utf-8")

@@ -36,6 +36,9 @@ else()
 endif()
 
 set(CT_BOTAN_PLATFORM_ARGUMENTS)
+if(NOT WIN32)
+  list(APPEND CT_BOTAN_PLATFORM_ARGUMENTS "--cc-abi-flags=-fPIC")
+endif()
 if(WIN32)
   execute_process(
     COMMAND "${CMAKE_CXX_COMPILER}" -dumpmachine

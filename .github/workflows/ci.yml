@@ -294,6 +294,7 @@ jobs:
             --version 0.7.0 --run --require-source-url
           python3 tools/inspect_client_dependencies.py \
             build/package/cepheus-trader-door build/package/cepheus-trader-sysop \
+            build/package/libcepheus-trader-client-core.so \
             --report artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt
           ccache --show-stats
       - uses: actions/upload-artifact@v7
@@ -425,6 +426,7 @@ jobs:
             --version 0.7.0 --run --require-source-url
           python3 tools/inspect_client_dependencies.py \
             build/package/cepheus-trader-door build/package/cepheus-trader-sysop \
+            build/package/libcepheus-trader-client-core.dylib \
             --report artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt
           ccache --show-stats
       - uses: actions/upload-artifact@v7
@@ -532,6 +534,7 @@ jobs:
           python3 tools/inspect_client_dependencies.py \
             build/package/cepheus-trader-door.exe \
             build/package/cepheus-trader-sysop.exe \
+            build/package/cepheus-trader-client-core.dll \
             --report artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt
       - uses: actions/upload-artifact@v7
         with:

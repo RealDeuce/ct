@@ -21,7 +21,7 @@ FORBIDDEN = (
 
 
 def inspect(path: Path) -> str:
-    if path.suffix.lower() == ".exe":
+    if path.suffix.lower() in {".dll", ".exe"}:
         tool = next(
             (
                 candidate
@@ -42,7 +42,7 @@ def inspect(path: Path) -> str:
     else:
         command = ["ldd", str(path)]
     result = subprocess.run(command, check=True, text=True, stdout=subprocess.PIPE)
-    if path.suffix.lower() == ".exe":
+    if path.suffix.lower() in {".dll", ".exe"}:
         return "\n".join(
             line.strip() for line in result.stdout.splitlines() if "DLL Name:" in line
         )

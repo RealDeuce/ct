@@ -96,6 +96,12 @@ for any line reserved by the BBS or prompt. It must remain usable on an actual
 40×24 terminal even when a legacy drop file reports only the usable page
 length.
 
+Record and menu screens pause automatically after the rendered content fills
+the available page, including rows introduced by narrow-terminal wrapping.
+Four rows remain reserved for the continuation or action prompt. Screens with
+their own page navigation, such as the license display and indexed rosters,
+retain their explicit paging controls.
+
 ## OpenDoors boundary
 
 OpenDoors already provides the required transport-facing facilities:

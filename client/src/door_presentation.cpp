@@ -327,6 +327,23 @@ size_t DoorPresentation::page_content_rows(
    return rows_ > reserved_rows ? rows_ - reserved_rows : 1;
 }
 
+void DoorPresentation::configure_paging(const size_t reserved_rows,
+                                        PagePause pause) {
+   if(!pause) {
+      throw std::invalid_argument("door pagination requires a pause callback");
+   }
+   paging_content_rows_ = page_content_rows(reserved_rows);
+   page_pause_ = std::move(pause);
+}
+
+void DoorPresentation::resume_paging() noexcept {
+   paging_active_ = static_cast<bool>(page_pause_);
+}
+
+void DoorPresentation::suspend_paging() noexcept {
+   paging_active_ = false;
+}
+
 void DoorPresentation::emit(const std::string_view bytes) {
    pending_.append(bytes);
 }
@@ -340,6 +357,7 @@ void DoorPresentation::flush() {
 
 void DoorPresentation::clear() {
    column_ = 0;
+   row_ = 0;
    if(profile_ == DoorProfile::Iso646) {
       emit("\f");
    } else {
@@ -348,16 +366,41 @@ void DoorPresentation::clear() {
    flush();
 }
 
-void DoorPresentation::newline() {
+void DoorPresentation::newline(const DoorTextRole role) {
    emit("\r\n");
    column_ = 0;
+   ++row_;
+   if(paging_active_ && !handling_page_pause_ &&
+      row_ >= paging_content_rows_) {
+      pause_at_page_boundary(role);
+   }
 }
 
-void DoorPresentation::emit_encoded(const std::string_view bytes) {
+void DoorPresentation::pause_at_page_boundary(const DoorTextRole role) {
+   flush();
+   handling_page_pause_ = true;
+   paging_active_ = false;
+   try {
+      page_pause_();
+      clear();
+   } catch(...) {
+      handling_page_pause_ = false;
+      paging_active_ = true;
+      throw;
+   }
+   handling_page_pause_ = false;
+   paging_active_ = true;
+   if(profile_ != DoorProfile::Iso646) {
+      emit(role_sequence(role));
+   }
+}
+
+void DoorPresentation::emit_encoded(const std::string_view bytes,
+                                    const DoorTextRole role) {
    for(size_t index = 0; index < bytes.size();) {
       const char byte = bytes[index];
       if(byte == '\r' || byte == '\n') {
-         newline();
+         newline(role);
          if(index + 1 < bytes.size()) {
             const char next = bytes[index + 1];
             if((byte == '\r' && next == '\n') ||
@@ -385,13 +428,13 @@ void DoorPresentation::emit_encoded(const std::string_view bytes) {
          const auto next_word_size = next_word_end - index;
          if(column_ != 0 && next_word_size != 0 &&
             column_ + space_count + next_word_size > columns_) {
-            newline();
+            newline(role);
             continue;
          }
          size_t remaining = space_count;
          while(remaining != 0) {
             if(column_ >= columns_) {
-               newline();
+               newline(role);
             }
             const auto count =
                std::min(remaining, columns_ - column_);
@@ -412,11 +455,11 @@ void DoorPresentation::emit_encoded(const std::string_view bytes) {
       size_t remaining = index - word_start;
       size_t emitted = 0;
       if(column_ != 0 && column_ + remaining > columns_) {
-         newline();
+         newline(role);
       }
       while(remaining != 0) {
          if(column_ >= columns_) {
-            newline();
+            newline(role);
          }
          const auto count =
             std::min(remaining, columns_ - column_);
@@ -435,7 +478,7 @@ void DoorPresentation::write(const std::string_view text,
       emit(role_sequence(role));
    }
    const auto encoded = encode_text(text, profile_);
-   emit_encoded(encoded);
+   emit_encoded(encoded, role);
    if(color) {
       emit("\x1b[0m");
    }

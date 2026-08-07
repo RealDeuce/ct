@@ -1,8 +1,6 @@
 #include "ct/admin_protocol.hpp"
+#include "ct/crypto.hpp"
 #include "ct/tls_connection.hpp"
-
-#include <botan/auto_rng.h>
-#include <botan/hex.h>
 
 #include <algorithm>
 #include <array>
@@ -80,7 +78,7 @@ std::array<uint8_t, 16> decode_command_id(const std::string& encoded) {
       throw std::invalid_argument(
          "--command-id must be exactly 32 hexadecimal characters");
    }
-   const auto decoded = Botan::hex_decode(encoded);
+   const auto decoded = ct::hex_decode(encoded);
    std::array<uint8_t, 16> command_id{};
    std::copy(decoded.begin(), decoded.end(), command_id.begin());
    return command_id;
@@ -146,10 +144,7 @@ std::vector<uint8_t> read_key(const std::string& path) {
 }
 
 std::array<uint8_t, 16> generate_command_id() {
-   Botan::AutoSeeded_RNG random;
-   std::array<uint8_t, 16> command_id{};
-   random.randomize(command_id);
-   return command_id;
+   return ct::random_command_id();
 }
 
 void confirm_universe_initialization() {
@@ -187,12 +182,12 @@ int main(int argc, char** argv) {
                ct::add_bbs(connection, options.bbs_name, command_id, 1);
             std::cout << "BBS id=" << credential.bbs_id
                       << " committed=" << credential.committed_sequence
-                      << " psk=" << Botan::hex_encode(credential.psk) << '\n';
+                      << " psk=" << ct::hex_encode(credential.psk) << '\n';
          } else if(options.operation == Operation::InitializeUniverse) {
             const auto initialized =
                ct::initialize_universe(connection, command_id, 1);
             std::cout
-               << "universe-id=" << Botan::hex_encode(initialized.universe_id)
+               << "universe-id=" << ct::hex_encode(initialized.universe_id)
                << " committed=" << initialized.committed_sequence
                << " polities=" << initialized.polity_count
                << " systems=" << initialized.system_count
@@ -223,7 +218,7 @@ int main(int argc, char** argv) {
          if(generated_command_id) {
             std::cerr << "If the request may have reached the server, retry with "
                          "--command-id "
-                      << Botan::hex_encode(command_id) << '\n';
+                      << ct::hex_encode(command_id) << '\n';
          }
          return 1;
       }

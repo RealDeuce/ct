@@ -90,6 +90,7 @@ struct DoorSession {
     input: Option<ChildStdin>,
     output: Arc<Mutex<Vec<u8>>>,
     reader: Option<JoinHandle<()>>,
+    acknowledged_page_prompts: usize,
 }
 
 enum ClientBuild {
@@ -142,6 +143,7 @@ impl DoorSession {
             input: Some(input),
             output,
             reader: Some(reader),
+            acknowledged_page_prompts: 0,
         }
     }
 
@@ -155,15 +157,25 @@ impl DoorSession {
         String::from_utf8_lossy(&self.output.lock().unwrap()).into_owned()
     }
 
-    fn wait_for(&self, text: &str) -> String {
+    fn acknowledge_page_prompts(&mut self, semantic: &str) {
+        let page_prompts = semantic.matches("Enter/Space").count();
+        while self.acknowledged_page_prompts < page_prompts {
+            self.send(b" ");
+            self.acknowledged_page_prompts += 1;
+        }
+    }
+
+    fn wait_for(&mut self, text: &str) -> String {
         self.wait_for_occurrences(text, 1)
     }
 
-    fn wait_for_occurrences(&self, text: &str, minimum: usize) -> String {
+    fn wait_for_occurrences(&mut self, text: &str, minimum: usize) -> String {
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
             let output = self.output();
-            if strip_ecma48(&output).matches(text).count() >= minimum {
+            let semantic = strip_ecma48(&output);
+            self.acknowledge_page_prompts(&semantic);
+            if semantic.matches(text).count() >= minimum {
                 return output;
             }
             assert!(
@@ -174,11 +186,12 @@ impl DoorSession {
         }
     }
 
-    fn wait_for_any(&self, texts: &[&str]) -> (usize, String) {
+    fn wait_for_any(&mut self, texts: &[&str]) -> (usize, String) {
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
             let output = self.output();
             let semantic = strip_ecma48(&output);
+            self.acknowledge_page_prompts(&semantic);
             if let Some(index) = texts.iter().position(|text| semantic.contains(text)) {
                 return (index, output);
             }
@@ -519,7 +532,7 @@ fn complete_arrival_and_trade(
     // The heading is written before the rest of the page.  Wait for the
     // section delimiter used below so the reader thread has captured the
     // complete cargo list before taking the output snapshot.
-    let exchange = session.wait_for("Port research");
+    let exchange = session.wait_for_occurrences("Find market", 1);
     let semantic = strip_ecma48(&exchange);
     let cargo_section = semantic
         .rsplit_once("Cargo Exchange -")
@@ -542,7 +555,7 @@ fn complete_arrival_and_trade(
     session.send(format!("{cargo_selection}\r").as_bytes());
     session.wait_for("Tonnes (maximum");
     session.send(b"1\r");
-    session.wait_for_occurrences("Cargo Exchange -", 2);
+    session.wait_for_occurrences("Find market", 2);
     session.send(b"\r");
     session.wait_for_occurrences("Docked Operations", 3);
     session.send(b"q");
@@ -1228,7 +1241,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     combat_door.send(b"u");
     combat_door.wait_for("Captain's Command Console");
     combat_door.send(b"o");
-    combat_door.wait_for("Operations Ledger");
+    combat_door.wait_for_occurrences("Accept order or file report", 1);
     combat_door.send(b"m");
     combat_door.wait_for("Naval service");
     combat_door.send(b"r");
@@ -1314,13 +1327,13 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     voyage_door.send(b"\r");
     voyage_door.wait_for("Docked Operations");
     voyage_door.send(b"c");
-    voyage_door.wait_for("Cargo Exchange -");
+    voyage_door.wait_for_occurrences("Find market", 1);
     voyage_door.send(b"b");
     voyage_door.wait_for("Offer (Q to cancel):");
     voyage_door.send(b"1\r");
     voyage_door.wait_for("Tonnes (maximum");
     voyage_door.send(b"1\r");
-    voyage_door.wait_for_occurrences("Cargo Exchange -", 2);
+    voyage_door.wait_for_occurrences("Find market", 2);
     voyage_door.send(b"\r");
     voyage_door.wait_for_occurrences("Docked Operations", 2);
     voyage_door.send(b"d");
@@ -1346,6 +1359,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     for expected in [
         "Cargo Exchange -",
         "Cargo aboard",
+        "Enter/Space",
         "Departure authorized.",
         "The flight plan has been filed.",
     ] {

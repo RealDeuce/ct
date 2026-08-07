@@ -186,6 +186,44 @@ int main() {
    presentation.write("first\r\n\r\nsecond");
    check(page == "first\r\n\r\nsecond");
 
+   std::string paged;
+   unsigned pauses = 0;
+   ct::DoorPresentation pager(
+      ct::DoorProfile::Iso646,
+      40,
+      24,
+      [&paged](const std::string_view bytes) { paged.append(bytes); });
+   pager.configure_paging(4, [&pauses] { ++pauses; });
+   pager.resume_paging();
+   pager.clear();
+   for(unsigned line = 0; line < 21; ++line) {
+      pager.write("record\n\r", ct::DoorTextRole::Value);
+   }
+   check(pauses == 1);
+   check(std::count(paged.begin(), paged.end(), '\f') == 2);
+   pager.suspend_paging();
+   for(unsigned line = 0; line < 40; ++line) {
+      pager.write("unpaged\n\r");
+   }
+   check(pauses == 1);
+
+   std::string wrapped_page;
+   unsigned wrapped_pauses = 0;
+   ct::DoorPresentation wrapped_pager(
+      ct::DoorProfile::Iso646,
+      40,
+      24,
+      [&wrapped_page](const std::string_view bytes) {
+         wrapped_page.append(bytes);
+      });
+   wrapped_pager.configure_paging(
+      4, [&wrapped_pauses] { ++wrapped_pauses; });
+   wrapped_pager.resume_paging();
+   wrapped_pager.clear();
+   wrapped_pager.write(std::string(40 * 21, 'x'));
+   check(wrapped_pauses == 1);
+   check(std::count(wrapped_page.begin(), wrapped_page.end(), '\f') == 2);
+
    check(ct::parse_door_profile("plain") == ct::DoorProfile::Iso646);
    check(ct::parse_door_profile("color") == ct::DoorProfile::Iso646Color);
    check(ct::parse_door_profile("cp437") == ct::DoorProfile::Cp437Color);

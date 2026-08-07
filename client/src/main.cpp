@@ -1,8 +1,7 @@
 #include "ct/bbs_credential.hpp"
+#include "ct/crypto.hpp"
 #include "ct/protocol.hpp"
 #include "ct/tls_connection.hpp"
-
-#include <botan/hex.h>
 
 #include <algorithm>
 #include <array>
@@ -92,7 +91,7 @@ int main(int argc, char** argv) {
          if(hello.phase != ct::PlayerPhase::NewUser) {
             throw std::runtime_error("CreatePlayer is only valid in the new-user phase");
          }
-         const auto decoded_command_id = Botan::hex_decode(argv[6]);
+         const auto decoded_command_id = ct::hex_decode(argv[6]);
          if(decoded_command_id.size() != 16) {
             throw std::invalid_argument(
                "COMMAND_ID_HEX must encode exactly 16 bytes");
