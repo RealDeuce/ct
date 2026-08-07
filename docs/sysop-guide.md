@@ -157,15 +157,41 @@ Passing the file itself ensures that OpenDoors reads the current drop file
 when a node directory also contains stale files from earlier sessions or other
 drop-file formats.
 
-For an already-open TCP socket inherited from the BBS:
+### Supported drop files
+
+The door supports the drop-file formats recognized by its vendored OpenDoors
+library:
+
+| Drop file | Supported variants | Identifies a Telnet connection? |
+| --- | --- | --- |
+| `DOOR32.SYS` | Local, serial, or Telnet communication types | Yes. Communication type `2` identifies a Telnet socket; the next line supplies its descriptor or handle. |
+| `DOOR.SYS` | GAP/PCBoard, DoorWay, and Wildcat! | No. The GAP form can identify socket transport, but cannot distinguish a Telnet stream from a non-Telnet raw stream. |
+| `DORINFOx.DEF` | Node-specific DORINFO files | No |
+| `EXITINFO.BBS` | QuickBBS 2.6/2.75+ and RemoteAccess 1.x/2.x, with the accompanying `DORINFO1.DEF` | No |
+| `CHAIN.TXT` | WWIV | No |
+| `SFDOORS.DAT` | Spitfire; `SFMAIN.DAT`, `SFFILE.DAT`, `SFMESS.DAT`, and `SFSYSOP.DAT` are also accepted entry filenames | No |
+| `CALLINFO.BBS` | Wildcat! | No |
+| `TRIBBS.SYS` | TriBBS | No |
+
+When the BBS passes the caller's raw Telnet socket directly to the door, it
+must generate `DOOR32.SYS` with communication type `2` and launch the door with
+the path to that file:
+
+```console
+bin/cepheus-trader-door -D /absolute/path/to/bbs/node/DOOR32.SYS
+```
+
+The other formats cannot indicate that Telnet IAC expansion is required. The
+standalone socket option:
 
 ```console
 bin/cepheus-trader-door -SOCKET DESCRIPTOR
 ```
 
-`DESCRIPTOR` is the numeric socket descriptor or handle supplied by the BBS.
-OpenDoors also accepts its normal node, time, graphics, and silent-mode
-options. Quote paths according to the host operating system.
+selects socket transport but does not identify the stream as Telnet, so do not
+use it to pass a raw Telnet connection. OpenDoors also accepts its normal node,
+time, graphics, and silent-mode options. Quote paths according to the host
+operating system.
 
 The door reads the account name and, when available, the user-record index
 from OpenDoors. It records that local identity and sends only the assigned
