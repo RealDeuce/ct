@@ -233,6 +233,12 @@ fn engine_request(epoch: u64, request_id: u64, command: WireCommand) -> CommandR
     }
 }
 
+fn advance_simulation_to_due(engine: &Engine, due_second: u64) {
+    engine.recover().unwrap();
+    let target_second = due_second.max(engine.game_second().unwrap());
+    engine.advance_simulation_to(target_second).unwrap();
+}
+
 fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
     for attempt in 0_u64..32 {
         let engine = Engine::open(data, BbsRegistry::default()).unwrap();
@@ -255,13 +261,14 @@ fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
                     )
                     .unwrap();
             }
-            engine
-                .advance_simulation_to(if encounter.next_turn_second == 0 {
+            advance_simulation_to_due(
+                &engine,
+                if encounter.next_turn_second == 0 {
                     encounter.started_second + 1_000
                 } else {
                     encounter.next_turn_second
-                })
-                .unwrap();
+                },
+            );
             continue;
         }
         if let Some(checkpoint) = engine.pending_checkpoint(identity).unwrap() {
@@ -288,10 +295,8 @@ fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
             ShipLocationRecord::InFlight(leg) => {
                 let due_second = leg.due_second;
                 drop(store);
-                Engine::open(data, BbsRegistry::default())
-                    .unwrap()
-                    .advance_simulation_to(due_second)
-                    .unwrap();
+                let engine = Engine::open(data, BbsRegistry::default()).unwrap();
+                advance_simulation_to_due(&engine, due_second);
             }
             other => panic!("terminal approach entered an unexpected locus: {other:?}"),
         }
@@ -323,13 +328,14 @@ fn settle_pending_arrival_encounter(data: &Path, identity: &PlayerIdentity) {
                 )
                 .unwrap();
         }
-        engine
-            .advance_simulation_to(if encounter.next_turn_second == 0 {
+        advance_simulation_to_due(
+            &engine,
+            if encounter.next_turn_second == 0 {
                 encounter.started_second + 1_000
             } else {
                 encounter.next_turn_second
-            })
-            .unwrap();
+            },
+        );
     }
     panic!("arrival encounter did not settle under conservative orders");
 }
@@ -352,10 +358,8 @@ fn advance_until_flight_leg(
             return leg;
         }
         drop(store);
-        Engine::open(data, BbsRegistry::default())
-            .unwrap()
-            .advance_simulation_to(leg.due_second)
-            .unwrap();
+        let engine = Engine::open(data, BbsRegistry::default()).unwrap();
+        advance_simulation_to_due(&engine, leg.due_second);
     }
     panic!("voyage did not reach the requested flight-leg purpose");
 }
@@ -582,15 +586,13 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         ClientBuild::Temporary(directory)
     };
 
-    let reservation = TcpListener::bind("127.0.0.1:0").unwrap();
-    let game_address = reservation.local_addr().unwrap();
-    drop(reservation);
-    let reservation = TcpListener::bind("127.0.0.1:0").unwrap();
-    let admin_address = reservation.local_addr().unwrap();
-    drop(reservation);
-    let reservation = TcpListener::bind("127.0.0.1:0").unwrap();
-    let sysop_address = reservation.local_addr().unwrap();
-    drop(reservation);
+    let game_reservation = TcpListener::bind("127.0.0.1:0").unwrap();
+    let admin_reservation = TcpListener::bind("127.0.0.1:0").unwrap();
+    let sysop_reservation = TcpListener::bind("127.0.0.1:0").unwrap();
+    let game_address = game_reservation.local_addr().unwrap();
+    let admin_address = admin_reservation.local_addr().unwrap();
+    let sysop_address = sysop_reservation.local_addr().unwrap();
+    drop((game_reservation, admin_reservation, sysop_reservation));
     let game_port = game_address.port().to_string();
     let sysop_port = sysop_address.port().to_string();
     let data = tempfile::tempdir().unwrap();
