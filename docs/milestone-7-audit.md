@@ -96,7 +96,8 @@ invocation is intended, it is absent.
 **Verdict: Complete. No gaps.**
 
 The sysop protocol is a separate TLS-PSK listener (`--sysop-listen`, default
-`127.0.0.1:7325`) authenticating against enrolled BBS credentials. The
+`localhost:7325` on every supported resolved address) authenticating against
+enrolled BBS credentials. The
 `ct_sysop.capnp` schema is fully distinct from the player and admin schemas.
 
 Implemented commands:
@@ -274,4 +275,4 @@ tools work" and "the acceptance test has been run and passed."
 | BBS founding announcements not in wire protocol | Correctly implemented as engine-internal operations generating in-world physical mail. Not a protocol-level message. |
 | Session capacity not reported to clients | Server-side enforcement only. Clients see TLS/protocol errors at capacity. Consistent with the doc's description of server-side caps. |
 | Load driver uses CYCLES instead of "reconnect-count" | Functionally identical; the parameter is a superset of the documented 2-cycle pattern. |
-| Admin port 7324 vs sysop port 7325 | These are two different listeners. Admin defaults to loopback 7324; sysop defaults to 7325. Both match their respective documented defaults. |
+| Admin port 7324 vs sysop port 7325 | These are two different listeners. Admin defaults to every supported address for loopback-only `localhost:7324`; sysop defaults to every supported address for `localhost:7325`. Both match their respective documented defaults. |

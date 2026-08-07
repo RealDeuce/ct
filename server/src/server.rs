@@ -8,11 +8,13 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use socket2::{Domain, Protocol, Socket, Type};
 use thiserror::Error;
 #[cfg(test)]
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, Semaphore, mpsc, oneshot, watch};
+use tokio::task::JoinHandle;
 
 use crate::engine::BbsRegistry;
 use crate::engine::{Engine, EngineError};
@@ -65,6 +67,10 @@ pub enum ServerError {
     TlsWorkerStopped,
     #[error("administrator listener must bind to a loopback address")]
     AdminNotLoopback,
+    #[error("at least one {0} listener address is required")]
+    NoListenerAddresses(&'static str),
+    #[error("all network listener tasks stopped unexpectedly")]
+    ListenerStopped,
     #[error("game connection limit reached")]
     ConnectionLimit,
 }
@@ -1133,6 +1139,91 @@ enum DeliveryDisposition {
     NoSession,
 }
 
+#[derive(Clone, Copy)]
+enum ListenerRole {
+    Game,
+    Administrator,
+    Sysop,
+}
+
+enum AcceptedConnection {
+    Game(TcpStream, SocketAddr),
+    Administrator(TcpStream, SocketAddr),
+    Sysop(TcpStream, SocketAddr),
+}
+
+struct AcceptTasks(Vec<JoinHandle<()>>);
+
+impl Drop for AcceptTasks {
+    fn drop(&mut self) {
+        for task in &self.0 {
+            task.abort();
+        }
+    }
+}
+
+fn bind_listener(address: SocketAddr) -> io::Result<TcpListener> {
+    let socket = Socket::new(
+        Domain::for_address(address),
+        Type::STREAM,
+        Some(Protocol::TCP),
+    )?;
+    if address.is_ipv6() {
+        socket.set_only_v6(true)?;
+    }
+    socket.bind(&address.into())?;
+    socket.listen(1024)?;
+    socket.set_nonblocking(true)?;
+    TcpListener::from_std(socket.into())
+}
+
+fn bind_listeners(
+    addresses: &[SocketAddr],
+    description: &'static str,
+) -> Result<Vec<TcpListener>, ServerError> {
+    if addresses.is_empty() {
+        return Err(ServerError::NoListenerAddresses(description));
+    }
+    addresses
+        .iter()
+        .copied()
+        .map(bind_listener)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(ServerError::from)
+}
+
+fn listener_address_list(listeners: &[TcpListener]) -> io::Result<String> {
+    listeners
+        .iter()
+        .map(|listener| listener.local_addr().map(|address| address.to_string()))
+        .collect::<Result<Vec<_>, _>>()
+        .map(|addresses| addresses.join(", "))
+}
+
+fn spawn_accept_tasks(
+    listeners: Vec<TcpListener>,
+    role: ListenerRole,
+    sender: &mpsc::Sender<Result<AcceptedConnection, io::Error>>,
+    tasks: &mut Vec<JoinHandle<()>>,
+) {
+    for listener in listeners {
+        let sender = sender.clone();
+        tasks.push(tokio::spawn(async move {
+            loop {
+                let result = listener.accept().await.map(|(socket, peer)| match role {
+                    ListenerRole::Game => AcceptedConnection::Game(socket, peer),
+                    ListenerRole::Administrator => AcceptedConnection::Administrator(socket, peer),
+                    ListenerRole::Sysop => AcceptedConnection::Sysop(socket, peer),
+                });
+                let failed = result.is_err();
+                if sender.send(result).await.is_err() || failed {
+                    break;
+                }
+            }
+        }));
+    }
+}
+
 pub async fn run(
     game_address: SocketAddr,
     admin_address: SocketAddr,
@@ -1140,12 +1231,35 @@ pub async fn run(
     data_path: PathBuf,
     admin_tls: AdminTlsConfig,
 ) -> Result<(), ServerError> {
-    if !admin_address.ip().is_loopback() {
+    run_on_addresses(
+        vec![game_address],
+        vec![admin_address],
+        vec![sysop_address],
+        data_path,
+        admin_tls,
+    )
+    .await
+}
+
+pub async fn run_on_addresses(
+    game_addresses: Vec<SocketAddr>,
+    admin_addresses: Vec<SocketAddr>,
+    sysop_addresses: Vec<SocketAddr>,
+    data_path: PathBuf,
+    admin_tls: AdminTlsConfig,
+) -> Result<(), ServerError> {
+    if admin_addresses
+        .iter()
+        .any(|address| !address.ip().is_loopback())
+    {
         return Err(ServerError::AdminNotLoopback);
     }
-    let game_listener = TcpListener::bind(game_address).await?;
-    let admin_listener = TcpListener::bind(admin_address).await?;
-    let sysop_listener = TcpListener::bind(sysop_address).await?;
+    let game_listeners = bind_listeners(&game_addresses, "game")?;
+    let admin_listeners = bind_listeners(&admin_addresses, "administrator")?;
+    let sysop_listeners = bind_listeners(&sysop_addresses, "sysop")?;
+    let game_listener_text = listener_address_list(&game_listeners)?;
+    let admin_listener_text = listener_address_list(&admin_listeners)?;
+    let sysop_listener_text = listener_address_list(&sysop_listeners)?;
     let bbs_registry = BbsRegistry::default();
     let (engine, mut engine_events, engine_thread, engine_ready) =
         spawn_engine(data_path, bbs_registry.clone());
@@ -1154,10 +1268,8 @@ pub async fn run(
         .map_err(|_| ServerError::EngineStopped)?
         .map_err(|_| ServerError::EngineStopped)?;
     eprintln!(
-        "Cepheus Trader game listener on {}; administrator listener on {}; sysop listener on {}",
-        game_listener.local_addr()?,
-        admin_listener.local_addr()?,
-        sysop_listener.local_addr()?
+        "Cepheus Trader game listeners on {game_listener_text}; administrator listeners on \
+         {admin_listener_text}; sysop listeners on {sysop_listener_text}"
     );
     let sessions = Arc::new(Sessions::default());
     let pending_game_authentications = Arc::new(Semaphore::new(MAX_PENDING_GAME_AUTHENTICATIONS));
@@ -1258,64 +1370,97 @@ pub async fn run(
         }
     });
 
+    let (incoming_sender, mut incoming_receiver) = mpsc::channel(CONNECTION_QUEUE_DEPTH);
+    let mut accept_tasks = Vec::new();
+    spawn_accept_tasks(
+        game_listeners,
+        ListenerRole::Game,
+        &incoming_sender,
+        &mut accept_tasks,
+    );
+    spawn_accept_tasks(
+        admin_listeners,
+        ListenerRole::Administrator,
+        &incoming_sender,
+        &mut accept_tasks,
+    );
+    spawn_accept_tasks(
+        sysop_listeners,
+        ListenerRole::Sysop,
+        &incoming_sender,
+        &mut accept_tasks,
+    );
+    drop(incoming_sender);
+    let _accept_tasks = AcceptTasks(accept_tasks);
+
     let shutdown = shutdown_signal();
     tokio::pin!(shutdown);
     loop {
         tokio::select! {
-            result = game_listener.accept() => {
-                let (socket, peer) = result?;
-                let connection_engine = engine.clone();
-                let connection_sessions = Arc::clone(&sessions);
-                let connection_registry = bbs_registry.clone();
-                let Ok(authentication_permit) = Arc::clone(&pending_game_authentications)
-                    .try_acquire_owned()
-                else {
-                    let _ = socket.into_std().and_then(|socket| socket.shutdown(Shutdown::Both));
-                    continue;
-                };
-                tokio::spawn(async move {
-                    if let Err(error) = handle_connection(
-                        socket,
-                        connection_engine,
-                        connection_sessions,
-                        connection_registry,
-                        authentication_permit,
-                    ).await
-                    {
-                        eprintln!("connection {peer} closed: {error}");
-                    }
-                });
-            }
-            result = admin_listener.accept() => {
-                let (socket, peer) = result?;
-                let connection_engine = engine.clone();
-                let connection_tls = admin_tls.clone();
-                let connection_sessions = Arc::clone(&sessions);
-                tokio::spawn(async move {
-                    if let Err(error) =
-                        handle_admin_connection(
-                            socket,
-                            connection_engine,
-                            connection_tls,
-                            connection_sessions,
-                        ).await
-                    {
-                        eprintln!("administrator connection {peer} closed: {error}");
-                    }
-                });
-            }
-            result = sysop_listener.accept() => {
-                let (socket, peer) = result?;
-                let connection_engine = engine.clone();
-                let connection_registry = bbs_registry.clone();
-                tokio::spawn(async move {
-                    if let Err(error) =
-                        handle_sysop_connection(socket, connection_engine, connection_registry)
+            result = incoming_receiver.recv() => {
+                let connection = result.ok_or(ServerError::ListenerStopped)??;
+                match connection {
+                    AcceptedConnection::Game(socket, peer) => {
+                        let connection_engine = engine.clone();
+                        let connection_sessions = Arc::clone(&sessions);
+                        let connection_registry = bbs_registry.clone();
+                        let Ok(authentication_permit) = Arc::clone(
+                            &pending_game_authentications,
+                        )
+                        .try_acquire_owned()
+                        else {
+                            let _ = socket
+                                .into_std()
+                                .and_then(|socket| socket.shutdown(Shutdown::Both));
+                            continue;
+                        };
+                        tokio::spawn(async move {
+                            if let Err(error) = handle_connection(
+                                socket,
+                                connection_engine,
+                                connection_sessions,
+                                connection_registry,
+                                authentication_permit,
+                            )
                             .await
-                    {
-                        eprintln!("sysop connection {peer} closed: {error}");
+                            {
+                                eprintln!("connection {peer} closed: {error}");
+                            }
+                        });
                     }
-                });
+                    AcceptedConnection::Administrator(socket, peer) => {
+                        let connection_engine = engine.clone();
+                        let connection_tls = admin_tls.clone();
+                        let connection_sessions = Arc::clone(&sessions);
+                        tokio::spawn(async move {
+                            if let Err(error) = handle_admin_connection(
+                                socket,
+                                connection_engine,
+                                connection_tls,
+                                connection_sessions,
+                            )
+                            .await
+                            {
+                                eprintln!("administrator connection {peer} closed: {error}");
+                            }
+                        });
+                    }
+                    AcceptedConnection::Sysop(socket, peer) => {
+                        let connection_engine = engine.clone();
+                        let connection_registry = bbs_registry.clone();
+                        tokio::spawn(async move {
+                            if let Err(error) = handle_sysop_connection(
+                                socket,
+                                connection_engine,
+                                connection_registry,
+                            )
+                            .await
+                            {
+                                eprintln!("sysop connection {peer} closed: {error}");
+                            }
+                        });
+                    }
+                }
             }
             result = &mut fatal_receiver => {
                 let error = result.unwrap_or_else(|_| "engine event stream stopped".into());
@@ -1858,6 +2003,57 @@ mod tests {
             .unwrap();
         let error = read_frame(&mut right_reader).await.unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[tokio::test]
+    async fn multiple_listeners_feed_one_accept_queue() {
+        let addresses = [
+            "127.0.0.1:0".parse().unwrap(),
+            "127.0.0.1:0".parse().unwrap(),
+        ];
+        let listeners = bind_listeners(&addresses, "test").unwrap();
+        let bound = listeners
+            .iter()
+            .map(|listener| listener.local_addr().unwrap())
+            .collect::<Vec<_>>();
+        let (sender, mut receiver) = mpsc::channel(CONNECTION_QUEUE_DEPTH);
+        let mut tasks = Vec::new();
+        spawn_accept_tasks(listeners, ListenerRole::Game, &sender, &mut tasks);
+        drop(sender);
+        let _tasks = AcceptTasks(tasks);
+
+        let mut clients = Vec::new();
+        for address in bound {
+            clients.push(TcpStream::connect(address).await.unwrap());
+        }
+        for _ in 0..clients.len() {
+            let accepted = tokio::time::timeout(Duration::from_secs(1), receiver.recv())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            assert!(matches!(accepted, AcceptedConnection::Game(_, _)));
+        }
+    }
+
+    #[tokio::test]
+    async fn ipv6_listener_does_not_claim_the_ipv4_port() {
+        let address = "[::1]:0".parse().unwrap();
+        let ipv6 = match bind_listener(address) {
+            Ok(listener) => listener,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::AddrNotAvailable | io::ErrorKind::Unsupported
+                ) =>
+            {
+                return;
+            }
+            Err(error) => panic!("cannot create IPv6 test listener: {error}"),
+        };
+        let port = ipv6.local_addr().unwrap().port();
+        let ipv4 = bind_listener(SocketAddr::from(([127, 0, 0, 1], port))).unwrap();
+        assert_eq!(ipv4.local_addr().unwrap().port(), port);
     }
 
     #[tokio::test]

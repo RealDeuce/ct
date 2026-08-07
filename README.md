@@ -64,6 +64,25 @@ python3 tools/check_repository.py
 python3 -m unittest discover -s tools -p 'test_*.py'
 ```
 
+## Running the server
+
+The server listens on `localhost:7323` for players, `localhost:7324` for
+administrators, and `localhost:7325` for BBS sysops by default. `localhost`
+is resolved at startup and every supported IPv4 and IPv6 result is bound.
+
+The listener options are repeatable and also bind every address returned for
+a hostname:
+
+```console
+cepheus-trader-server \
+  --listen 0.0.0.0:7323 --listen '[::]:7323' \
+  --sysop-listen 0.0.0.0:7325 --sysop-listen '[::]:7325'
+```
+
+The administrator listener remains restricted to loopback addresses. Explicit
+listener values are strict: startup fails if any requested address cannot be
+resolved or bound.
+
 See the [client documentation](client/README.md) for BBS installation,
 configuration, credential bootstrap, and executable usage. Release builds and
 portable packages are covered by the [release process](docs/release-process.md).

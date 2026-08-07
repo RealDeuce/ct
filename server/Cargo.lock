@@ -70,6 +70,7 @@ dependencies = [
  "getrandom",
  "heed",
  "pkg-config",
+ "socket2",
  "tempfile",
  "thiserror",
  "tokio",
