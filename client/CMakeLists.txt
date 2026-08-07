@@ -122,7 +122,7 @@ else()
       ${CT_BOTAN_CROSS_ARGUMENTS}
       --build-targets=static
       --minimized-build
-      --enable-modules=tls13,auto_rng,system_rng,sha2_32,hex
+      --enable-modules=tls13,auto_rng,system_rng,sha2_32,hex,x25519
       --without-documentation
       --disable-modules=bzip2,lzma,zlib,sqlite3,tpm,pkcs11
     BUILD_COMMAND

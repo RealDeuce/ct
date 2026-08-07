@@ -51,7 +51,7 @@ int main() {
    const auto identities = scratch.path / "cepheus-trader.identities";
 
    const auto defaults = ct::default_bbs_config(path.string());
-   check(defaults.server == "127.0.0.1");
+   check(defaults.server == "localhost");
    check(defaults.game_port == "7323");
    check(defaults.sysop_port == "7325");
    check(defaults.credential_path == credential.string());
@@ -96,8 +96,14 @@ int main() {
    const auto custom_credential =
       scratch.path / "installation" / "secrets" / "bbs.bin";
    ct::create_bbs_config_file(custom_config.string(),
-                              custom_credential.string());
+                              custom_credential.string(),
+                              "game.example.net",
+                              "17323",
+                              "17325");
    const auto custom = ct::read_bbs_config(custom_config.string());
+   check(custom.server == "game.example.net");
+   check(custom.game_port == "17323");
+   check(custom.sysop_port == "17325");
    check(custom.credential_path == custom_credential.string());
    std::ifstream custom_input(custom_config);
    const std::string custom_text{

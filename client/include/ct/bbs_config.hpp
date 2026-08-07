@@ -27,6 +27,11 @@ void create_bbs_installation_directories(const std::string& config_path,
                                          const std::string& credential_path);
 void create_bbs_config_file(const std::string& path,
                             const std::string& credential_path);
+void create_bbs_config_file(const std::string& path,
+                            const std::string& credential_path,
+                            const std::string& server,
+                            const std::string& game_port,
+                            const std::string& sysop_port);
 void create_default_bbs_config_file(const std::string& path);
 
 }  // namespace ct

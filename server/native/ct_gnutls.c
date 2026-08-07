@@ -105,7 +105,7 @@ ct_gnutls_server* ct_gnutls_server_handshake(int fd,
     rc = gnutls_priority_set_direct(
         server->session,
         "NORMAL:-VERS-ALL:+VERS-TLS1.3:-CIPHER-ALL:+AES-128-GCM"
-        ":+DHE-PSK:+ECDHE-PSK:+PSK",
+        ":-GROUP-ALL:+GROUP-X25519:+DHE-PSK:+ECDHE-PSK:+PSK",
         NULL);
     if(rc < 0) {
         goto failed;

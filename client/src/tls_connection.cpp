@@ -194,6 +194,12 @@ std::shared_ptr<Credentials> make_credentials(
 
 class Policy final : public Botan::TLS::Strict_Policy {
    public:
+      std::vector<Botan::TLS::Group_Params> key_exchange_groups() const override {
+         return {
+            Botan::TLS::Group_Params::X25519,
+         };
+      }
+
       std::vector<std::string> allowed_key_exchange_methods() const override {
          return {
             "ECDHE_PSK",

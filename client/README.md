@@ -89,6 +89,11 @@ server=game.example.net
 game-port=7323
 sysop-port=7325
 credential-file=cepheus-trader.credential
+identity-file=cepheus-trader.identities
+identity-name=real-name
+terminal-profile=auto
+terminal-columns=0
+terminal-rows=0
 ```
 
 The configuration contains no PSK. `credential-file` names the separately
@@ -98,14 +103,15 @@ and lines beginning with `#` are allowed; unknown and duplicate keys are
 rejected. Both programs accept `--config FILE` to select a non-default path.
 See `cepheus-trader.conf.example`.
 
-`init-credential` accepts `--config FILE` and an optional credential pathname.
-If the configuration is absent, it exclusively creates it with `127.0.0.1`,
-game port `7323`, sysop port `7325`, and the selected credential pathname. If
-the pathname is omitted, the default is `cepheus-trader.credential` beside
-the configuration. If the configuration already exists, the command uses its
-`credential-file` value; an explicitly supplied pathname must identify that
-same file. Missing parent directories are created; newly created Unix
-directories are owner-only. Neither file is overwritten. `get-config`,
+`init-credential` accepts `--config FILE`, `--server HOST`, `--game-port PORT`,
+`--sysop-port PORT`, and an optional credential pathname. If the configuration
+is absent, it exclusively creates it with `localhost`, game port `7323`, sysop
+port `7325`, and the selected credential pathname unless those values are
+overridden. If the pathname is omitted, the default is
+`cepheus-trader.credential` beside the configuration. If the configuration
+already exists, the command uses its values; explicitly supplied initialization
+values must match it. Missing parent directories are created; newly created
+Unix directories are owner-only. Neither file is overwritten. `get-config`,
 `set-config`, and explicit `--expected-revision`/`--command-id` retries require
 the shared configuration to exist.
 
@@ -155,7 +161,9 @@ client/build/cepheus-trader-admin \
 client/build/cepheus-trader-admin \
   --psk-file server/server-data/admin.psk add-bbs "Dark Star"
 client/build/cepheus-trader-sysop \
-  --config /secure/path/cepheus-trader.conf init-credential \
+  --config /secure/path/cepheus-trader.conf \
+  --server game.example.net --game-port 7323 --sysop-port 7325 \
+  init-credential \
   /secure/path/ct-bbs.credential
 client/build/cepheus-trader-sysop \
   --config /secure/path/cepheus-trader.conf set-config \

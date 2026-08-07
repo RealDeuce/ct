@@ -23,7 +23,7 @@
 namespace ct {
 namespace {
 
-constexpr std::string_view DEFAULT_SERVER = "127.0.0.1";
+constexpr std::string_view DEFAULT_SERVER = "localhost";
 constexpr std::string_view DEFAULT_GAME_PORT = "7323";
 constexpr std::string_view DEFAULT_SYSOP_PORT = "7325";
 constexpr std::string_view DEFAULT_CREDENTIAL_FILE =
@@ -404,12 +404,30 @@ void create_default_bbs_config_file(const std::string& path) {
 
 void create_bbs_config_file(const std::string& path,
                             const std::string& credential_path) {
+   create_bbs_config_file(
+      path,
+      credential_path,
+      std::string(DEFAULT_SERVER),
+      std::string(DEFAULT_GAME_PORT),
+      std::string(DEFAULT_SYSOP_PORT));
+}
+
+void create_bbs_config_file(const std::string& path,
+                            const std::string& credential_path,
+                            const std::string& server,
+                            const std::string& game_port,
+                            const std::string& sysop_port) {
    if(path.empty()) {
       throw std::invalid_argument("BBS configuration path must not be empty");
    }
    if(credential_path.empty()) {
       throw std::invalid_argument("credential path must not be empty");
    }
+   if(server.empty() || server.find_first_of("\r\n") != std::string::npos) {
+      throw std::invalid_argument("server must be a nonempty hostname or address");
+   }
+   const auto checked_game_port = validate_port(game_port, "game-port");
+   const auto checked_sysop_port = validate_port(sysop_port, "sysop-port");
    create_bbs_installation_directories(path, credential_path);
 
    const auto config_directory =
@@ -430,9 +448,9 @@ void create_bbs_config_file(const std::string& path,
    const std::string content =
       "# Shared by cepheus-trader-sysop and cepheus-trader-door.\n"
       "# The PSK is stored only in the separate protected credential file.\n"
-      "server=127.0.0.1\n"
-      "game-port=7323\n"
-      "sysop-port=7325\n"
+      "server=" + server + "\n"
+      "game-port=" + checked_game_port + "\n"
+      "sysop-port=" + checked_sysop_port + "\n"
       "credential-file=" + reference_text + "\n"
       "identity-file=cepheus-trader.identities\n"
       "identity-name=real-name\n"

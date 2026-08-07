@@ -95,6 +95,26 @@ uint64_t parse_revision(const std::string& text) {
    return value;
 }
 
+std::string parse_port(const std::string& text, const char* option) {
+   uint32_t value = 0;
+   const auto [end, error] =
+      std::from_chars(text.data(), text.data() + text.size(), value);
+   if(error != std::errc() || end != text.data() + text.size() ||
+      value == 0 || value > 65535) {
+      throw std::invalid_argument(
+         std::string(option) + " must be an integer in 1..65535");
+   }
+   return text;
+}
+
+std::string parse_server(const std::string& text) {
+   if(text.empty() || text.find_first_of("\r\n") != std::string::npos) {
+      throw std::invalid_argument(
+         "--server must be a nonempty hostname or address");
+   }
+   return text;
+}
+
 std::array<uint8_t, 16> parse_command_id(const std::string& text) {
    if(text.size() != 32 ||
       !std::all_of(text.begin(), text.end(), [](const unsigned char value) {
@@ -255,7 +275,10 @@ std::filesystem::path comparable_path(const std::string& path) {
 }
 
 int init_credential(const std::string& config_path,
-                    const std::optional<std::string>& requested_path) {
+                    const std::optional<std::string>& requested_path,
+                    const std::optional<std::string>& requested_server,
+                    const std::optional<std::string>& requested_game_port,
+                    const std::optional<std::string>& requested_sysop_port) {
    std::error_code existence_error;
    const bool config_exists =
       std::filesystem::exists(config_path, existence_error);
@@ -278,6 +301,23 @@ int init_credential(const std::string& config_path,
       }
       config.credential_path = *requested_path;
    }
+   const auto apply_initial_value =
+      [config_exists, &config_path](const std::optional<std::string>& requested,
+                                    std::string& value,
+                                    const char* option) {
+         if(!requested.has_value()) {
+            return;
+         }
+         if(config_exists && value != *requested) {
+            throw std::invalid_argument(
+               std::string(option) + " does not match the value in " +
+               config_path + ": " + value);
+         }
+         value = *requested;
+      };
+   apply_initial_value(requested_server, config.server, "--server");
+   apply_initial_value(requested_game_port, config.game_port, "--game-port");
+   apply_initial_value(requested_sysop_port, config.sysop_port, "--sysop-port");
 
    const auto bbs_id = parse_bbs_id(read_required_line("BBS ID"));
    auto psk_text = read_required_line("BBS PSK", true);
@@ -297,7 +337,12 @@ int init_credential(const std::string& config_path,
       ct::create_bbs_installation_directories(
          config_path, config.credential_path);
       if(!config_exists) {
-         ct::create_bbs_config_file(config_path, config.credential_path);
+         ct::create_bbs_config_file(
+            config_path,
+            config.credential_path,
+            config.server,
+            config.game_port,
+            config.sysop_port);
       }
       ct::create_bbs_credential_file(config.credential_path, bbs_id, psk);
       ct::create_player_identity_registry(config.identity_registry_path, bbs_id);
@@ -320,6 +365,9 @@ int init_credential(const std::string& config_path,
 
 struct CommandLine {
    std::string config_path = "cepheus-trader.conf";
+   std::optional<std::string> server;
+   std::optional<std::string> game_port;
+   std::optional<std::string> sysop_port;
    std::optional<uint64_t> expected_revision;
    std::optional<std::array<uint8_t, 16>> command_id;
    std::vector<std::string> positional;
@@ -334,6 +382,21 @@ CommandLine parse_command_line(const int argc, char** argv) {
             throw std::invalid_argument("--config needs a path");
          }
          result.config_path = argv[index];
+      } else if(argument == "--server") {
+         if(++index >= argc) {
+            throw std::invalid_argument("--server needs a hostname or address");
+         }
+         result.server = parse_server(argv[index]);
+      } else if(argument == "--game-port") {
+         if(++index >= argc) {
+            throw std::invalid_argument("--game-port needs a value");
+         }
+         result.game_port = parse_port(argv[index], "--game-port");
+      } else if(argument == "--sysop-port") {
+         if(++index >= argc) {
+            throw std::invalid_argument("--sysop-port needs a value");
+         }
+         result.sysop_port = parse_port(argv[index], "--sysop-port");
       } else if(argument == "--expected-revision") {
          if(++index >= argc) {
             throw std::invalid_argument("--expected-revision needs a value");
@@ -355,8 +418,9 @@ CommandLine parse_command_line(const int argc, char** argv) {
 
 void print_usage() {
    std::cerr
-      << "usage: cepheus-trader-sysop [--config FILE] init-credential"
-         " [CREDENTIAL_FILE]\n"
+      << "usage: cepheus-trader-sysop [--config FILE] [--server HOST]"
+         " [--game-port PORT] [--sysop-port PORT]\n"
+         "       init-credential [CREDENTIAL_FILE]\n"
          "       cepheus-trader-sysop [--config FILE] get-config\n"
          "       cepheus-trader-sysop [--config FILE] set-config"
          " BBS_NAME POLITY_NAME TRADE_COMBAT CHAOS_ORDER\n"
@@ -405,7 +469,16 @@ int main(int argc, char** argv) {
             command_line.config_path,
             command_line.positional.size() == 2
                ? std::optional<std::string>(command_line.positional[1])
-               : std::nullopt);
+               : std::nullopt,
+            command_line.server,
+            command_line.game_port,
+            command_line.sysop_port);
+      }
+      if(command_line.server || command_line.game_port ||
+         command_line.sysop_port) {
+         throw std::invalid_argument(
+            "--server, --game-port, and --sysop-port are valid only with "
+            "init-credential");
       }
       const bool identity_command =
          !command_line.positional.empty() &&

@@ -572,6 +572,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let reservation = TcpListener::bind("127.0.0.1:0").unwrap();
     let sysop_address = reservation.local_addr().unwrap();
     drop(reservation);
+    let game_port = game_address.port().to_string();
     let sysop_port = sysop_address.port().to_string();
     let data = tempfile::tempdir().unwrap();
     let admin_psk = data.path().join("admin.psk");
@@ -699,7 +700,17 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let bbs_config = data.path().join("cepheus-trader.conf");
     let credential_file = data.path().join("cepheus-trader.credential");
     let mut credential_creator = Command::new(build.path().join("cepheus-trader-sysop"))
-        .args(["--config", bbs_config.to_str().unwrap(), "init-credential"])
+        .args([
+            "--config",
+            bbs_config.to_str().unwrap(),
+            "--server",
+            "127.0.0.1",
+            "--game-port",
+            game_port.as_str(),
+            "--sysop-port",
+            sysop_port.as_str(),
+            "init-credential",
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -731,7 +742,11 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         bbs_config.display()
     )));
     let bootstrap_config = std::fs::read_to_string(&bbs_config).unwrap();
+    assert!(bootstrap_config.contains("server=127.0.0.1\n"));
+    assert!(bootstrap_config.contains(&format!("game-port={game_port}\n")));
+    assert!(bootstrap_config.contains(&format!("sysop-port={sysop_port}\n")));
     assert!(bootstrap_config.contains("credential-file=cepheus-trader.credential\n"));
+    assert!(bootstrap_config.contains("identity-file=cepheus-trader.identities\n"));
     assert_eq!(std::fs::metadata(&credential_file).unwrap().len(), 48);
     #[cfg(unix)]
     {
@@ -759,25 +774,6 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     }
     let overwrite_output = overwrite.wait_with_output().unwrap();
     assert!(!overwrite_output.status.success());
-
-    std::fs::write(
-        &bbs_config,
-        format!(
-            "# Shared by the sysop utility and player door.\n\
-             server=127.0.0.1\n\
-             game-port={}\n\
-             sysop-port={}\n\
-             credential-file=cepheus-trader.credential\n\
-             identity-file=cepheus-trader.identities\n\
-             identity-name=real-name\n\
-             terminal-profile=auto\n\
-             terminal-columns=0\n\
-             terminal-rows=0\n",
-            game_address.port(),
-            sysop_port,
-        ),
-    )
-    .unwrap();
 
     let sysop = build.path().join("cepheus-trader-sysop");
     let unconfigured = Command::new(&sysop)
