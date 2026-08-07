@@ -27,10 +27,11 @@ use crate::tls::{PskCredential, TlsServer};
 use crate::traffic::{TrafficContact, TrafficSnapshot};
 use crate::universe::UniverseInitialization;
 use crate::wire::{
-    MAX_FRAME_BYTES, PlayerIdentity, WireError, decode_client_hello, decode_close, decode_request,
-    encode_checkpoint_ready, encode_close, encode_encounter_ready, encode_phase_changed,
-    encode_response, encode_server_hello, encode_server_stopping, encode_session_replaced,
-    encode_traffic_movement, encode_traffic_snapshot,
+    MAX_FRAME_BYTES, PROTOCOL_VERSION, PlayerIdentity, WireError, decode_client_hello_with_version,
+    decode_close, decode_request, encode_checkpoint_ready, encode_close, encode_close_for_version,
+    encode_encounter_ready, encode_phase_changed, encode_response, encode_server_hello,
+    encode_server_stopping, encode_session_replaced, encode_traffic_movement,
+    encode_traffic_snapshot,
 };
 use crate::{admin_wire, sysop_wire, wire};
 
@@ -1529,7 +1530,19 @@ async fn handle_connection(
     });
 
     let hello_frame = read_tls_frame_async(Arc::clone(&tls)).await?;
-    let hello = decode_client_hello(&hello_frame)?;
+    let (client_version, hello) = decode_client_hello_with_version(&hello_frame)?;
+    if client_version != PROTOCOL_VERSION {
+        let reason = format!(
+            "CT-RPC version {client_version} is no longer supported; upgrade your Cepheus Trader client (this server requires version {PROTOCOL_VERSION})"
+        );
+        let _ = outbound
+            .send(encode_close_for_version(client_version, 0, &reason)?)
+            .await;
+        drop(outbound);
+        let _ = writer_task.await;
+        let _ = socket.shutdown(Shutdown::Both);
+        return Ok(());
+    }
     if tls
         .identity()
         .map_err(|error| ServerError::Tls(error.to_string()))?

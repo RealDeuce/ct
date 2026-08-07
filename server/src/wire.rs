@@ -11,7 +11,7 @@ use crate::ct_rpc_capnp::{
     person_draft, player_creation, request,
 };
 
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 pub const COMMAND_ID_BYTES: usize = 16;
 pub const MAX_NAME_BYTES: usize = 128;
@@ -2294,9 +2294,15 @@ fn decode_flight_plan_proposal(
 }
 
 pub fn decode_client_hello(bytes: &[u8]) -> Result<ClientHello, WireError> {
+    let (version, hello) = decode_client_hello_with_version(bytes)?;
+    check_version(version)?;
+    Ok(hello)
+}
+
+pub fn decode_client_hello_with_version(bytes: &[u8]) -> Result<(u16, ClientHello), WireError> {
     let message = message_reader(bytes)?;
     let envelope = message.get_root::<envelope::Reader>()?;
-    check_version(envelope.get_protocol_version())?;
+    let version = envelope.get_protocol_version();
     let envelope::ClientHello(hello) = envelope.which()? else {
         return Err(WireError::Expected("clientHello envelope"));
     };
@@ -2309,10 +2315,13 @@ pub fn decode_client_hello(bytes: &[u8]) -> Result<ClientHello, WireError> {
         .to_str()
         .map_err(|_| WireError::InvalidText)?
         .to_owned();
-    Ok(ClientHello {
-        identity: PlayerIdentity { bbs_id, player_id },
-        client_name,
-    })
+    Ok((
+        version,
+        ClientHello {
+            identity: PlayerIdentity { bbs_id, player_id },
+            client_name,
+        },
+    ))
 }
 
 fn decode_market_search_kind(value: crate::ct_rpc_capnp::MarketSearchKind) -> MarketSearchKind {
@@ -3136,9 +3145,17 @@ pub fn encode_traffic_movement(
 }
 
 pub fn encode_close(epoch: u64, reason: &str) -> Result<Vec<u8>, WireError> {
+    encode_close_for_version(PROTOCOL_VERSION, epoch, reason)
+}
+
+pub fn encode_close_for_version(
+    protocol_version: u16,
+    epoch: u64,
+    reason: &str,
+) -> Result<Vec<u8>, WireError> {
     let mut message = Builder::new_default();
     let mut envelope = message.init_root::<envelope::Builder>();
-    envelope.set_protocol_version(PROTOCOL_VERSION);
+    envelope.set_protocol_version(protocol_version);
     envelope.set_session_epoch(epoch);
     envelope.init_close().set_reason(reason);
     finish_message(&message)
@@ -3146,9 +3163,17 @@ pub fn encode_close(epoch: u64, reason: &str) -> Result<Vec<u8>, WireError> {
 
 #[cfg(test)]
 pub fn encode_client_hello(identity: &PlayerIdentity) -> Result<Vec<u8>, WireError> {
+    encode_client_hello_for_version(PROTOCOL_VERSION, identity)
+}
+
+#[cfg(test)]
+fn encode_client_hello_for_version(
+    protocol_version: u16,
+    identity: &PlayerIdentity,
+) -> Result<Vec<u8>, WireError> {
     let mut message = Builder::new_default();
     let mut envelope = message.init_root::<envelope::Builder>();
-    envelope.set_protocol_version(PROTOCOL_VERSION);
+    envelope.set_protocol_version(protocol_version);
     let mut hello = envelope.init_client_hello();
     let mut hello_identity = hello.reborrow().init_identity();
     hello_identity.set_bbs_id(identity.bbs_id);
@@ -5901,6 +5926,40 @@ mod tests {
         let decoded = decode_client_hello(&frame).unwrap();
         assert_eq!(decoded.identity, identity);
         assert_eq!(decoded.client_name, "test");
+    }
+
+    #[test]
+    fn hello_version_can_be_read_before_it_is_rejected() {
+        let identity = PlayerIdentity {
+            bbs_id: 17,
+            player_id: 42,
+        };
+        let frame = encode_client_hello_for_version(1, &identity).unwrap();
+
+        let (version, decoded) = decode_client_hello_with_version(&frame).unwrap();
+        assert_eq!(version, 1);
+        assert_eq!(decoded.identity, identity);
+        assert!(matches!(
+            decode_client_hello(&frame),
+            Err(WireError::UnsupportedVersion(1))
+        ));
+    }
+
+    #[test]
+    fn compatibility_close_uses_the_clients_protocol_version() {
+        let reason = "upgrade your Cepheus Trader client";
+        let frame = encode_close_for_version(1, 0, reason).unwrap();
+        let message = message_reader(&frame).unwrap();
+        let envelope = message.get_root::<envelope::Reader>().unwrap();
+
+        assert_eq!(envelope.get_protocol_version(), 1);
+        let envelope::Close(close) = envelope.which().unwrap() else {
+            panic!("expected close envelope");
+        };
+        assert_eq!(
+            close.unwrap().get_reason().unwrap().to_str().unwrap(),
+            reason
+        );
     }
 
     #[test]
