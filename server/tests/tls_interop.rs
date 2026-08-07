@@ -509,7 +509,10 @@ fn complete_arrival_and_trade(
             .to_owned()
     };
     session.send(b"c");
-    let exchange = session.wait_for("Cargo Exchange -");
+    // The heading is written before the rest of the page.  Wait for the
+    // section delimiter used below so the reader thread has captured the
+    // complete cargo list before taking the output snapshot.
+    let exchange = session.wait_for("Port research");
     let semantic = strip_ecma48(&exchange);
     let cargo_section = semantic
         .rsplit_once("Cargo Exchange -")
