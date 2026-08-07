@@ -400,6 +400,10 @@ Confirm DNS resolution for `ct.bbsdev.net` and outbound TCP access to port
 hostname in the configuration so the client can use the IPv4 or IPv6 addresses
 published for the service.
 
+If the door reports that its CT-RPC version is no longer supported, install the
+current client archive and replace the door, sysop utility, and shared
+client-core library as one matching set.
+
 ### A renamed or renumbered BBS account is rejected
 
 Run `identity-list`, identify the established numeric player ID, and use

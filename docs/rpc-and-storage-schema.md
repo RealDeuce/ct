@@ -1,6 +1,6 @@
 # RPC and Storage Schema
 
-*Current implementation: CT-RPC 1, storage format 1, and record codecs 1.*
+*Current implementation: player CT-RPC 2, storage format 1, and record codecs 1.*
 
 ## Authority boundary
 
@@ -21,7 +21,7 @@ explain state, but it is never the machine-readable discriminator.
 
 ## Current protocol
 
-CT-RPC 1 is the only accepted player protocol. Both builds generate bindings
+CT-RPC 2 is the only accepted player protocol. Both builds generate bindings
 from `protocol/ct_rpc.capnp`; there is no compatibility reader for older wire
 shapes. `InitialCrewDraft` contains only the authoritative slot ID, name, and
 training skill. Captain options contain the current point-buy and skill-pool

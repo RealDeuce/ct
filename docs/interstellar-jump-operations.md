@@ -194,8 +194,10 @@ The UI and server route planner must distinguish:
 The Known Universe course plotter exposes two ship-specific projections. A
 fastest course minimizes elapsed game time; a cheapest course minimizes
 modeled purchased-fuel credits and then time. Both honor installed Jump range,
-current or assumed tank loads, primary-port refined-fuel availability, and
-gas-giant skimming only when the ship has scoops and processing capacity. The
+current or assumed tank loads, primary-port refined- and unrefined-fuel
+availability, and gas-giant skimming only when the ship has scoops and
+processing capacity. Importing a course materializes its required port
+purchases or frontier-fuel operations as executable Flight Plan steps. The
 cost figure remains explicitly narrower than total operating cost until crew,
 maintenance, fees, risk, and encounters have authoritative price models.
 

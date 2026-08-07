@@ -145,16 +145,24 @@ promise that stock or prices will be unchanged when you arrive.
 
 ### Jobs, custody, and deadlines
 
-Accepting an offer creates a real obligation. Freight, passengers, and mail
-have physical custody and remain assigned to the performing ship. Changing
-command or owning another vessel does not teleport them. Review the task's
-destination, deadline, payment, failure terms, and required capacity before
-accepting it.
+Claiming an offer at its issuing office produces an immediate award when the
+offer is still available. Claiming a copy anywhere else files a sealed claim:
+capacity and collateral are reserved while it travels, but the claim is not an
+award until the issuing office's confirmation reaches you. If another claim
+arrives first, the decline releases those reserves. A captain travelling to the
+issuing office carries their own signed filing, so the ship cannot arrive there
+before its claim does even when it declines ordinary mailbags.
 
-A remote claim is not an award until the issuing office's confirmation reaches
-you. After successful delivery, the task remains awaiting settlement while the
-delivery filing travels back to that office; payment and release of the posted
-collateral take effect when the remittance reaches you.
+An award closes the offer at its origin, but remote copies remain visible until
+the closure notice reaches them. Cargo or passenger custody transfers only
+after the award is known and the performing ship is at the origin. Once aboard,
+freight, passengers, and mail remain assigned to that ship; changing command or
+owning another vessel does not teleport them. Review the task's destination,
+deadline, payment, failure terms, and required capacity before filing a claim.
+
+After successful delivery, the task remains awaiting settlement while the
+delivery filing travels back to the issuing office. Payment and release of the
+posted collateral take effect when the remittance reaches you.
 
 The Task ledger records accepted work. The Flight Plan controls where the ship
 will actually travel; changing a route does not rewrite an obligation.
@@ -162,9 +170,10 @@ will actually travel; changing a route does not rewrite an obligation.
 ### Fuel, provisions, and port costs
 
 Refined and unrefined fuel are distinct, and availability depends on the port
-or selected collection method. Provisions are consumed by the people aboard.
-Berth charges and other immediate obligations may be settled when the ship
-departs. Keep a reserve instead of committing every credit to cargo.
+or selected collection method. Provisions are consumed by crew and awake
+passengers; passengers travelling in low berths do not consume them while
+frozen. Berth charges and other immediate obligations may be settled when the
+ship departs. Keep a reserve instead of committing every credit to cargo.
 
 ## Universal command console
 
@@ -234,8 +243,11 @@ observations, course plots, and mapping-disclosure choices.
 
 Knowledge may be incomplete or stale. It is carried with its repository and
 does not become omniscient merely because the server knows something. The
-course plotter can compare fastest and cheapest known routes, but the captain
-still chooses and files the executable Flight Plan.
+course plotter can compare fastest and cheapest known routes, including fuel
+carried aboard, purchases of refined or unrefined fuel at charted ports, and
+frontier skimming where the ship and charts support it. The plot reports its
+modeled fuel-purchase cost and travel time. The captain still chooses and
+imports a course into the executable Flight Plan.
 
 When the ship reaches an unmapped system, you may publish it, file it directly,
 withhold it, or mark it secret. Read the prompt: disclosure choices have
@@ -256,8 +268,12 @@ for the most serious choices; treat that warning literally.
 
 The Flight Plan is a sequence of destinations and authorized actions. It can
 use carried charts, imported plotted courses, task destinations, frontier-fuel
-stops, or coordinates where those choices are available. A preview reports
-estimated time, fuel, and warnings before the plan is filed.
+stops, or coordinates where those choices are available. Importing a plotted
+course also adds its required port purchases or frontier-fuel operations to
+the plan. A Flight Plan preview reports estimated time, fuel, and warnings
+before the plan is filed. Keep enough operating cash available: a purchase
+step that cannot be paid for or executed when reached holds the plan for the
+captain's attention.
 
 Course knowledge and course execution are separate. A carried or purchased
 plot can still be risky, and warnings about a known bad plot require a
