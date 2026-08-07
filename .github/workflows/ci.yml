@@ -32,7 +32,7 @@ jobs:
           python3 -m unittest discover -s tools -p 'test_*.py'
 
   rust:
-    needs: client-system-dependencies
+    needs: client-native
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -82,7 +82,7 @@ jobs:
           cargo run --manifest-path server/Cargo.toml --bin cepheus-trader-server -- --version
           cargo run --manifest-path server/Cargo.toml --bin cepheus-trader-universe-tour -- --version
 
-  client-system-dependencies:
+  client-native:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -96,13 +96,29 @@ jobs:
         run: >-
           echo "key=$(cc -dumpmachine)-$(cc -dumpfullversion -dumpversion)"
           >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
+      - name: Restore OpenDoors
+        id: opendoors-cache
+        uses: actions/cache@v6
+        with:
+          path: build/dependency-cache/opendoors
+          key: client-dependency-opendoors-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/OpenDoors.cmake', 'client/cmake/dependencies/opendoors/CMakeLists.txt', 'client/third_party/opendoors/**') }}
+      - name: Build OpenDoors
+        if: steps.opendoors-cache.outputs.cache-hit != 'true'
+        run: |
+          cmake -S client/cmake/dependencies/opendoors \
+            -B build/dependency-build/opendoors -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/build/dependency-cache/opendoors" \
+            -DCT_OPENDOORS_SOURCE_DIR="$GITHUB_WORKSPACE/client/third_party/opendoors"
+          cmake --build build/dependency-build/opendoors
+          cmake --install build/dependency-build/opendoors
+      - name: Restore client compiler cache
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ccache
-          key: ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}-system
+          key: ccache-client-project-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/source-release.txt.in', 'client/include/**', 'client/src/**', 'client/tests/**', 'protocol/**', 'OPEN_GAME_LICENSE.md') }}-system
           restore-keys: |
-            ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}-
-            ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
+            ccache-client-project-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
       - name: Configure, build, and test
         shell: bash
         run: |
@@ -110,10 +126,13 @@ jobs:
           ccache --zero-stats
           cmake -S client -B build/client-system -G Ninja \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache 2>&1 \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCT_OPENDOORS_ROOT=${{ github.workspace }}/build/dependency-cache/opendoors 2>&1 \
             | tee build/client-system-configure.log
           grep -F "Using installed Botan" build/client-system-configure.log
           grep -F "Using installed Cap'n Proto" build/client-system-configure.log
+          grep -F "Using cached OpenDoors static library" \
+            build/client-system-configure.log
           cmake --build build/client-system
           ctest --test-dir build/client-system --output-on-failure
           build/client-system/cepheus-trader-door --version
@@ -137,39 +156,60 @@ jobs:
       - name: Install build dependencies
         run: >-
           sudo apt-get update && sudo apt-get install -y
-          build-essential ca-certificates ccache cmake ninja-build pkg-config python3 xz-utils
+          build-essential ca-certificates cmake ninja-build python3 xz-utils
       - name: Identify C/C++ toolchain
         id: toolchain
         run: >-
           echo "key=$(cc -dumpmachine)-$(cc -dumpfullversion -dumpversion)"
           >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
+      - name: Restore pinned Botan
+        id: botan-cache
+        uses: actions/cache@v6
         with:
           path: build/dependency-cache/botan
-          key: botan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt') }}
-          restore-keys: |
-            botan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
-      - uses: actions/cache@v6
+          key: client-dependency-botan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/BotanPinned.cmake', 'client/cmake/dependencies/botan/CMakeLists.txt') }}
+      - name: Restore pinned Cap'n Proto and KJ
+        id: capnproto-cache
+        uses: actions/cache@v6
         with:
-          path: ~/.cache/ccache
-          key: ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}-pinned
-          restore-keys: |
-            ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}-
-            ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
-      - name: Configure pinned source dependencies
-        run: >-
-          cmake -S client -B build/client-pinned -G Ninja
-          -DCMAKE_C_COMPILER_LAUNCHER=ccache
-          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-          -DCT_BOTAN_INSTALL_DIR=${{ github.workspace }}/build/dependency-cache/botan
-          -DCT_USE_SYSTEM_BOTAN=OFF
-          -DCT_USE_SYSTEM_CAPNPROTO=OFF
-      - name: Build and test
+          path: build/dependency-cache/capnproto
+          key: client-dependency-capnproto-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/CapnProtoPinned.cmake', 'client/cmake/dependencies/capnproto/CMakeLists.txt') }}
+      - name: Restore OpenDoors
+        id: opendoors-cache
+        uses: actions/cache@v6
+        with:
+          path: build/dependency-cache/opendoors
+          key: client-dependency-opendoors-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/OpenDoors.cmake', 'client/cmake/dependencies/opendoors/CMakeLists.txt', 'client/third_party/opendoors/**') }}
+      - name: Build pinned Botan
+        if: steps.botan-cache.outputs.cache-hit != 'true'
         run: |
-          ccache --zero-stats
-          cmake --build build/client-pinned
-          ctest --test-dir build/client-pinned --output-on-failure
-          ccache --show-stats
+          cmake -S client/cmake/dependencies/botan \
+            -B build/dependency-build/botan -G Ninja \
+            -DCT_INSTALL_PREFIX="$GITHUB_WORKSPACE/build/dependency-cache/botan"
+          cmake --build build/dependency-build/botan
+      - name: Build pinned Cap'n Proto and KJ
+        if: steps.capnproto-cache.outputs.cache-hit != 'true'
+        run: |
+          cmake -S client/cmake/dependencies/capnproto \
+            -B build/dependency-build/capnproto -G Ninja \
+            -DCT_INSTALL_PREFIX="$GITHUB_WORKSPACE/build/dependency-cache/capnproto"
+          cmake --build build/dependency-build/capnproto
+      - name: Build OpenDoors
+        if: steps.opendoors-cache.outputs.cache-hit != 'true'
+        run: |
+          cmake -S client/cmake/dependencies/opendoors \
+            -B build/dependency-build/opendoors -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/build/dependency-cache/opendoors" \
+            -DCT_OPENDOORS_SOURCE_DIR="$GITHUB_WORKSPACE/client/third_party/opendoors"
+          cmake --build build/dependency-build/opendoors
+          cmake --install build/dependency-build/opendoors
+      - name: Verify dependency installations
+        run: |
+          test -f build/dependency-cache/botan/lib/libbotan-3.a
+          test -f build/dependency-cache/capnproto/lib/libcapnp.a
+          test -f build/dependency-cache/capnproto/lib/libkj.a
+          test -f build/dependency-cache/opendoors/lib/libODoors.a
 
   client-package:
     needs: client-pinned-dependencies
@@ -185,19 +225,31 @@ jobs:
         run: >-
           echo "key=$(cc -dumpmachine)-$(cc -dumpfullversion -dumpversion)"
           >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
+      - name: Restore pinned Botan
+        uses: actions/cache@v6
         with:
           path: build/dependency-cache/botan
-          key: botan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt') }}
-          restore-keys: |
-            botan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
-      - uses: actions/cache@v6
+          key: client-dependency-botan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/BotanPinned.cmake', 'client/cmake/dependencies/botan/CMakeLists.txt') }}
+          fail-on-cache-miss: true
+      - name: Restore pinned Cap'n Proto and KJ
+        uses: actions/cache@v6
+        with:
+          path: build/dependency-cache/capnproto
+          key: client-dependency-capnproto-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/CapnProtoPinned.cmake', 'client/cmake/dependencies/capnproto/CMakeLists.txt') }}
+          fail-on-cache-miss: true
+      - name: Restore OpenDoors
+        uses: actions/cache@v6
+        with:
+          path: build/dependency-cache/opendoors
+          key: client-dependency-opendoors-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/OpenDoors.cmake', 'client/cmake/dependencies/opendoors/CMakeLists.txt', 'client/third_party/opendoors/**') }}
+          fail-on-cache-miss: true
+      - name: Restore client compiler cache
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ccache
-          key: ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}-package
+          key: ccache-client-project-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/source-release.txt.in', 'client/include/**', 'client/src/**', 'client/tests/**', 'protocol/**', 'OPEN_GAME_LICENSE.md') }}
           restore-keys: |
-            ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/**', 'client/include/**', 'client/src/**', 'client/tests/**', 'client/third_party/opendoors/**', 'protocol/**') }}-
-            ccache-client-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
+            ccache-client-project-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
       - name: Build portable package
         env:
           SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}/archive/${{ github.sha }}.tar.gz
@@ -206,12 +258,15 @@ jobs:
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCT_BOTAN_INSTALL_DIR=${{ github.workspace }}/build/dependency-cache/botan \
+            -DCT_BOTAN_ROOT=${{ github.workspace }}/build/dependency-cache/botan \
+            -DCT_CAPNPROTO_ROOT=${{ github.workspace }}/build/dependency-cache/capnproto \
+            -DCT_OPENDOORS_ROOT=${{ github.workspace }}/build/dependency-cache/opendoors \
             -DCT_PORTABLE_CLIENT=ON \
             -DCT_SOURCE_RELEASE_URL="$SOURCE_URL" 2>&1 \
             | tee build/package-configure.log
-          grep -F "Using reusable pinned Botan 3.12.0" \
-            build/package-configure.log
+          grep -F "Using cached pinned Botan 3.12.0" build/package-configure.log
+          grep -F "Using cached pinned Cap'n Proto 1.5.0" build/package-configure.log
+          grep -F "Using cached OpenDoors static library" build/package-configure.log
           ccache --zero-stats
           cmake --build build/package
           ctest --test-dir build/package --output-on-failure

@@ -36,98 +36,107 @@ option(
 if(CT_PORTABLE_CLIENT)
   set(CT_USE_SYSTEM_BOTAN OFF CACHE BOOL "Use installed Botan" FORCE)
 endif()
-set(CT_BOTAN_VERSION 3.12.0)
-set(
-  CT_BOTAN_URL
-  "https://botan.randombit.net/releases/Botan-${CT_BOTAN_VERSION}.tar.xz"
-)
-set(
-  CT_BOTAN_SHA256
-  "5370f98dc15f8c222ee1ce52cd61c8756a53be0dc57cc4c1b0714d5a09ad74fb"
-)
+include(cmake/BotanPinned.cmake)
 
-if(CT_USE_SYSTEM_BOTAN)
+set(
+  CT_BOTAN_ROOT
+  ""
+  CACHE PATH
+  "Prebuilt pinned Botan prefix (bypasses system and source builds)"
+)
+if(CT_BOTAN_ROOT)
+  find_path(
+    CT_PREBUILT_BOTAN_INCLUDE_DIR
+    botan/build.h
+    PATHS "${CT_BOTAN_ROOT}/include/botan-3"
+    NO_DEFAULT_PATH
+    REQUIRED
+  )
+  find_library(
+    CT_PREBUILT_BOTAN_LIBRARY
+    NAMES botan-3
+    PATHS "${CT_BOTAN_ROOT}/lib" "${CT_BOTAN_ROOT}/lib64"
+    NO_DEFAULT_PATH
+    REQUIRED
+  )
+  add_library(ct-botan UNKNOWN IMPORTED GLOBAL)
+  set_target_properties(
+    ct-botan
+    PROPERTIES
+      IMPORTED_LOCATION "${CT_PREBUILT_BOTAN_LIBRARY}"
+      INTERFACE_INCLUDE_DIRECTORIES "${CT_PREBUILT_BOTAN_INCLUDE_DIR}"
+  )
+  target_link_libraries(ct-botan INTERFACE Threads::Threads ${CMAKE_DL_LIBS})
+  set(CT_BOTAN_TARGET ct-botan)
+  message(STATUS "Using cached pinned Botan ${CT_BOTAN_VERSION}")
+elseif(CT_USE_SYSTEM_BOTAN)
   pkg_check_modules(BOTAN QUIET IMPORTED_TARGET botan-3>=3.2)
 endif()
 
-if(BOTAN_FOUND)
+if(CT_BOTAN_ROOT)
+  # The imported target above is complete.
+elseif(BOTAN_FOUND)
   set(CT_BOTAN_TARGET PkgConfig::BOTAN)
   message(STATUS "Using installed Botan ${BOTAN_VERSION}")
 else()
-  set(
-    CT_BOTAN_INSTALL_DIR
-    "${CMAKE_CURRENT_BINARY_DIR}/botan-install"
-    CACHE PATH
-    "Install or reusable cache directory for the pinned Botan build"
+  include(ExternalProject)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  find_program(
+    CT_BOTAN_MAKE_EXECUTABLE
+    NAMES gmake make mingw32-make
+    REQUIRED
   )
-  set(CT_BOTAN_LIBRARY "${CT_BOTAN_INSTALL_DIR}/lib/libbotan-3.a")
-  set(
-    CT_BOTAN_COMPLETE_MARKER
-    "${CT_BOTAN_INSTALL_DIR}/.ct-botan-${CT_BOTAN_VERSION}-complete"
-  )
+  set(CT_BOTAN_INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/botan-install")
+  set(CT_BOTAN_CROSS_ARGUMENTS)
+  if(CMAKE_CROSSCOMPILING AND WIN32)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86|i[3-6]86)$")
+      set(CT_BOTAN_CPU x86_32)
+    else()
+      set(CT_BOTAN_CPU x86_64)
+    endif()
+    list(
+      APPEND CT_BOTAN_CROSS_ARGUMENTS
+      --os=mingw
+      "--cpu=${CT_BOTAN_CPU}"
+      "--ar-command=${CMAKE_AR}"
+    )
+  endif()
   file(MAKE_DIRECTORY "${CT_BOTAN_INSTALL_DIR}/include/botan-3")
   add_library(ct-botan STATIC IMPORTED GLOBAL)
   set_target_properties(
     ct-botan
     PROPERTIES
-      IMPORTED_LOCATION "${CT_BOTAN_LIBRARY}"
+      IMPORTED_LOCATION "${CT_BOTAN_INSTALL_DIR}/lib/libbotan-3.a"
       INTERFACE_INCLUDE_DIRECTORIES "${CT_BOTAN_INSTALL_DIR}/include/botan-3"
   )
-  if(EXISTS "${CT_BOTAN_LIBRARY}" AND EXISTS "${CT_BOTAN_COMPLETE_MARKER}")
-    message(STATUS "Using reusable pinned Botan ${CT_BOTAN_VERSION}")
-  else()
-    include(ExternalProject)
-    find_package(Python3 REQUIRED COMPONENTS Interpreter)
-    find_program(
-      CT_BOTAN_MAKE_EXECUTABLE
-      NAMES gmake make mingw32-make
-      REQUIRED
-    )
-    set(CT_BOTAN_CROSS_ARGUMENTS)
-    if(CMAKE_CROSSCOMPILING AND WIN32)
-      if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86|i[3-6]86)$")
-        set(CT_BOTAN_CPU x86_32)
-      else()
-        set(CT_BOTAN_CPU x86_64)
-      endif()
-      list(
-        APPEND CT_BOTAN_CROSS_ARGUMENTS
-        --os=mingw
-        "--cpu=${CT_BOTAN_CPU}"
-        "--ar-command=${CMAKE_AR}"
-      )
-    endif()
-    ExternalProject_Add(
-      ct-botan-project
-      URL "${CT_BOTAN_URL}"
-      URL_HASH "SHA256=${CT_BOTAN_SHA256}"
-      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-      CONFIGURE_COMMAND
-        "${Python3_EXECUTABLE}" <SOURCE_DIR>/configure.py
-        "--prefix=${CT_BOTAN_INSTALL_DIR}"
-        "--with-build-dir=<BINARY_DIR>"
-        "--cc-bin=${CMAKE_CXX_COMPILER}"
-        ${CT_BOTAN_CROSS_ARGUMENTS}
-        --build-targets=static
-        --minimized-build
-        --enable-modules=tls13,auto_rng,system_rng,sha2_32,hex
-        --without-documentation
-        --disable-modules=bzip2,lzma,zlib,sqlite3,tpm,pkcs11
-      BUILD_COMMAND
-        "${CT_BOTAN_MAKE_EXECUTABLE}"
-        -C <BINARY_DIR>
-        "-j${CT_BOTAN_BUILD_JOBS}"
-      INSTALL_COMMAND
-        "${CT_BOTAN_MAKE_EXECUTABLE}" -C <BINARY_DIR> install
-        COMMAND
-          "${CMAKE_COMMAND}" -E touch "${CT_BOTAN_COMPLETE_MARKER}"
-      BUILD_BYPRODUCTS "${CT_BOTAN_LIBRARY}"
-    )
-    add_dependencies(ct-botan ct-botan-project)
-    message(STATUS "Building pinned Botan ${CT_BOTAN_VERSION}")
-  endif()
+  ExternalProject_Add(
+    ct-botan-project
+    URL "${CT_BOTAN_URL}"
+    URL_HASH "SHA256=${CT_BOTAN_SHA256}"
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    CONFIGURE_COMMAND
+      "${Python3_EXECUTABLE}" <SOURCE_DIR>/configure.py
+      "--prefix=${CT_BOTAN_INSTALL_DIR}"
+      "--with-build-dir=<BINARY_DIR>"
+      "--cc-bin=${CMAKE_CXX_COMPILER}"
+      ${CT_BOTAN_CROSS_ARGUMENTS}
+      --build-targets=static
+      --minimized-build
+      --enable-modules=tls13,auto_rng,system_rng,sha2_32,hex
+      --without-documentation
+      --disable-modules=bzip2,lzma,zlib,sqlite3,tpm,pkcs11
+    BUILD_COMMAND
+      "${CT_BOTAN_MAKE_EXECUTABLE}"
+      -C <BINARY_DIR>
+      "-j${CT_BOTAN_BUILD_JOBS}"
+    INSTALL_COMMAND
+      "${CT_BOTAN_MAKE_EXECUTABLE}" -C <BINARY_DIR> install
+    BUILD_BYPRODUCTS "${CT_BOTAN_INSTALL_DIR}/lib/libbotan-3.a"
+  )
+  add_dependencies(ct-botan ct-botan-project)
   target_link_libraries(ct-botan INTERFACE Threads::Threads ${CMAKE_DL_LIBS})
   set(CT_BOTAN_TARGET ct-botan)
+  message(STATUS "Building pinned Botan ${CT_BOTAN_VERSION}")
 endif()
 
 if(WIN32 AND BOTAN_FOUND)
@@ -154,17 +163,24 @@ if(CT_PORTABLE_CLIENT)
   set(CT_USE_SYSTEM_CAPNPROTO OFF CACHE BOOL "Use installed Cap'n Proto" FORCE)
   set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static dependencies" FORCE)
 endif()
-set(CT_CAPNPROTO_VERSION 1.5.0)
-set(
-  CT_CAPNPROTO_URL
-  "https://capnproto.org/capnproto-c++-${CT_CAPNPROTO_VERSION}.tar.gz"
-)
-set(
-  CT_CAPNPROTO_SHA256
-  "77dbc13ca82d9c87ddb4581dd49559d45b63096433d3dadea08b7f31b360a5ba"
-)
+include(cmake/CapnProtoPinned.cmake)
 
-if(CT_USE_SYSTEM_CAPNPROTO)
+set(
+  CT_CAPNPROTO_ROOT
+  ""
+  CACHE PATH
+  "Prebuilt pinned Cap'n Proto prefix (bypasses system and source builds)"
+)
+if(CT_CAPNPROTO_ROOT)
+  find_package(
+    CapnProto ${CT_CAPNPROTO_VERSION} EXACT REQUIRED CONFIG
+    PATHS
+      "${CT_CAPNPROTO_ROOT}/lib/cmake/CapnProto"
+      "${CT_CAPNPROTO_ROOT}/lib64/cmake/CapnProto"
+    NO_DEFAULT_PATH
+  )
+  set(CT_USING_CACHED_CAPNPROTO TRUE)
+elseif(CT_USE_SYSTEM_CAPNPROTO)
   find_package(CapnProto 1.0 QUIET CONFIG)
 
   # Some package layouts do not put their CMake configuration on CMake's
@@ -183,7 +199,11 @@ if(CT_USE_SYSTEM_CAPNPROTO)
 endif()
 
 if(CapnProto_FOUND)
-  message(STATUS "Using installed Cap'n Proto ${CapnProto_VERSION}")
+  if(CT_USING_CACHED_CAPNPROTO)
+    message(STATUS "Using cached pinned Cap'n Proto ${CapnProto_VERSION}")
+  else()
+    message(STATUS "Using installed Cap'n Proto ${CapnProto_VERSION}")
+  endif()
 else()
   include(FetchContent)
   if(CT_USE_SYSTEM_CAPNPROTO)
@@ -290,74 +310,47 @@ if(CMAKE_CROSSCOMPILING)
   set(CAPNPC_CXX_EXECUTABLE "${CT_HOST_CAPNPC_CXX_EXECUTABLE}")
 endif()
 
+set(OPENDOORS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/opendoors")
 set(
-  OPENDOORS_ROOT
-  "${CMAKE_CURRENT_SOURCE_DIR}/third_party/opendoors"
+  CT_OPENDOORS_ROOT
+  ""
+  CACHE PATH
+  "Prebuilt OpenDoors prefix (bypasses the vendored source build)"
 )
-set(
-  OPENDOORS_SOURCES
-  ODAuto.c
-  ODBlock.c
-  ODCFile.c
-  ODCmdLn.c
-  ODCom.c
-  ODCore.c
-  ODDrBox.c
-  ODEdit.c
-  ODEdStr.c
-  ODEmu.c
-  ODGetIn.c
-  ODGraph.c
-  ODInEx1.c
-  ODInEx2.c
-  ODInQue.c
-  ODKrnl.c
-  ODList.c
-  ODLog.c
-  ODMulti.c
-  ODPlat.c
-  ODPCB.c
-  ODPopup.c
-  ODPrntf.c
-  ODRA.c
-  ODScrn.c
-  ODSpawn.c
-  ODStand.c
-  ODStat.c
-  ODStr.c
-  ODUtil.c
-  ODWCat.c
-  ODWin.c
-)
-list(TRANSFORM OPENDOORS_SOURCES PREPEND "${OPENDOORS_ROOT}/")
-if(WIN32)
-  list(APPEND OPENDOORS_SOURCES "${OPENDOORS_ROOT}/ODFrame.c")
-endif()
-add_library(ct-opendoors STATIC ${OPENDOORS_SOURCES})
-add_library(OpenDoors::OpenDoors ALIAS ct-opendoors)
-set_target_properties(
-  ct-opendoors
-  PROPERTIES
-    C_STANDARD 99
-    C_STANDARD_REQUIRED YES
-    OUTPUT_NAME ODoors
-)
-target_compile_definitions(
-  ct-opendoors
-  PRIVATE
-    HAS_INTTYPES_H
-  PUBLIC
-    $<$<PLATFORM_ID:Windows>:OD_WIN32_STATIC>
-)
-target_include_directories(
-  ct-opendoors
-  PUBLIC "${OPENDOORS_ROOT}"
-)
-if(WIN32)
-  target_link_libraries(ct-opendoors PRIVATE wsock32 gdi32 comctl32)
+if(CT_OPENDOORS_ROOT)
+  find_path(
+    CT_PREBUILT_OPENDOORS_INCLUDE_DIR
+    OpenDoor.h
+    PATHS "${CT_OPENDOORS_ROOT}/include/opendoors"
+    NO_DEFAULT_PATH
+    REQUIRED
+  )
+  find_library(
+    CT_PREBUILT_OPENDOORS_LIBRARY
+    NAMES ODoors
+    PATHS "${CT_OPENDOORS_ROOT}/lib" "${CT_OPENDOORS_ROOT}/lib64"
+    NO_DEFAULT_PATH
+    REQUIRED
+  )
+  add_library(ct-opendoors UNKNOWN IMPORTED GLOBAL)
+  set_target_properties(
+    ct-opendoors
+    PROPERTIES
+      IMPORTED_LOCATION "${CT_PREBUILT_OPENDOORS_LIBRARY}"
+      INTERFACE_INCLUDE_DIRECTORIES "${CT_PREBUILT_OPENDOORS_INCLUDE_DIR}"
+  )
+  if(WIN32)
+    target_compile_definitions(ct-opendoors INTERFACE OD_WIN32_STATIC)
+    target_link_libraries(ct-opendoors INTERFACE wsock32 gdi32 comctl32)
+  else()
+    target_link_libraries(ct-opendoors INTERFACE Threads::Threads)
+  endif()
+  message(STATUS "Using cached OpenDoors static library")
 else()
-  target_link_libraries(ct-opendoors PUBLIC Threads::Threads)
+  include(cmake/OpenDoors.cmake)
+  ct_add_opendoors(ct-opendoors "${OPENDOORS_ROOT}")
 endif()
+add_library(OpenDoors::OpenDoors ALIAS ct-opendoors)
 configure_file(
   "${OPENDOORS_ROOT}/license.txt"
   "${CMAKE_CURRENT_BINARY_DIR}/licenses/OpenDoors-LGPL-2.0-or-later.txt"
