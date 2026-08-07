@@ -705,6 +705,7 @@ pub enum CourseFuelSource {
     Carried,
     RefinedPort,
     FrontierSkimming,
+    UnrefinedPort,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1280,6 +1281,8 @@ pub enum WaypointAuthority {
 pub enum FuelOperation {
     GasGiant,
     WildernessWater,
+    BuyRefined,
+    BuyUnrefined,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2244,6 +2247,12 @@ fn decode_flight_plan_proposal(
                             crate::ct_rpc_capnp::FuelOperation::GasGiant => FuelOperation::GasGiant,
                             crate::ct_rpc_capnp::FuelOperation::WildernessWater => {
                                 FuelOperation::WildernessWater
+                            }
+                            crate::ct_rpc_capnp::FuelOperation::BuyRefined => {
+                                FuelOperation::BuyRefined
+                            }
+                            crate::ct_rpc_capnp::FuelOperation::BuyUnrefined => {
+                                FuelOperation::BuyUnrefined
                             }
                         },
                         quantity_millitons: fuel.get_quantity_millitons(),
@@ -4343,6 +4352,7 @@ fn set_course_plan(
             CourseFuelSource::FrontierSkimming => {
                 crate::ct_rpc_capnp::CourseFuelSource::FrontierSkimming
             }
+            CourseFuelSource::UnrefinedPort => crate::ct_rpc_capnp::CourseFuelSource::UnrefinedPort,
         });
         item.set_next_leg_milliparsecs(waypoint.next_leg_milliparsecs);
     }
@@ -5001,6 +5011,8 @@ fn set_flight_plan_action(
                 FuelOperation::WildernessWater => {
                     crate::ct_rpc_capnp::FuelOperation::WildernessWater
                 }
+                FuelOperation::BuyRefined => crate::ct_rpc_capnp::FuelOperation::BuyRefined,
+                FuelOperation::BuyUnrefined => crate::ct_rpc_capnp::FuelOperation::BuyUnrefined,
             });
             fuel.set_quantity_millitons(*quantity_millitons);
         }

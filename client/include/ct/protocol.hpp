@@ -561,6 +561,7 @@ enum class CourseFuelSource {
    Carried,
    RefinedPort,
    FrontierSkimming,
+   UnrefinedPort,
 };
 
 struct CourseWaypoint {
@@ -1045,6 +1046,8 @@ enum class JumpNavigationMethod {
 enum class FuelOperation {
    GasGiant,
    WildernessWater,
+   BuyRefined,
+   BuyUnrefined,
 };
 
 enum class EncounterPosture {

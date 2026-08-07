@@ -712,6 +712,7 @@ enum CourseFuelSource {
   carried @1;
   refinedPort @2;
   frontierSkimming @3;
+  unrefinedPort @4;
 }
 
 struct CourseWaypoint {
@@ -1240,6 +1241,8 @@ enum WaypointAuthority {
 enum FuelOperation {
   gasGiant @0;
   wildernessWater @1;
+  buyRefined @2;
+  buyUnrefined @3;
 }
 
 struct FlightPlanAction {

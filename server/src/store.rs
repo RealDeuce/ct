@@ -1201,6 +1201,7 @@ struct CourseNode {
     world_name: String,
     position_parsecs: [f64; 3],
     refined_port: bool,
+    unrefined_port: bool,
     approach_seconds: u64,
     frontier_round_trip_seconds: Option<u64>,
 }
@@ -4462,13 +4463,14 @@ impl Store {
                 "a flight plan must contain between one and 64 waypoints".into(),
             ));
         }
-        let (_, ship) = self.player_and_ship_in(txn, identity)?;
+        let (player, ship) = self.player_and_ship_in(txn, identity)?;
         let spec = creation::ship_status_spec(ship.catalog_id)
             .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
         let game_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
         let mut system_id = ship.system_id;
         let mut fuel_millitons = 0_u64;
         let mut available_fuel_millitons = ship.current_fuel_millitons;
+        let mut available_credits = player.credits;
         let mut elapsed_seconds = 0_u64;
         let mut warnings = Vec::new();
         for (index, step) in proposal.steps.iter().enumerate() {
@@ -4705,32 +4707,11 @@ impl Store {
                     operation,
                     quantity_millitons,
                 } => {
-                    let FlightLocus::Body {
-                        system_id: body_system_id,
-                        body_id,
-                    } = step.locus
-                    else {
-                        return Ok(RuleResult::Rejected(format!(
-                            "waypoint {} must name a frontier fuel body",
-                            index + 1
-                        )));
-                    };
-                    if body_system_id != system_id {
-                        return Ok(RuleResult::Rejected(format!(
-                            "waypoint {} names a fuel body outside the current system",
-                            index + 1
-                        )));
-                    }
                     if quantity_millitons == 0 || quantity_millitons % MILLITONS_PER_TON != 0 {
                         return Ok(RuleResult::Rejected(format!(
-                            "waypoint {} must collect a positive whole-ton fuel quantity",
+                            "waypoint {} must acquire a positive whole-ton fuel quantity",
                             index + 1
                         )));
-                    }
-                    if !spec.has_fuel_scoop {
-                        return Ok(RuleResult::Rejected(
-                            "this ship cannot execute frontier-fuel waypoints".into(),
-                        ));
                     }
                     if available_fuel_millitons
                         .checked_add(quantity_millitons)
@@ -4741,41 +4722,130 @@ impl Store {
                             index + 1
                         )));
                     }
-                    let system = self
-                        .systems
-                        .get(txn, &system_id)?
-                        .map(decode_stellar_system)
-                        .transpose()?
-                        .ok_or(StoreError::Corrupt("flight-plan fuel system is missing"))?;
-                    let celestial = derive_celestial_system(&system)?;
-                    let days = game_second.saturating_add(elapsed_seconds) as f64
-                        / crate::simulation::SECONDS_PER_DAY as f64;
-                    let source = match operation {
-                        FuelOperation::GasGiant => gas_giant_fuel_source(
-                            &celestial,
-                            days,
-                            f64::from(spec.thrust_g),
-                            body_id,
-                        ),
-                        FuelOperation::WildernessWater => wilderness_water_source(
-                            &celestial,
-                            days,
-                            f64::from(spec.thrust_g),
-                            body_id,
-                        ),
-                    };
-                    let Some(source) = source else {
-                        return Ok(RuleResult::Rejected(format!(
-                            "waypoint {} does not name a usable source for the selected fuel operation",
-                            index + 1
-                        )));
-                    };
+                    match operation {
+                        FuelOperation::BuyRefined | FuelOperation::BuyUnrefined => {
+                            let FlightLocus::Port {
+                                system_id: port_system_id,
+                                world_id,
+                                facility_id,
+                            } = step.locus
+                            else {
+                                return Ok(RuleResult::Rejected(format!(
+                                    "waypoint {} must name the fuel vendor's port",
+                                    index + 1
+                                )));
+                            };
+                            if port_system_id != system_id || world_id != system_id {
+                                return Ok(RuleResult::Rejected(format!(
+                                    "waypoint {} names a fuel vendor outside the current system",
+                                    index + 1
+                                )));
+                            }
+                            let facility = self
+                                .facilities
+                                .get(txn, &facility_id)?
+                                .map(decode_facility)
+                                .transpose()?
+                                .ok_or(StoreError::Corrupt(
+                                    "flight-plan fuel facility is missing",
+                                ))?;
+                            let available = facility.operational
+                                && match operation {
+                                    FuelOperation::BuyRefined => facility.refined_fuel,
+                                    FuelOperation::BuyUnrefined => facility.unrefined_fuel,
+                                    _ => unreachable!(),
+                                };
+                            if facility.system_id != system_id || !available {
+                                return Ok(RuleResult::Rejected(format!(
+                                    "waypoint {} selects fuel that is not sold at this port",
+                                    index + 1
+                                )));
+                            }
+                            let price = match operation {
+                                FuelOperation::BuyRefined => REFINED_FUEL_PRICE_PER_TON,
+                                FuelOperation::BuyUnrefined => UNREFINED_FUEL_PRICE_PER_TON,
+                                _ => unreachable!(),
+                            };
+                            let cost = purchase_cost_credits(price, quantity_millitons)
+                                .ok_or(StoreError::Corrupt("flight-plan fuel cost overflow"))?;
+                            if available_credits < cost {
+                                return Ok(RuleResult::Rejected(format!(
+                                    "waypoint {} requires Cr{} for fuel; the operating account is short",
+                                    index + 1,
+                                    cost
+                                )));
+                            }
+                            available_credits -= cost;
+                            if operation == FuelOperation::BuyUnrefined {
+                                warnings.push(FlightPlanWarning {
+                                    code: "UNREFINED_JUMP_FUEL".into(),
+                                    message: format!(
+                                        "Waypoint {} buys unrefined fuel; any Jump burning it carries the normal misjump penalty.",
+                                        index + 1
+                                    ),
+                                });
+                            }
+                        }
+                        FuelOperation::GasGiant | FuelOperation::WildernessWater => {
+                            let FlightLocus::Body {
+                                system_id: body_system_id,
+                                body_id,
+                            } = step.locus
+                            else {
+                                return Ok(RuleResult::Rejected(format!(
+                                    "waypoint {} must name a frontier fuel body",
+                                    index + 1
+                                )));
+                            };
+                            if body_system_id != system_id {
+                                return Ok(RuleResult::Rejected(format!(
+                                    "waypoint {} names a fuel body outside the current system",
+                                    index + 1
+                                )));
+                            }
+                            if !spec.has_fuel_scoop {
+                                return Ok(RuleResult::Rejected(
+                                    "this ship cannot execute frontier-fuel waypoints".into(),
+                                ));
+                            }
+                            let system = self
+                                .systems
+                                .get(txn, &system_id)?
+                                .map(decode_stellar_system)
+                                .transpose()?
+                                .ok_or(StoreError::Corrupt("flight-plan fuel system is missing"))?;
+                            let celestial = derive_celestial_system(&system)?;
+                            let days = game_second.saturating_add(elapsed_seconds) as f64
+                                / crate::simulation::SECONDS_PER_DAY as f64;
+                            let source = match operation {
+                                FuelOperation::GasGiant => gas_giant_fuel_source(
+                                    &celestial,
+                                    days,
+                                    f64::from(spec.thrust_g),
+                                    body_id,
+                                ),
+                                FuelOperation::WildernessWater => wilderness_water_source(
+                                    &celestial,
+                                    days,
+                                    f64::from(spec.thrust_g),
+                                    body_id,
+                                ),
+                                _ => unreachable!(),
+                            };
+                            let Some(source) = source else {
+                                return Ok(RuleResult::Rejected(format!(
+                                    "waypoint {} does not name a usable source for the selected fuel operation",
+                                    index + 1
+                                )));
+                            };
+                            elapsed_seconds = elapsed_seconds.saturating_add(
+                                (source.round_trip_days * crate::simulation::SECONDS_PER_DAY as f64)
+                                    .ceil() as u64
+                                    + (quantity_millitons / 1_000).max(1) * 60,
+                            );
+                        }
+                    }
                     available_fuel_millitons += quantity_millitons;
-                    elapsed_seconds = elapsed_seconds.saturating_add(
-                        (source.round_trip_days * crate::simulation::SECONDS_PER_DAY as f64).ceil()
-                            as u64
-                            + (quantity_millitons / 1_000).max(1) * 60,
-                    );
                 }
                 FlightPlanAction::Dock {
                     world_id,
@@ -5610,6 +5680,64 @@ impl Store {
                     operation,
                     quantity_millitons,
                 } => {
+                    if matches!(
+                        operation,
+                        FuelOperation::BuyRefined | FuelOperation::BuyUnrefined
+                    ) {
+                        let FlightLocus::Port {
+                            system_id,
+                            world_id,
+                            facility_id,
+                        } = step.locus
+                        else {
+                            return self.reject_or_hold_plan_in(
+                                txn,
+                                &key,
+                                plan,
+                                "a fuel-purchase step must name its port",
+                                hold_on_rejection,
+                            );
+                        };
+                        let (_, ship) = self.player_and_ship_in(txn, identity)?;
+                        let at_plotted_port = matches!(
+                            ship.location,
+                            ShipLocationRecord::Docked {
+                                world_id: actual_world,
+                                facility_id: actual_facility,
+                                ..
+                            } if ship.system_id == system_id
+                                && actual_world == world_id
+                                && actual_facility == facility_id
+                        );
+                        if !at_plotted_port {
+                            return self.reject_or_hold_plan_in(
+                                txn,
+                                &key,
+                                plan,
+                                "the ship is not at the port named by the fuel-purchase step",
+                                hold_on_rejection,
+                            );
+                        }
+                        let result = match operation {
+                            FuelOperation::BuyRefined => {
+                                self.buy_fuel_in(txn, identity, quantity_millitons)?
+                            }
+                            FuelOperation::BuyUnrefined => {
+                                self.buy_unrefined_fuel_in(txn, identity, quantity_millitons)?
+                            }
+                            _ => unreachable!(),
+                        };
+                        if let RuleResult::Rejected(message) = result {
+                            return self.reject_or_hold_plan_in(
+                                txn,
+                                &key,
+                                plan,
+                                &message,
+                                hold_on_rejection,
+                            );
+                        }
+                        continue;
+                    }
                     let FlightLocus::Body { system_id, body_id } = step.locus else {
                         return self.reject_or_hold_plan_in(
                             txn,
@@ -5629,7 +5757,11 @@ impl Store {
                             hold_on_rejection,
                         );
                     }
-                    let gas_giant = operation == FuelOperation::GasGiant;
+                    let gas_giant = match operation {
+                        FuelOperation::GasGiant => true,
+                        FuelOperation::WildernessWater => false,
+                        FuelOperation::BuyRefined | FuelOperation::BuyUnrefined => unreachable!(),
+                    };
                     match self.begin_frontier_fuel_in(
                         txn,
                         identity,
@@ -10519,12 +10651,19 @@ impl Store {
                 .map(decode_facility)
                 .transpose()?
                 .is_some_and(|facility| facility.operational && facility.refined_fuel);
+            let unrefined_port = self
+                .facilities
+                .get(txn, &system.id)?
+                .map(decode_facility)
+                .transpose()?
+                .is_some_and(|facility| facility.operational && facility.unrefined_fuel);
             nodes.push(CourseNode {
                 system_id: system.id,
                 system_name: system.name,
                 world_name: world.name,
                 position_parsecs: system.position_parsecs,
                 refined_port,
+                unrefined_port,
                 approach_seconds: (approach.travel_days * crate::simulation::SECONDS_PER_DAY as f64)
                     .ceil() as u64,
                 frontier_round_trip_seconds,
@@ -22453,16 +22592,21 @@ fn calculate_course_plan(
         };
     }
 
-    let maximum_loads = spec.fuel_capacity_millitons / spec.jump_fuel_millitons;
-    if maximum_loads == 0 || maximum_loads > 255 {
+    let fuel_quantum = MILLITONS_PER_TON;
+    let maximum_loads = spec.fuel_capacity_millitons / fuel_quantum;
+    if maximum_loads == 0 {
         return unavailable_course_plan();
     }
     let stride = maximum_loads as usize + 1;
-    let state_count = nodes.len().saturating_mul(stride);
+    let Some(state_count) = nodes.len().checked_mul(stride) else {
+        return unavailable_course_plan();
+    };
+    if state_count > 10_000_000 {
+        return unavailable_course_plan();
+    }
     let mut costs = vec![None; state_count];
     let mut previous = vec![None; state_count];
-    let initial_loads =
-        (initial_fuel_millitons / spec.jump_fuel_millitons).min(maximum_loads) as usize;
+    let initial_loads = (initial_fuel_millitons / fuel_quantum).min(maximum_loads) as usize;
     let initial_state = origin * stride + initial_loads;
     let zero = CourseCost {
         elapsed_seconds: 0,
@@ -22507,11 +22651,11 @@ fn calculate_course_plan(
         }
 
         let node = &nodes[node_index];
-        let maximum_jump_fuel = maximum_loads.saturating_mul(spec.jump_fuel_millitons);
+        let maximum_jump_fuel = maximum_loads.saturating_mul(fuel_quantum);
         let available_fuel = if node_index == origin {
             initial_fuel_millitons.min(maximum_jump_fuel)
         } else {
-            (loads as u64).saturating_mul(spec.jump_fuel_millitons)
+            (loads as u64).saturating_mul(fuel_quantum)
         };
         let mut departure_options = Vec::with_capacity(3);
         if loads >= 1 {
@@ -22527,7 +22671,7 @@ fn calculate_course_plan(
             ));
         }
         for desired_loads in (loads + 1)..=maximum_loads as usize {
-            let desired_fuel = (desired_loads as u64).saturating_mul(spec.jump_fuel_millitons);
+            let desired_fuel = (desired_loads as u64).saturating_mul(fuel_quantum);
             let fill_quantity = desired_fuel.saturating_sub(available_fuel);
             if node.refined_port {
                 departure_options.push((
@@ -22539,6 +22683,19 @@ fn calculate_course_plan(
                         node.approach_seconds.saturating_mul(2)
                     },
                     purchase_cost_credits(REFINED_FUEL_PRICE_PER_TON, fill_quantity)
+                        .unwrap_or(u64::MAX),
+                ));
+            }
+            if node.unrefined_port {
+                departure_options.push((
+                    desired_loads,
+                    CourseFuelSource::UnrefinedPort,
+                    if node_index == origin {
+                        node.approach_seconds
+                    } else {
+                        node.approach_seconds.saturating_mul(2)
+                    },
+                    purchase_cost_credits(UNREFINED_FUEL_PRICE_PER_TON, fill_quantity)
                         .unwrap_or(u64::MAX),
                 ));
             }
@@ -22584,10 +22741,16 @@ fn calculate_course_plan(
                             continue;
                         }
                         let leg_milliparsecs = (distance * 1_000.0).round() as u64;
+                        let consumed_loads =
+                            (jump_fuel_for_distance(spec.displacement_millitons, distance)
+                                / fuel_quantum) as usize;
                         for &(filled_loads, fuel_source, stop_seconds, fuel_cost) in
                             &departure_options
                         {
-                            let next_loads = filled_loads - 1;
+                            if filled_loads < consumed_loads {
+                                continue;
+                            }
+                            let next_loads = filled_loads - consumed_loads;
                             let next_state = neighbor * stride + next_loads;
                             let candidate = CourseCost {
                                 elapsed_seconds: cost
@@ -23558,6 +23721,8 @@ fn decode_flight_plan_step_record(decoder: &mut Decoder<'_>) -> Result<FlightPla
             operation: match decoder.u8()? {
                 0 => FuelOperation::GasGiant,
                 1 => FuelOperation::WildernessWater,
+                2 => FuelOperation::BuyRefined,
+                3 => FuelOperation::BuyUnrefined,
                 _ => return Err(StoreError::Corrupt("unknown fuel operation")),
             },
             quantity_millitons: decoder.u64()?,
@@ -29916,6 +30081,7 @@ fn encode_course_plan_into(bytes: &mut Vec<u8>, plan: &CoursePlan) -> Result<(),
             CourseFuelSource::Carried => 1,
             CourseFuelSource::RefinedPort => 2,
             CourseFuelSource::FrontierSkimming => 3,
+            CourseFuelSource::UnrefinedPort => 4,
         });
         bytes.extend_from_slice(&waypoint.next_leg_milliparsecs.to_be_bytes());
     }
@@ -29939,6 +30105,7 @@ fn decode_course_plan(decoder: &mut Decoder<'_>) -> Result<CoursePlan, StoreErro
                 1 => CourseFuelSource::Carried,
                 2 => CourseFuelSource::RefinedPort,
                 3 => CourseFuelSource::FrontierSkimming,
+                4 => CourseFuelSource::UnrefinedPort,
                 _ => return Err(StoreError::Corrupt("unknown course fuel source")),
             },
             next_leg_milliparsecs: decoder.u64()?,
@@ -31258,8 +31425,9 @@ mod tests {
                 world_name: "Origin Prime".into(),
                 position_parsecs: [0.0, 0.0, 0.0],
                 refined_port: true,
+                unrefined_port: false,
                 approach_seconds: 12 * 60 * 60,
-                frontier_round_trip_seconds: Some(10),
+                frontier_round_trip_seconds: Some(20_000),
             },
             CourseNode {
                 system_id: 2,
@@ -31267,8 +31435,9 @@ mod tests {
                 world_name: "Relay Prime".into(),
                 position_parsecs: [1.5, 0.0, 0.0],
                 refined_port: true,
+                unrefined_port: false,
                 approach_seconds: 12 * 60 * 60,
-                frontier_round_trip_seconds: Some(10),
+                frontier_round_trip_seconds: Some(20_000),
             },
             CourseNode {
                 system_id: 3,
@@ -31276,8 +31445,9 @@ mod tests {
                 world_name: "Destination Prime".into(),
                 position_parsecs: [3.0, 0.0, 0.0],
                 refined_port: true,
+                unrefined_port: false,
                 approach_seconds: 12 * 60 * 60,
-                frontier_round_trip_seconds: Some(10),
+                frontier_round_trip_seconds: Some(20_000),
             },
         ];
         let spec = creation::ShipStatusSpec {
@@ -31322,8 +31492,76 @@ mod tests {
             CourseFuelSource::FrontierSkimming
         );
         assert!(fastest.elapsed_seconds < cheapest.elapsed_seconds);
-        assert_eq!(fastest.fuel_cost_credits, 10_000);
+        assert_eq!(fastest.fuel_cost_credits, 9_000);
         assert_eq!(cheapest.fuel_cost_credits, 0);
+    }
+
+    #[test]
+    fn course_uses_purchased_unrefined_fuel_at_class_c_relay() {
+        let nodes = vec![
+            CourseNode {
+                system_id: 1,
+                system_name: "Ceiissea".into(),
+                world_name: "XBit.org".into(),
+                position_parsecs: [7.25, 0.5, -0.5],
+                refined_port: true,
+                unrefined_port: true,
+                approach_seconds: 0,
+                frontier_round_trip_seconds: None,
+            },
+            CourseNode {
+                system_id: 2,
+                system_name: "Aiavlai".into(),
+                world_name: "Aerial Thanavale".into(),
+                position_parsecs: [6.0, 0.5, -0.5],
+                refined_port: false,
+                unrefined_port: true,
+                approach_seconds: 0,
+                frontier_round_trip_seconds: None,
+            },
+            CourseNode {
+                system_id: 3,
+                system_name: "Aeuilyea".into(),
+                world_name: "White Ylarehaven".into(),
+                position_parsecs: [4.5, 0.5, -0.5],
+                refined_port: false,
+                unrefined_port: true,
+                approach_seconds: 0,
+                frontier_round_trip_seconds: None,
+            },
+        ];
+        let spec = creation::ShipStatusSpec {
+            tech_level: 13,
+            construction_price_credits: 90_740_000,
+            displacement_millitons: 300_000,
+            jump_rating: 2,
+            thrust_g: 2,
+            fuel_capacity_millitons: 66_000,
+            jump_fuel_millitons: 60_000,
+            cargo_capacity_millitons: 131_500,
+            passenger_staterooms: 6,
+            low_berths: 0,
+            monthly_life_support_credits: 0,
+            life_support_capacity_persons: 6,
+            has_fuel_scoop: false,
+            fuel_processing_millitons_per_day: 0,
+            subsystems: Vec::new(),
+        };
+        let plan = calculate_course_plan(
+            &nodes,
+            1,
+            3,
+            &spec,
+            spec.fuel_capacity_millitons,
+            CoursePreference::Fastest,
+        );
+        assert!(plan.available);
+        assert_eq!(plan.waypoints.len(), 3);
+        assert_eq!(
+            plan.waypoints[1].fuel_source,
+            CourseFuelSource::UnrefinedPort
+        );
+        assert_eq!(plan.fuel_cost_credits, 5_400);
     }
     use crate::celestial::fixed_earth_world;
     use crate::coverage::COVERAGE_SAMPLER_VERSION;
@@ -32327,6 +32565,118 @@ mod tests {
                 .flight_plan_in(&reopened.env.read_txn().unwrap(), &identity())
                 .unwrap(),
             plan
+        );
+    }
+
+    #[test]
+    fn committed_port_fuel_purchase_executes_before_jump() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let epoch = initialize_player_fixture(&store);
+        let player = store.player_record(&identity()).unwrap().unwrap();
+        let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        let original_fuel = ship.current_fuel_millitons;
+        let arrived_second = match ship.location {
+            ShipLocationRecord::Docked { arrived_second, .. } => arrived_second,
+            _ => panic!("fixture ship is not docked"),
+        };
+        let current_second =
+            get_meta_u64(store.meta, &store.env.read_txn().unwrap(), META_GAME_SECOND)
+                .unwrap()
+                .unwrap_or(0);
+        let berth_fee = crate::ship_condition::berth_fee_credits(arrived_second, current_second);
+        ship.current_fuel_millitons -= MILLITONS_PER_TON;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        txn.commit().unwrap();
+
+        let known = store
+            .known_destinations_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let destination = known
+            .systems
+            .iter()
+            .find(|candidate| {
+                candidate.within_jump_rating && candidate.system_id != known.current_system_id
+            })
+            .unwrap()
+            .system_id;
+        let proposal = FlightPlanProposal {
+            expected_plan_revision: 0,
+            steps: vec![
+                FlightPlanStep {
+                    locus: FlightLocus::Port {
+                        system_id: known.current_system_id,
+                        world_id: known.current_system_id,
+                        facility_id: known.current_system_id,
+                    },
+                    authority: WaypointAuthority::Through,
+                    action: FlightPlanAction::Fuel {
+                        operation: FuelOperation::BuyRefined,
+                        quantity_millitons: MILLITONS_PER_TON,
+                    },
+                },
+                FlightPlanStep {
+                    locus: FlightLocus::JumpLocus {
+                        system_id: known.current_system_id,
+                    },
+                    authority: WaypointAuthority::Through,
+                    action: FlightPlanAction::Jump {
+                        destination_system_id: destination,
+                        navigation: crate::wire::JumpNavigationMethod::Onboard,
+                        proceed_on_known_bad_plot: false,
+                    },
+                },
+                FlightPlanStep {
+                    locus: FlightLocus::Port {
+                        system_id: destination,
+                        world_id: destination,
+                        facility_id: destination,
+                    },
+                    authority: WaypointAuthority::Terminal,
+                    action: FlightPlanAction::Dock {
+                        world_id: destination,
+                        facility_id: destination,
+                    },
+                },
+            ],
+            policy: EncounterPolicy::default(),
+        };
+        let preview = match store
+            .preview_flight_plan_in(&store.env.read_txn().unwrap(), &identity(), &proposal)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("fuel-purchase plan was rejected: {message}"),
+        };
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(
+                    epoch,
+                    231,
+                    Command::CommitFlightPlan(CommitFlightPlanRequest {
+                        proposal,
+                        preview_hash: preview.preview_hash,
+                        acknowledge_warnings: true,
+                    }),
+                ),
+            })
+            .unwrap();
+        let committed = match store.process_next().unwrap().unwrap().outcome.kind {
+            OutcomeKind::FlightPlan(plan) => plan,
+            other => panic!("expected committed plan, got {other:?}"),
+        };
+        assert_eq!(committed.current_step, 1);
+        let departing = store.ship_record(player.ship_id).unwrap().unwrap();
+        assert_eq!(departing.current_fuel_millitons, original_fuel);
+        let updated_player = store.player_record(&identity()).unwrap().unwrap();
+        assert_eq!(
+            updated_player.credits,
+            player.credits - REFINED_FUEL_PRICE_PER_TON - berth_fee
         );
     }
 

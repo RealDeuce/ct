@@ -4078,6 +4078,8 @@ const char* course_fuel_source_name(const ct::CourseFuelSource source)
       return "buy refined fuel";
    case ct::CourseFuelSource::FrontierSkimming:
       return "skim and process fuel";
+   case ct::CourseFuelSource::UnrefinedPort:
+      return "buy unrefined fuel";
    }
    return "unknown";
 }
@@ -4126,7 +4128,7 @@ void show_course_plot(const ct::CoursePlot& plot)
             "and refueling requirements.\n\r");
       }
       door_information(
-         "\n\rEstimate includes purchased refined fuel and mean frontier "
+         "\n\rEstimate includes purchased port fuel and mean frontier "
          "skimming/processing time. Payroll, maintenance, fees, hazards, and "
          "encounter delays are excluded.\n\r");
       door_prompt("[F] Fastest  [C] Cheapest  [< >] Page  [Enter] Charts\n\r");
@@ -5377,9 +5379,20 @@ std::string flight_plan_action_name(
    case ct::FlightPlanActionKind::Dock:
       return "Dock at primary facility";
    case ct::FlightPlanActionKind::Fuel:
-      return std::string(action.fuel_operation == ct::FuelOperation::GasGiant
-                         ? "Skim " : "Collect water/ice ") +
-             std::to_string(action.quantity_millitons / 1000) + " t";
+      switch(action.fuel_operation) {
+      case ct::FuelOperation::GasGiant:
+         return "Skim " + std::to_string(action.quantity_millitons / 1000) + " t";
+      case ct::FuelOperation::WildernessWater:
+         return "Collect water/ice " +
+                std::to_string(action.quantity_millitons / 1000) + " t";
+      case ct::FuelOperation::BuyRefined:
+         return "Buy " + std::to_string(action.quantity_millitons / 1000) +
+                " t refined fuel";
+      case ct::FuelOperation::BuyUnrefined:
+         return "Buy " + std::to_string(action.quantity_millitons / 1000) +
+                " t unrefined fuel";
+      }
+      return "Acquire fuel";
    }
    return "Unknown action";
 }
@@ -5500,6 +5513,31 @@ ct::FlightPlanStep primary_dock_step(
          .destination_system_id = 0,
          .world_id = system_id,
          .facility_id = system_id},
+   };
+}
+
+ct::FlightPlanStep purchase_fuel_step(
+   const uint64_t system_id,
+   const ct::CourseFuelSource source,
+   const uint64_t quantity_millitons)
+{
+   return ct::FlightPlanStep{
+      .locus = ct::FlightLocus{
+         .kind = ct::FlightLocusKind::Port,
+         .system_id = system_id,
+         .world_id = system_id,
+         .facility_id = system_id,
+         .body_id = 0},
+      .authority = ct::WaypointAuthority::Through,
+      .action = ct::FlightPlanAction{
+         .kind = ct::FlightPlanActionKind::Fuel,
+         .destination_system_id = 0,
+         .world_id = 0,
+         .facility_id = 0,
+         .fuel_operation = source == ct::CourseFuelSource::RefinedPort
+                           ? ct::FuelOperation::BuyRefined
+                           : ct::FuelOperation::BuyUnrefined,
+         .quantity_millitons = quantity_millitons},
    };
 }
 
@@ -5639,8 +5677,40 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
             if(!configure_jump_navigation(navigation_probe)) {
                continue;
             }
+            const auto jump_one_fuel = destinations.jump_rating == 0
+                                       ? 0
+                                       : travel.jump_fuel_millitons / destinations.jump_rating;
+            if(jump_one_fuel == 0) {
+               door_warning("The ship's Jump fuel allocation is unavailable.\n\r");
+               wait_for_enter();
+               continue;
+            }
+            const auto leg_fuel = [jump_one_fuel](const uint64_t milliparsecs) {
+               return jump_one_fuel * std::max<uint64_t>(1, (milliparsecs + 999) / 1000);
+            };
             proposal.steps.clear();
+            auto projected_fuel = travel.current_fuel_millitons;
             for(size_t index = 0; index + 1 < course.waypoints.size(); ++index) {
+               const auto source = course.waypoints[index].fuel_source;
+               if(source == ct::CourseFuelSource::RefinedPort ||
+                     source == ct::CourseFuelSource::UnrefinedPort) {
+                  auto required = leg_fuel(course.waypoints[index].next_leg_milliparsecs);
+                  for(size_t carried = index + 1;
+                        carried + 1 < course.waypoints.size() &&
+                        course.waypoints[carried].fuel_source ==
+                        ct::CourseFuelSource::Carried;
+                        ++carried) {
+                     required += leg_fuel(course.waypoints[carried].next_leg_milliparsecs);
+                  }
+                  if(required > projected_fuel) {
+                     const auto quantity = required - projected_fuel;
+                     proposal.steps.push_back(purchase_fuel_step(
+                                                course.waypoints[index].system_id,
+                                                source,
+                                                quantity));
+                     projected_fuel += quantity;
+                  }
+               }
                auto step = jump_step(
                               course.waypoints[index].system_id,
                               course.waypoints[index + 1].system_id);
@@ -5653,6 +5723,7 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
                                            index + 2 == course.waypoints.size()
                                            ? ct::WaypointAuthority::Terminal
                                            : ct::WaypointAuthority::Through));
+               projected_fuel -= leg_fuel(course.waypoints[index].next_leg_milliparsecs);
             }
          } catch(const std::exception& error) {
             door_error("%s\n\r", safe_field(error.what()).c_str());
@@ -5822,6 +5893,14 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
                proposal.steps[proposal.steps.size() - 2].action.kind == ct::FlightPlanActionKind::Jump) {
             proposal.steps.pop_back();
             proposal.steps.pop_back();
+            if(!proposal.steps.empty() &&
+                  proposal.steps.back().action.kind == ct::FlightPlanActionKind::Fuel &&
+                  (proposal.steps.back().action.fuel_operation ==
+                     ct::FuelOperation::BuyRefined ||
+                   proposal.steps.back().action.fuel_operation ==
+                     ct::FuelOperation::BuyUnrefined)) {
+               proposal.steps.pop_back();
+            }
          } else if(!proposal.steps.empty() &&
                    proposal.steps.back().action.kind ==
                    ct::FlightPlanActionKind::JumpCoordinates) {

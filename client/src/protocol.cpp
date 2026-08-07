@@ -948,6 +948,8 @@ CourseFuelSource decode_course_fuel_source(const rpc::CourseFuelSource source)
       return CourseFuelSource::RefinedPort;
    case rpc::CourseFuelSource::FRONTIER_SKIMMING:
       return CourseFuelSource::FrontierSkimming;
+   case rpc::CourseFuelSource::UNREFINED_PORT:
+      return CourseFuelSource::UnrefinedPort;
    }
    throw std::runtime_error("unknown course fuel source");
 }
