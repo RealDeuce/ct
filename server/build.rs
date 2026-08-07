@@ -23,9 +23,9 @@ fn main() {
         .expect("compile shared protocol/ct_rpc.capnp");
 
     let gnutls = pkg_config::Config::new()
-        .atleast_version("3.8")
+        .atleast_version("3.8.11")
         .probe("gnutls")
-        .expect("GnuTLS 3.8 or newer is required");
+        .expect("GnuTLS 3.8.11 or newer is required");
     let mut native = cc::Build::new();
     native.file("native/ct_gnutls.c").file("native/ct_clock.c");
     for include in gnutls.include_paths {

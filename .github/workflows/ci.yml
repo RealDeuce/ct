@@ -25,14 +25,14 @@ jobs:
           python3 -m unittest discover -s tools -p 'test_*.py'
 
   rust:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - name: Install native dependencies
         run: >-
           sudo apt-get update && sudo apt-get install -y
           build-essential cmake ninja-build pkg-config python3
-          capnproto libcapnp-dev libgnutls28-dev
+          capnproto libbotan-3-dev libcapnp-dev libgnutls28-dev
       - name: Select stable Rust with lint components
         run: |
           rustup update stable
@@ -56,22 +56,28 @@ jobs:
           cargo run --manifest-path server/Cargo.toml --bin cepheus-trader-server -- --version
           cargo run --manifest-path server/Cargo.toml --bin cepheus-trader-universe-tour -- --version
 
-  client-native:
+  client-system-dependencies:
     runs-on: ubuntu-latest
+    container: debian:13
     steps:
-      - uses: actions/checkout@v7
       - name: Install native dependencies
         run: >-
-          sudo apt-get update && sudo apt-get install -y
-          build-essential cmake ninja-build pkg-config python3
-          capnproto libcapnp-dev xz-utils
+          apt-get update && apt-get install -y
+          build-essential ca-certificates cmake git ninja-build pkg-config python3
+          capnproto libcapnp-dev libbotan-3-dev xz-utils
+      - uses: actions/checkout@v7
       - name: Configure, build, and test
+        shell: bash
         run: |
-          cmake -S client -B build/client-native -G Ninja
-          cmake --build build/client-native
-          ctest --test-dir build/client-native --output-on-failure
-          build/client-native/cepheus-trader-door --version
-          build/client-native/cepheus-trader-sysop --version
+          mkdir -p build
+          cmake -S client -B build/client-system -G Ninja 2>&1 \
+            | tee build/client-system-configure.log
+          grep -F "Using installed Botan" build/client-system-configure.log
+          grep -F "Using installed Cap'n Proto" build/client-system-configure.log
+          cmake --build build/client-system
+          ctest --test-dir build/client-system --output-on-failure
+          build/client-system/cepheus-trader-door --version
+          build/client-system/cepheus-trader-sysop --version
 
   client-pinned-dependencies:
     runs-on: ubuntu-latest

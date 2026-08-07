@@ -40,7 +40,7 @@ are preserved in the [game design overview](docs/game-design.md).
 
 ## Build and test
 
-The server requires stable Rust, Cap'n Proto, and GnuTLS 3.8 or newer:
+The server requires stable Rust, Cap'n Proto, and GnuTLS 3.8.11 or newer:
 
 ```console
 cargo build --manifest-path server/Cargo.toml

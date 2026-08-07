@@ -40,8 +40,8 @@ user-interface process connects to it over a TLS-PSK-protected
 protocol; the UI is a client of the engine rather than a second implementation
 of game rules. CT-RPC uses Cap'n Proto serialization with a small
 project-specific, bidirectional RPC envelope over TLS-PSK. The Rust server
-uses GnuTLS 3.8 or newer; the OpenDoors-capable C++20 client uses Botan 3. The
-common product version is **0.7.0**. The client is
+uses GnuTLS 3.8.11 or newer; the OpenDoors-capable C++20 client uses Botan 3.
+The common product version is **0.7.0**. The client is
 C++ for practical BBS, IPC, and serial-port support.
 
 The repository contains separate projects:
