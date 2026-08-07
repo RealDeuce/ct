@@ -1,5 +1,10 @@
 # Cepheus Trader
 
+[![CI](https://github.com/RealDeuce/ct/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/RealDeuce/ct/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/RealDeuce/ct?sort=semver)](https://github.com/RealDeuce/ct/releases/latest)
+[![Software: MIT](https://img.shields.io/badge/software-MIT-blue.svg)](LICENSE.md)
+[![Game content: OGL 1.0a](https://img.shields.io/badge/game_content-OGL_1.0a-blue.svg)](OPEN_GAME_LICENSE.md)
+
 Cepheus Trader is a multiplayer BBS door game inspired by *TradeWars 2002*
 and *Yankee Trader*. It combines trading, ship operation, physical interstellar
 mail, exploration, naval service, privateering, piracy, and space combat in a
