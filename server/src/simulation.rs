@@ -925,6 +925,31 @@ impl SimulationDatabases {
         self.get_message(txn, message_id)
     }
 
+    /// Make a sender-retained copy available when the sender's player ship
+    /// physically reaches the addressed system. An independently routed
+    /// envelope may already have arrived; stable message IDs make this
+    /// delivery idempotent at the system feed.
+    pub fn deliver_player_carried_message(
+        &self,
+        txn: &mut RwTxn<'_>,
+        message_id: u64,
+        destination_system_id: u64,
+        now: u64,
+    ) -> Result<bool, SimulationError> {
+        let message = self.get_message(txn, message_id)?;
+        if now >= message.expires_second
+            || self
+                .available_messages(txn, destination_system_id, now, true)?
+                .iter()
+                .any(|available| available.message.message_id == message_id)
+        {
+            return Ok(false);
+        }
+        self.get_system(txn, destination_system_id)?;
+        self.create_delivery(txn, None, message_id, destination_system_id, now)?;
+        Ok(true)
+    }
+
     /// Return messages originated by one system at an exact simulation time.
     ///
     /// The game store uses this immediately after a SystemDay transaction to

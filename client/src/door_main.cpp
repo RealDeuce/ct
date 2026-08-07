@@ -2944,6 +2944,19 @@ const char* task_kind_name(const ct::TaskKind kind)
    return "Contract";
 }
 
+void report_offer_claim(const ct::TaskLedger& ledger, const uint64_t offer_id)
+{
+   const auto task = std::find_if(
+      ledger.tasks.begin(), ledger.tasks.end(),
+      [offer_id](const auto& candidate) { return candidate.offer.offer_id == offer_id; });
+   if(task != ledger.tasks.end() && task->state == ct::TaskState::ClaimPending) {
+      door_success(
+         "Claim filed. It is not awarded until the issuing office's reply reaches you.\n\r");
+   } else {
+      door_success("The issuing office awarded the offer and entered it in the task ledger.\n\r");
+   }
+}
+
 void show_task_offer_detail(const ct::TaskOffer& offer)
 {
    od_clr_scr();
@@ -3095,9 +3108,10 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
          if(selected) {
             const auto& offer = ledger.local_offers[*selected - 1];
             try {
-               ct::accept_task_offer(connection, session_epoch, offer.offer_id, offer.revision,
-                                     random_command_id(random), request_id++);
-               door_success("Offer claimed and entered in the task ledger.\n\r");
+               const auto updated = ct::accept_task_offer(
+                  connection, session_epoch, offer.offer_id, offer.revision,
+                  random_command_id(random), request_id++);
+               report_offer_claim(updated, offer.offer_id);
                wait_for_enter();
             } catch(const std::exception& error) {
                door_error("%s\n\r", safe_field(error.what()).c_str());
@@ -3554,14 +3568,14 @@ void claim_message_offer(
       return;
    }
    try {
-      (void)ct::accept_task_offer(
+      const auto ledger = ct::accept_task_offer(
          connection,
          session_epoch,
          *item.offer_id,
          item.offer_revision,
          random_command_id(random),
          request_id++);
-      door_success("Offer claimed and entered in the task ledger.\n\r");
+      report_offer_claim(ledger, *item.offer_id);
    } catch(const std::exception& error) {
       door_error("%s\n\r", safe_field(error.what()).c_str());
    }

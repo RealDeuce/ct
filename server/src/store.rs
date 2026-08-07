@@ -1006,6 +1006,15 @@ struct StoredTaskOffer {
     claimed_task_id: u64,
 }
 
+fn task_offer_is_open_at_system(
+    stored: &StoredTaskOffer,
+    system_id: u64,
+    current_second: u64,
+) -> bool {
+    current_second <= stored.offer.expires_second
+        && (stored.claimed_by.is_none() || system_id != stored.offer.origin_system_id)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct StoredWorkAssignment {
     identity: PlayerIdentity,
@@ -9961,7 +9970,12 @@ impl Store {
                     if !visible {
                         continue;
                     }
-                    self.receive_task_claim_result_in(txn, identity, available.message.message_id)?;
+                    self.receive_task_claim_result_in(
+                        txn,
+                        identity,
+                        available.message.message_id,
+                        arrival.arrival_second,
+                    )?;
                     self.receive_task_adjudication_result_in(
                         txn,
                         identity,
@@ -10047,6 +10061,7 @@ impl Store {
                         available.available_second,
                         classification,
                         existing.is_some(),
+                        ship.system_id,
                         arrival.arrival_second,
                     )?);
                 }
@@ -10096,6 +10111,12 @@ impl Store {
             .map(decode_player_record)
             .transpose()?
             .ok_or(StoreError::Corrupt("message owner player is missing"))?;
+        let ship = self
+            .ships
+            .get(txn, &player.ship_id)?
+            .map(decode_ship_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("message owner ship is missing"))?;
         let mut items = Vec::new();
         for entry in self.player_message_state.prefix_iter(txn, &prefix)? {
             let (key, value) = entry?;
@@ -10109,6 +10130,7 @@ impl Store {
                 state.first_seen_second,
                 state.classification,
                 true,
+                ship.system_id,
                 current_second,
             )?);
         }
@@ -10380,6 +10402,7 @@ impl Store {
         available_second: u64,
         classification: MessageClassification,
         previously_seen: bool,
+        knowledge_system_id: u64,
         current_second: u64,
     ) -> Result<MessageItem, StoreError> {
         let origin_system_name = self
@@ -10405,10 +10428,14 @@ impl Store {
                 .unwrap_or_else(|| "an unlisted destination".into());
             let commodity = crate::commerce::commodity(offer.commodity_id)
                 .map_or("not applicable", |item| item.name);
-            let availability = if current_second >= offer.expires_second {
+            let locally_awarded =
+                stored.claimed_by.is_some() && knowledge_system_id == offer.origin_system_id;
+            let availability = if current_second > offer.expires_second {
                 "Expired"
-            } else if stored.claimed_by.is_some() {
-                "Claimed by another captain"
+            } else if locally_awarded && stored.claimed_by.as_ref() == Some(identity) {
+                "Awarded to your claim"
+            } else if locally_awarded {
+                "Awarded by the issuing office"
             } else {
                 "Open for claim"
             };
@@ -10429,7 +10456,7 @@ impl Store {
                 ),
                 Some(offer.offer_id),
                 offer.revision,
-                stored.claimed_by.is_none() && current_second < offer.expires_second,
+                task_offer_is_open_at_system(&stored, knowledge_system_id, current_second),
             )
         } else {
             (message.body.clone(), None, 0, false)
@@ -10901,7 +10928,7 @@ impl Store {
             else {
                 continue;
             };
-            if stored.claimed_by.is_none() && stored.offer.expires_second >= current {
+            if task_offer_is_open_at_system(&stored, ship.system_id, current) {
                 offers.push(stored.offer);
             }
         }
@@ -11514,11 +11541,50 @@ impl Store {
         Ok(())
     }
 
+    fn deliver_player_carried_task_claims_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        ship_id: u64,
+        destination_system_id: u64,
+        current: u64,
+    ) -> Result<(), StoreError> {
+        let claim_message_ids = self
+            .tasks
+            .iter(txn)?
+            .map(|entry| {
+                let (_, value) = entry?;
+                Ok(decode_stored_task(value)?)
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?
+            .into_iter()
+            .filter(|stored| {
+                stored.identity == *identity
+                    && stored.task.performing_ship_id == ship_id
+                    && stored.task.state == crate::wire::TaskState::ClaimPending
+                    && stored.task.offer.origin_system_id == destination_system_id
+                    && stored.task.claim_message_id != 0
+                    && stored.task.result_message_id == 0
+            })
+            .map(|stored| stored.task.claim_message_id)
+            .collect::<Vec<_>>();
+        for message_id in claim_message_ids {
+            self.simulation.deliver_player_carried_message(
+                txn,
+                message_id,
+                destination_system_id,
+                current,
+            )?;
+        }
+        Ok(())
+    }
+
     fn receive_task_claim_result_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
         identity: &PlayerIdentity,
         message_id: u64,
+        current: u64,
     ) -> Result<(), StoreError> {
         let pending = self
             .tasks
@@ -11547,14 +11613,38 @@ impl Store {
             stored.task.known_result = true;
             stored.task.revision = stored.task.revision.saturating_add(1);
             if won {
-                stored.task.state = match stored.task.offer.kind {
-                    crate::wire::TaskKind::PurchaseOrder
-                    | crate::wire::TaskKind::ForwardSale
-                    | crate::wire::TaskKind::SupplyCommitment => crate::wire::TaskState::Sourcing,
-                    _ => crate::wire::TaskState::Accepted,
-                };
-                stored.task.status_text =
-                    "Claim awarded; report to the origin or perform the stated obligation".into();
+                let enforcement_second = stored
+                    .task
+                    .offer
+                    .delivery_deadline_second
+                    .saturating_add(stored.task.offer.passenger_grace_seconds);
+                if current > enforcement_second {
+                    stored.task.state = crate::wire::TaskState::Expired;
+                    stored.task.reserved_credits = 0;
+                    stored.task.reserved_cargo_millitons = 0;
+                    stored.task.reserved_passenger_count = 0;
+                    stored.task.status_text = "Award arrived after the performance window closed; no custody transferred and no liability was assessed".into();
+                } else {
+                    stored.task.state = match stored.task.offer.kind {
+                        crate::wire::TaskKind::PurchaseOrder
+                        | crate::wire::TaskKind::ForwardSale
+                        | crate::wire::TaskKind::SupplyCommitment => {
+                            crate::wire::TaskState::Sourcing
+                        }
+                        _ => crate::wire::TaskState::Accepted,
+                    };
+                    stored.task.status_text =
+                        "Claim awarded; report to the origin or perform the stated obligation"
+                            .into();
+                    if current == enforcement_second {
+                        let event_id = self.simulation.take_scheduled_event_id(txn)?;
+                        self.work_assignment_events.put(
+                            txn,
+                            &scheduled_event_key(enforcement_second, event_id),
+                            &encode_scheduled_object(stored.task.task_id | (1_u64 << 63)),
+                        )?;
+                    }
+                }
             } else {
                 stored.task.state = crate::wire::TaskState::Cancelled;
                 stored.task.reserved_credits = 0;
@@ -11853,6 +11943,7 @@ impl Store {
                 "offer revision is stale or expired".into(),
             ));
         }
+        let local_claim = ship.system_id == offer.origin_system_id;
         let Some(mut stored_offer) = self
             .task_offers
             .get(txn, &offer_id.to_be_bytes())?
@@ -11861,9 +11952,9 @@ impl Store {
         else {
             return Ok(RuleResult::Rejected("offer instrument is missing".into()));
         };
-        if stored_offer.claimed_by.is_some() {
+        if local_claim && stored_offer.claimed_by.is_some() {
             return Ok(RuleResult::Rejected(
-                "another captain has already claimed this offer".into(),
+                "the issuing office has already awarded this offer".into(),
             ));
         }
         let active = self.task_ledger_in(txn, identity)?;
@@ -11935,34 +12026,36 @@ impl Store {
             ));
         }
         let task_id = take_id_range(self.meta, txn, META_NEXT_TASK_ID, 1)?;
-        let (state, reserved_cargo, reserved_passengers) = match offer.kind {
+        let (awarded_state, reserved_cargo, reserved_passengers) = match offer.kind {
             crate::wire::TaskKind::Freight => (
-                crate::wire::TaskState::ClaimPending,
+                crate::wire::TaskState::Accepted,
                 offer.quantity_millitons,
                 0,
             ),
             crate::wire::TaskKind::Passenger
             | crate::wire::TaskKind::Charter
-            | crate::wire::TaskKind::Courier => (
-                crate::wire::TaskState::ClaimPending,
-                0,
-                offer.passenger_count,
-            ),
+            | crate::wire::TaskKind::Courier => {
+                (crate::wire::TaskState::Accepted, 0, offer.passenger_count)
+            }
             crate::wire::TaskKind::PurchaseOrder
             | crate::wire::TaskKind::ForwardSale
             | crate::wire::TaskKind::SupplyCommitment => (crate::wire::TaskState::Sourcing, 0, 0),
             _ => (crate::wire::TaskState::Accepted, 0, 0),
         };
+        let state = if local_claim {
+            awarded_state
+        } else {
+            crate::wire::TaskState::ClaimPending
+        };
         let status_text = match state {
             crate::wire::TaskState::ClaimPending => {
-                "Claim recorded; report to the origin for loading or embarkation"
+                "Sealed claim filed; capacity and collateral remain reserved while it travels to the issuing office"
             }
             crate::wire::TaskState::Sourcing => {
-                "Claim recorded; acquire the specified goods for delivery"
+                "Claim awarded by the issuing office; acquire the specified goods for delivery"
             }
-            _ => "Claim recorded; objective evidence is pending",
+            _ => "Claim awarded by the issuing office; perform the stated obligation",
         };
-        let local_claim = ship.system_id == offer.origin_system_id;
         let task = crate::wire::TaskRecord {
             task_id,
             offer,
@@ -19036,6 +19129,7 @@ impl Store {
                     | crate::wire::TaskState::Defaulted
                     | crate::wire::TaskState::Disputed
             )
+            || !stored.task.known_result
         {
             return Ok(());
         }
@@ -21326,8 +21420,17 @@ impl Store {
                     arrival.mail_expired = handoff.expired;
                     arrival.stipend_credits = handoff.stipend_credits;
                 }
+                self.deliver_player_carried_task_claims_in(
+                    txn,
+                    &ship.command,
+                    ship.ship_id,
+                    destination_system_id,
+                    due_second,
+                )?;
                 self.process_discovery_mail_arrival_in(txn, destination_system_id, due_second)?;
                 self.process_polity_policy_mail_arrival_in(txn, destination_system_id, due_second)?;
+                self.process_career_mail_arrival_in(txn, destination_system_id, due_second)?;
+                self.process_task_claim_mail_arrival_in(txn, destination_system_id, due_second)?;
                 self.player_arrivals.put(
                     txn,
                     &encode_identity(&ship.command),
@@ -31651,6 +31754,117 @@ mod tests {
     }
 
     #[test]
+    fn an_award_only_closes_the_offer_at_the_issuing_office() {
+        let origin_system_id = 17;
+        let mut stored = StoredTaskOffer {
+            offer: test_task_offer(91_001, origin_system_id, 23, crate::wire::TaskKind::Charter),
+            claimed_by: Some(identity()),
+            claimed_task_id: 91_101,
+        };
+
+        assert!(!task_offer_is_open_at_system(&stored, origin_system_id, 0));
+        assert!(task_offer_is_open_at_system(&stored, 19, 0));
+        stored.offer.expires_second = 0;
+        assert!(!task_offer_is_open_at_system(&stored, 19, 1));
+    }
+
+    #[test]
+    fn captain_hand_delivery_does_not_depend_on_mail_carriage() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut txn = store.env.write_txn().unwrap();
+        let ship = store.player_and_ship_in(&txn, &identity()).unwrap().1;
+        let destination_system_id = store
+            .simulation
+            .systems(&txn)
+            .unwrap()
+            .into_iter()
+            .find(|system| system.system_id != ship.system_id)
+            .unwrap()
+            .system_id;
+        let (claim_message_id, _) = store
+            .simulation
+            .dispatch_message(
+                &mut txn,
+                0,
+                ship.system_id,
+                crate::simulation::MessageClass::Private,
+                crate::simulation::MessageImportance::Important,
+                "Hand-delivered fixture claim",
+                "The captain retains the signed instrument.",
+                &[],
+            )
+            .unwrap();
+        let offer_id = 91_002;
+        let task_id = 91_102;
+        let offer = test_task_offer(
+            offer_id,
+            destination_system_id,
+            destination_system_id,
+            crate::wire::TaskKind::Charter,
+        );
+        store
+            .task_offers
+            .put(
+                &mut txn,
+                &offer_id.to_be_bytes(),
+                &encode_stored_task_offer(&StoredTaskOffer {
+                    offer: offer.clone(),
+                    claimed_by: None,
+                    claimed_task_id: 0,
+                })
+                .unwrap(),
+            )
+            .unwrap();
+        let mut claim = test_task(identity(), task_id, offer, claim_message_id);
+        claim.task.performing_ship_id = ship.ship_id;
+        store
+            .tasks
+            .put(
+                &mut txn,
+                &task_id.to_be_bytes(),
+                &encode_stored_task(&claim).unwrap(),
+            )
+            .unwrap();
+        store
+            .carriage_declarations
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_carriage_declaration(crate::wire::CarriageDeclaration {
+                    accept_electronic_mail: false,
+                    ..Default::default()
+                }),
+            )
+            .unwrap();
+
+        store
+            .deliver_player_carried_task_claims_in(
+                &mut txn,
+                &identity(),
+                ship.ship_id,
+                destination_system_id,
+                1,
+            )
+            .unwrap();
+        store
+            .process_task_claim_mail_arrival_in(&mut txn, destination_system_id, 1)
+            .unwrap();
+
+        let awarded = decode_stored_task_offer(
+            store
+                .task_offers
+                .get(&txn, &offer_id.to_be_bytes())
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(awarded.claimed_by, Some(identity()));
+        assert_eq!(awarded.claimed_task_id, task_id);
+    }
+
+    #[test]
     fn polity_records_preserve_naming_profiles() {
         let polity = Polity {
             id: 9,
@@ -34875,6 +35089,56 @@ mod tests {
                     &[destination],
                 )
                 .unwrap();
+            let (claim_message_id, _) = store
+                .simulation
+                .dispatch_message(
+                    &mut txn,
+                    departing.due_second - 1,
+                    departing.current_system_id,
+                    crate::simulation::MessageClass::Private,
+                    crate::simulation::MessageImportance::Important,
+                    "Sender-retained fixture claim",
+                    "The captain retains this signed filing while carrying mail.",
+                    &[],
+                )
+                .unwrap();
+            let offer_id = 98_001;
+            let task_id = 98_101;
+            let mut offer = test_task_offer(
+                offer_id,
+                destination,
+                destination,
+                crate::wire::TaskKind::Freight,
+            );
+            offer.expires_second = 100 * crate::simulation::SECONDS_PER_DAY;
+            offer.delivery_deadline_second = 200 * crate::simulation::SECONDS_PER_DAY;
+            store
+                .task_offers
+                .put(
+                    &mut txn,
+                    &offer_id.to_be_bytes(),
+                    &encode_stored_task_offer(&StoredTaskOffer {
+                        offer: offer.clone(),
+                        claimed_by: None,
+                        claimed_task_id: 0,
+                    })
+                    .unwrap(),
+                )
+                .unwrap();
+            let mut claim = test_task(identity(), task_id, offer, claim_message_id);
+            claim.task.performing_ship_id = store
+                .player_and_ship_in(&txn, &identity())
+                .unwrap()
+                .1
+                .ship_id;
+            store
+                .tasks
+                .put(
+                    &mut txn,
+                    &task_id.to_be_bytes(),
+                    &encode_stored_task(&claim).unwrap(),
+                )
+                .unwrap();
             // This fixture proves physical mail custody and payment.  A
             // terminal contact would correctly wait for the captain and is
             // tested by the encounter/flight-plan fixtures instead.
@@ -34948,6 +35212,18 @@ mod tests {
                 .unwrap();
             txn.commit().unwrap();
             store.advance_simulation_to(jump_due).unwrap();
+            let carried_claim = decode_stored_task(
+                store
+                    .tasks
+                    .get(&store.env.read_txn().unwrap(), &98_101_u64.to_be_bytes())
+                    .unwrap()
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_ne!(
+                carried_claim.task.result_message_id, 0,
+                "the issuing office must process a claim in the captain's delivered mailbag"
+            );
             let player = store.player_record(&identity()).unwrap().unwrap();
             assert_eq!(player.credits, credits_before + stipend);
             let ship = store.ship_record(player.ship_id).unwrap().unwrap();
@@ -35377,6 +35653,7 @@ mod tests {
                 1,
                 MessageClassification::Unreviewed,
                 false,
+                SOL_SYSTEM_ID,
                 1,
             )
             .unwrap();
@@ -36711,6 +36988,7 @@ mod tests {
                 article.created_second,
                 MessageClassification::Unreviewed,
                 false,
+                ship.system_id,
                 article.created_second,
             )
             .unwrap();
@@ -36950,6 +37228,7 @@ mod tests {
                 0,
                 MessageClassification::Unreviewed,
                 false,
+                origin_system_id,
                 0,
             )
             .unwrap();
@@ -36968,7 +37247,36 @@ mod tests {
         );
 
         store
-            .receive_task_claim_result_in(&mut txn, &main_identity, pending.task.result_message_id)
+            .process_task_deadline_in(
+                &mut txn,
+                pending.task.offer.delivery_deadline_second,
+                pending.task.task_id,
+            )
+            .unwrap();
+        let still_pending = decode_stored_task(
+            store
+                .tasks
+                .get(&txn, &pending.task.task_id.to_be_bytes())
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            still_pending.task.state,
+            crate::wire::TaskState::ClaimPending
+        );
+        assert_eq!(
+            still_pending.task.reserved_credits,
+            pending.task.reserved_credits
+        );
+
+        store
+            .receive_task_claim_result_in(
+                &mut txn,
+                &main_identity,
+                pending.task.result_message_id,
+                0,
+            )
             .unwrap();
         store
             .prepare_tasks_at_port_in(&mut txn, &main_identity, &mut ship, 0)

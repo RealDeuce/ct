@@ -83,11 +83,17 @@ and recurring supply performances reset only after that performance settles.
 Final settlement or default removes physical custody exactly once. A restart
 does not reconstruct manifests or infer delivery from location.
 
-An offer claimed away from its origin dispatches a sealed institutional
-message. Competing claims are awarded by physical arrival order at the issuing
-office, and the private award or decline reply must reach the captain before
-cargo or passenger custody can transfer. Institutional filings are not
-misclassified as mail addressed to every captain at their destination.
+An offer claimed at its issuing office is awarded or declined there. A claim
+filed anywhere else dispatches a sealed institutional message. Competing
+claims are awarded by physical arrival order at the issuing office, and the
+private award or decline reply must reach the captain before cargo or passenger
+custody can transfer. An award does not instantly alter remote copies of the
+offer: another captain may file against a still-open local copy and later
+receive a decline. The captain retains their own signed filing, so reaching
+the issuing office makes the claim available there no later than the ship's
+arrival; a separately carried copy may arrive first. This hand delivery does
+not depend on accepting an ordinary beacon mailbag. Institutional filings are
+not misclassified as mail addressed to every captain at their destination.
 
 The Task manager has revision-checked transactions to withdraw an unresolved
 claim, cancel before custody, return custody at the origin, declare default,
