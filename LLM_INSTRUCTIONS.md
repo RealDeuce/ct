@@ -246,7 +246,8 @@ Each master source record has a complete, list-valued `notice_ids`
 attribution containing the OGL itself, applicable SRDs and inherited works,
 and the source work's own notice. Notice text is stored once in atomic notice
 records. The loader must not infer omitted ancestry. It rejects missing or
-duplicate IDs, expands source bundles, deduplicates exact notices across
+duplicate IDs, expands source bundles, resolves explicit canonical aliases for
+equivalent source variants, deduplicates exact notices across
 entries, and produces the full-game OGL declaration deterministically.
 Cepheus Trader catalog entries have no original Product Identity field
 because all authored game content, including class and variant names, is OGC.

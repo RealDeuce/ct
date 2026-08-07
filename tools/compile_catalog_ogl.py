@@ -21,6 +21,7 @@ class CatalogLicenseError(ValueError):
 class Notice:
     notice_id: str
     texts: tuple[str, ...]
+    canonical_notice_id: str | None
 
 
 @dataclass(frozen=True)
@@ -95,7 +96,31 @@ def load_registry(
                     f"{notice_id} repeats text owned by {previous}"
                 )
             text_owner[text] = notice_id
-        notices.append(Notice(notice_id, texts))
+        canonical_notice_id = record.get("canonical_notice_id")
+        if canonical_notice_id is not None and (
+            not isinstance(canonical_notice_id, str) or not canonical_notice_id
+        ):
+            raise CatalogLicenseError(
+                f"{notice_id}: canonical_notice_id must be a non-empty string"
+            )
+        notices.append(Notice(notice_id, texts, canonical_notice_id))
+
+    notices_by_id = {notice.notice_id: notice for notice in notices}
+    for notice in notices:
+        canonical_id = notice.canonical_notice_id
+        if canonical_id is None:
+            continue
+        canonical = notices_by_id.get(canonical_id)
+        if canonical is None:
+            raise CatalogLicenseError(
+                f"{notice.notice_id} aliases unknown notice {canonical_id!r}"
+            )
+        if canonical.notice_id == notice.notice_id:
+            raise CatalogLicenseError(f"{notice.notice_id} aliases itself")
+        if canonical.canonical_notice_id is not None:
+            raise CatalogLicenseError(
+                f"{notice.notice_id} aliases non-canonical notice {canonical_id!r}"
+            )
 
     sources: list[Source] = []
     seen_source_ids: set[str] = set()
@@ -193,6 +218,12 @@ def compile_notices(
     for source in sources:
         if source.source_id in selected_sources:
             selected_notice_ids.update(source.notice_ids)
+
+    notices_by_id = {notice.notice_id: notice for notice in notices}
+    selected_notice_ids = {
+        notices_by_id[notice_id].canonical_notice_id or notice_id
+        for notice_id in selected_notice_ids
+    }
 
     output_texts: list[str] = []
     for notice in notices:

@@ -11,9 +11,11 @@ sources used by catalogs. Individual entries contain list-valued OGC
 designations and source IDs; they do not duplicate source descriptions or
 Section 15 notices. Each source record explicitly lists the notice IDs for
 the OGL, applicable SRDs and inherited works, and the source work itself; the
-loader does not infer ancestry. The game expands the source bundles,
-deduplicates exact notices, and constructs the full-game OGL declaration from
-all loaded catalogs.
+loader does not infer ancestry. Verbatim typography and punctuation variants
+remain in the registry for source auditing but explicitly name a canonical
+notice when they declare the same work, date, and copyright holder. The game
+expands the source bundles, resolves those explicit aliases, deduplicates exact
+notices, and constructs the full-game OGL declaration from all loaded catalogs.
 
 The active construction work is split deliberately:
 

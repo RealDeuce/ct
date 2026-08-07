@@ -51,6 +51,15 @@ open_game_content_descriptions = ["all"]
 excluded_product_identity_descriptions = []
 texts = ["CT notice"]
 
+[[notice]]
+notice_id = "book-variant"
+title = "Book typography variant"
+source_descriptions = ["ship variant"]
+open_game_content_descriptions = ["design"]
+excluded_product_identity_descriptions = ["names"]
+texts = ["Book notice with variant punctuation"]
+canonical_notice_id = "book"
+
 [[source]]
 source_id = "rules-source"
 title = "Rules"
@@ -74,6 +83,14 @@ source_descriptions = ["catalog source"]
 open_game_content_descriptions = ["all"]
 excluded_product_identity_descriptions = []
 notice_ids = ["ogl", "ct"]
+
+[[source]]
+source_id = "book-variant-source"
+title = "Book variant"
+source_descriptions = ["ship variant source"]
+open_game_content_descriptions = ["design"]
+excluded_product_identity_descriptions = ["names"]
+notice_ids = ["ogl", "srd", "book-variant"]
 """
 
 
@@ -105,6 +122,11 @@ class CompileCatalogOglTests(unittest.TestCase):
         self.assertLess(output.index("OGL notice"), output.index("SRD notice"))
         self.assertLess(output.index("SRD notice"), output.index("Book notice"))
         self.assertLess(output.index("Book notice"), output.index("CT notice"))
+
+    def test_explicit_notice_alias_uses_canonical_declaration(self) -> None:
+        output = self.compile(entry('"rules-source", "book-variant-source"'))
+        self.assertIn("Book notice", output)
+        self.assertNotIn("Book notice with variant punctuation", output)
 
     def test_rejects_single_source_shortcut(self) -> None:
         with self.assertRaises(CatalogLicenseError):

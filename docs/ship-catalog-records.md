@@ -141,7 +141,8 @@ adjustment.
 Top-level `source_ids` lists every rules and ship-design source used by the
 entry. `[catalog].open_game_content_designations` is always a list. The OGL
 compiler expands those source IDs through `catalog/ogl-sources.toml` and
-deduplicates exact Section 15 notices.
+deduplicates exact Section 15 notices and resolves explicitly declared aliases
+for typography, punctuation, and extraction variants of the same declaration.
 
 Publisher names, published class names, setting history, artwork, and other
 Product Identity do not enter catalog data. Source IDs are internal

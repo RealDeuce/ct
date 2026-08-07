@@ -137,25 +137,11 @@ Cepheus Engine System Reference Document, Copyright © 2016 Samardan Press; Auth
 
 Cepheus Trader, Copyright 2026, Cepheus Trader contributors.
 
-T20 - The Traveller’s Handbook Copyright 2002, Quiklink Interactive, Inc. Traveller is a trademark of Far Future Enterprises and is used under license.
-
-The Clement Sector Copyright 2013, Gypsy Knights Games LLC Author John Watts
-
 Clement Sector: The Rules, Copyright 2016, Gypsy Knights Games LLC Authors John Watts, Michael Johnson, and Jason Kemp
-
-The Anderson and Felix Guide to Naval Architecture 2.0 , Copyright 2015, Gypsy Knights Games LLC Author Michael Johnson
-
-Clement Sector Core Setting Book 2.0, Copyright 2015, Gypsy Knights Games LLC Author John Watts
 
 The Anderson and Felix Optional Components Guide, Copyright 2018, Gypsy Knights Games LLC, Author Michael Johnson
 
-Clement Sector, Copyright 2021, Independence Games (Gypsy Knights Games LLC), Author John Watts
-
-The Anderson and Felix Guide to Naval Architecture, version 3, Copyright 2021, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
-
 The Clement Sector Copyright 2013, Gypsy Knights Games LLC, Author John Watts
-
-Clement Sector: The Rules, Copyright 2016, Gypsy Knights Games LLC, Authors, John Watts, Michael Johnson, and Jason Kemp
 
 Clement Sector Core Setting Book 2.0, Copyright 2015, Gypsy Knights Games LLC, Author John Watts
 
@@ -201,8 +187,6 @@ Coner-class Trader, Copyright 2023, Independence Games (Gypsy Knights Games LLC)
 
 Contessa-class Fast Trader, Copyright 2024, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
 
-High Guard System Reference Document Copyright © 2008, Mongoose Publishing. Copeline-class Merchant Vessel
-
 Diverse Roles: A Clement Sector Career Catalog, Copyright 2017, Gypsy Knights Games LLC, Author John Watts
 
 Unmerciful Frontier: The CCA Sourcebook, Copyright 2018, Gypsy Knights Games LLC, Author John Watts
@@ -223,8 +207,6 @@ Subsector Sourcebook 4: Sequoyah 2.0, Copyright 2016, Gypsy Knights Games LLC, A
 
 Subsector Sourcebook 5: The Colonies 2.0, Copyright 2016, Gypsy Knights Games LLC Author John Watts
 
-Skull and Crossbones: Piracy in Clement Sector, Copyright 2016, Gypsy Knights Games LLC, Author John Watts
-
 Tree of Life: Altrants in Clement Sector, Copyright 2017, Gypsy Knights Games LLC, Author John Watts
 
 Wondrous Menagerie: Uplifts in Clement Sector, Copyright 2017, Gypsy Knights Games LLC, Author John Watts
@@ -232,8 +214,6 @@ Wondrous Menagerie: Uplifts in Clement Sector, Copyright 2017, Gypsy Knights Gam
 Manhunters: Bounty Hunters in Clement Sector, Copyright 2018, Gypsy Knights Games LLC, Author John Watts
 
 Outlaw: Crime in Clement Sector, Copyright 2019, Gypsy Knights Games LLC, Author John Watts
-
-The Anderson and Felix Guide to Naval Architecture, version3, Copyright 2021, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
 
 Earth Sector (for Clement Sector Third Edition), Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author John Watts
 
@@ -243,21 +223,15 @@ The Dark Lonesome: The Ariel Sector Sourcebook, Copyright 2024, Independence Gam
 
 Freedom-class Merchant Vessel, Copyright 2025, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
 
-Subsector Sourcebook: Cascadia, Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts
-
 Roosevelt-class Intercept Destroyer, Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
 
 Wendy’s Guide to the Fleets of Cascadia Subsector Third Edition, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
 
 Grand Duke of Kyiv-class Destroyer Series, Copyright 2025, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
 
-High Guard System Reference Document Copyright © 2008, Mongoose Publishing. Hercules-class Heavy Freighter
-
 Hercules-class Heavy Freighter, Copyright 2018, Gypsy Knights Games LLC, Author Michael Johnson
 
 The Hub Federation, Copyright 2012, Gypsy Knights Games LLC, Author John Watts
-
-The Clement Sector Copyright 2013, Gypsy Knights Games LLCm, Author John Watts
 
 Hub Federation Ground Forces, Copyright 2014, Gypsy Knights Games LLC, Author Michael Johnson
 
@@ -267,8 +241,6 @@ Hub Federation Ground Forces Second Edition, Copyright 2017, Gypsy Knights Games
 
 Vehicle Design Guide, Copyright 2019, Moan Toad Publishing, Authors Michael Johnson, Ian Stead, and Paul Elliott
 
-The Anderson and Felix Guide to Naval Architecture, version 3, copyright 2021, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
-
 Subsector Sourcebook: Hub Third Edition, Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts
 
 Hub Federation Ground Forces Third Edition, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
@@ -277,13 +249,9 @@ The Hub Federation Navy Sourcebook Copyright 2014, Gypsy Knights Games LLC, Auth
 
 The Hub Federation Navy Sourcebook 2nd Edition Copyright © 2017, Gypsy Knights Games LLC, Author Michael Johnson
 
-Subsector Sourcebook: Hub Third Edition. Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts
-
 Hub Federation Navy Third Edition, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
 
 Open Game License v 1.0 Copyright 2000, Wizards of the Coast, Inc.
-
-Traveller System Reference Document Copyright © 2008, Mongoose Publishing.
 
 Historical Ships of Clement Sector 1: Trent-class Destroyer 2nd Edition Copyright 2016, Gypsy Knights Games LLC
 
@@ -293,11 +261,7 @@ Sword of Cepheus, Copyright 2020, Stellagama Publishing, Authors Omer Golan-Joel
 
 Unmerciful Frontier: The CCA Sourcebook, Copyright 2021, Independence Games (Gypsy Knights Games LLC), Author John Watts
 
-High Guard System Reference Document Copyright © 2008, Mongoose Publishing. Knox-class Frigate
-
 Knox-class Frigate, Copyright 2019, Gypsy Knights Games LLC, Author Michael Johnson
-
-High Guard System Reference Document Copyright © 2008, Mongoose Publishing. Lance-Class Gunboat
 
 Lance-class Gunboat, Copyright 2019, Gypsy Knights Games LLC, Author Michael Johnson
 
@@ -306,8 +270,6 @@ Lion-class Battlecruiser, Copyright 2021, Independence Games (Gypsy Knights Game
 Ships of Clement Sector 10-12: Workhorses, Copyright 2016, Gypsy Knights Games LLC, Author Michael Johnson
 
 Subsector Sourcebook: Sequoyah Third Edition, Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts
-
-Wendy’s Guide to the Fleets of Sequoyah subsector Third Edition, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
 
 Thorpe-class Merchant Vessel, Copyright 2024, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
 
@@ -319,11 +281,7 @@ Milligan-class Hospital Ship, Copyright 2024, Independence Games (Gypsy Knights 
 
 Opportunity-class Light Trader, Copyright 2020, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
 
-High Guard System Reference Document Copyright © 2008, Mongoose Publishing. Pleiades-class Light Freighter
-
 Pleiades-class Light Freighter, Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
-
-High Guard System Reference Document Copyright © 2008, Mongoose Publishing. Roosevelt-class Intercept Destroyer
 
 Ships of Clement Sector 16: Rucker-class Merchant, Copyright 2016, Gypsy Knights Games LLC, Author Michael Johnson
 
@@ -335,8 +293,6 @@ Skull and Crossbones: Piracy in Clement Sector Third Edition, Copyright 2022, In
 
 Ships of Clement Sector 1-3: Hub Federation Warships Copyright 2016 Gypsy Knights Games LLC
 
-Ships of Clement Sector 10-12: Workhorses Copyright 2016 Gypsy Knights Games LLC
-
 Ships of Clement Sector 13: Strikemaster-class Brig Copyright 2016, Gypsy Knights Games LLC
 
 Ships of Clement Sector 14: Boyne-class Replenishment Ship Copyright 2016, Gypsy Knights Games LLC
@@ -346,8 +302,6 @@ Ships of Clement Sector 4-6: Traders, Scouts and Small Craft Copyright 2014, Gyp
 Ships of Clement Sector 7-9: Defense Boats and Light Warships Copyright 2016, Gypsy Knights Games LLC
 
 Trade Empire-class Commercial Transport, Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
-
-Wendy”s Guide to the Fleets of Hub Subsector, Copyright 2016, Gypsy Knights Games LLC, Author Michael Johnson
 
 Type 3 Security Cutter, Copyright 2026, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
 
@@ -367,13 +321,9 @@ The Anderson and Felix Guide to Naval Architecture 2.0, Copyright 2013, Gypsy Kn
 
 Wendy’s Guide to the Fleets of Franklin Subsector, Copyright 2016, Gypsy Knights Games LLC, Author Michael Johnson
 
-Subsector Sourcebook: The Colonies Third Edition. Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts
-
 Subsector Sourcebook: Franklin Third Edition. Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts
 
 Wendy’s Guide to the Fleets of Franklin Subsector Third Edition, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
-
-Subsector Sourcebook: Sequoyah Third Edition. Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts
 
 Wendy’s Guide to the Fleets of Sequoyah Subsector Third Edition, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson
 
