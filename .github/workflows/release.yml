@@ -13,9 +13,6 @@ on:
 permissions:
   contents: read
 
-env:
-  CMAKE_BUILD_PARALLEL_LEVEL: "2"
-
 jobs:
   unix:
     strategy:

@@ -146,18 +146,17 @@ PlayerAccess parse_access_response(
       throw std::runtime_error("expected a player-access response");
    }
    const auto access = response.getPlayerAccess();
-   PlayerAccessState state;
-   switch(access.getState()) {
-      case sysop::PlayerAccessState::ACTIVE:
-         state = PlayerAccessState::Active;
-         break;
-      case sysop::PlayerAccessState::SUSPENDED:
-         state = PlayerAccessState::Suspended;
-         break;
-      case sysop::PlayerAccessState::REMOVED:
-         state = PlayerAccessState::Removed;
-         break;
-   }
+   const auto state = [&access]() -> PlayerAccessState {
+      switch(access.getState()) {
+         case sysop::PlayerAccessState::ACTIVE:
+            return PlayerAccessState::Active;
+         case sysop::PlayerAccessState::SUSPENDED:
+            return PlayerAccessState::Suspended;
+         case sysop::PlayerAccessState::REMOVED:
+            return PlayerAccessState::Removed;
+      }
+      throw std::runtime_error("unknown player-access state");
+   }();
    return PlayerAccess{
       .player_id = access.getPlayerId(),
       .revision = access.getRevision(),

@@ -178,6 +178,9 @@ verifies its pinned SHA-256 digest, and builds it inside the build tree. Set
 cross-builds use host-native `capnp` and `capnpc-c++` programs for schema
 generation while linking against the target libraries.
 
+The pinned Botan build uses all processors detected by CMake. Constrained
+builders may set `-DCT_BOTAN_BUILD_JOBS=N` to an explicit positive job count.
+
 For a standard local installation, omit the final pathname from
 `init-credential`; it creates the parent directory, the shared configuration,
 and `/secure/path/cepheus-trader.credential`. Its output names both files and

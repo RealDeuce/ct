@@ -3,6 +3,22 @@ project(cepheus_trader_client VERSION 0.7.0 LANGUAGES C CXX)
 
 include(CTest)
 include(GNUInstallDirs)
+include(ProcessorCount)
+
+ProcessorCount(CT_DETECTED_BUILD_JOBS)
+if(NOT CT_DETECTED_BUILD_JOBS OR CT_DETECTED_BUILD_JOBS LESS 1)
+  set(CT_DETECTED_BUILD_JOBS 1)
+endif()
+set(
+  CT_BOTAN_BUILD_JOBS
+  "${CT_DETECTED_BUILD_JOBS}"
+  CACHE STRING
+  "Parallel jobs for the pinned Botan build"
+)
+if(NOT CT_BOTAN_BUILD_JOBS MATCHES "^[1-9][0-9]*$")
+  message(FATAL_ERROR "CT_BOTAN_BUILD_JOBS must be a positive integer")
+endif()
+unset(CT_DETECTED_BUILD_JOBS)
 
 find_package(Threads REQUIRED)
 
@@ -85,7 +101,9 @@ else()
       --without-documentation
       --disable-modules=bzip2,lzma,zlib,sqlite3,tpm,pkcs11
     BUILD_COMMAND
-      "${CT_BOTAN_MAKE_EXECUTABLE}" -C <BINARY_DIR> -j1
+      "${CT_BOTAN_MAKE_EXECUTABLE}"
+      -C <BINARY_DIR>
+      "-j${CT_BOTAN_BUILD_JOBS}"
     INSTALL_COMMAND
       "${CT_BOTAN_MAKE_EXECUTABLE}" -C <BINARY_DIR> install
     BUILD_BYPRODUCTS "${CT_BOTAN_INSTALL_DIR}/lib/libbotan-3.a"
