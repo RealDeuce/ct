@@ -88,7 +88,7 @@ pub struct ShipStatusSpec {
     pub fuel_capacity_millitons: u64,
     pub jump_fuel_millitons: u64,
     pub cargo_capacity_millitons: u64,
-    pub passenger_staterooms: u16,
+    pub passenger_berths: u16,
     pub low_berths: u16,
     pub monthly_life_support_credits: u64,
     pub life_support_capacity_persons: u16,
@@ -121,6 +121,10 @@ struct RuntimeShip {
     jump_fuel_millitons: u64,
     cargo_millitons: u64,
     minimum_crew: u16,
+    passenger_accommodation_berths: u16,
+    provision_capacity_persons: u16,
+    low_berths: u16,
+    monthly_life_support_credits: u64,
 }
 
 struct RuntimeComponent {
@@ -460,34 +464,10 @@ pub fn ship_status_spec(catalog_id: u32) -> Option<ShipStatusSpec> {
         let jump_fuel_millitons = runtime.jump_fuel_millitons;
         let fuel_capacity_millitons = runtime.fuel_millitons;
         let cargo_capacity_millitons = runtime.cargo_millitons;
-        let passenger_staterooms = equipment_quantity(source, "stateroom")
-            .saturating_add(equipment_quantity(source, "compact-stateroom"))
-            .saturating_add(equipment_quantity(source, "high-class-stateroom"))
-            .try_into()
-            .unwrap_or(u16::MAX);
-        let low_berths = equipment_quantity(source, "low-berth")
-            .try_into()
-            .unwrap_or(u16::MAX);
-        // CE charges Cr2,000 per installed stateroom per month, occupied
-        // or not. A&F's monthly table adds Cr3,000 for crew berthing and
-        // each barracks allocation, Cr5,000 per high-class room, and
-        // Cr100 per low-berth occupant/capacity.
-        let monthly_life_support_credits = (equipment_quantity(source, "stateroom")
-            + equipment_quantity(source, "compact-stateroom")
-            + equipment_quantity(source, "small-craft-stateroom"))
-        .saturating_mul(2_000)
-        .saturating_add(equipment_quantity(source, "crew-berthing").saturating_mul(3_000))
-        .saturating_add(equipment_quantity(source, "barracks").saturating_mul(3_000))
-        .saturating_add(equipment_quantity(source, "high-class-stateroom").saturating_mul(5_000))
-        .saturating_add(equipment_quantity(source, "low-berth").saturating_mul(100))
-        .saturating_add(equipment_quantity(source, "emergency-low-berth").saturating_mul(400));
-        let life_support_capacity_persons = equipment_quantity(source, "stateroom")
-            .saturating_add(equipment_quantity(source, "compact-stateroom"))
-            .saturating_add(equipment_quantity(source, "high-class-stateroom"))
-            .saturating_add(equipment_quantity(source, "crew-berthing"))
-            .saturating_add(equipment_quantity(source, "barracks"))
-            .try_into()
-            .unwrap_or(u16::MAX);
+        let passenger_berths = runtime.passenger_accommodation_berths;
+        let low_berths = runtime.low_berths;
+        let monthly_life_support_credits = runtime.monthly_life_support_credits;
+        let life_support_capacity_persons = runtime.provision_capacity_persons;
         let hull_configuration = text_value(table_section(source, "[hull]"), "configuration");
         let has_fuel_scoop =
             hull_configuration == "streamlined" || equipment_quantity(source, "fuel-scoop") > 0;
@@ -502,7 +482,7 @@ pub fn ship_status_spec(catalog_id: u32) -> Option<ShipStatusSpec> {
             fuel_capacity_millitons,
             jump_fuel_millitons,
             cargo_capacity_millitons,
-            passenger_staterooms,
+            passenger_berths,
             low_berths,
             monthly_life_support_credits,
             life_support_capacity_persons,
@@ -1810,5 +1790,18 @@ mod tests {
                 assert!(ship_status_spec(offer.ship).unwrap().has_fuel_scoop);
             }
         }
+    }
+
+    #[test]
+    fn runtime_accommodation_uses_people_for_provisions_and_rooms_for_passage() {
+        let trafalgar = ship_status_spec(180).unwrap();
+        assert_eq!(trafalgar.life_support_capacity_persons, 322);
+        assert_eq!(trafalgar.passenger_berths, 12);
+        assert_eq!(trafalgar.monthly_life_support_credits, 171_000);
+
+        let crusoe = ship_status_spec(193).unwrap();
+        assert_eq!(crusoe.life_support_capacity_persons, 24);
+        assert_eq!(crusoe.passenger_berths, 8);
+        assert_eq!(crusoe.low_berths, 12);
     }
 }

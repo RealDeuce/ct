@@ -42,6 +42,32 @@ class ShipDesignTests(unittest.TestCase):
         self.assertEqual(result["crew"], 7)
         self.assertEqual(result["construction_price_credits"], 85_559_000)
 
+    def test_accommodation_capacities_distinguish_people_from_rooms(self) -> None:
+        crusoe = evaluate(
+            self.rules, load_toml(ROOT / "catalog/ships/ship-193.toml")
+        )
+        self.assertEqual(crusoe["crew_accommodation_capacity"], 24)
+        self.assertEqual(crusoe["provision_capacity_persons"], 24)
+        self.assertEqual(crusoe["passenger_accommodation_berths"], 8)
+        self.assertEqual(crusoe["low_berths"], 12)
+        self.assertEqual(crusoe["monthly_life_support_credits"], 25_200)
+
+        rules = compose_shipbuilding_rules(ROOT / "catalog/shipbuilding")
+        trafalgar_design = load_toml(ROOT / "catalog/ships/ship-180.toml")
+        trafalgar_design.pop("assertions", None)
+        trafalgar_design["carried_craft"] = []
+        trafalgar = evaluate(rules, trafalgar_design)
+        self.assertEqual(trafalgar["crew_accommodation_capacity"], 322)
+        self.assertEqual(trafalgar["provision_capacity_persons"], 322)
+        self.assertEqual(trafalgar["passenger_accommodation_berths"], 12)
+        self.assertEqual(trafalgar["monthly_life_support_credits"], 171_000)
+
+    def test_steerage_places_are_commercial_berths_and_provision_places(self) -> None:
+        rules = compose_shipbuilding_rules(ROOT / "catalog/shipbuilding")
+        design = evaluate(rules, load_toml(ROOT / "catalog/ships/ship-39.toml"))
+        self.assertEqual(design["passenger_accommodation_berths"], 17)
+        self.assertEqual(design["provision_capacity_persons"], 23)
+
     def test_unknown_specification_text_cannot_become_a_component(self) -> None:
         design = deepcopy(self.design)
         design["equipment"].append({"id": "maintenance-cost", "quantity": 1})

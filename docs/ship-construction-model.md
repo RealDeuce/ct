@@ -59,6 +59,12 @@ compatibility, Jump Control capacity, computer rating, fuel-scoop constraints,
 mount capacity, and hardpoint limits. Source assertions are redundant checks
 and cannot participate in any calculation.
 
+Accommodation rules separately declare physical provision capacity, crew
+capacity, commercial single-occupancy passenger berths, low berths, and the
+monthly life-support tariff. The evaluator assigns the catalogued crew to
+dedicated berthing before shared rooms and publishes the remaining commercial
+berths in the generated runtime catalog.
+
 The core small-craft hull, drive, performance, cockpit/control-cabin, airlock,
 crew, hardpoint, and energy-weapon rules are also executable. The core launch
 reconstructs to exactly 20 tons and MCr4.797.

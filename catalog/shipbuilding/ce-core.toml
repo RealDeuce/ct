@@ -593,24 +593,34 @@ unit = "room"
 displacement_millitons_per_unit = 4000
 price_credits_per_unit = 500000
 capacity_per_unit = 2
+crew_capacity_per_unit = 2
+passenger_berths_per_unit = 1
+provision_capacity_per_unit = 2
+monthly_life_support_credits_per_unit = 2000
 [[equipment]]
 id = "low-berth"
 unit = "berth"
 displacement_millitons_per_unit = 500
 price_credits_per_unit = 50000
 capacity_per_unit = 1
+low_berths_per_unit = 1
+monthly_life_support_credits_per_unit = 100
 [[equipment]]
 id = "emergency-low-berth"
 unit = "berth"
 displacement_millitons_per_unit = 1000
 price_credits_per_unit = 100000
 capacity_per_unit = 4
+monthly_life_support_credits_per_unit = 400
 [[equipment]]
 id = "barracks"
 unit = "marine"
 displacement_millitons_per_unit = 2000
 price_credits_per_unit = 100000
 capacity_per_unit = 1
+crew_capacity_per_unit = 1
+provision_capacity_per_unit = 1
+monthly_life_support_credits_per_unit = 3000
 [[equipment]]
 id = "armory"
 unit = "installation"

@@ -455,12 +455,17 @@ unit = "passenger"
 displacement_millitons_per_unit = 1000
 price_credits_per_unit = 50000
 capacity_per_unit = 1
+passenger_berths_per_unit = 1
+provision_capacity_per_unit = 1
 [[equipment]]
 id = "high-class-stateroom"
 unit = "room"
 displacement_millitons_per_unit = 8000
 price_credits_per_unit = 1000000
 capacity_per_unit = 4
+passenger_berths_per_unit = 1
+provision_capacity_per_unit = 4
+monthly_life_support_credits_per_unit = 5000
 [[equipment]]
 id = "compact-stateroom"
 unit = "room"
@@ -468,6 +473,9 @@ displacement_millitons_per_unit = 2000
 price_credits_per_unit = 500000
 capacity_per_unit = 2
 crew_capacity_per_unit = 2
+passenger_berths_per_unit = 1
+provision_capacity_per_unit = 2
+monthly_life_support_credits_per_unit = 2000
 [[equipment]]
 id = "crew-berthing"
 unit = "berthing-unit"
@@ -475,6 +483,8 @@ displacement_millitons_per_unit = 6000
 price_credits_per_unit = 500000
 capacity_per_unit = 8
 crew_capacity_per_unit = 8
+provision_capacity_per_unit = 8
+monthly_life_support_credits_per_unit = 3000
 [[equipment]]
 id = "head-toilet"
 unit = "installation"

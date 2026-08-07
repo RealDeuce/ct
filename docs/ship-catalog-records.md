@@ -92,9 +92,11 @@ crew, and any source assertions.
 
 `catalog/ship-runtime.toml` is the checked-in runtime projection of every
 active Jump-capable starship. It contains the evaluator-confirmed price,
-displacement, Jump rating, thrust, fuel, cargo, minimum crew, name, and TL that
-the Rust server needs to instantiate non-starter vessels. It is not a second
-design source and is never edited by hand. Regenerate it only through
+displacement, Jump rating, thrust, fuel, cargo, crew and passenger
+accommodation, physical provision capacity, low berths, monthly life-support
+cost, minimum crew, name, and TL that the Rust server needs to instantiate
+non-starter vessels. It is not a second design source and is never edited by
+hand. Regenerate it only through
 `tools/validate_ship_catalog.py --runtime-index catalog/ship-runtime.toml`;
 the hand-authored bill of materials and construction tables remain
 authoritative. The server build embeds both the projection and the underlying

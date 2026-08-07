@@ -129,7 +129,7 @@ fn generate_ship_source_catalog() {
     generated.push_str("];\n");
     assert_eq!(
         scalar(&runtime_source, "schema_version"),
-        Some(1),
+        Some(2),
         "unsupported ship runtime catalog schema"
     );
     let ship_index =
@@ -153,8 +153,17 @@ fn generate_ship_source_catalog() {
         let jump_fuel = scalar(section, "jump_fuel_millitons").expect("runtime ship jump fuel");
         let cargo = scalar(section, "cargo_millitons").expect("runtime ship cargo");
         let crew = scalar(section, "minimum_crew").expect("runtime ship crew");
+        let _crew_accommodation = scalar(section, "crew_accommodation_capacity")
+            .expect("runtime ship crew accommodation capacity");
+        let passenger_berths = scalar(section, "passenger_accommodation_berths")
+            .expect("runtime ship passenger accommodation berths");
+        let provision_capacity =
+            scalar(section, "provision_capacity_persons").expect("runtime ship provision capacity");
+        let low_berths = scalar(section, "low_berths").expect("runtime ship low berths");
+        let monthly_life_support = scalar(section, "monthly_life_support_credits")
+            .expect("runtime ship monthly life support credits");
         generated.push_str(&format!(
-            "    RuntimeShip {{ catalog_id: {id}, class_name: {name:?}, tech_level: {tl}, price_credits: {price}, displacement_millitons: {displacement}, jump_rating: {jump}, thrust_g: {thrust}, fuel_millitons: {fuel}, jump_fuel_millitons: {jump_fuel}, cargo_millitons: {cargo}, minimum_crew: {crew} }},\n"
+            "    RuntimeShip {{ catalog_id: {id}, class_name: {name:?}, tech_level: {tl}, price_credits: {price}, displacement_millitons: {displacement}, jump_rating: {jump}, thrust_g: {thrust}, fuel_millitons: {fuel}, jump_fuel_millitons: {jump_fuel}, cargo_millitons: {cargo}, minimum_crew: {crew}, passenger_accommodation_berths: {passenger_berths}, provision_capacity_persons: {provision_capacity}, low_berths: {low_berths}, monthly_life_support_credits: {monthly_life_support} }},\n"
         ));
     }
     generated.push_str("];\n");

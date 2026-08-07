@@ -247,16 +247,22 @@ prevents neglect damage; it does not erase combat damage or accumulated age.
 There is no virtual or remote life-support invoice.
 
 Installed provisions are a physical ship store. The initial load is 30
-person-days per installed accommodation place, the installed limit is 180
-person-days per place, and the queued daily system transaction consumes one
-person-day for each represented living crewmember aboard. Departure preview
-reports the required person-days and commitment rejects a shortage. Dockside
-monthly packages use the accommodation costs from *Anderson & Felix*, p.109:
+person-days per physical awake-accommodation place, and the installed limit is
+180 person-days per place. Physical capacity counts both occupants of an
+ordinary or compact stateroom, all fitted crew berths, and every fitted
+high-class or steerage place; low berths use their own life support instead.
+The queued daily system transaction consumes one person-day for each
+represented living crewmember and each awake passenger aboard. Departure
+preview includes both crew and passengers in the required person-days, and
+commitment rejects a shortage. Dockside monthly packages use the accommodation
+costs from *Anderson & Felix*, p.109:
 Cr2,000 per ordinary/compact stateroom, Cr3,000 per crew-berthing or barracks
 allocation, Cr5,000 per high-class stateroom, Cr100 per low berth, and Cr100
-per emergency-berth capacity. Passenger double-occupancy and luxury dining
-supplements wait for actual passenger loading rather than being charged to an
-empty room.
+per emergency-berth capacity. Commercial passage remains single occupancy: an
+available ordinary, compact, or high-class room supplies one saleable passenger
+berth, while steerage supplies its explicit fitted places. Passenger
+double-occupancy and luxury dining supplements wait for actual passenger
+loading rather than being charged to an empty room.
 
 Ammunition is likewise part of the persistent ship record. Initial magazine
 capacity, pack size, and pack price come from normalized catalog components.

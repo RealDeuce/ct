@@ -96,6 +96,8 @@ const META_CLOCK_RATE_GAME_SECONDS: &str = "clock-rate-game-seconds";
 const META_CLOCK_RATE_REAL_SECONDS: &str = "clock-rate-real-seconds";
 const META_STORAGE_FORMAT_VERSION: &str = "storage-format-version";
 pub const STORAGE_FORMAT_VERSION: u64 = 1;
+const META_ACCOMMODATION_CAPACITY_VERSION: &str = "accommodation-capacity-version";
+const ACCOMMODATION_CAPACITY_VERSION: u64 = 1;
 const SHIP_RECORD_CODEC_VERSION: u8 = 1;
 const CNS5_COVERAGE_DISTRIBUTION_VERSION: u16 = 1;
 const CNS5_COVERAGE_SAMPLER_VERSION: u16 = 1;
@@ -656,6 +658,14 @@ pub struct PassengerManifestRecord {
     pub origin_system_id: u64,
     pub destination_system_id: u64,
     pub embarked_second: u64,
+}
+
+fn awake_passenger_count(passengers: &[PassengerManifestRecord]) -> u64 {
+    passengers
+        .iter()
+        .filter(|manifest| manifest.passenger_class != crate::wire::PassengerClass::Low)
+        .map(|manifest| u64::from(manifest.passenger_count))
+        .sum()
 }
 
 fn effective_fuel_capacity(ship: &ShipRecord, spec: &creation::ShipStatusSpec) -> u64 {
@@ -2372,12 +2382,64 @@ fn new_ship_provisions(
     spec: &creation::ShipStatusSpec,
     current_game_second: u64,
 ) -> ShipProvisionRecord {
-    let persons = u64::from(spec.life_support_capacity_persons.max(1));
+    let persons = u64::from(spec.life_support_capacity_persons);
     ShipProvisionRecord {
         person_days_remaining: persons.saturating_mul(30),
         installed_capacity_person_days: persons.saturating_mul(180),
         last_consumed_second: current_game_second,
     }
+}
+
+fn reconcile_accommodation_capacity_in(
+    ships: UniverseDatabase,
+    meta: Database<Str, Bytes>,
+    txn: &mut heed::RwTxn<'_>,
+) -> Result<(), StoreError> {
+    let actual = get_meta_u64(meta, txn, META_ACCOMMODATION_CAPACITY_VERSION)?.unwrap_or(0);
+    if actual == ACCOMMODATION_CAPACITY_VERSION {
+        return Ok(());
+    }
+    if actual > ACCOMMODATION_CAPACITY_VERSION {
+        return Err(StoreError::Corrupt(
+            "unsupported accommodation capacity version",
+        ));
+    }
+    let records = ships
+        .iter(txn)?
+        .map(|entry| {
+            let (_, bytes) = entry?;
+            decode_ship_record(bytes)
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    for mut ship in records {
+        let spec = creation::ship_status_spec(ship.catalog_id)
+            .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
+        let corrected_persons = u64::from(spec.life_support_capacity_persons);
+        let corrected_initial = corrected_persons.saturating_mul(30);
+        let corrected_limit = corrected_persons.saturating_mul(180);
+        let prior_initial_equivalent = ship.provisions.installed_capacity_person_days / 6;
+        let credit = corrected_initial.saturating_sub(prior_initial_equivalent);
+        let corrected_remaining = ship
+            .provisions
+            .person_days_remaining
+            .saturating_add(credit)
+            .min(corrected_limit);
+        if ship.provisions.person_days_remaining != corrected_remaining
+            || ship.provisions.installed_capacity_person_days != corrected_limit
+        {
+            ship.provisions.person_days_remaining = corrected_remaining;
+            ship.provisions.installed_capacity_person_days = corrected_limit;
+            ship.revision = ship.revision.saturating_add(1);
+            ships.put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+        }
+    }
+    put_meta_u64(
+        meta,
+        txn,
+        META_ACCOMMODATION_CAPACITY_VERSION,
+        ACCOMMODATION_CAPACITY_VERSION,
+    )?;
+    Ok(())
 }
 
 fn new_ship_maintenance(
@@ -2656,6 +2718,7 @@ impl Store {
             META_STORAGE_FORMAT_VERSION,
             STORAGE_FORMAT_VERSION,
         )?;
+        reconcile_accommodation_capacity_in(ships, meta, &mut txn)?;
         txn.commit()?;
         Ok(Self {
             env,
@@ -4898,25 +4961,6 @@ impl Store {
         if ship.mail_custody.is_some() && proposal.steps != current.steps {
             warnings.push(FlightPlanWarning { code: "SEALED_MAIL_CUSTODY".into(), message: "The sealed mailbag remains in custody and must be delivered on its committed hop.".into() });
         }
-        let crew_count = self
-            .crew_services
-            .iter(txn)?
-            .map(|entry| {
-                let (_, bytes) = entry?;
-                decode_crew_service(bytes)
-            })
-            .collect::<Result<Vec<_>, StoreError>>()?
-            .into_iter()
-            .filter(|service| service.ship_id == ship.ship_id)
-            .map(|service| u64::from(service.represented_positions.max(1)))
-            .sum::<u64>();
-        let voyage_days = elapsed_seconds
-            .div_ceil(crate::simulation::SECONDS_PER_DAY)
-            .max(1);
-        let required_person_days = crew_count.saturating_mul(voyage_days);
-        if ship.provisions.person_days_remaining < required_person_days {
-            warnings.push(FlightPlanWarning { code: "INSUFFICIENT_PROVISIONS".into(), message: format!("The filed voyage requires {required_person_days} person-days of life-support stores; {} remain aboard.", ship.provisions.person_days_remaining) });
-        }
         for (kind, name) in [
             (ShipSubsystemKind::LifeSupport, "life support"),
             (ShipSubsystemKind::PowerPlant, "power plant"),
@@ -5046,6 +5090,51 @@ impl Store {
                     });
                 }
             }
+        }
+        let mut crew_count = 0_u64;
+        for service in self
+            .crew_services
+            .iter(txn)?
+            .map(|entry| {
+                let (_, bytes) = entry?;
+                decode_crew_service(bytes)
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?
+            .into_iter()
+            .filter(|service| {
+                service.ship_id == ship.ship_id
+                    && service_active(service)
+                    && service.availability == CrewAvailability::Active
+            })
+        {
+            let person = self
+                .persons
+                .get(txn, &service.person_id)?
+                .map(decode_person_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("provisioned crewmember is missing"))?;
+            if !person_dead(&person) {
+                crew_count =
+                    crew_count.saturating_add(u64::from(service.represented_positions.max(1)));
+            }
+        }
+        let selected_passengers = carriage_offers
+            .iter()
+            .filter(|offer| {
+                offer.kind == crate::wire::TaskKind::Passenger
+                    && offer.passenger_class != crate::wire::PassengerClass::Low
+            })
+            .map(|offer| u64::from(offer.passenger_count))
+            .sum::<u64>();
+        let persons_aboard = crew_count
+            .saturating_add(awake_passenger_count(&ship.passengers))
+            .saturating_add(selected_passengers);
+        let voyage_days = elapsed_seconds
+            .div_ceil(crate::simulation::SECONDS_PER_DAY)
+            .max(1);
+        let required_person_days = persons_aboard.saturating_mul(voyage_days);
+        if ship.provisions.person_days_remaining < required_person_days {
+            warnings.push(FlightPlanWarning { code: "INSUFFICIENT_PROVISIONS".into(), message: format!("The filed voyage requires {required_person_days} person-days of life-support stores; {} remain aboard.", ship.provisions.person_days_remaining) });
         }
         let preview_hash = flight_plan_preview_hash(proposal, &carriage_offers)?;
         Ok(RuleResult::Applied(FlightPlanPreview {
@@ -6460,7 +6549,7 @@ impl Store {
                         if stored.task.offer.passenger_class == crate::wire::PassengerClass::Low {
                             spec.low_berths
                         } else {
-                            spec.passenger_staterooms
+                            spec.passenger_berths
                         };
                     if !already_embarked
                         && capacity.saturating_sub(occupied) >= stored.task.offer.passenger_count
@@ -12295,7 +12384,7 @@ impl Store {
                 | crate::wire::TaskKind::Charter
                 | crate::wire::TaskKind::Courier
         ) && spec
-            .passenger_staterooms
+            .passenger_berths
             .saturating_sub(ship_reserved_passengers)
             < offer.passenger_count
         {
@@ -12457,7 +12546,7 @@ impl Store {
             .high_berths
             .saturating_add(value.middle_berths)
             .saturating_add(value.steerage_berths);
-        if occupied_staterooms > spec.passenger_staterooms || value.low_berths > spec.low_berths {
+        if occupied_staterooms > spec.passenger_berths || value.low_berths > spec.low_berths {
             return Ok(RuleResult::Rejected(
                 "declared passenger capacity exceeds fitted accommodations".into(),
             ));
@@ -20500,6 +20589,7 @@ impl Store {
                         required.saturating_add(u64::from(service.represented_positions.max(1)));
                 }
             }
+            required = required.saturating_add(awake_passenger_count(&ship.passengers));
             ship.provisions.person_days_remaining = ship
                 .provisions
                 .person_days_remaining
@@ -31878,7 +31968,7 @@ mod tests {
             fuel_capacity_millitons: 22_000,
             jump_fuel_millitons: 20_000,
             cargo_capacity_millitons: 10_000,
-            passenger_staterooms: 0,
+            passenger_berths: 0,
             low_berths: 0,
             monthly_life_support_credits: 0,
             life_support_capacity_persons: 0,
@@ -31958,7 +32048,7 @@ mod tests {
             fuel_capacity_millitons: 66_000,
             jump_fuel_millitons: 60_000,
             cargo_capacity_millitons: 131_500,
-            passenger_staterooms: 6,
+            passenger_berths: 6,
             low_berths: 0,
             monthly_life_support_credits: 0,
             life_support_capacity_persons: 6,
@@ -33067,6 +33157,58 @@ mod tests {
                 .unwrap(),
             RuleResult::Applied(_)
         ));
+        txn.commit().unwrap();
+        let preview_with_passenger = match store
+            .preview_flight_plan_in(&store.env.read_txn().unwrap(), &identity(), &proposal)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("preview rejected unexpectedly: {message}"),
+        };
+        let voyage_days = preview_with_passenger
+            .elapsed_seconds
+            .div_ceil(crate::simulation::SECONDS_PER_DAY)
+            .max(1);
+        let crew_count = store
+            .crew_services(current_ship.ship_id)
+            .unwrap()
+            .into_iter()
+            .map(|service| u64::from(service.represented_positions.max(1)))
+            .sum::<u64>();
+        let mut constrained_ship = store.ship_record(current_ship.ship_id).unwrap().unwrap();
+        let original_provisions = constrained_ship.provisions.clone();
+        constrained_ship.provisions.person_days_remaining = crew_count * voyage_days;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(
+                &mut txn,
+                &constrained_ship.ship_id,
+                &encode_ship_record(&constrained_ship).unwrap(),
+            )
+            .unwrap();
+        let constrained_preview = match store
+            .preview_flight_plan_in(&txn, &identity(), &proposal)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("preview rejected unexpectedly: {message}"),
+        };
+        assert!(
+            constrained_preview
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "INSUFFICIENT_PROVISIONS")
+        );
+        constrained_ship.provisions = original_provisions;
+        store
+            .ships
+            .put(
+                &mut txn,
+                &constrained_ship.ship_id,
+                &encode_ship_record(&constrained_ship).unwrap(),
+            )
+            .unwrap();
         txn.commit().unwrap();
         store
             .enqueue(&QueuedCommand {
@@ -36943,7 +37085,25 @@ mod tests {
         let store = Store::open(dir.path()).unwrap();
         initialize_player_fixture(&store);
         let player = store.player_record(&identity()).unwrap().unwrap();
-        let before = store.ship_record(player.ship_id).unwrap().unwrap();
+        let mut before = store.ship_record(player.ship_id).unwrap().unwrap();
+        before.passengers.extend([
+            PassengerManifestRecord {
+                task_id: 91_500,
+                passenger_count: 2,
+                passenger_class: crate::wire::PassengerClass::Middle,
+                origin_system_id: before.system_id,
+                destination_system_id: before.system_id + 1,
+                embarked_second: 0,
+            },
+            PassengerManifestRecord {
+                task_id: 91_501,
+                passenger_count: 3,
+                passenger_class: crate::wire::PassengerClass::Low,
+                origin_system_id: before.system_id,
+                destination_system_id: before.system_id + 1,
+                embarked_second: 0,
+            },
+        ]);
         let required = store
             .crew_services(player.ship_id)
             .unwrap()
@@ -36952,6 +37112,14 @@ mod tests {
             .sum::<u64>();
         let due = crate::simulation::SECONDS_PER_DAY;
         let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(
+                &mut txn,
+                &before.ship_id,
+                &encode_ship_record(&before).unwrap(),
+            )
+            .unwrap();
         store
             .process_person_recovery_day_in(&mut txn, before.system_id, due)
             .unwrap();
@@ -36962,9 +37130,64 @@ mod tests {
             before
                 .provisions
                 .person_days_remaining
-                .saturating_sub(required)
+                .saturating_sub(required + 2)
         );
         assert_eq!(after.provisions.last_consumed_second, due);
+    }
+
+    #[test]
+    fn store_open_reconciles_legacy_provision_capacity_exactly_once() {
+        let dir = TempDir::new().unwrap();
+        let (ship_id, corrected_persons, prior_remaining, prior_revision) = {
+            let store = Store::open(dir.path()).unwrap();
+            initialize_player_fixture(&store);
+            let player = store.player_record(&identity()).unwrap().unwrap();
+            let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+            let corrected_persons = u64::from(
+                creation::ship_status_spec(ship.catalog_id)
+                    .unwrap()
+                    .life_support_capacity_persons,
+            );
+            let legacy_persons = corrected_persons - 1;
+            let prior_remaining = legacy_persons * 30 - 7;
+            ship.provisions.person_days_remaining = prior_remaining;
+            ship.provisions.installed_capacity_person_days = legacy_persons * 180;
+            let prior_revision = ship.revision;
+            let mut txn = store.env.write_txn().unwrap();
+            store
+                .ships
+                .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+                .unwrap();
+            store
+                .meta
+                .delete(&mut txn, META_ACCOMMODATION_CAPACITY_VERSION)
+                .unwrap();
+            txn.commit().unwrap();
+            (
+                ship.ship_id,
+                corrected_persons,
+                prior_remaining,
+                prior_revision,
+            )
+        };
+
+        let store = Store::open(dir.path()).unwrap();
+        let reconciled = store.ship_record(ship_id).unwrap().unwrap();
+        assert_eq!(
+            reconciled.provisions.person_days_remaining,
+            prior_remaining + 30
+        );
+        assert_eq!(
+            reconciled.provisions.installed_capacity_person_days,
+            corrected_persons * 180
+        );
+        assert_eq!(reconciled.revision, prior_revision + 1);
+        drop(store);
+
+        let reopened = Store::open(dir.path()).unwrap();
+        let unchanged = reopened.ship_record(ship_id).unwrap().unwrap();
+        assert_eq!(unchanged.provisions, reconciled.provisions);
+        assert_eq!(unchanged.revision, reconciled.revision);
     }
 
     #[test]

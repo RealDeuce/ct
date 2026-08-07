@@ -1061,6 +1061,12 @@ def evaluate(
 
     installed_equipment: dict[str, int] = {}
     crew_accommodation_capacity = 0
+    dedicated_crew_accommodation_capacity = 0
+    passenger_accommodation_berths = 0
+    shared_accommodations: list[tuple[int, int, int, str]] = []
+    provision_capacity_persons = 0
+    low_berths = 0
+    monthly_life_support_credits = 0
     hangar_capacity_millitons = 0
     for position, choice in enumerate(
         _records(design.get("equipment"), "design.equipment"), 1
@@ -1113,15 +1119,53 @@ def evaluate(
         totals.add(volume, price)
         crew_capacity_per_unit = equipment.get("crew_capacity_per_unit")
         if crew_capacity_per_unit is not None:
-            crew_accommodation_capacity += quantity * _integer(
+            crew_capacity = _integer(
                 crew_capacity_per_unit,
                 f"rules.equipment.{equipment_id}.crew_capacity_per_unit",
                 1,
             )
-        elif equipment_id == "stateroom":
-            crew_accommodation_capacity += quantity * 2
-        elif equipment_id == "barracks":
-            crew_accommodation_capacity += quantity
+            crew_accommodation_capacity += quantity * crew_capacity
+        else:
+            crew_capacity = 0
+        passenger_berths_per_unit = equipment.get("passenger_berths_per_unit")
+        if passenger_berths_per_unit is not None:
+            passenger_berths = _integer(
+                passenger_berths_per_unit,
+                f"rules.equipment.{equipment_id}.passenger_berths_per_unit",
+                1,
+            )
+            if crew_capacity:
+                shared_accommodations.append(
+                    (crew_capacity, passenger_berths, quantity, equipment_id)
+                )
+            else:
+                passenger_accommodation_berths += quantity * passenger_berths
+        elif crew_capacity:
+            dedicated_crew_accommodation_capacity += quantity * crew_capacity
+        provision_capacity_per_unit = equipment.get("provision_capacity_per_unit")
+        if provision_capacity_per_unit is not None:
+            provision_capacity_persons += quantity * _integer(
+                provision_capacity_per_unit,
+                f"rules.equipment.{equipment_id}.provision_capacity_per_unit",
+                1,
+            )
+        low_berths_per_unit = equipment.get("low_berths_per_unit")
+        if low_berths_per_unit is not None:
+            low_berths += quantity * _integer(
+                low_berths_per_unit,
+                f"rules.equipment.{equipment_id}.low_berths_per_unit",
+                1,
+            )
+        monthly_life_support_per_unit = equipment.get(
+            "monthly_life_support_credits_per_unit"
+        )
+        if monthly_life_support_per_unit is not None:
+            monthly_life_support_credits += quantity * _integer(
+                monthly_life_support_per_unit,
+                "rules.equipment."
+                f"{equipment_id}.monthly_life_support_credits_per_unit",
+                1,
+            )
         craft_capacity_per_unit = equipment.get(
             "craft_capacity_millitons_per_unit"
         )
@@ -1980,6 +2024,26 @@ def evaluate(
             f"{crew_total} crew exceed accommodation capacity of "
             f"{crew_accommodation_capacity}"
         )
+    crew_needing_shared_accommodation = max(
+        0, crew_total - dedicated_crew_accommodation_capacity
+    )
+    for crew_capacity, passenger_berths, quantity, _equipment_id in sorted(
+        shared_accommodations, key=lambda item: (-item[0], item[3])
+    ):
+        occupied_units = min(
+            quantity,
+            (crew_needing_shared_accommodation + crew_capacity - 1)
+            // crew_capacity,
+        )
+        crew_needing_shared_accommodation = max(
+            0,
+            crew_needing_shared_accommodation - occupied_units * crew_capacity,
+        )
+        passenger_accommodation_berths += (
+            quantity - occupied_units
+        ) * passenger_berths
+    if crew_needing_shared_accommodation:
+        raise DesignError("crew accommodation allocation did not converge")
 
     cargo = _integer(design.get("cargo_millitons", 0), "design.cargo_millitons")
     totals.add(cargo, 0)
@@ -2122,6 +2186,11 @@ def evaluate(
         "fire_control_millitons": fire_control_volume,
         "minimum_crew": minimum_crew,
         "crew": crew_total,
+        "crew_accommodation_capacity": crew_accommodation_capacity,
+        "passenger_accommodation_berths": passenger_accommodation_berths,
+        "provision_capacity_persons": provision_capacity_persons,
+        "low_berths": low_berths,
+        "monthly_life_support_credits": monthly_life_support_credits,
         "carried_craft_count": carried_craft_count,
         "carried_craft_displacement_millitons": carried_craft_displacement,
         "carried_craft_price_credits": carried_craft_price,

@@ -746,6 +746,10 @@ def validate(
                 f"{path}: vessel_kind is {vessel_kind!r}, expected "
                 f"{expected_kind!r}"
             )
+        if vessel_kind == "starship" and result["provision_capacity_persons"] == 0:
+            raise CatalogValidationError(
+                f"{path}: active starship has no provisioned accommodation"
+            )
         expected_progression_stage = _expected_progression_stage(
             vessel_kind,
             result["hull_millitons"],
@@ -852,7 +856,7 @@ def validate(
         lines = [
             "# Validated runtime projection of the authoritative ship designs.",
             "# Regenerate with tools/validate_ship_catalog.py --runtime-index catalog/ship-runtime.toml.",
-            "schema_version = 1",
+            "schema_version = 2",
             f"catalog_revision = {index['catalog_revision']}",
             "",
         ]
@@ -872,6 +876,11 @@ def validate(
                     f"jump_fuel_millitons = {result['jump_fuel_millitons']}",
                     f"cargo_millitons = {design.get('cargo_millitons', 0)}",
                     f"minimum_crew = {result['minimum_crew']}",
+                    f"crew_accommodation_capacity = {result['crew_accommodation_capacity']}",
+                    f"passenger_accommodation_berths = {result['passenger_accommodation_berths']}",
+                    f"provision_capacity_persons = {result['provision_capacity_persons']}",
+                    f"low_berths = {result['low_berths']}",
+                    f"monthly_life_support_credits = {result['monthly_life_support_credits']}",
                     "",
                 ]
             )

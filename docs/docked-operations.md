@@ -101,8 +101,9 @@ unrefined. Gas skimming adds drive/fuel-system duty and a skimming cycle and
 voids the standard warranty.
 
 Installed life-support provisions and catalogued ammunition are physical
-quantities in the ship record. Provisions are bought in accommodation-based
-monthly packages and consumed by queued daily work. Ammunition is bought only
+quantities in the ship record. Provisions are bought in physical
+awake-accommodation-based monthly packages and consumed by living crew and
+awake passengers through queued daily work. Ammunition is bought only
 in the fitted component's pack size, cannot exceed magazine capacity, is
 consumed by combat, and is never regenerated merely by materializing another
 encounter.

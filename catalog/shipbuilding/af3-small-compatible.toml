@@ -64,6 +64,9 @@ unit = "room"
 displacement_millitons_per_unit = 2000
 price_credits_per_unit = 250000
 capacity_per_unit = 2
+passenger_berths_per_unit = 1
+provision_capacity_per_unit = 2
+monthly_life_support_credits_per_unit = 2000
 
 [[equipment]]
 id = "small-craft-fuel-processor"
