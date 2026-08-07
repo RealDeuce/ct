@@ -186,7 +186,8 @@ verifies its pinned SHA-256 digest, and builds it inside the build tree. Set
 cross-builds use host-native `capnp` and `capnpc-c++` programs for schema
 generation while linking against the target libraries.
 
-The pinned Botan build uses all processors detected by CMake. Constrained
+With a Makefile generator, the pinned Botan build inherits the parent GNU Make
+jobserver. Other generators use all processors detected by CMake; constrained
 builders may set `-DCT_BOTAN_BUILD_JOBS=N` to an explicit positive job count.
 Build automation can supply completed pinned dependency installations with
 `CT_BOTAN_ROOT`, `CT_CAPNPROTO_ROOT`, and `CT_OPENDOORS_ROOT`. These prefixes

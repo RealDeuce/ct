@@ -17,6 +17,24 @@ endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 find_program(CT_MAKE_EXECUTABLE NAMES gmake make REQUIRED)
 
+if(CMAKE_GENERATOR MATCHES "Makefiles")
+  set(CT_BOTAN_BUILD_COMMAND $(MAKE) -C <BINARY_DIR>)
+  set(CT_BOTAN_INSTALL_COMMAND $(MAKE) -C <BINARY_DIR> install)
+else()
+  set(
+    CT_BOTAN_BUILD_COMMAND
+    "${CT_MAKE_EXECUTABLE}"
+    -C <BINARY_DIR>
+    "-j${CT_BUILD_JOBS}"
+  )
+  set(
+    CT_BOTAN_INSTALL_COMMAND
+    "${CT_MAKE_EXECUTABLE}"
+    -C <BINARY_DIR>
+    install
+  )
+endif()
+
 set(CT_BOTAN_PLATFORM_ARGUMENTS)
 if(WIN32)
   execute_process(
@@ -54,8 +72,7 @@ ExternalProject_Add(
     --enable-modules=tls13,auto_rng,system_rng,sha2_32,hex,x25519
     --without-documentation
     --disable-modules=bzip2,lzma,zlib,sqlite3,tpm,pkcs11
-  BUILD_COMMAND
-    "${CT_MAKE_EXECUTABLE}" -C <BINARY_DIR> "-j${CT_BUILD_JOBS}"
-  INSTALL_COMMAND "${CT_MAKE_EXECUTABLE}" -C <BINARY_DIR> install
+  BUILD_COMMAND ${CT_BOTAN_BUILD_COMMAND}
+  INSTALL_COMMAND ${CT_BOTAN_INSTALL_COMMAND}
   BUILD_BYPRODUCTS "${CT_INSTALL_PREFIX}/lib/libbotan-3.a"
 )

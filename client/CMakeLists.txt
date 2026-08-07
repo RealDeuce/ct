@@ -86,6 +86,23 @@ else()
     NAMES gmake make mingw32-make
     REQUIRED
   )
+  if(CMAKE_GENERATOR MATCHES "Makefiles")
+    set(CT_BOTAN_BUILD_COMMAND $(MAKE) -C <BINARY_DIR>)
+    set(CT_BOTAN_INSTALL_COMMAND $(MAKE) -C <BINARY_DIR> install)
+  else()
+    set(
+      CT_BOTAN_BUILD_COMMAND
+      "${CT_BOTAN_MAKE_EXECUTABLE}"
+      -C <BINARY_DIR>
+      "-j${CT_BOTAN_BUILD_JOBS}"
+    )
+    set(
+      CT_BOTAN_INSTALL_COMMAND
+      "${CT_BOTAN_MAKE_EXECUTABLE}"
+      -C <BINARY_DIR>
+      install
+    )
+  endif()
   set(CT_BOTAN_INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/botan-install")
   set(CT_BOTAN_CROSS_ARGUMENTS)
   if(CMAKE_CROSSCOMPILING AND WIN32)
@@ -125,18 +142,16 @@ else()
       --enable-modules=tls13,auto_rng,system_rng,sha2_32,hex,x25519
       --without-documentation
       --disable-modules=bzip2,lzma,zlib,sqlite3,tpm,pkcs11
-    BUILD_COMMAND
-      "${CT_BOTAN_MAKE_EXECUTABLE}"
-      -C <BINARY_DIR>
-      "-j${CT_BOTAN_BUILD_JOBS}"
-    INSTALL_COMMAND
-      "${CT_BOTAN_MAKE_EXECUTABLE}" -C <BINARY_DIR> install
+    BUILD_COMMAND ${CT_BOTAN_BUILD_COMMAND}
+    INSTALL_COMMAND ${CT_BOTAN_INSTALL_COMMAND}
     BUILD_BYPRODUCTS "${CT_BOTAN_INSTALL_DIR}/lib/libbotan-3.a"
   )
   add_dependencies(ct-botan ct-botan-project)
   target_link_libraries(ct-botan INTERFACE Threads::Threads ${CMAKE_DL_LIBS})
   set(CT_BOTAN_TARGET ct-botan)
   message(STATUS "Building pinned Botan ${CT_BOTAN_VERSION}")
+  unset(CT_BOTAN_BUILD_COMMAND)
+  unset(CT_BOTAN_INSTALL_COMMAND)
 endif()
 
 if(WIN32 AND BOTAN_FOUND)
