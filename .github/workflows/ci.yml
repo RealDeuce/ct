@@ -445,9 +445,11 @@ jobs:
           - platform: windows-x86_64
             msystem: MINGW64
             package_prefix: mingw-w64-x86_64
+            package_architecture: x86_64
           - platform: windows-x86
             msystem: MINGW32
             package_prefix: mingw-w64-i686
+            package_architecture: x86
     runs-on: windows-2025
     defaults:
       run:
@@ -523,6 +525,7 @@ jobs:
             -DCT_BOTAN_ROOT="$PWD/build/dependency-cache/botan" \
             -DCT_CAPNPROTO_ROOT="$PWD/build/dependency-cache/capnproto" \
             -DCT_OPENDOORS_ROOT="$PWD/build/dependency-cache/opendoors" \
+            -DCT_PACKAGE_ARCHITECTURE=${{ matrix.package_architecture }} \
             -DCT_PORTABLE_CLIENT=ON \
             -DCT_SOURCE_RELEASE_URL="$SOURCE_URL"
           cmake --build build/package --target \
@@ -562,6 +565,7 @@ jobs:
       - name: Create GitHub release and upload client artifacts
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
