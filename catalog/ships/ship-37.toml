@@ -1,0 +1,172 @@
+# Rule-derived conversion of source-inventory ship-37. The TL12 configuration
+# is used because the later variant depends on the excluded one-year power
+# cells. The source component rows exceed the hull by half a ton; this
+# corrected build reduces cargo accordingly and prices the point-defense node.
+
+schema_version = 1
+design_id = "ct-source-ship-37"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-bcpy",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 12
+standard_design = false
+electronics = "basic-civilian"
+bridge_options = ["holographic-controls"]
+cargo_millitons = 500
+
+[catalog]
+catalog_id = 37
+tag = "ship-37"
+family_id = 37
+upgrade_path_id = 1
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Scheherazade"
+primary_role = "personal-yacht"
+secondary_roles = ["executive-transport", "courier"]
+mission_tags = ["high-passengers", "jump-2", "atmospheric", "point-defense"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This compact personal yacht carries four high-class passengers in two suites while retaining private crew accommodation, recreation space, a galley, and an autodoc. A streamlined hull, two-parsec jump radius, and four-gravity acceleration support direct executive travel between surface ports.",
+  "A double beam-laser turret and independent point-defense laser provide meaningful protection for a hundred-ton vessel, but the small hold limits commercial usefulness. The design is best suited to wealthy owners, diplomatic travel, and sensitive charters where comfort, speed, and self-protection matter more than freight revenue.",
+]
+
+[hull]
+id = "ship-100"
+configuration = "streamlined"
+
+[armor]
+id = "crystaliron"
+layers = 1
+
+[drives]
+jump = "A"
+maneuver = "B"
+power = "B"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+
+[computer]
+id = "model-3"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "evade"
+level = 1
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[software]]
+id = "intellect"
+
+[[software]]
+id = "internal-security-2"
+
+[[software]]
+id = "point-defense-1"
+
+[[equipment]]
+id = "stateroom"
+quantity = 4
+
+[[equipment]]
+id = "high-class-stateroom"
+quantity = 2
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 10
+
+[[equipment]]
+id = "galley-space"
+quantity = 8
+
+[[equipment]]
+id = "autodoc"
+quantity = 1
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "beam-laser"]
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 1
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "steward"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+
+[[crew]]
+role = "other"
+quantity = 1
+
+[assertions]
+hull_millitons = 100000
+accounted_displacement_millitons = 100000
+hull_points = 2
+structure_points = 2
+armor_points = 4
+jump_rating = 2
+thrust_g = 4
+fuel_millitons = 24000
+jump_fuel_millitons = 20000
+power_fuel_millitons = 4000
+hardpoints = 1
+hardpoints_used = 1
+point_defense_nodes = 1
+fire_control_millitons = 1000
+minimum_crew = 4
+crew = 6
+carried_craft_count = 0
+carried_craft_price_credits = 0
+hangar_capacity_millitons = 0
+docking_capacity_millitons = 0
+construction_weeks = 36
+pre_discount_price_credits = 66175000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 66175000

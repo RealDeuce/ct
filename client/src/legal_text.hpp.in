@@ -1,0 +1,10 @@
+#pragma once
+
+#include <string_view>
+
+namespace ct {
+
+inline constexpr std::string_view OPEN_GAME_LICENSE_TEXT =
+   R"CTOGL(@CT_OGL_TEXT@)CTOGL";
+
+}  // namespace ct

@@ -1,0 +1,133 @@
+# Corrected rule-derived 400-ton system-defense boat. The Chapter 9 block
+# is two tons over hull; this version reduces cargo from 109 tons to 107 tons.
+
+schema_version = 1
+design_id = "ct-corrected-system-defense-boat"
+revision = 1
+ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "cepheus-trader-2026"]
+tech_level = 9
+standard_design = true
+electronics = "basic-civilian"
+cargo_millitons = 107000
+
+[catalog]
+catalog_id = 205
+tag = "ship-205"
+family_id = 205
+upgrade_path_id = 8
+progression_stage = "starter"
+status = "active"
+vessel_kind = "ship"
+display_name = "Casemate"
+primary_role = "system-defense"
+secondary_roles = ["interception", "boarding"]
+mission_tags = ["naval", "local-patrol", "missile-combat", "marines"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This heavily armored system-defense boat uses six-gravity acceleration, missile fire, and a marine detachment to guard ports, fuel sources, and approach lanes. A streamlined hull permits surface operations and direct collection of unrefined fuel.",
+  "Without a jump drive it must be deployed locally or transported by another vessel. Its large residual hold supports patrol stores, rescue work, or captured cargo, but no amount of payload compensates for its inability to pursue a target into another system.",
+]
+
+[hull]
+id = "ship-400"
+configuration = "streamlined"
+
+[armor]
+id = "titanium-steel"
+layers = 4
+
+[drives]
+maneuver = "M"
+power = "M"
+
+[fuel]
+jump_distance = 0
+jump_count = 0
+power_plant_weeks = 4
+
+[computer]
+id = "model-2"
+options = ["fib"]
+
+[[equipment]]
+id = "stateroom"
+quantity = 10
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 5
+
+[[equipment]]
+id = "armory"
+quantity = 1
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 3
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "missile-rack"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "missile-rack"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[ammunition]]
+id = "smart-missile"
+quantity = 360
+
+[[crew]]
+role = "command"
+quantity = 1
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 2
+
+[[crew]]
+role = "turret-gunner"
+quantity = 4
+
+[[crew]]
+role = "marine"
+quantity = 10
+
+[assertions]
+hull_millitons = 400000
+accounted_displacement_millitons = 400000
+hull_points = 8
+structure_points = 8
+armor_points = 8
+jump_rating = 0
+thrust_g = 6
+fuel_millitons = 48000
+jump_fuel_millitons = 0
+power_fuel_millitons = 48000
+hardpoints = 4
+hardpoints_used = 4
+fire_control_millitons = 4000
+minimum_crew = 7
+crew = 19
+carried_craft_count = 0
+carried_craft_price_credits = 0
+construction_weeks = 60

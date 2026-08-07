@@ -1,0 +1,123 @@
+# Rule-derived reconstruction of the corresponding source catalog design. Source
+# specification values are normalized through the active CE construction rules.
+
+schema_version = 1
+design_id = "ct-source-ship-168"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-rucker", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+bridge_options = ["holographic-controls"]
+unused_fire_control_stations = 0
+cargo_millitons = 63600
+thrust_g = 3
+
+[catalog]
+catalog_id = 168
+tag = "ship-168"
+family_id = 54
+upgrade_path_id = 2
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Robur"
+primary_role = "fast-armed-trader"
+secondary_roles = ["passenger", "speculative-trade"]
+mission_tags = ["jump-2", "thrust-3", "point-defense", "merchant"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This later armed trader improves the commercial hull to three-gravity thrust, holographic controls, repair drones, a bis computer, three fitted turrets, and laser point defense. It still carries six passengers, low berths, and a substantial speculative cargo load.",
+  "The additional protection and acceleration improve survival on dangerous routes without changing the two-parsec jump radius. Higher purchase and maintenance costs demand valuable cargoes, but the ship is far less dependent on escorts than the earlier merchant variants.",
+]
+
+[hull]
+id = "ship-300"
+configuration = "streamlined"
+[armor]
+id = "crystaliron"
+layers = 1
+[drives]
+jump = "C"
+maneuver = "E"
+power = "E"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "model-3"
+options = ["bis"]
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 1
+[[software]]
+id = "intellect"
+[[software]]
+id = "point-defense-2"
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 4
+[[equipment]]
+id = "stateroom"
+quantity = 14
+[[equipment]]
+id = "galley-space"
+quantity = 16
+[[equipment]]
+id = "crew-recreation"
+quantity = 2
+[[equipment]]
+id = "low-berth"
+quantity = 10
+[[equipment]]
+id = "office"
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[hangars]]
+id = "standard-hangar"
+contained_millitons = 4000
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "missile-rack", "sandcaster"]
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 2
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 3
+[[ammunition]]
+id = "standard-missile"
+quantity = 12
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 20
+[[crew]]
+role = "command"
+quantity = 1
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 2
+[[crew]]
+role = "turret-gunner"
+quantity = 3

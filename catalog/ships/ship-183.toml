@@ -1,0 +1,255 @@
+# Rule-derived reconstruction of the four-hundred-ton patrol vessel. Its
+# ordinary Jump-2 installation is retained; the missile bay receives a real
+# magazine and the full hangar is normalized to an exact standard hangar.
+
+schema_version = 1
+design_id = "ct-source-ship-183"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-tech-update-2350",
+  "ship-source-wendy-earth-1",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+bridge_options = ["hardened-bridge", "holographic-controls"]
+cargo_millitons = 5000
+
+[catalog]
+catalog_id = 183
+tag = "ship-183"
+family_id = 183
+upgrade_path_id = 5
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Zheng He"
+primary_role = "patrol-vessel"
+secondary_roles = ["escort", "anti-raider"]
+mission_tags = ["jump-2", "patrol", "missile-bay", "boarding"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This four-hundred-ton patrol vessel combines a two-parsec jump radius, three-gravity acceleration, advanced sensors, hardened holographic controls, medical and detention facilities, and an armed boarding boat. It is suited to convoy escort, customs work, piracy suppression, and enforcement patrols between nearby systems.",
+  "A missile bay and two particle-beam barbettes deliver substantial firepower, backed by a mixed defensive turret and four point-defense nodes. The military crew and dense mission fit leave little commercial capacity, so the ship depends on institutional logistics rather than trade income.",
+]
+
+[hull]
+id = "ship-400"
+configuration = "standard"
+
+[armor]
+id = "crystaliron"
+layers = 1
+
+[drives]
+jump = "D"
+maneuver = "F"
+power = "F"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 4
+
+[computer]
+id = "model-2"
+options = ["bis", "fib"]
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "evade"
+level = 1
+
+[[software]]
+id = "fire-control"
+level = 2
+
+[[software]]
+id = "internal-security-1"
+
+[[software]]
+id = "point-defense-1"
+
+[[equipment]]
+id = "stateroom"
+quantity = 4
+
+[[equipment]]
+id = "crew-berthing"
+quantity = 3
+
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 3
+
+[[equipment]]
+id = "galley-space"
+quantity = 30
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 35
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 5
+
+[[equipment]]
+id = "armory"
+quantity = 1
+
+[[equipment]]
+id = "office"
+quantity = 1
+
+[[equipment]]
+id = "briefing-room"
+quantity = 1
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 2
+
+[[equipment]]
+id = "ships-brig"
+quantity = 2
+
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+
+[[equipment]]
+id = "workshop"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 2
+
+[[hangars]]
+id = "standard-hangar"
+contained_millitons = 30000
+quantity = 1
+
+[[bays]]
+id = "missile-bank"
+quantity = 1
+
+[[barbettes]]
+id = "particle-beam-barbette"
+quantity = 2
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "sandcaster"]
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-minigun"
+quantity = 2
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 2
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 120
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 40
+
+[[carried_craft]]
+tag = "ship-211"
+quantity = 1
+
+[[crew]]
+role = "command"
+quantity = 6
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 3
+
+[[crew]]
+role = "sensors-operator"
+quantity = 2
+
+[[crew]]
+role = "medic"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+
+[[crew]]
+role = "bay-gunner"
+quantity = 3
+
+[[crew]]
+role = "flight-crew"
+quantity = 2
+
+[[crew]]
+role = "marine"
+quantity = 4
+
+[[crew]]
+role = "other"
+quantity = 6
+
+[assertions]
+hull_millitons = 400000
+accounted_displacement_millitons = 400000
+hull_points = 8
+structure_points = 8
+armor_points = 4
+jump_rating = 2
+thrust_g = 3
+fuel_millitons = 104000
+jump_fuel_millitons = 80000
+power_fuel_millitons = 24000
+hardpoints = 4
+hardpoints_used = 4
+point_defense_nodes = 4
+fire_control_millitons = 12000
+minimum_crew = 7
+crew = 30
+carried_craft_count = 1
+carried_craft_displacement_millitons = 30000
+carried_craft_price_credits = 20740000
+hangar_capacity_millitons = 30000
+docking_capacity_millitons = 0
+construction_weeks = 60
+pre_discount_price_credits = 231105000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 231105000

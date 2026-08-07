@@ -1,0 +1,149 @@
+# Standard-passenger conversion of ship-38. Four ordinary CE staterooms and a
+# five-ton passenger common/galley area replace the forward hold. This needs
+# one ton more than the source's internally inconsistent twenty-ton table, so
+# the rule-balanced cargo remainder is 67.7 tons.
+
+schema_version = 1
+design_id = "ct-source-ship-40"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-coner",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+unused_fire_control_stations = 1
+cargo_millitons = 67700
+
+[catalog]
+catalog_id = 40
+tag = "ship-40"
+family_id = 38
+upgrade_path_id = 1
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Maffeo Polo"
+primary_role = "passenger-trader"
+secondary_roles = ["charter", "frontier-freighter"]
+mission_tags = ["freight", "passengers", "jump-2", "atmospheric"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This mixed passenger trader installs four double-occupancy standard staterooms and a separate five-ton galley and common area. Eight passengers can travel in substantially greater comfort than the steerage conversion while the ship retains a useful freight hold and the base design's two-parsec reach.",
+  "A steward is needed to realize the passenger service, raising payroll and reducing operating flexibility when rooms are empty. The conversion suits scheduled links and charters between modest ports; it remains a commercial ship with only basic sensors and a single delivered defensive weapon.",
+]
+
+[hull]
+id = "ship-200"
+configuration = "streamlined"
+
+[drives]
+jump = "B"
+maneuver = "C"
+power = "C"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+
+[computer]
+id = "model-2"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[software]]
+id = "intellect"
+
+[[equipment]]
+id = "stateroom"
+quantity = 8
+
+[[equipment]]
+id = "galley-space"
+quantity = 24
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 4
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+
+[[equipment]]
+id = "autodoc"
+quantity = 1
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser"]
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "steward"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+
+[assertions]
+hull_millitons = 200000
+accounted_displacement_millitons = 200000
+hull_points = 4
+structure_points = 4
+armor_points = 0
+jump_rating = 2
+thrust_g = 3
+fuel_millitons = 46000
+jump_fuel_millitons = 40000
+power_fuel_millitons = 6000
+hardpoints = 2
+hardpoints_used = 1
+point_defense_nodes = 0
+fire_control_millitons = 2000
+minimum_crew = 4
+crew = 5
+carried_craft_count = 0
+carried_craft_price_credits = 0
+hangar_capacity_millitons = 0
+docking_capacity_millitons = 0
+construction_weeks = 44
+pre_discount_price_credits = 77420000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 77420000

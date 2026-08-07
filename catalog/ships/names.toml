@@ -1,0 +1,1046 @@
+# Canonical PI-free names for paths, design families, and fitted designs.
+# Local sysop presentation may add aliases and setting prose, but stable
+# catalog names remain available for unambiguous inter-polity communication.
+
+schema_version = 1
+catalog_revision = 1
+path_name_count = 9
+family_name_count = 113
+design_name_count = 213
+open_game_content_designations = [
+  "All path, manufacturer, family, and design names and naming conventions in this registry are Open Game Content.",
+]
+
+[[path_name]]
+path_id = 1
+display_name = "Concord Exchange"
+manufacturer_name = "Concord Exchange Yards"
+naming_sequence = ["exchange tools", "merchants and travelers", "trade cities", "trade leagues", "trade routes", "civil prosperity"]
+
+[[path_name]]
+path_id = 2
+display_name = "Venture Passage"
+manufacturer_name = "Venture Passage Works"
+naming_sequence = ["messengers", "adventurous travelers", "protected expeditions", "hazardous passages", "frontier entrepots", "enterprise and survival"]
+
+[[path_name]]
+path_id = 3
+display_name = "Outer Reach"
+manufacturer_name = "Outer Reach Cooperative"
+naming_sequence = ["prospecting tools", "frontier figures", "remote settlements", "wilderness passages", "lost cities", "self-reliance"]
+
+[[path_name]]
+path_id = 4
+display_name = "Civic Survey"
+manufacturer_name = "Civic Survey Works"
+naming_sequence = ["scientific instruments", "scientists and investigators", "research expeditions", "service institutions", "great surveys", "knowledge and public service"]
+
+[[path_name]]
+path_id = 5
+display_name = "Marque Marine"
+manufacturer_name = "Marque Marine Yards"
+naming_sequence = ["boarding and escort tools", "privateers", "letters and commissions", "mercenary captains", "prize courts", "licensed war"]
+
+[[path_name]]
+path_id = 6
+display_name = "Rogue Tide"
+manufacturer_name = "Rogue Tide Yards"
+naming_sequence = ["boarding weapons", "tricksters and smugglers", "pirates and raiders", "raider havens", "outlaw passages", "dangerous freedom"]
+
+[[path_name]]
+path_id = 7
+display_name = "Admiralty Line"
+manufacturer_name = "Admiralty Line Works"
+naming_sequence = ["military messengers and pilots", "patrol captains", "admirals", "naval battles", "naval theorists", "decisive fleet actions"]
+
+[[path_name]]
+path_id = 8
+display_name = "Redoubt"
+manufacturer_name = "Redoubt Shipbuilding"
+naming_sequence = ["defensive weapons", "guards and wardens", "forts", "fortresses", "defensive systems", "last stands"]
+
+[[path_name]]
+path_id = 9
+display_name = "Tempest"
+manufacturer_name = "Tempest Arsenal"
+naming_sequence = ["projectiles and predators", "ambush hunters", "storms and volcanoes", "catastrophes", "cosmic explosions", "apocalyptic concepts"]
+
+[[family_name]]
+family_id = 1
+display_name = "Daedalus"
+[[family_name]]
+family_id = 5
+display_name = "Charon"
+[[family_name]]
+family_id = 6
+display_name = "Aeolus"
+[[family_name]]
+family_id = 7
+display_name = "Caduceus"
+[[family_name]]
+family_id = 9
+display_name = "Icarus"
+[[family_name]]
+family_id = 10
+display_name = "Argo"
+[[family_name]]
+family_id = 12
+display_name = "Valkyrie"
+[[family_name]]
+family_id = 13
+display_name = "Orion"
+[[family_name]]
+family_id = 14
+display_name = "Apollo"
+[[family_name]]
+family_id = 16
+display_name = "Horatius"
+[[family_name]]
+family_id = 17
+display_name = "Argonaut"
+[[family_name]]
+family_id = 18
+display_name = "Wayfarer"
+[[family_name]]
+family_id = 20
+display_name = "Proteus"
+[[family_name]]
+family_id = 22
+display_name = "Albatross"
+[[family_name]]
+family_id = 23
+display_name = "Pegasus"
+[[family_name]]
+family_id = 25
+display_name = "Bellerophon"
+[[family_name]]
+family_id = 26
+display_name = "Poe"
+[[family_name]]
+family_id = 27
+display_name = "Mercator"
+[[family_name]]
+family_id = 29
+display_name = "Myrmidon"
+[[family_name]]
+family_id = 30
+display_name = "Goliath"
+[[family_name]]
+family_id = 34
+display_name = "Humboldt"
+[[family_name]]
+family_id = 35
+display_name = "Congreve"
+[[family_name]]
+family_id = 37
+display_name = "Scheherazade"
+[[family_name]]
+family_id = 38
+display_name = "Polo"
+[[family_name]]
+family_id = 41
+display_name = "Warden"
+[[family_name]]
+family_id = 42
+display_name = "Ballista"
+[[family_name]]
+family_id = 44
+display_name = "Phileas"
+[[family_name]]
+family_id = 45
+display_name = "Sinbad"
+[[family_name]]
+family_id = 47
+display_name = "Antaeus"
+[[family_name]]
+family_id = 48
+display_name = "Trident"
+[[family_name]]
+family_id = 49
+display_name = "Hanse"
+[[family_name]]
+family_id = 53
+display_name = "Challenger"
+[[family_name]]
+family_id = 54
+display_name = "Verne"
+[[family_name]]
+family_id = 61
+display_name = "Argosy"
+[[family_name]]
+family_id = 63
+display_name = "Janus"
+[[family_name]]
+family_id = 64
+display_name = "Darwin"
+[[family_name]]
+family_id = 66
+display_name = "Drake"
+[[family_name]]
+family_id = 67
+display_name = "Magellan"
+[[family_name]]
+family_id = 68
+display_name = "Stevenson"
+[[family_name]]
+family_id = 70
+display_name = "Monitor"
+[[family_name]]
+family_id = 71
+display_name = "Xanadu"
+[[family_name]]
+family_id = 73
+display_name = "Aegis"
+[[family_name]]
+family_id = 74
+display_name = "Marque"
+[[family_name]]
+family_id = 75
+display_name = "Bastion"
+[[family_name]]
+family_id = 76
+display_name = "Nansen"
+[[family_name]]
+family_id = 77
+display_name = "Sentinel"
+[[family_name]]
+family_id = 78
+display_name = "Klondike"
+[[family_name]]
+family_id = 80
+display_name = "Homeric"
+[[family_name]]
+family_id = 81
+display_name = "Raleigh"
+[[family_name]]
+family_id = 84
+display_name = "Aquarius"
+[[family_name]]
+family_id = 85
+display_name = "Caravan"
+[[family_name]]
+family_id = 87
+display_name = "Revenant"
+[[family_name]]
+family_id = 89
+display_name = "Fabius"
+[[family_name]]
+family_id = 90
+display_name = "Hawkwood"
+[[family_name]]
+family_id = 91
+display_name = "Cook"
+[[family_name]]
+family_id = 92
+display_name = "Greyhound"
+[[family_name]]
+family_id = 93
+display_name = "Nightingale"
+[[family_name]]
+family_id = 94
+display_name = "Cochrane"
+[[family_name]]
+family_id = 97
+display_name = "Baltic League"
+[[family_name]]
+family_id = 99
+display_name = "Corbett"
+[[family_name]]
+family_id = 100
+display_name = "Duncan"
+[[family_name]]
+family_id = 103
+display_name = "Marathon"
+[[family_name]]
+family_id = 104
+display_name = "Hephaestus"
+[[family_name]]
+family_id = 106
+display_name = "Salamis"
+[[family_name]]
+family_id = 108
+display_name = "Togo"
+[[family_name]]
+family_id = 109
+display_name = "Yi"
+[[family_name]]
+family_id = 110
+display_name = "Themistocles"
+[[family_name]]
+family_id = 111
+display_name = "Fisher"
+[[family_name]]
+family_id = 112
+display_name = "Jellicoe"
+[[family_name]]
+family_id = 113
+display_name = "Hannibal"
+[[family_name]]
+family_id = 114
+display_name = "Tsushima"
+[[family_name]]
+family_id = 115
+display_name = "Midway"
+[[family_name]]
+family_id = 116
+display_name = "Vauban"
+[[family_name]]
+family_id = 117
+display_name = "Aviator"
+[[family_name]]
+family_id = 121
+display_name = "Bulwark"
+[[family_name]]
+family_id = 123
+display_name = "Cradle"
+[[family_name]]
+family_id = 124
+display_name = "Archimedes"
+[[family_name]]
+family_id = 125
+display_name = "Nausicaa"
+[[family_name]]
+family_id = 126
+display_name = "Leviathan"
+[[family_name]]
+family_id = 128
+display_name = "Caravanserai"
+[[family_name]]
+family_id = 131
+display_name = "Bellamy"
+[[family_name]]
+family_id = 135
+display_name = "Roman"
+[[family_name]]
+family_id = 142
+display_name = "Ariel"
+[[family_name]]
+family_id = 143
+display_name = "Moriarty"
+[[family_name]]
+family_id = 144
+display_name = "Vidocq"
+[[family_name]]
+family_id = 147
+display_name = "Endeavour"
+[[family_name]]
+family_id = 169
+display_name = "Franklin"
+[[family_name]]
+family_id = 180
+display_name = "Trafalgar"
+[[family_name]]
+family_id = 182
+display_name = "Silk Road"
+[[family_name]]
+family_id = 183
+display_name = "Zheng He"
+[[family_name]]
+family_id = 184
+display_name = "Rampart"
+[[family_name]]
+family_id = 186
+display_name = "Cerberus"
+[[family_name]]
+family_id = 191
+display_name = "Faraday"
+[[family_name]]
+family_id = 192
+display_name = "Hudson"
+[[family_name]]
+family_id = 193
+display_name = "Defoe"
+[[family_name]]
+family_id = 194
+display_name = "Dory"
+[[family_name]]
+family_id = 195
+display_name = "Decatur"
+[[family_name]]
+family_id = 196
+display_name = "Fugger"
+[[family_name]]
+family_id = 197
+display_name = "Pullman"
+[[family_name]]
+family_id = 198
+display_name = "Pony Express"
+[[family_name]]
+family_id = 199
+display_name = "Cleopatra"
+[[family_name]]
+family_id = 200
+display_name = "Thermopylae"
+[[family_name]]
+family_id = 201
+display_name = "Lighter"
+[[family_name]]
+family_id = 202
+display_name = "Tender"
+[[family_name]]
+family_id = 203
+display_name = "Bactrian"
+[[family_name]]
+family_id = 204
+display_name = "Perry"
+[[family_name]]
+family_id = 205
+display_name = "Casemate"
+[[family_name]]
+family_id = 206
+display_name = "Blackbeard"
+[[family_name]]
+family_id = 207
+display_name = "Bacon"
+[[family_name]]
+family_id = 208
+display_name = "Galileo"
+[[family_name]]
+family_id = 210
+display_name = "Jutland"
+[[family_name]]
+family_id = 211
+display_name = "Grapnel"
+[[family_name]]
+family_id = 213
+display_name = "Cutlass"
+
+[[design_name]]
+tag = "ship-1"
+display_name = "Hermes"
+[[design_name]]
+tag = "ship-2"
+display_name = "Labyrinth"
+[[design_name]]
+tag = "ship-3"
+display_name = "Knossos"
+[[design_name]]
+tag = "ship-4"
+display_name = "Minotaur"
+[[design_name]]
+tag = "ship-5"
+display_name = "Charon"
+[[design_name]]
+tag = "ship-6"
+display_name = "Aeolus"
+[[design_name]]
+tag = "ship-7"
+display_name = "Caduceus"
+[[design_name]]
+tag = "ship-8"
+display_name = "Argus"
+[[design_name]]
+tag = "ship-9"
+display_name = "Icarus I"
+[[design_name]]
+tag = "ship-10"
+display_name = "Argo"
+[[design_name]]
+tag = "ship-11"
+display_name = "Icarus II"
+[[design_name]]
+tag = "ship-12"
+display_name = "Skuld"
+[[design_name]]
+tag = "ship-13"
+display_name = "Orion"
+[[design_name]]
+tag = "ship-14"
+display_name = "Apollo"
+[[design_name]]
+tag = "ship-15"
+display_name = "Sigrun"
+[[design_name]]
+tag = "ship-16"
+display_name = "Horatius"
+[[design_name]]
+tag = "ship-17"
+display_name = "Jason"
+[[design_name]]
+tag = "ship-18"
+display_name = "Wayfarer Utility"
+[[design_name]]
+tag = "ship-19"
+display_name = "Medea"
+[[design_name]]
+tag = "ship-20"
+display_name = "Proteus Cargo"
+[[design_name]]
+tag = "ship-21"
+display_name = "Proteus Passenger"
+[[design_name]]
+tag = "ship-22"
+display_name = "Albatross"
+[[design_name]]
+tag = "ship-23"
+display_name = "Pegasus"
+[[design_name]]
+tag = "ship-24"
+display_name = "Proteus Prospector"
+[[design_name]]
+tag = "ship-25"
+display_name = "Bellerophon"
+[[design_name]]
+tag = "ship-26"
+display_name = "Pym"
+[[design_name]]
+tag = "ship-27"
+display_name = "Mercator"
+[[design_name]]
+tag = "ship-28"
+display_name = "Mercator"
+[[design_name]]
+tag = "ship-29"
+display_name = "Myrmidon"
+[[design_name]]
+tag = "ship-30"
+display_name = "Goliath"
+[[design_name]]
+tag = "ship-31"
+display_name = "Mercator"
+[[design_name]]
+tag = "ship-32"
+display_name = "Goliath"
+[[design_name]]
+tag = "ship-33"
+display_name = "Ligeia"
+[[design_name]]
+tag = "ship-34"
+display_name = "Humboldt"
+[[design_name]]
+tag = "ship-35"
+display_name = "Congreve"
+[[design_name]]
+tag = "ship-36"
+display_name = "Congreve"
+[[design_name]]
+tag = "ship-37"
+display_name = "Scheherazade"
+[[design_name]]
+tag = "ship-38"
+display_name = "Marco Polo"
+[[design_name]]
+tag = "ship-39"
+display_name = "Niccolò Polo"
+[[design_name]]
+tag = "ship-40"
+display_name = "Maffeo Polo"
+[[design_name]]
+tag = "ship-41"
+display_name = "Warden"
+[[design_name]]
+tag = "ship-42"
+display_name = "Ballista"
+[[design_name]]
+tag = "ship-43"
+display_name = "Humboldt"
+[[design_name]]
+tag = "ship-44"
+display_name = "Phileas"
+[[design_name]]
+tag = "ship-45"
+display_name = "Sinbad"
+[[design_name]]
+tag = "ship-46"
+display_name = "Sinbad"
+[[design_name]]
+tag = "ship-47"
+display_name = "Antaeus"
+[[design_name]]
+tag = "ship-48"
+display_name = "Triton"
+[[design_name]]
+tag = "ship-49"
+display_name = "Lübeck II"
+[[design_name]]
+tag = "ship-50"
+display_name = "Hamburg II"
+[[design_name]]
+tag = "ship-51"
+display_name = "Lübeck I"
+[[design_name]]
+tag = "ship-52"
+display_name = "Hamburg I"
+[[design_name]]
+tag = "ship-53"
+display_name = "Challenger"
+[[design_name]]
+tag = "ship-54"
+display_name = "Fogg"
+[[design_name]]
+tag = "ship-55"
+display_name = "Nereus"
+[[design_name]]
+tag = "ship-56"
+display_name = "Glaucus"
+[[design_name]]
+tag = "ship-57"
+display_name = "Hatteras"
+[[design_name]]
+tag = "ship-58"
+display_name = "Hatteras"
+[[design_name]]
+tag = "ship-59"
+display_name = "Aouda"
+[[design_name]]
+tag = "ship-60"
+display_name = "Passepartout"
+[[design_name]]
+tag = "ship-61"
+display_name = "Argosy"
+[[design_name]]
+tag = "ship-62"
+display_name = "Stahlstadt"
+[[design_name]]
+tag = "ship-63"
+display_name = "Janus"
+[[design_name]]
+tag = "ship-64"
+display_name = "Darwin"
+[[design_name]]
+tag = "ship-65"
+display_name = "Nemo"
+[[design_name]]
+tag = "ship-66"
+display_name = "Drake"
+[[design_name]]
+tag = "ship-67"
+display_name = "Magellan"
+[[design_name]]
+tag = "ship-68"
+display_name = "Silver"
+[[design_name]]
+tag = "ship-69"
+display_name = "Trelawney"
+[[design_name]]
+tag = "ship-70"
+display_name = "Monitor"
+[[design_name]]
+tag = "ship-71"
+display_name = "Xanadu"
+[[design_name]]
+tag = "ship-72"
+display_name = "Smollett"
+[[design_name]]
+tag = "ship-73"
+display_name = "Aegis"
+[[design_name]]
+tag = "ship-74"
+display_name = "Marque"
+[[design_name]]
+tag = "ship-75"
+display_name = "Bastion"
+[[design_name]]
+tag = "ship-76"
+display_name = "Nansen"
+[[design_name]]
+tag = "ship-77"
+display_name = "Sentinel"
+[[design_name]]
+tag = "ship-78"
+display_name = "Bonanza"
+[[design_name]]
+tag = "ship-79"
+display_name = "Skagway"
+[[design_name]]
+tag = "ship-80"
+display_name = "Ithaca"
+[[design_name]]
+tag = "ship-81"
+display_name = "Raleigh"
+[[design_name]]
+tag = "ship-82"
+display_name = "Odysseus"
+[[design_name]]
+tag = "ship-83"
+display_name = "Scheria"
+[[design_name]]
+tag = "ship-84"
+display_name = "Aquarius"
+[[design_name]]
+tag = "ship-85"
+display_name = "Caravan"
+[[design_name]]
+tag = "ship-86"
+display_name = "Ithaca"
+[[design_name]]
+tag = "ship-87"
+display_name = "Revenant"
+[[design_name]]
+tag = "ship-88"
+display_name = "Cyclops"
+[[design_name]]
+tag = "ship-89"
+display_name = "Fabius"
+[[design_name]]
+tag = "ship-90"
+display_name = "Hawkwood"
+[[design_name]]
+tag = "ship-91"
+display_name = "Cook"
+[[design_name]]
+tag = "ship-92"
+display_name = "Greyhound"
+[[design_name]]
+tag = "ship-93"
+display_name = "Nightingale"
+[[design_name]]
+tag = "ship-94"
+display_name = "Cochrane"
+[[design_name]]
+tag = "ship-95"
+display_name = "Cook"
+[[design_name]]
+tag = "ship-96"
+display_name = "Condottiere"
+[[design_name]]
+tag = "ship-97"
+display_name = "Riga"
+[[design_name]]
+tag = "ship-98"
+display_name = "Visby"
+[[design_name]]
+tag = "ship-99"
+display_name = "Corbett"
+[[design_name]]
+tag = "ship-100"
+display_name = "Duncan"
+[[design_name]]
+tag = "ship-101"
+display_name = "Novgorod"
+[[design_name]]
+tag = "ship-102"
+display_name = "Duncan II"
+[[design_name]]
+tag = "ship-103"
+display_name = "Marathon"
+[[design_name]]
+tag = "ship-104"
+display_name = "Enyo"
+[[design_name]]
+tag = "ship-105"
+display_name = "Ares"
+[[design_name]]
+tag = "ship-106"
+display_name = "Salamis"
+[[design_name]]
+tag = "ship-107"
+display_name = "Corbett"
+[[design_name]]
+tag = "ship-108"
+display_name = "Togo"
+[[design_name]]
+tag = "ship-109"
+display_name = "Yi"
+[[design_name]]
+tag = "ship-110"
+display_name = "Themistocles"
+[[design_name]]
+tag = "ship-111"
+display_name = "Fisher"
+[[design_name]]
+tag = "ship-112"
+display_name = "Jellicoe"
+[[design_name]]
+tag = "ship-113"
+display_name = "Hannibal"
+[[design_name]]
+tag = "ship-114"
+display_name = "Tsushima"
+[[design_name]]
+tag = "ship-115"
+display_name = "Midway"
+[[design_name]]
+tag = "ship-116"
+display_name = "Citadel"
+[[design_name]]
+tag = "ship-117"
+display_name = "Lilienthal"
+[[design_name]]
+tag = "ship-118"
+display_name = "Ravelin"
+[[design_name]]
+tag = "ship-119"
+display_name = "Wright"
+[[design_name]]
+tag = "ship-120"
+display_name = "Mitchell"
+[[design_name]]
+tag = "ship-121"
+display_name = "Curtain"
+[[design_name]]
+tag = "ship-122"
+display_name = "Keep"
+[[design_name]]
+tag = "ship-123"
+display_name = "Cradle"
+[[design_name]]
+tag = "ship-124"
+display_name = "Archimedes"
+[[design_name]]
+tag = "ship-125"
+display_name = "Nausicaa"
+[[design_name]]
+tag = "ship-126"
+display_name = "Leviathan"
+[[design_name]]
+tag = "ship-127"
+display_name = "Behemoth"
+[[design_name]]
+tag = "ship-128"
+display_name = "Samarkand"
+[[design_name]]
+tag = "ship-129"
+display_name = "Bukhara"
+[[design_name]]
+tag = "ship-130"
+display_name = "Merv"
+[[design_name]]
+tag = "ship-131"
+display_name = "Bellamy"
+[[design_name]]
+tag = "ship-132"
+display_name = "Bellamy Plus"
+[[design_name]]
+tag = "ship-133"
+display_name = "Bellamy Grav"
+[[design_name]]
+tag = "ship-134"
+display_name = "Wayfarer Armed"
+[[design_name]]
+tag = "ship-135"
+display_name = "Scipio"
+[[design_name]]
+tag = "ship-136"
+display_name = "Onager"
+[[design_name]]
+tag = "ship-137"
+display_name = "Corvus"
+[[design_name]]
+tag = "ship-138"
+display_name = "Vesuvius"
+[[design_name]]
+tag = "ship-139"
+display_name = "Trelawney"
+[[design_name]]
+tag = "ship-140"
+display_name = "Silver"
+[[design_name]]
+tag = "ship-141"
+display_name = "Smollett"
+[[design_name]]
+tag = "ship-142"
+display_name = "Ariel"
+[[design_name]]
+tag = "ship-143"
+display_name = "Moriarty"
+[[design_name]]
+tag = "ship-144"
+display_name = "Vidocq"
+[[design_name]]
+tag = "ship-145"
+display_name = "Caduceus"
+[[design_name]]
+tag = "ship-146"
+display_name = "Caduceus"
+[[design_name]]
+tag = "ship-147"
+display_name = "Banks"
+[[design_name]]
+tag = "ship-148"
+display_name = "Solander"
+[[design_name]]
+tag = "ship-149"
+display_name = "Parkinson"
+[[design_name]]
+tag = "ship-150"
+display_name = "Tizard"
+[[design_name]]
+tag = "ship-151"
+display_name = "Albatross"
+[[design_name]]
+tag = "ship-152"
+display_name = "Ithaca"
+[[design_name]]
+tag = "ship-153"
+display_name = "Calypso"
+[[design_name]]
+tag = "ship-154"
+display_name = "Nausithous"
+[[design_name]]
+tag = "ship-155"
+display_name = "Scheria"
+[[design_name]]
+tag = "ship-156"
+display_name = "Odysseus"
+[[design_name]]
+tag = "ship-157"
+display_name = "Cyclops"
+[[design_name]]
+tag = "ship-158"
+display_name = "Charon"
+[[design_name]]
+tag = "ship-159"
+display_name = "Proteus Mercy"
+[[design_name]]
+tag = "ship-160"
+display_name = "Nightingale"
+[[design_name]]
+tag = "ship-161"
+display_name = "Hatteras"
+[[design_name]]
+tag = "ship-162"
+display_name = "Aouda"
+[[design_name]]
+tag = "ship-163"
+display_name = "Passepartout"
+[[design_name]]
+tag = "ship-164"
+display_name = "Fogg"
+[[design_name]]
+tag = "ship-165"
+display_name = "Wayfarer Armed"
+[[design_name]]
+tag = "ship-166"
+display_name = "Nemo"
+[[design_name]]
+tag = "ship-167"
+display_name = "Stahlstadt"
+[[design_name]]
+tag = "ship-168"
+display_name = "Robur"
+[[design_name]]
+tag = "ship-169"
+display_name = "Franklin I"
+[[design_name]]
+tag = "ship-170"
+display_name = "Poor Richard"
+[[design_name]]
+tag = "ship-171"
+display_name = "Franklin II"
+[[design_name]]
+tag = "ship-172"
+display_name = "Pennsylvania"
+[[design_name]]
+tag = "ship-173"
+display_name = "Deborah"
+[[design_name]]
+tag = "ship-174"
+display_name = "Postmaster"
+[[design_name]]
+tag = "ship-175"
+display_name = "Gulf Stream"
+[[design_name]]
+tag = "ship-176"
+display_name = "Boreas"
+[[design_name]]
+tag = "ship-177"
+display_name = "Zephyrus"
+[[design_name]]
+tag = "ship-178"
+display_name = "Castor"
+[[design_name]]
+tag = "ship-179"
+display_name = "Pollux"
+[[design_name]]
+tag = "ship-180"
+display_name = "Trafalgar"
+[[design_name]]
+tag = "ship-181"
+display_name = "Wayfarer Cargo"
+[[design_name]]
+tag = "ship-182"
+display_name = "Silk Road"
+[[design_name]]
+tag = "ship-183"
+display_name = "Zheng He"
+[[design_name]]
+tag = "ship-184"
+display_name = "Rampart"
+[[design_name]]
+tag = "ship-185"
+display_name = "Caduceus"
+[[design_name]]
+tag = "ship-186"
+display_name = "Cerberus"
+[[design_name]]
+tag = "ship-187"
+display_name = "Wayfarer Cargo"
+[[design_name]]
+tag = "ship-188"
+display_name = "Proteus Surveyor"
+[[design_name]]
+tag = "ship-189"
+display_name = "Caduceus"
+[[design_name]]
+tag = "ship-190"
+display_name = "Tizard"
+[[design_name]]
+tag = "ship-191"
+display_name = "Faraday"
+[[design_name]]
+tag = "ship-192"
+display_name = "Hudson"
+[[design_name]]
+tag = "ship-193"
+display_name = "Crusoe"
+[[design_name]]
+tag = "ship-194"
+display_name = "Dory"
+[[design_name]]
+tag = "ship-195"
+display_name = "Decatur"
+[[design_name]]
+tag = "ship-196"
+display_name = "Fugger"
+[[design_name]]
+tag = "ship-197"
+display_name = "Pullman"
+[[design_name]]
+tag = "ship-198"
+display_name = "Pony Express"
+[[design_name]]
+tag = "ship-199"
+display_name = "Cleopatra"
+[[design_name]]
+tag = "ship-200"
+display_name = "Thermopylae"
+[[design_name]]
+tag = "ship-201"
+display_name = "Lighter"
+[[design_name]]
+tag = "ship-202"
+display_name = "Tender"
+[[design_name]]
+tag = "ship-203"
+display_name = "Bactrian"
+[[design_name]]
+tag = "ship-204"
+display_name = "Perry"
+[[design_name]]
+tag = "ship-205"
+display_name = "Casemate"
+[[design_name]]
+tag = "ship-206"
+display_name = "Blackbeard"
+[[design_name]]
+tag = "ship-207"
+display_name = "Bacon"
+[[design_name]]
+tag = "ship-208"
+display_name = "Galileo"
+[[design_name]]
+tag = "ship-209"
+display_name = "Proteus Modular"
+[[design_name]]
+tag = "ship-210"
+display_name = "Jutland"
+[[design_name]]
+tag = "ship-211"
+display_name = "Grapnel"
+[[design_name]]
+tag = "ship-212"
+display_name = "Wayfarer Boarding"
+[[design_name]]
+tag = "ship-213"
+display_name = "Cutlass"

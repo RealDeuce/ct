@@ -1,0 +1,103 @@
+# Rule-derived reconstruction of the fifty-ton survey cutter. Its detachable
+# field-base module is normalized as five compact staterooms, a laboratory,
+# crew galley and recreation space, a vehicle bay, and general stores.
+
+schema_version = 1
+design_id = "ct-source-ship-188"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-wendy-earth-4",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "standard"
+airlocks = 1
+cargo_millitons = 6750
+
+[catalog]
+catalog_id = 188
+tag = "ship-188"
+family_id = 20
+upgrade_path_id = 4
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Proteus Surveyor"
+primary_role = "survey-cutter"
+secondary_roles = ["field-base", "science-support"]
+mission_tags = ["survey", "laboratory", "vehicle", "atmospheric"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This fifty-ton cutter carries a deployable survey-base fit for ten people, including compact sleeping rooms, laboratory space, galley and recreation facilities, a light-vehicle bay, and stores. Four-gravity acceleration and a streamlined hull let a parent exploration ship establish a surface field station quickly.",
+  "The cutter is unarmed, non-jump-capable, and optimized for scientific logistics rather than passengers or combat. Its module can sustain a small field team, but the craft relies on its parent vessel for strategic transport, major maintenance, and replenishment.",
+]
+
+[hull]
+id = "small-50"
+configuration = "streamlined"
+
+[armor]
+id = "small-craft-crystaliron-whole-points"
+points = 2
+
+[drives]
+maneuver = "sK"
+power = "sK"
+
+[fuel]
+power_plant_weeks = 2
+
+[control]
+id = "two-person-control-cabin"
+additional_passengers = 0
+
+[computer]
+id = "model-1"
+options = []
+
+[[equipment]]
+id = "small-craft-stateroom"
+quantity = 5
+
+[[equipment]]
+id = "laboratory"
+quantity = 1
+
+[[equipment]]
+id = "galley-space"
+quantity = 10
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 10
+
+[[equipment]]
+id = "air-raft-hangar"
+quantity = 1
+
+[[crew]]
+role = "pilot"
+quantity = 2
+
+[assertions]
+hull_millitons = 50000
+accounted_displacement_millitons = 50000
+hull_points = 1
+structure_points = 1
+armor_points = 2
+thrust_g = 4
+fuel_millitons = 2600
+hardpoints = 1
+hardpoints_used = 0
+minimum_crew = 1
+crew = 2
+construction_weeks = 32
+pre_discount_price_credits = 25105000
+discount_credits = 0
+construction_price_credits = 25105000

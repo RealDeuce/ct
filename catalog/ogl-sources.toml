@@ -1,0 +1,3225 @@
+# Open Game Content. Cepheus Trader reserves no original Product Identity.
+#
+# This is the authoritative registry for OGL attributions referenced by
+# catalog entries. Each source bundle explicitly names every notice printed
+# by that source; no ancestry is inferred by the compiler.
+
+schema_version = 1
+catalog_source_ids = ["cepheus-trader-2026"]
+required_entry_source_ids = ["cepheus-engine-srd-2016"]
+
+[[notice]]
+notice_id = "ogl-1.0a"
+title = "Open Game License version 1.0a"
+source_descriptions = [
+  "The license governing use and distribution of the Open Game Content in the catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Open Game License v 1.0a Copyright 2000, Wizards of the Coast, Inc.",
+]
+
+[[notice]]
+notice_id = "high-guard-srd-2008"
+title = "High Guard System Reference Document"
+source_descriptions = [
+  "An inherited System Reference Document attribution used by the Cepheus Engine rules lineage.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "High Guard System Reference Document Copyright © 2008, Mongoose Publishing.",
+]
+
+[[notice]]
+notice_id = "mercenary-srd-2008"
+title = "Mercenary System Reference Document"
+source_descriptions = [
+  "An inherited System Reference Document attribution used by the Cepheus Engine rules lineage.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Mercenary System Reference Document Copyright © 2008, Mongoose Publishing.",
+]
+
+[[notice]]
+notice_id = "modern-srd-2002-2004"
+title = "Modern System Reference Document"
+source_descriptions = [
+  "An inherited System Reference Document attribution used by the Cepheus Engine rules lineage.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Modern System Reference Document Copyright 2002-2004, Wizards of the Coast, Inc.; Authors Bill Slavicsek, Jeff Grubb, Rich Redman, Charles Ryan, Eric Cagle, David Noonan, Stan!, Christopher Perkins, Rodney Thompson, and JD Wiker, based on material by Jonathan Tweet, Monte Cook, Skip Williams, Richard Baker, Peter Adkison, Bruce R. Cordell, John Tynes, Andy Collins, and JD Wiker.",
+]
+
+[[notice]]
+notice_id = "swords-wizardry-core-2008"
+title = "Swords & Wizardry Core Rules"
+source_descriptions = [
+  "An inherited Open Game Content attribution used by the Cepheus Engine rules lineage.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Swords & Wizardry Core Rules, Copyright 2008, Matthew J. Finch",
+]
+
+[[notice]]
+notice_id = "srd-2000"
+title = "System Reference Document"
+source_descriptions = [
+  "An inherited System Reference Document attribution used by the Cepheus Engine rules lineage.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "System Reference Document, Copyright 2000, Wizards of the Coast, Inc.; Authors Jonathan Tweet, Monte Cook, Skip Williams, based on original material by E. Gary Gygax and Dave Arneson.",
+]
+
+[[notice]]
+notice_id = "srd-2000-2003"
+title = "System Reference Document"
+source_descriptions = [
+  "An inherited System Reference Document attribution used by the Cepheus Engine rules lineage.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "System Reference Document Copyright 2000-2003, Wizards of the Coast, Inc.; Authors Jonathan Tweet, Monte Cook, Skip Williams, Rich Baker, Andy Collins, David Noonan, Rich Redman, Bruce R. Cordell, John D. Rateliff, Thomas Reid, James Wyatt, based on original material by E. Gary Gygax and Dave Arneson.",
+]
+
+[[notice]]
+notice_id = "t20-travellers-handbook-2002"
+title = "T20 - The Traveller's Handbook"
+source_descriptions = [
+  "An inherited Open Game Content attribution used by the Cepheus Engine rules lineage.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = [
+  "Traveller is a trademark of Far Future Enterprises and is used under license.",
+]
+texts = [
+  "T20 - The Traveller's Handbook Copyright 2002, Quiklink Interactive, Inc. Traveller is a trademark of Far Future Enterprises and is used under license.",
+]
+
+[[notice]]
+notice_id = "traveller-srd-2008"
+title = "Traveller System Reference Document"
+source_descriptions = [
+  "An inherited System Reference Document attribution used by the Cepheus Engine rules lineage.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = [
+  "Traveller and related logos, character, names, and distinctive likenesses are third-party trademarks or reserved material as stated in the notice.",
+]
+texts = [
+  "Traveller System Reference Document Copyright © 2008, Mongoose Publishing. Traveller is © 2008 Mongoose Publishing. Traveller and related logos, character, names, and distinctive likenesses thereof are trademarks of Far Future Enterprises unless otherwise noted. All Rights Reserved. Mongoose Publishing Ltd Authorized User.",
+]
+
+[[notice]]
+notice_id = "cepheus-engine-srd-2016-notice"
+title = "Cepheus Engine System Reference Document"
+source_descriptions = [
+  "The base task, character, world, trade, spacecraft, travel, combat, and encounter rules used by Cepheus Trader.",
+]
+open_game_content_descriptions = [
+  "All text of the Cepheus Engine System Reference Document is Open Game Content except for material the source identifies as Product Identity.",
+]
+excluded_product_identity_descriptions = [
+  "Product titles and the Cepheus Engine and Samardan Press trademarks remain excluded.",
+]
+texts = [
+  "Cepheus Engine System Reference Document, Copyright © 2016 Samardan Press; Author Jason \"Flynn\" Kemp",
+]
+
+[[notice]]
+notice_id = "cepheus-trader-2026-notice"
+title = "Cepheus Trader"
+source_descriptions = [
+  "Original Cepheus Trader game content, including catalog names, descriptions, mechanics, and data.",
+]
+open_game_content_descriptions = [
+  "All original game content authored for Cepheus Trader is Open Game Content.",
+]
+excluded_product_identity_descriptions = []
+texts = [
+  "Cepheus Trader, Copyright 2026, Cepheus Trader contributors.",
+]
+
+[[notice]]
+notice_id = "ship-notice-dc48474b1856"
+title = "T20 - The Traveller’s Handbook"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "T20 - The Traveller’s Handbook Copyright 2002, Quiklink Interactive, Inc. Traveller is a trademark of Far Future Enterprises and is used under license.",
+]
+
+[[notice]]
+notice_id = "ship-notice-40aa54128e3a"
+title = "The Clement Sector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Clement Sector Copyright 2013, Gypsy Knights Games LLC Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-b080725fdf28"
+title = "Clement Sector: The Rules"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Clement Sector: The Rules, Copyright 2016, Gypsy Knights Games LLC Authors John Watts, Michael Johnson, and Jason Kemp",
+]
+
+[[notice]]
+notice_id = "ship-notice-fae01b13b847"
+title = "The Anderson and Felix Guide to Naval Architecture 2.0"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Anderson and Felix Guide to Naval Architecture 2.0 , Copyright 2015, Gypsy Knights Games LLC Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-fece9927ec26"
+title = "Clement Sector Core Setting Book 2.0"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Clement Sector Core Setting Book 2.0, Copyright 2015, Gypsy Knights Games LLC Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-9bb1e089f76e"
+title = "The Anderson and Felix Optional Components Guide"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Anderson and Felix Optional Components Guide, Copyright 2018, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-b3d2474e0353"
+title = "Clement Sector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Clement Sector, Copyright 2021, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-eee7d318b2d4"
+title = "The Anderson and Felix Guide to Naval Architecture, version 3"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Anderson and Felix Guide to Naval Architecture, version 3, Copyright 2021, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-c7ef0d6faee1"
+title = "The Clement Sector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Clement Sector Copyright 2013, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-8e76d3bc8c8c"
+title = "Clement Sector: The Rules"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Clement Sector: The Rules, Copyright 2016, Gypsy Knights Games LLC, Authors, John Watts, Michael Johnson, and Jason Kemp",
+]
+
+[[notice]]
+notice_id = "ship-notice-845a2fb44bed"
+title = "Clement Sector Core Setting Book 2.0"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Clement Sector Core Setting Book 2.0, Copyright 2015, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-f00869209df3"
+title = "The Anderson and Felix Guide to Naval Architecture 2.0"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Anderson and Felix Guide to Naval Architecture 2.0, Copyright 2015, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-0f0745d23161"
+title = "Subsector Sourcebook 3: Hub 2.0"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Subsector Sourcebook 3: Hub 2.0, Copyright 2016, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-b813fecdcb5f"
+title = "Earth Sector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Earth Sector, Copyright 2019, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-70c66927e5d1"
+title = "Wendy’s Guide to the Fleets of Earth Sector, Volume 1"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of Earth Sector, Volume 1, Copyright 2020, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-9556cc53cc43"
+title = "Wendy’s Guide to the Fleets of Earth Sector, Volume 2"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of Earth Sector, Volume 2, Copyright 2020, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-6d4f57bec047"
+title = "Atlanta-class Carrier"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Atlanta-class Carrier, Copyright 2021, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-7e70d843833a"
+title = "Wendy’s Guide to the Fleets of Hub Subsector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of Hub Subsector, Copyright 2016, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-4056388d41f0"
+title = "Clement Sector Third Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Clement Sector Third Edition, Copyright 2021, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-6f1dd409f9da"
+title = "The Anderson and Felix Guide to Naval Architecture Third Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Anderson and Felix Guide to Naval Architecture Third Edition, Copyright 2021, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "tech-update-2350-notice"
+title = "Tech Update:2350"
+source_descriptions = [
+  "The attribution printed in the later technology construction source.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Tech Update:2350, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "interface-cybernetics-2019-notice"
+title = "Interface: Cybernetics in Clement Sector"
+source_descriptions = [
+  "An inherited attribution printed in the later technology construction source.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Interface: Cybernetics in Clement Sector, Copyright 2019, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-8104929fcdf2"
+title = "Alcyone-class Interstellar Freighter"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Alcyone-class Interstellar Freighter, Copyright 2024, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-5ef817acb42d"
+title = "Ships of Clement Sector 17: Atlas-class Freighter"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Ships of Clement Sector 17: Atlas-class Freighter, Copyright 2017, Gypsy Knights Games LLC. Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-2c22702bdde4"
+title = "Atlas-class Freighter"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Atlas-class Freighter, Copyright 2024, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-bc34c76a07f4"
+title = "Subsector Sourcebook: The Colonies Third Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Subsector Sourcebook: The Colonies Third Edition, Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-8978310c0b8f"
+title = "Wendy’s Guide to the Fleets of The Colonies Third Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of The Colonies Third Edition, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-a27202064ce2"
+title = "Bridgetown-class Escort and Cape-class System Defense Boat"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Bridgetown-class Escort and Cape-class System Defense Boat, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-6126b2e3bee7"
+title = "Brightwater-class Personal Yacht"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Brightwater-class Personal Yacht, Copyright 2021, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-0d299be02e45"
+title = "Near Stars"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Near Stars, Copyright 2016, Stellagama Publishing, Author Omer Golan-Joel",
+]
+
+[[notice]]
+notice_id = "ship-notice-609526213452"
+title = "Coner-class Trader"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Coner-class Trader, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-c6ad11133325"
+title = "Contessa-class Fast Trader"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Contessa-class Fast Trader, Copyright 2024, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-72c98378d8c4"
+title = "High Guard System Reference Document"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "High Guard System Reference Document Copyright © 2008, Mongoose Publishing. Copeline-class Merchant Vessel",
+]
+
+[[notice]]
+notice_id = "ship-notice-6272545de3c6"
+title = "Diverse Roles: A Clement Sector Career Catalog"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Diverse Roles: A Clement Sector Career Catalog, Copyright 2017, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-3186aa6a28cd"
+title = "Unmerciful Frontier: The CCA Sourcebook"
+source_descriptions = [
+  "The 2018 edition attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Unmerciful Frontier: The CCA Sourcebook, Copyright 2018, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-29bec922f956"
+title = "Artificial: Robots in Clement Sector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Artificial: Robots in Clement Sector, Copyright 2018, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-562eaa3611e7"
+title = "Balancing Act: Interstellar Relations in Clement Sector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Balancing Act: Interstellar Relations in Clement Sector, Copyright 2019, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-a68bbc8a7646"
+title = "The Almighty Credit: Corporations in Clement Sector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Almighty Credit: Corporations in Clement Sector, Copyright 2019, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-6d13cf1652d2"
+title = "Copeline-class Merchant Vessel"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Copeline-class Merchant Vessel, Copyright 2020, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-eb2a167d9dc5"
+title = "Subsector Sourcebook 1: Cascadia 2.0"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Subsector Sourcebook 1: Cascadia 2.0, Copyright 2015, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-dff282d187e0"
+title = "Subsector Sourcebook 2: Franklin 2.0"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Subsector Sourcebook 2: Franklin 2.0, Copyright 2016, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-355248b572f1"
+title = "Subsector Sourcebook 4: Sequoyah 2.0"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Subsector Sourcebook 4: Sequoyah 2.0, Copyright 2016, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-bfc67b62fd7e"
+title = "Subsector Sourcebook 5: The Colonies 2.0"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Subsector Sourcebook 5: The Colonies 2.0, Copyright 2016, Gypsy Knights Games LLC Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-b9a4e635b899"
+title = "Skull and Crossbones: Piracy in Clement Sector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Skull and Crossbones: Piracy in Clement Sector, Copyright 2016, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-dafb5fe8eeaa"
+title = "Tree of Life: Altrants in Clement Sector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Tree of Life: Altrants in Clement Sector, Copyright 2017, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-ee42f5399b4c"
+title = "Wondrous Menagerie: Uplifts in Clement Sector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wondrous Menagerie: Uplifts in Clement Sector, Copyright 2017, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-c7ba00c5413a"
+title = "Manhunters: Bounty Hunters in Clement Sector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Manhunters: Bounty Hunters in Clement Sector, Copyright 2018, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-eead281bb9c9"
+title = "Outlaw: Crime in Clement Sector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Outlaw: Crime in Clement Sector, Copyright 2019, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-4bb64ed7740d"
+title = "The Anderson and Felix Guide to Naval Architecture, version3"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Anderson and Felix Guide to Naval Architecture, version3, Copyright 2021, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-41aee1562306"
+title = "Earth Sector (for Clement Sector Third Edition)"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Earth Sector (for Clement Sector Third Edition), Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-7e9a001f0b1f"
+title = "Bounded Fortune: Independent Merchants in Clement Sector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Bounded Fortune: Independent Merchants in Clement Sector, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-72e786ba14e0"
+title = "The Dark Lonesome: The Ariel Sector Sourcebook"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Dark Lonesome: The Ariel Sector Sourcebook, Copyright 2024, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-1eecc0f9e921"
+title = "Freedom-class Merchant Vessel"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Freedom-class Merchant Vessel, Copyright 2025, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-672383d0b6d4"
+title = "Subsector Sourcebook: Cascadia"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Subsector Sourcebook: Cascadia, Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-e72509e993a6"
+title = "Roosevelt-class Intercept Destroyer"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Roosevelt-class Intercept Destroyer, Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-4bee01bd54b6"
+title = "Wendy’s Guide to the Fleets of Cascadia Subsector Third Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of Cascadia Subsector Third Edition, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-99746715e9f1"
+title = "Grand Duke of Kyiv-class Destroyer Series"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Grand Duke of Kyiv-class Destroyer Series, Copyright 2025, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-e541e9ecbbfd"
+title = "High Guard System Reference Document"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "High Guard System Reference Document Copyright © 2008, Mongoose Publishing. Hercules-class Heavy Freighter",
+]
+
+[[notice]]
+notice_id = "ship-notice-90db5bc99197"
+title = "Hercules-class Heavy Freighter"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Hercules-class Heavy Freighter, Copyright 2018, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-7446630f6df8"
+title = "The Hub Federation"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Hub Federation, Copyright 2012, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-b2c3ead4347e"
+title = "The Clement Sector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Clement Sector Copyright 2013, Gypsy Knights Games LLCm, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-186186a1adad"
+title = "Hub Federation Ground Forces"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Hub Federation Ground Forces, Copyright 2014, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-c6f1deaf5ac7"
+title = "Cepheus Engine Vehicle Design System"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Cepheus Engine Vehicle Design System, Copyright 2017, Samardan Press, Author Jason “Flynn” Kemp",
+]
+
+[[notice]]
+notice_id = "ship-notice-1aa4efabbfc9"
+title = "Hub Federation Ground Forces Second Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Hub Federation Ground Forces Second Edition, Copyright 2017, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-c4fa1345ee47"
+title = "Vehicle Design Guide"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Vehicle Design Guide, Copyright 2019, Moan Toad Publishing, Authors Michael Johnson, Ian Stead, and Paul Elliott",
+]
+
+[[notice]]
+notice_id = "ship-notice-ca61029d7bef"
+title = "The Anderson and Felix Guide to Naval Architecture, version 3, copyright 2021, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Anderson and Felix Guide to Naval Architecture, version 3, copyright 2021, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-74105e8f2116"
+title = "Subsector Sourcebook: Hub Third Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Subsector Sourcebook: Hub Third Edition, Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-f11beef394ad"
+title = "Hub Federation Ground Forces Third Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Hub Federation Ground Forces Third Edition, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-d338c1633c47"
+title = "The Hub Federation Navy Sourcebook"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Hub Federation Navy Sourcebook Copyright 2014, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-f154dae6c4f4"
+title = "The Hub Federation Navy Sourcebook 2nd Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Hub Federation Navy Sourcebook 2nd Edition Copyright © 2017, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-e68c78a9a6f6"
+title = "Subsector Sourcebook: Hub Third Edition."
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Subsector Sourcebook: Hub Third Edition. Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-5664399cef95"
+title = "Hub Federation Navy Third Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Hub Federation Navy Third Edition, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-0a956582f65e"
+title = "Open Game License v 1.0"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Open Game License v 1.0 Copyright 2000, Wizards of the Coast, Inc.",
+]
+
+[[notice]]
+notice_id = "ship-notice-0ff7f447b947"
+title = "Traveller System Reference Document"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Traveller System Reference Document Copyright © 2008, Mongoose Publishing.",
+]
+
+[[notice]]
+notice_id = "ship-notice-a25ec87807fa"
+title = "Historical Ships of Clement Sector 1: Trent-class Destroyer 2nd Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Historical Ships of Clement Sector 1: Trent-class Destroyer 2nd Edition Copyright 2016, Gypsy Knights Games LLC",
+]
+
+[[notice]]
+notice_id = "ship-notice-0c17dcc7f3e6"
+title = "Low Tech Weapons"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Low Tech Weapons, Copyright 2018, Zozer Games, Authors Paul Elliott and Ian Stead",
+]
+
+[[notice]]
+notice_id = "ship-notice-ca4567c489f1"
+title = "Sword of Cepheus"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Sword of Cepheus, Copyright 2020, Stellagama Publishing, Authors Omer Golan-Joel, Richard Hazlewood, and Josh Peters",
+]
+
+[[notice]]
+notice_id = "ship-notice-3e0fc15898be"
+title = "Unmerciful Frontier: The CCA Sourcebook"
+source_descriptions = [
+  "The third-edition source for the detailed stellar-system construction method to be adapted by the game.",
+]
+open_game_content_descriptions = [
+  "The system-generation method on printed pages 44 through 149 is explicitly designated Open Game Content.",
+]
+excluded_product_identity_descriptions = [
+  "Setting names, organizations, locations, system maps and names, ship and vehicle names, artwork, and Zimm-specific proper names remain Product Identity and are not imported.",
+]
+texts = [
+  "Unmerciful Frontier: The CCA Sourcebook, Copyright 2021, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-9964e5993e1b"
+title = "High Guard System Reference Document"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "High Guard System Reference Document Copyright © 2008, Mongoose Publishing. Knox-class Frigate",
+]
+
+[[notice]]
+notice_id = "ship-notice-e963f4828036"
+title = "Knox-class Frigate"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Knox-class Frigate, Copyright 2019, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-ece9a3390579"
+title = "High Guard System Reference Document"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "High Guard System Reference Document Copyright © 2008, Mongoose Publishing. Lance-Class Gunboat",
+]
+
+[[notice]]
+notice_id = "ship-notice-c5417e615fc1"
+title = "Lance-class Gunboat"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Lance-class Gunboat, Copyright 2019, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-1eb7a07590fd"
+title = "Lion-class Battlecruiser"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Lion-class Battlecruiser, Copyright 2021, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-7eeca4afa727"
+title = "Ships of Clement Sector 10-12: Workhorses"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Ships of Clement Sector 10-12: Workhorses, Copyright 2016, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-227f27c7809b"
+title = "Subsector Sourcebook: Sequoyah Third Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Subsector Sourcebook: Sequoyah Third Edition, Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-ab3693dd6f3c"
+title = "Wendy’s Guide to the Fleets of Sequoyah subsector Third Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of Sequoyah subsector Third Edition, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-050982f354c0"
+title = "Thorpe-class Merchant Vessel"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Thorpe-class Merchant Vessel, Copyright 2024, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-47504dde7378"
+title = "Loki-class Q-ship – A Ghost in the Fleet"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Loki-class Q-ship – A Ghost in the Fleet, Copyright 2025, Independence Games (Gypsy Knights Games LLC), Author Michael Johsnon",
+]
+
+[[notice]]
+notice_id = "ship-notice-20f41b011d35"
+title = "Ships of Clement Sector 15: Milligan-class Hospital Ship"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Ships of Clement Sector 15: Milligan-class Hospital Ship, Copyright 2016, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-198943634d52"
+title = "Milligan-class Hospital Ship"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Milligan-class Hospital Ship, Copyright 2024, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-b4a0d3efe195"
+title = "Opportunity-class Light Trader"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Opportunity-class Light Trader, Copyright 2020, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-221e848b8d58"
+title = "High Guard System Reference Document"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "High Guard System Reference Document Copyright © 2008, Mongoose Publishing. Pleiades-class Light Freighter",
+]
+
+[[notice]]
+notice_id = "ship-notice-2815cd27b87e"
+title = "Pleiades-class Light Freighter"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Pleiades-class Light Freighter, Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-ed97e1431a8d"
+title = "High Guard System Reference Document"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "High Guard System Reference Document Copyright © 2008, Mongoose Publishing. Roosevelt-class Intercept Destroyer",
+]
+
+[[notice]]
+notice_id = "ship-notice-6deaea0ebf92"
+title = "Ships of Clement Sector 16: Rucker-class Merchant"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Ships of Clement Sector 16: Rucker-class Merchant, Copyright 2016, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-b60a2249b52f"
+title = "Rucker-class Merchant"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Rucker-class Merchant, Copyright 2024, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-a01dbafb4c9f"
+title = "Skull and Crossbones: Piracy in Clement Sector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Skull and Crossbones: Piracy in Clement Sector, Copyright 2016, Gypsy Knights Games LLC, Authors John Watts and Bradley Warnes",
+]
+
+[[notice]]
+notice_id = "ship-notice-dc3bcff1e2dd"
+title = "Skull and Crossbones: Piracy in Clement Sector Third Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Skull and Crossbones: Piracy in Clement Sector Third Edition, Copyright 2022, Independence Games (Gypsy Knights Games LLC), Authors John Watts and Bradley Warnes",
+]
+
+[[notice]]
+notice_id = "ship-notice-92267bf5b3d3"
+title = "Ships of Clement Sector 1-3: Hub Federation Warships"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Ships of Clement Sector 1-3: Hub Federation Warships Copyright 2016 Gypsy Knights Games LLC",
+]
+
+[[notice]]
+notice_id = "ship-notice-330061097ce5"
+title = "Ships of Clement Sector 10-12: Workhorses"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Ships of Clement Sector 10-12: Workhorses Copyright 2016 Gypsy Knights Games LLC",
+]
+
+[[notice]]
+notice_id = "ship-notice-5f184f2e5c19"
+title = "Ships of Clement Sector 13: Strikemaster-class Brig"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Ships of Clement Sector 13: Strikemaster-class Brig Copyright 2016, Gypsy Knights Games LLC",
+]
+
+[[notice]]
+notice_id = "ship-notice-839ae0f9e212"
+title = "Ships of Clement Sector 14: Boyne-class Replenishment Ship"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Ships of Clement Sector 14: Boyne-class Replenishment Ship Copyright 2016, Gypsy Knights Games LLC",
+]
+
+[[notice]]
+notice_id = "ship-notice-aaae423172f3"
+title = "Ships of Clement Sector 4-6: Traders, Scouts and Small Craft"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Ships of Clement Sector 4-6: Traders, Scouts and Small Craft Copyright 2014, Gypsy Knights Games LLC",
+]
+
+[[notice]]
+notice_id = "ship-notice-8cc23568fd95"
+title = "Ships of Clement Sector 7-9: Defense Boats and Light Warships"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Ships of Clement Sector 7-9: Defense Boats and Light Warships Copyright 2016, Gypsy Knights Games LLC",
+]
+
+[[notice]]
+notice_id = "ship-notice-90a53462e990"
+title = "Trade Empire-class Commercial Transport"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Trade Empire-class Commercial Transport, Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-03eb0150b48c"
+title = "Wendy”s Guide to the Fleets of Hub Subsector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy”s Guide to the Fleets of Hub Subsector, Copyright 2016, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-83822f0f6a9e"
+title = "Type 3 Security Cutter"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Type 3 Security Cutter, Copyright 2026, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-51d09bc48b33"
+title = "Wendy’s Guide to the Fleets of Cascadia Subsector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of Cascadia Subsector, Copyright 2017, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-6b1d66ba2f9c"
+title = "Wendy’s Guide to the Fleets of Franklin Subsector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of Franklin Subsector, Copyright 2017, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-1b01e117308e"
+title = "Wendy’s Guide to the Fleets of Sequoyah Subsector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of Sequoyah Subsector, Copyright 2017, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-0ec9f3ea746b"
+title = "Wendy’s Guide to the Fleets of The Colonies"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of The Colonies, Copyright 2018, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-55b8439407a2"
+title = "Wendy’s Guide to the Fleets of Earth Sector, Volume 3"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of Earth Sector, Volume 3, Copyright 2021, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-411148bf006c"
+title = "Wendy’s Guide to the Fleets of Earth Sector, Volume 4"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of Earth Sector, Volume 4, Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-7500534cec0e"
+title = "The Anderson and Felix Guide to Naval Architecture 2.0"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "The Anderson and Felix Guide to Naval Architecture 2.0, Copyright 2013, Gypsy Knights Games, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-0915d61e530d"
+title = "Wendy’s Guide to the Fleets of Franklin Subsector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of Franklin Subsector, Copyright 2016, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-233be0661503"
+title = "Subsector Sourcebook: The Colonies Third Edition."
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Subsector Sourcebook: The Colonies Third Edition. Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-812186008e0f"
+title = "Subsector Sourcebook: Franklin Third Edition."
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Subsector Sourcebook: Franklin Third Edition. Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-09cf9f4b8500"
+title = "Wendy’s Guide to the Fleets of Franklin Subsector Third Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of Franklin Subsector Third Edition, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-d4b5cf9bf5fa"
+title = "Subsector Sourcebook: Sequoyah Third Edition."
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Subsector Sourcebook: Sequoyah Third Edition. Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-abfc1013a48b"
+title = "Wendy’s Guide to the Fleets of Sequoyah Subsector Third Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of Sequoyah Subsector Third Edition, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-7c940664a93e"
+title = "Subsector Sourcebook 1: Cascadia 2.0"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Subsector Sourcebook 1: Cascadia 2.0, Copyright 2016, Gypsy Knights Games LLC, Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-2ac04918bb24"
+title = "Wendy’s Guide to the Fleets of Cascadia Subsector"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of Cascadia Subsector, Copyright 2016, Gypsy Knights Games LLC, Author Michael Johnson",
+]
+
+[[notice]]
+notice_id = "ship-notice-be201df4cf68"
+title = "Subsector Sourcebook: Cascadia Third Edition."
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Subsector Sourcebook: Cascadia Third Edition. Copyright 2022, Independence Games (Gypsy Knights Games LLC), Author John Watts",
+]
+
+[[notice]]
+notice_id = "ship-notice-842cb5ecb110"
+title = "Wendy’s Guide to the Fleets of Hub Subsector Third Edition"
+source_descriptions = [
+  "An attribution printed in a ship-mechanics source used by the static catalog.",
+]
+open_game_content_descriptions = []
+excluded_product_identity_descriptions = []
+texts = [
+  "Wendy’s Guide to the Fleets of Hub Subsector Third Edition, Copyright 2023, Independence Games (Gypsy Knights Games LLC), Author Michael Johnson",
+]
+
+[[source]]
+source_id = "cepheus-engine-srd-2016"
+title = "Cepheus Engine System Reference Document"
+source_descriptions = [
+  "The base task, character, world, trade, spacecraft, travel, combat, and encounter rules used by Cepheus Trader.",
+]
+open_game_content_descriptions = [
+  "All text of the Cepheus Engine System Reference Document is Open Game Content except for material the source identifies as Product Identity.",
+]
+excluded_product_identity_descriptions = [
+  "Product titles and the Cepheus Engine and Samardan Press trademarks remain excluded.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "t20-travellers-handbook-2002",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+]
+
+[[source]]
+source_id = "cepheus-trader-2026"
+title = "Cepheus Trader"
+source_descriptions = [
+  "Original Cepheus Trader game content, including catalog names, descriptions, mechanics, and data.",
+]
+open_game_content_descriptions = [
+  "All original game content authored for Cepheus Trader is Open Game Content.",
+]
+excluded_product_identity_descriptions = []
+notice_ids = [
+  "ogl-1.0a",
+  "cepheus-trader-2026-notice",
+]
+
+[[source]]
+source_id = "ship-source-a-f"
+title = "Anderson and Felix Third Edition"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fae01b13b847",
+  "ship-notice-fece9927ec26",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-b3d2474e0353",
+  "ship-notice-eee7d318b2d4",
+]
+
+[[source]]
+source_id = "ship-source-tech-update-2350"
+title = "Tech Update:2350"
+source_descriptions = [
+  "Later Open Game Content ship components and construction refinements.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "t20-travellers-handbook-2002",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-f00869209df3",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-29bec922f956",
+  "interface-cybernetics-2019-notice",
+  "ship-notice-b813fecdcb5f",
+  "tech-update-2350-notice",
+]
+
+[[source]]
+source_id = "ship-source-acc"
+title = "Atlanta Class Carrier"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-f00869209df3",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-0f0745d23161",
+  "ship-notice-b813fecdcb5f",
+  "ship-notice-70c66927e5d1",
+  "ship-notice-9556cc53cc43",
+  "ship-notice-6d4f57bec047",
+]
+
+[[source]]
+source_id = "ship-source-alcyone"
+title = "Alcyone class Interstellar Freighter"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-7e70d843833a",
+  "ship-notice-b813fecdcb5f",
+  "ship-notice-4056388d41f0",
+  "ship-notice-6f1dd409f9da",
+  "ship-notice-8104929fcdf2",
+]
+
+[[source]]
+source_id = "ship-source-atlas"
+title = "Atlas class Freighter"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fece9927ec26",
+  "ship-notice-5ef817acb42d",
+  "ship-notice-b3d2474e0353",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-2c22702bdde4",
+]
+
+[[source]]
+source_id = "ship-source-b-c"
+title = "Bridgetown and Cape"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fece9927ec26",
+  "ship-notice-7e70d843833a",
+  "ship-notice-b813fecdcb5f",
+  "ship-notice-6f1dd409f9da",
+  "ship-notice-4056388d41f0",
+  "ship-notice-bc34c76a07f4",
+  "ship-notice-8978310c0b8f",
+  "ship-notice-a27202064ce2",
+]
+
+[[source]]
+source_id = "ship-source-bcpy"
+title = "Brightwater Class Personal Yacht2"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-f00869209df3",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-b813fecdcb5f",
+  "ship-notice-6126b2e3bee7",
+]
+
+[[source]]
+source_id = "ship-source-coner"
+title = "Coner Class Trader"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-0d299be02e45",
+  "ship-notice-7e70d843833a",
+  "ship-notice-b813fecdcb5f",
+  "ship-notice-6f1dd409f9da",
+  "ship-notice-4056388d41f0",
+  "ship-notice-609526213452",
+]
+
+[[source]]
+source_id = "ship-source-contessa"
+title = "Contessa Class Fast Trader"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fece9927ec26",
+  "ship-notice-b3d2474e0353",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-c6ad11133325",
+]
+
+[[source]]
+source_id = "ship-source-copeline"
+title = "Copeline Class Merchant Vessel"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "ship-notice-72c98378d8c4",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-6272545de3c6",
+  "ship-notice-f00869209df3",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-3186aa6a28cd",
+  "ship-notice-29bec922f956",
+  "ship-notice-562eaa3611e7",
+  "ship-notice-a68bbc8a7646",
+  "ship-notice-6d13cf1652d2",
+]
+
+[[source]]
+source_id = "ship-source-cs"
+title = "Clement Sector Third Edition"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-eb2a167d9dc5",
+  "ship-notice-dff282d187e0",
+  "ship-notice-0f0745d23161",
+  "ship-notice-355248b572f1",
+  "ship-notice-bfc67b62fd7e",
+  "ship-notice-b9a4e635b899",
+  "ship-notice-dafb5fe8eeaa",
+  "ship-notice-ee42f5399b4c",
+  "ship-notice-c7ba00c5413a",
+  "ship-notice-3186aa6a28cd",
+  "ship-notice-29bec922f956",
+  "ship-notice-562eaa3611e7",
+  "ship-notice-a68bbc8a7646",
+  "ship-notice-eead281bb9c9",
+  "ship-notice-b3d2474e0353",
+]
+
+[[source]]
+source_id = "ship-source-freedom"
+title = "Freedom Merchant Ship"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fece9927ec26",
+  "ship-notice-4056388d41f0",
+  "ship-notice-4bb64ed7740d",
+  "ship-notice-41aee1562306",
+  "ship-notice-7e9a001f0b1f",
+  "ship-notice-72e786ba14e0",
+  "ship-notice-1eecc0f9e921",
+]
+
+[[source]]
+source_id = "ship-source-grand-duke"
+title = "Grand Duke Destroyer Series"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fece9927ec26",
+  "ship-notice-4056388d41f0",
+  "ship-notice-6f1dd409f9da",
+  "ship-notice-672383d0b6d4",
+  "ship-notice-e72509e993a6",
+  "ship-notice-4bee01bd54b6",
+  "ship-notice-99746715e9f1",
+]
+
+[[source]]
+source_id = "ship-source-hercules"
+title = "Hercules Heavy Freighter"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "ship-notice-e541e9ecbbfd",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-f00869209df3",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-90db5bc99197",
+]
+
+[[source]]
+source_id = "ship-source-hfgf"
+title = "Hub Federation Ground Forces Third Edition"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "ship-notice-7446630f6df8",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-b2c3ead4347e",
+  "ship-notice-186186a1adad",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fece9927ec26",
+  "ship-notice-0f0745d23161",
+  "ship-notice-c6f1deaf5ac7",
+  "ship-notice-1aa4efabbfc9",
+  "ship-notice-c4fa1345ee47",
+  "ship-notice-ca61029d7bef",
+  "ship-notice-74105e8f2116",
+  "ship-notice-f11beef394ad",
+]
+
+[[source]]
+source_id = "ship-source-hfn"
+title = "Hub Federation Navy Third Edition"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "ship-notice-d338c1633c47",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fece9927ec26",
+  "ship-notice-f154dae6c4f4",
+  "ship-notice-b3d2474e0353",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-e68c78a9a6f6",
+  "ship-notice-5664399cef95",
+]
+
+[[source]]
+source_id = "ship-source-hsocs-1"
+title = "HSOCS 1 Trent OGL"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ship-notice-0a956582f65e",
+  "ship-notice-0ff7f447b947",
+  "ship-notice-a25ec87807fa",
+]
+
+[[source]]
+source_id = "ship-source-jinsokuna"
+title = "Jinsokuna Chirashi Yacht"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fece9927ec26",
+  "ship-notice-3186aa6a28cd",
+  "ship-notice-0c17dcc7f3e6",
+  "ship-notice-ca4567c489f1",
+  "ship-notice-3e0fc15898be",
+]
+
+[[source]]
+source_id = "ship-source-knox"
+title = "Knox Class Frigate"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "ship-notice-9964e5993e1b",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-6272545de3c6",
+  "ship-notice-f00869209df3",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-b9a4e635b899",
+  "ship-notice-dafb5fe8eeaa",
+  "ship-notice-ee42f5399b4c",
+  "ship-notice-3186aa6a28cd",
+  "ship-notice-29bec922f956",
+  "ship-notice-562eaa3611e7",
+  "ship-notice-a68bbc8a7646",
+  "ship-notice-eead281bb9c9",
+  "ship-notice-e963f4828036",
+]
+
+[[source]]
+source_id = "ship-source-lcg"
+title = "Lance class Gunboat"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "ship-notice-ece9a3390579",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-6272545de3c6",
+  "ship-notice-f00869209df3",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-b9a4e635b899",
+  "ship-notice-dafb5fe8eeaa",
+  "ship-notice-ee42f5399b4c",
+  "ship-notice-3186aa6a28cd",
+  "ship-notice-29bec922f956",
+  "ship-notice-562eaa3611e7",
+  "ship-notice-a68bbc8a7646",
+  "ship-notice-eead281bb9c9",
+  "ship-notice-c5417e615fc1",
+]
+
+[[source]]
+source_id = "ship-source-lion"
+title = "Lion class Battlecruiser"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-f00869209df3",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-0f0745d23161",
+  "ship-notice-b813fecdcb5f",
+  "ship-notice-70c66927e5d1",
+  "ship-notice-9556cc53cc43",
+  "ship-notice-1eb7a07590fd",
+]
+
+[[source]]
+source_id = "ship-source-loki"
+title = "Loki Class Q Ship"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fece9927ec26",
+  "ship-notice-7eeca4afa727",
+  "ship-notice-b3d2474e0353",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-227f27c7809b",
+  "ship-notice-ab3693dd6f3c",
+  "ship-notice-050982f354c0",
+  "ship-notice-47504dde7378",
+]
+
+[[source]]
+source_id = "ship-source-milligan"
+title = "Milligan Hospital Ship 3e"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fece9927ec26",
+  "ship-notice-20f41b011d35",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-41aee1562306",
+  "ship-notice-198943634d52",
+]
+
+[[source]]
+source_id = "ship-source-opportunity"
+title = "Opportunity Class Light Trader"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-f00869209df3",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-3186aa6a28cd",
+  "ship-notice-b4a0d3efe195",
+]
+
+[[source]]
+source_id = "ship-source-plf"
+title = "Pleiades Light Freighter"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "ship-notice-221e848b8d58",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fae01b13b847",
+  "ship-notice-fece9927ec26",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-b3d2474e0353",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-2815cd27b87e",
+]
+
+[[source]]
+source_id = "ship-source-roosevelt"
+title = "Roosevelt Class Intercept Destroyer"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "ship-notice-ed97e1431a8d",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-6f1dd409f9da",
+  "ship-notice-4056388d41f0",
+  "ship-notice-672383d0b6d4",
+  "ship-notice-e72509e993a6",
+]
+
+[[source]]
+source_id = "ship-source-rucker"
+title = "Rucker Class Merchant"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fece9927ec26",
+  "ship-notice-6deaea0ebf92",
+  "ship-notice-b3d2474e0353",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-b60a2249b52f",
+]
+
+[[source]]
+source_id = "ship-source-s-c"
+title = "Skull and Crossbones Third Edition"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fae01b13b847",
+  "ship-notice-fece9927ec26",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-a01dbafb4c9f",
+  "ship-notice-b3d2474e0353",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-dc3bcff1e2dd",
+]
+
+[[source]]
+source_id = "ship-source-socs-1-3"
+title = "SOCS 1-3 082618Bk"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ship-notice-0a956582f65e",
+  "ship-notice-0ff7f447b947",
+  "ship-notice-92267bf5b3d3",
+]
+
+[[source]]
+source_id = "ship-source-socs-10-12"
+title = "SOCS 10-12 CE 082918Bk"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ship-notice-0a956582f65e",
+  "ship-notice-0ff7f447b947",
+  "ship-notice-330061097ce5",
+]
+
+[[source]]
+source_id = "ship-source-socs-13"
+title = "SOCS 13 Strikemaster"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ship-notice-0a956582f65e",
+  "ship-notice-0ff7f447b947",
+  "ship-notice-5f184f2e5c19",
+]
+
+[[source]]
+source_id = "ship-source-socs-14"
+title = "SOCS 14 Boyne"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ship-notice-0a956582f65e",
+  "ship-notice-0ff7f447b947",
+  "ship-notice-839ae0f9e212",
+]
+
+[[source]]
+source_id = "ship-source-socs-15"
+title = "Milligan Hospital Ship 3e"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fece9927ec26",
+  "ship-notice-20f41b011d35",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-41aee1562306",
+  "ship-notice-198943634d52",
+]
+
+[[source]]
+source_id = "ship-source-socs-16"
+title = "Rucker Class Merchant"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fece9927ec26",
+  "ship-notice-6deaea0ebf92",
+  "ship-notice-b3d2474e0353",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-b60a2249b52f",
+]
+
+[[source]]
+source_id = "ship-source-socs-17"
+title = "Atlas class Freighter"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fece9927ec26",
+  "ship-notice-5ef817acb42d",
+  "ship-notice-b3d2474e0353",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-2c22702bdde4",
+]
+
+[[source]]
+source_id = "ship-source-socs-4-6"
+title = "SOCS 4-6 082918Bk"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ship-notice-0a956582f65e",
+  "ship-notice-0ff7f447b947",
+  "ship-notice-aaae423172f3",
+]
+
+[[source]]
+source_id = "ship-source-socs-7-9"
+title = "SOCS 7-9 CE 082918Bk"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ship-notice-0a956582f65e",
+  "ship-notice-0ff7f447b947",
+  "ship-notice-8cc23568fd95",
+]
+
+[[source]]
+source_id = "ship-source-trade-empire"
+title = "Trade Empire Commercial Transport"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-b080725fdf28",
+  "ship-notice-fae01b13b847",
+  "ship-notice-fece9927ec26",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-b3d2474e0353",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-90a53462e990",
+]
+
+[[source]]
+source_id = "ship-source-type-3"
+title = "Type 3 Security Cutter"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-40aa54128e3a",
+  "ship-notice-03eb0150b48c",
+  "ship-notice-0f0745d23161",
+  "ship-notice-355248b572f1",
+  "ship-notice-b3d2474e0353",
+  "ship-notice-6f1dd409f9da",
+  "ship-notice-83822f0f6a9e",
+]
+
+[[source]]
+source_id = "ship-source-wendy-earth-1"
+title = "Wendys Earth Volume 1"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-6272545de3c6",
+  "ship-notice-f00869209df3",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-eb2a167d9dc5",
+  "ship-notice-dff282d187e0",
+  "ship-notice-0f0745d23161",
+  "ship-notice-355248b572f1",
+  "ship-notice-bfc67b62fd7e",
+  "ship-notice-7e70d843833a",
+  "ship-notice-51d09bc48b33",
+  "ship-notice-6b1d66ba2f9c",
+  "ship-notice-1b01e117308e",
+  "ship-notice-0ec9f3ea746b",
+  "ship-notice-b813fecdcb5f",
+  "ship-notice-70c66927e5d1",
+]
+
+[[source]]
+source_id = "ship-source-wendy-earth-2"
+title = "Wendy's Earth Vol 2"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-6272545de3c6",
+  "ship-notice-f00869209df3",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-0f0745d23161",
+  "ship-notice-355248b572f1",
+  "ship-notice-7e70d843833a",
+  "ship-notice-51d09bc48b33",
+  "ship-notice-6b1d66ba2f9c",
+  "ship-notice-1b01e117308e",
+  "ship-notice-0ec9f3ea746b",
+  "ship-notice-b813fecdcb5f",
+  "ship-notice-70c66927e5d1",
+  "ship-notice-9556cc53cc43",
+]
+
+[[source]]
+source_id = "ship-source-wendy-earth-3"
+title = "Wendy Earth 3a"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-f00869209df3",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-7e70d843833a",
+  "ship-notice-b813fecdcb5f",
+  "ship-notice-70c66927e5d1",
+  "ship-notice-9556cc53cc43",
+  "ship-notice-55b8439407a2",
+]
+
+[[source]]
+source_id = "ship-source-wendy-earth-4"
+title = "Wendy's Earth 4"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-f00869209df3",
+  "ship-notice-9bb1e089f76e",
+  "ship-notice-7e70d843833a",
+  "ship-notice-b813fecdcb5f",
+  "ship-notice-70c66927e5d1",
+  "ship-notice-9556cc53cc43",
+  "ship-notice-55b8439407a2",
+  "ship-notice-411148bf006c",
+]
+
+[[source]]
+source_id = "ship-source-wgtc"
+title = "Wendy's Guide to Cascadia 3e"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-7500534cec0e",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-7c940664a93e",
+  "ship-notice-2ac04918bb24",
+  "ship-notice-b813fecdcb5f",
+  "ship-notice-4056388d41f0",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-be201df4cf68",
+  "ship-notice-4bee01bd54b6",
+]
+
+[[source]]
+source_id = "ship-source-wgtf"
+title = "Wendy's Guide to Franklin 3e"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-7500534cec0e",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-0915d61e530d",
+  "ship-notice-b813fecdcb5f",
+  "ship-notice-4056388d41f0",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-812186008e0f",
+  "ship-notice-09cf9f4b8500",
+]
+
+[[source]]
+source_id = "ship-source-wgttfoss"
+title = "Wendy's Sequoyah 3e"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-7500534cec0e",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-0915d61e530d",
+  "ship-notice-b813fecdcb5f",
+  "ship-notice-4056388d41f0",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-d4b5cf9bf5fa",
+  "ship-notice-abfc1013a48b",
+]
+
+[[source]]
+source_id = "ship-source-wgttfotc"
+title = "Wendy's Colonies 3e"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-7500534cec0e",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-0915d61e530d",
+  "ship-notice-b813fecdcb5f",
+  "ship-notice-4056388d41f0",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-233be0661503",
+  "ship-notice-8978310c0b8f",
+]
+
+[[source]]
+source_id = "ship-source-wh"
+title = "Wendy's Hub 3ea"
+source_descriptions = [
+  "Open ship-construction data adapted into one or more anonymous static catalog entries.",
+]
+open_game_content_descriptions = [
+  "Only expressly open game mechanics and numerical construction data are adapted.",
+]
+excluded_product_identity_descriptions = [
+  "Source names, class names, setting text, people, places, organizations, fiction, artwork, and trade dress are excluded except where their exact wording is legally required in an attribution notice.",
+]
+notice_ids = [
+  "ogl-1.0a",
+  "high-guard-srd-2008",
+  "mercenary-srd-2008",
+  "modern-srd-2002-2004",
+  "swords-wizardry-core-2008",
+  "srd-2000",
+  "srd-2000-2003",
+  "ship-notice-dc48474b1856",
+  "traveller-srd-2008",
+  "cepheus-engine-srd-2016-notice",
+  "ship-notice-c7ef0d6faee1",
+  "ship-notice-7500534cec0e",
+  "ship-notice-8e76d3bc8c8c",
+  "ship-notice-845a2fb44bed",
+  "ship-notice-0f0745d23161",
+  "ship-notice-7e70d843833a",
+  "ship-notice-b813fecdcb5f",
+  "ship-notice-4056388d41f0",
+  "ship-notice-eee7d318b2d4",
+  "ship-notice-e68c78a9a6f6",
+  "ship-notice-842cb5ecb110",
+]

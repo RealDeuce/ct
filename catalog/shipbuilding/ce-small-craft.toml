@@ -1,0 +1,388 @@
+# Rule-derived small-craft construction tables from Cepheus Engine SRD,
+# Chapter 8, pages 98-100.  Shared armor, configuration, electronics, and
+# armament rules resolve through ce-core.toml.
+
+schema_version = 1
+ruleset_id = "ce-srd-2016.small-craft"
+ruleset_revision = 1
+extends_ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016"]
+
+[scope]
+minimum_hull_tons = 10
+maximum_hull_tons = 95
+supports_jump_drive = false
+hardpoints = 1
+
+[[hull]]
+id = "small-10"
+tons = 10
+code = "s1"
+price_credits = 1100000
+construction_weeks = 28
+[[hull]]
+id = "small-15"
+tons = 15
+code = "s2"
+price_credits = 1150000
+construction_weeks = 29
+[[hull]]
+id = "small-20"
+tons = 20
+code = "s3"
+price_credits = 1200000
+construction_weeks = 29
+[[hull]]
+id = "small-25"
+tons = 25
+code = "s4"
+price_credits = 1250000
+construction_weeks = 30
+[[hull]]
+id = "small-30"
+tons = 30
+code = "s5"
+price_credits = 1300000
+construction_weeks = 30
+[[hull]]
+id = "small-35"
+tons = 35
+code = "s6"
+price_credits = 1350000
+construction_weeks = 30
+[[hull]]
+id = "small-40"
+tons = 40
+code = "s7"
+price_credits = 1400000
+construction_weeks = 31
+[[hull]]
+id = "small-45"
+tons = 45
+code = "s8"
+price_credits = 1450000
+construction_weeks = 31
+[[hull]]
+id = "small-50"
+tons = 50
+code = "s9"
+price_credits = 1500000
+construction_weeks = 32
+[[hull]]
+id = "small-55"
+tons = 55
+code = "sA"
+price_credits = 1550000
+construction_weeks = 32
+[[hull]]
+id = "small-60"
+tons = 60
+code = "sB"
+price_credits = 1600000
+construction_weeks = 32
+[[hull]]
+id = "small-65"
+tons = 65
+code = "sC"
+price_credits = 1650000
+construction_weeks = 33
+[[hull]]
+id = "small-70"
+tons = 70
+code = "sD"
+price_credits = 1700000
+construction_weeks = 33
+[[hull]]
+id = "small-75"
+tons = 75
+code = "sE"
+price_credits = 1750000
+construction_weeks = 34
+[[hull]]
+id = "small-80"
+tons = 80
+code = "sF"
+price_credits = 1800000
+construction_weeks = 34
+[[hull]]
+id = "small-85"
+tons = 85
+code = "sG"
+price_credits = 1850000
+construction_weeks = 34
+[[hull]]
+id = "small-90"
+tons = 90
+code = "sH"
+price_credits = 1900000
+construction_weeks = 35
+[[hull]]
+id = "small-95"
+tons = 95
+code = "sJ"
+price_credits = 1950000
+construction_weeks = 35
+
+[armor_limits]
+titanium_steel = "minimum-of-tech-level-and-9"
+crystaliron = "minimum-of-tech-level-and-13"
+bonded_superdense = "tech-level"
+
+[[drive]]
+code = "sA"
+maneuver_millitons = 500
+maneuver_price_credits = 1000000
+power_millitons = 1200
+power_price_credits = 3000000
+power_fuel_millitons_per_week = 400
+[[drive]]
+code = "sB"
+maneuver_millitons = 1000
+maneuver_price_credits = 2000000
+power_millitons = 1500
+power_price_credits = 3500000
+power_fuel_millitons_per_week = 500
+[[drive]]
+code = "sC"
+maneuver_millitons = 1500
+maneuver_price_credits = 3000000
+power_millitons = 1800
+power_price_credits = 4000000
+power_fuel_millitons_per_week = 600
+[[drive]]
+code = "sD"
+maneuver_millitons = 2000
+maneuver_price_credits = 3500000
+power_millitons = 2100
+power_price_credits = 4500000
+power_fuel_millitons_per_week = 700
+[[drive]]
+code = "sE"
+maneuver_millitons = 2500
+maneuver_price_credits = 4000000
+power_millitons = 2400
+power_price_credits = 5000000
+power_fuel_millitons_per_week = 800
+[[drive]]
+code = "sF"
+maneuver_millitons = 3000
+maneuver_price_credits = 6000000
+power_millitons = 2700
+power_price_credits = 5500000
+power_fuel_millitons_per_week = 900
+[[drive]]
+code = "sG"
+maneuver_millitons = 3500
+maneuver_price_credits = 8000000
+power_millitons = 3000
+power_price_credits = 6000000
+power_fuel_millitons_per_week = 1000
+[[drive]]
+code = "sH"
+maneuver_millitons = 4000
+maneuver_price_credits = 9000000
+power_millitons = 3300
+power_price_credits = 6500000
+power_fuel_millitons_per_week = 1100
+[[drive]]
+code = "sJ"
+maneuver_millitons = 4500
+maneuver_price_credits = 10000000
+power_millitons = 3600
+power_price_credits = 7000000
+power_fuel_millitons_per_week = 1200
+[[drive]]
+code = "sK"
+maneuver_millitons = 5000
+maneuver_price_credits = 11000000
+power_millitons = 3900
+power_price_credits = 7500000
+power_fuel_millitons_per_week = 1300
+[[drive]]
+code = "sL"
+maneuver_millitons = 6000
+maneuver_price_credits = 12000000
+power_millitons = 4500
+power_price_credits = 8000000
+power_fuel_millitons_per_week = 1500
+[[drive]]
+code = "sM"
+maneuver_millitons = 7000
+maneuver_price_credits = 14000000
+power_millitons = 5100
+power_price_credits = 9000000
+power_fuel_millitons_per_week = 1700
+[[drive]]
+code = "sN"
+maneuver_millitons = 8000
+maneuver_price_credits = 16000000
+power_millitons = 5700
+power_price_credits = 10000000
+power_fuel_millitons_per_week = 1900
+[[drive]]
+code = "sP"
+maneuver_millitons = 9000
+maneuver_price_credits = 18000000
+power_millitons = 6300
+power_price_credits = 12000000
+power_fuel_millitons_per_week = 2100
+[[drive]]
+code = "sQ"
+maneuver_millitons = 10000
+maneuver_price_credits = 20000000
+power_millitons = 6900
+power_price_credits = 14000000
+power_fuel_millitons_per_week = 2300
+[[drive]]
+code = "sR"
+maneuver_millitons = 11000
+maneuver_price_credits = 22000000
+power_millitons = 7500
+power_price_credits = 16000000
+power_fuel_millitons_per_week = 2500
+[[drive]]
+code = "sS"
+maneuver_millitons = 12000
+maneuver_price_credits = 24000000
+power_millitons = 8100
+power_price_credits = 18000000
+power_fuel_millitons_per_week = 2700
+[[drive]]
+code = "sT"
+maneuver_millitons = 13000
+maneuver_price_credits = 26000000
+power_millitons = 8700
+power_price_credits = 20000000
+power_fuel_millitons_per_week = 2900
+[[drive]]
+code = "sU"
+maneuver_millitons = 14000
+maneuver_price_credits = 28000000
+power_millitons = 9300
+power_price_credits = 22000000
+power_fuel_millitons_per_week = 3100
+[[drive]]
+code = "sV"
+maneuver_millitons = 15000
+maneuver_price_credits = 30000000
+power_millitons = 9900
+power_price_credits = 24000000
+power_fuel_millitons_per_week = 3300
+[[drive]]
+code = "sW"
+maneuver_millitons = 16000
+maneuver_price_credits = 32000000
+power_millitons = 10500
+power_price_credits = 26000000
+power_fuel_millitons_per_week = 3500
+
+[[drive_performance]]
+hull_tons = 10
+values = { sA = 2, sB = 4, sC = 6 }
+[[drive_performance]]
+hull_tons = 15
+values = { sA = 1, sB = 2, sC = 4, sD = 5, sE = 6 }
+[[drive_performance]]
+hull_tons = 20
+values = { sA = 1, sB = 2, sC = 3, sD = 4, sE = 5, sF = 6 }
+[[drive_performance]]
+hull_tons = 25
+values = { sB = 1, sC = 2, sD = 3, sE = 4, sF = 4, sG = 5, sH = 6 }
+[[drive_performance]]
+hull_tons = 30
+values = { sB = 1, sC = 2, sD = 2, sE = 3, sF = 4, sG = 4, sH = 5, sJ = 6, sK = 6 }
+[[drive_performance]]
+hull_tons = 35
+values = { sB = 1, sC = 1, sD = 2, sE = 2, sF = 3, sG = 4, sH = 4, sJ = 5, sK = 5, sL = 6 }
+[[drive_performance]]
+hull_tons = 40
+values = { sB = 1, sC = 1, sD = 2, sE = 2, sF = 3, sG = 3, sH = 4, sJ = 4, sK = 5, sL = 6 }
+[[drive_performance]]
+hull_tons = 45
+values = { sC = 1, sD = 1, sE = 2, sF = 2, sG = 3, sH = 3, sJ = 4, sK = 4, sL = 5, sM = 6 }
+[[drive_performance]]
+hull_tons = 50
+values = { sC = 1, sD = 1, sE = 2, sF = 2, sG = 2, sH = 3, sJ = 3, sK = 4, sL = 4, sM = 5, sN = 6 }
+[[drive_performance]]
+hull_tons = 55
+values = { sC = 1, sD = 1, sE = 1, sF = 2, sG = 2, sH = 2, sJ = 3, sK = 3, sL = 4, sM = 5, sN = 5, sP = 6 }
+[[drive_performance]]
+hull_tons = 60
+values = { sC = 1, sD = 1, sE = 1, sF = 2, sG = 2, sH = 2, sJ = 3, sK = 3, sL = 4, sM = 4, sN = 5, sP = 6, sQ = 6 }
+[[drive_performance]]
+hull_tons = 65
+values = { sD = 1, sE = 1, sF = 1, sG = 2, sH = 2, sJ = 2, sK = 3, sL = 3, sM = 4, sN = 4, sP = 5, sQ = 6, sR = 6 }
+[[drive_performance]]
+hull_tons = 70
+values = { sD = 1, sE = 1, sF = 1, sG = 2, sH = 2, sJ = 2, sK = 2, sL = 3, sM = 4, sN = 4, sP = 5, sQ = 5, sR = 6, sS = 6 }
+[[drive_performance]]
+hull_tons = 75
+values = { sD = 1, sE = 1, sF = 1, sG = 1, sH = 2, sJ = 2, sK = 2, sL = 3, sM = 3, sN = 4, sP = 4, sQ = 5, sR = 5, sS = 6, sT = 6 }
+[[drive_performance]]
+hull_tons = 80
+values = { sD = 1, sE = 1, sF = 1, sG = 1, sH = 2, sJ = 2, sK = 2, sL = 3, sM = 3, sN = 4, sP = 4, sQ = 5, sR = 5, sS = 6, sT = 6 }
+[[drive_performance]]
+hull_tons = 85
+values = { sE = 1, sF = 1, sG = 1, sH = 1, sJ = 2, sK = 2, sL = 2, sM = 3, sN = 3, sP = 4, sQ = 4, sR = 5, sS = 5, sT = 6, sU = 6 }
+[[drive_performance]]
+hull_tons = 90
+values = { sE = 1, sF = 1, sG = 1, sH = 1, sJ = 2, sK = 2, sL = 2, sM = 3, sN = 3, sP = 4, sQ = 4, sR = 4, sS = 5, sT = 5, sU = 6, sV = 6 }
+[[drive_performance]]
+hull_tons = 95
+values = { sE = 1, sF = 1, sG = 1, sH = 1, sJ = 1, sK = 2, sL = 2, sM = 2, sN = 3, sP = 3, sQ = 4, sR = 4, sS = 5, sT = 5, sU = 5, sV = 6, sW = 6 }
+
+[[control]]
+id = "one-person-cockpit"
+displacement_millitons = 1500
+crew_capacity = 1
+passenger_capacity = 0
+[[control]]
+id = "two-person-cockpit"
+displacement_millitons = 3000
+crew_capacity = 2
+passenger_capacity = 0
+[[control]]
+id = "one-person-control-cabin"
+displacement_millitons = 3000
+crew_capacity = 1
+passenger_capacity = 0
+[[control]]
+id = "two-person-control-cabin"
+displacement_millitons = 6000
+crew_capacity = 2
+passenger_capacity = 1
+
+[control_cost]
+price_credits_per_20_hull_tons = 100000
+rounding = "up"
+additional_passenger_millitons = 1500
+additional_passenger_price_credits = 75000
+
+[airlock]
+displacement_millitons = 1000
+price_credits = 200000
+
+[crew]
+maximum_hull_tons_for_one_crew = 50
+minimum_crew_at_or_below = 1
+minimum_crew_above = 2
+
+[[energy_weapon_limit]]
+first_drive_code = "sA"
+last_drive_code = "sF"
+maximum_weapons = 0
+[[energy_weapon_limit]]
+first_drive_code = "sG"
+last_drive_code = "sK"
+maximum_weapons = 1
+[[energy_weapon_limit]]
+first_drive_code = "sL"
+last_drive_code = "sR"
+maximum_weapons = 2
+[[energy_weapon_limit]]
+first_drive_code = "sS"
+last_drive_code = "sW"
+maximum_weapons = 3
+
+[excluded_bays]
+ids = ["meson-gun-bay", "particle-beam-bay", "fusion-gun-bay"]

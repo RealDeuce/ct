@@ -1,0 +1,12 @@
+# Open Game Content vocabulary for generated personnel names. These are
+# ordinary real-world given and family names, selected independently. The
+# resulting combinations are setting-neutral and contain no imported setting
+# characters or personalities.
+
+schema_version = 1
+catalog_revision = 1
+open_game_content_designations = ["The complete personnel naming vocabulary and generation convention are Open Game Content."]
+
+given_names = ["Amina", "Ana", "Anika", "Ari", "Arun", "Asha", "Ayla", "Bao", "Beatriz", "Belen", "Camila", "Carina", "Cassia", "Celia", "Chandra", "Chioma", "Dalia", "Darius", "Davi", "Dev", "Edda", "Elena", "Elias", "Elif", "Emil", "Enzo", "Esme", "Farah", "Felix", "Freya", "Gabriel", "Hana", "Haru", "Idris", "Imani", "Ines", "Ira", "Iris", "Ivo", "Jalen", "Javier", "Jia", "Joel", "Jun", "Kai", "Kaito", "Karim", "Katya", "Keiko", "Kenji", "Kira", "Laila", "Laleh", "Leila", "Leon", "Lian", "Lina", "Luca", "Lucia", "Luis", "Maeve", "Malik", "Mara", "Mateo", "Mei", "Mina", "Mira", "Nadia", "Naomi", "Nia", "Niko", "Noor", "Omar", "Pavel", "Priya", "Rafael", "Rani", "Ravi", "Ren", "Rosa", "Saanvi", "Sami", "Sana", "Sara", "Sora", "Talia", "Tariq", "Tenzin", "Tomas", "Vera", "Vikram", "Yara", "Yuki", "Zara", "Zhen"]
+
+family_names = ["Abadi", "Adeyemi", "Alvarez", "Anders", "Aoki", "Arendt", "Bako", "Banerjee", "Becker", "Bell", "Bianchi", "Bishara", "Calder", "Caron", "Chen", "Costa", "Daramola", "Das", "Delgado", "Diallo", "Duarte", "Eklund", "El-Sayed", "Farouk", "Fischer", "Flores", "Fujita", "Garcia", "Ghosh", "Haddad", "Hassan", "Hayashi", "Herrera", "Ibarra", "Ivanov", "Jensen", "Kader", "Kaur", "Kim", "Kobayashi", "Kovacs", "Laurent", "Lee", "Lindholm", "Liu", "Lopes", "Marin", "Mensah", "Meyer", "Mori", "Nakamura", "Navarro", "Nguyen", "Novak", "Okafor", "Oliveira", "Ortiz", "Park", "Patel", "Pereira", "Petrov", "Qadir", "Rahal", "Ramos", "Reed", "Rossi", "Sato", "Schmidt", "Silva", "Singh", "Solberg", "Suzuki", "Takahashi", "Tan", "Tavares", "Tesfaye", "Tran", "Vega", "Volkov", "Wang", "Weber", "Wong", "Yamamoto", "Yilmaz", "Zhao", "Zhou", "Akhtar", "Bennett", "Choi", "Dominguez", "Eriksen", "George", "Khan", "Moreau", "Santos"]

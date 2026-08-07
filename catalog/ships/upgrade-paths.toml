@@ -1,0 +1,131 @@
+# Authoritative PI-free native upgrade-path assignment for active designs.
+# Each path represents one manufacturer or shipyard specializing in one cell
+# of the polity matrix. Canonical names are assigned in names.toml; the path
+# number itself has no setting identity.
+
+schema_version = 1
+catalog_revision = 1
+path_count = 9
+open_game_content_designations = [
+  "The complete original upgrade-path grouping and anonymous path identifiers are Open Game Content.",
+]
+
+[[path]]
+path_id = 1
+tag = "upgrade-path-1"
+trade_emphasis = "trade"
+institutional_order = "orderly"
+specialty = "Efficient scheduled commerce, passenger service, bulk freight, and high-volume civil logistics."
+native_design_tags = [
+  "ship-3", "ship-5", "ship-6", "ship-20", "ship-21", "ship-22", "ship-27",
+  "ship-28", "ship-31", "ship-37", "ship-39", "ship-40", "ship-49", "ship-50",
+  "ship-51", "ship-52",
+  "ship-59", "ship-60", "ship-71", "ship-80", "ship-83", "ship-86",
+  "ship-98", "ship-125", "ship-126", "ship-127", "ship-131", "ship-132",
+  "ship-133", "ship-142", "ship-145", "ship-146", "ship-147", "ship-148",
+  "ship-149", "ship-151", "ship-152", "ship-154", "ship-155", "ship-158",
+  "ship-162", "ship-163", "ship-169", "ship-171", "ship-172", "ship-173", "ship-176",
+  "ship-177", "ship-181", "ship-182", "ship-187", "ship-192", "ship-194",
+  "ship-196", "ship-197", "ship-199", "ship-201", "ship-202", "ship-203",
+  "ship-209",
+]
+
+[[path]]
+path_id = 2
+tag = "upgrade-path-2"
+trade_emphasis = "trade"
+institutional_order = "contested"
+specialty = "Fast, protected, and armed commercial designs for profitable operation where institutions remain useful but unreliable."
+native_design_tags = [
+  "ship-1", "ship-7", "ship-8", "ship-18", "ship-26", "ship-44", "ship-45",
+  "ship-46", "ship-54", "ship-61", "ship-69", "ship-85", "ship-128",
+  "ship-139", "ship-164", "ship-168", "ship-174", "ship-185",
+  "ship-189", "ship-198",
+]
+
+[[path]]
+path_id = 3
+tag = "upgrade-path-3"
+trade_emphasis = "trade"
+institutional_order = "chaotic"
+specialty = "Austere frontier commerce, prospecting, mining, and self-supported operation beyond dependable infrastructure."
+native_design_tags = [
+  "ship-2", "ship-24", "ship-34", "ship-38", "ship-43", "ship-57", "ship-58",
+  "ship-78", "ship-124", "ship-153", "ship-161",
+  "ship-170", "ship-175", "ship-193",
+]
+
+[[path]]
+path_id = 4
+tag = "upgrade-path-4"
+trade_emphasis = "mixed"
+institutional_order = "orderly"
+specialty = "Survey, customs, research, medical, patrol-support, and other regulated civil-service designs."
+native_design_tags = [
+  "ship-10", "ship-23", "ship-41", "ship-53", "ship-63", "ship-64", "ship-67",
+  "ship-76", "ship-93", "ship-123", "ship-144", "ship-150", "ship-159",
+  "ship-160", "ship-188", "ship-190", "ship-191", "ship-207", "ship-208",
+]
+
+[[path]]
+path_id = 5
+tag = "upgrade-path-5"
+trade_emphasis = "mixed"
+institutional_order = "contested"
+specialty = "Private security, escort, privateering, armed-merchant, and prize-taking designs that retain broad noncombat utility."
+native_design_tags = [
+  "ship-17", "ship-19", "ship-65", "ship-72", "ship-74", "ship-81", "ship-82",
+  "ship-90", "ship-94", "ship-134", "ship-141", "ship-156", "ship-165", "ship-166",
+  "ship-183", "ship-211", "ship-212",
+]
+
+[[path]]
+path_id = 6
+tag = "upgrade-path-6"
+trade_emphasis = "mixed"
+institutional_order = "chaotic"
+specialty = "Covert transport, boarding, commerce raiding, and armed independent operation with cargo or prize capacity."
+native_design_tags = [
+  "ship-4", "ship-33", "ship-66", "ship-68", "ship-79", "ship-87", "ship-140",
+  "ship-143", "ship-206", "ship-213",
+]
+
+[[path]]
+path_id = 7
+tag = "upgrade-path-7"
+trade_emphasis = "combat"
+institutional_order = "orderly"
+specialty = "Regular fleet combatants, carriers, troop lift, patrol commands, and their formal logistics train."
+native_design_tags = [
+  "ship-9", "ship-11", "ship-13", "ship-14", "ship-15", "ship-16", "ship-30",
+  "ship-32", "ship-47", "ship-84", "ship-89", "ship-91", "ship-92", "ship-95",
+  "ship-97", "ship-99", "ship-100", "ship-101", "ship-102", "ship-106",
+  "ship-107", "ship-108", "ship-109", "ship-110", "ship-111", "ship-112",
+  "ship-113", "ship-114", "ship-115", "ship-117", "ship-118", "ship-119",
+  "ship-121", "ship-129", "ship-130", "ship-135", "ship-178", "ship-179",
+  "ship-180", "ship-195", "ship-200", "ship-204", "ship-210",
+]
+
+[[path]]
+path_id = 8
+tag = "upgrade-path-8"
+trade_emphasis = "combat"
+institutional_order = "contested"
+specialty = "Local defense, attack craft, patrol forces, assault ships, and robust combatants for constrained or divided authorities."
+native_design_tags = [
+  "ship-25", "ship-29", "ship-42", "ship-48", "ship-55", "ship-56",
+  "ship-70", "ship-73", "ship-75", "ship-77", "ship-96", "ship-103",
+  "ship-104", "ship-105", "ship-116", "ship-122", "ship-137", "ship-184",
+  "ship-186", "ship-205",
+]
+
+[[path]]
+path_id = 9
+tag = "upgrade-path-9"
+trade_emphasis = "combat"
+institutional_order = "chaotic"
+specialty = "Ambush, missile saturation, torpedo attack, strike-carrier, and other high-risk offensive combat designs."
+native_design_tags = [
+  "ship-12", "ship-35", "ship-36", "ship-62", "ship-88", "ship-120", "ship-136",
+  "ship-138", "ship-157", "ship-167",
+]

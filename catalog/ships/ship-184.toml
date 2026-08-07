@@ -1,0 +1,257 @@
+# Rule-derived reconstruction of the four-hundred-ton system patrol ship.
+# Quad turrets and TL12 gatling lasers are normalized to TL11 triple turrets
+# and point-defense lasers; all accommodation and support use generic rules.
+
+schema_version = 1
+design_id = "ct-source-ship-184"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-tech-update-2350",
+  "ship-source-wendy-earth-2",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+bridge_options = ["hardened-bridge", "holographic-controls"]
+cargo_millitons = 7250
+
+[catalog]
+catalog_id = 184
+tag = "ship-184"
+family_id = 184
+upgrade_path_id = 8
+progression_stage = "starter"
+status = "active"
+vessel_kind = "ship"
+display_name = "Rampart"
+primary_role = "system-patrol"
+secondary_roles = ["interceptor", "boarding"]
+mission_tags = ["in-system", "thrust-6", "particle-beam", "boarding"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This four-hundred-ton system patrol ship combines six-gravity acceleration, heavy armor, radiation shielding, advanced sensors, hardened controls, and eight weeks of endurance. An armed boarding boat, brig, troop berthing, medical bay, and support rooms suit sustained local interception and enforcement.",
+  "Two particle-beam barbettes, laser and missile turrets, and four point-defense lasers make it dangerous to raiders and smugglers. With no jump drive it is tactically fast but strategically dependent on a carrier, tender, or permanent assignment within one system.",
+]
+
+[hull]
+id = "ship-400"
+configuration = "streamlined"
+
+[armor]
+id = "crystaliron-whole-points"
+points = 10
+
+[[hull_options]]
+id = "radiation-shielding"
+quantity = 1
+
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "bridge"
+
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "drives"
+
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "ordnance-magazines"
+
+[drives]
+maneuver = "M"
+power = "M"
+
+[fuel]
+jump_distance = 0
+jump_count = 0
+power_plant_weeks = 8
+
+[computer]
+id = "model-3"
+options = ["bis", "fib"]
+
+[[software]]
+id = "evade"
+level = 1
+
+[[software]]
+id = "fire-control"
+level = 2
+
+[[software]]
+id = "internal-security-2"
+
+[[software]]
+id = "point-defense-1"
+
+[[equipment]]
+id = "stateroom"
+quantity = 4
+
+[[equipment]]
+id = "crew-berthing"
+quantity = 3
+
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 3
+
+[[equipment]]
+id = "galley-space"
+quantity = 31
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 30
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 8
+
+[[equipment]]
+id = "armory"
+quantity = 1
+
+[[equipment]]
+id = "office"
+quantity = 1
+
+[[equipment]]
+id = "briefing-room"
+quantity = 1
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 2
+
+[[equipment]]
+id = "ships-brig"
+quantity = 2
+
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+
+[[equipment]]
+id = "workshop"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 2
+
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 30000
+quantity = 1
+
+[[barbettes]]
+id = "particle-beam-barbette"
+quantity = 2
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "sandcaster"]
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 4
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 144
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 60
+
+[[carried_craft]]
+tag = "ship-211"
+quantity = 1
+
+[[crew]]
+role = "command"
+quantity = 6
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 4
+
+[[crew]]
+role = "sensors-operator"
+quantity = 2
+
+[[crew]]
+role = "medic"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 2
+
+[[crew]]
+role = "bay-gunner"
+quantity = 2
+
+[[crew]]
+role = "flight-crew"
+quantity = 2
+
+[[crew]]
+role = "marine"
+quantity = 6
+
+[[crew]]
+role = "other"
+quantity = 4
+
+[assertions]
+hull_millitons = 400000
+accounted_displacement_millitons = 400000
+hull_points = 8
+structure_points = 8
+armor_points = 10
+jump_rating = 0
+thrust_g = 6
+fuel_millitons = 96000
+jump_fuel_millitons = 0
+power_fuel_millitons = 96000
+hardpoints = 4
+hardpoints_used = 4
+point_defense_nodes = 4
+fire_control_millitons = 12000
+minimum_crew = 7
+crew = 31
+carried_craft_count = 1
+carried_craft_displacement_millitons = 30000
+carried_craft_price_credits = 20740000
+hangar_capacity_millitons = 30000
+docking_capacity_millitons = 0
+construction_weeks = 60
+pre_discount_price_credits = 309037500
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 309037500

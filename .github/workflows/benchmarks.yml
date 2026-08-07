@@ -1,0 +1,77 @@
+name: Operator benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      benchmark:
+        description: Benchmark to run
+        required: true
+        default: field-alpha
+        type: choice
+        options:
+          - field-alpha
+          - capacity
+      host:
+        description: Field-alpha server host
+        required: false
+        default: 127.0.0.1
+        type: string
+      port:
+        description: Field-alpha server port
+        required: false
+        default: "7323"
+        type: string
+      credential_directory:
+        description: Protected runner-local directory containing credential files
+        required: false
+        default: ""
+        type: string
+  schedule:
+    - cron: "17 4 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  field-alpha:
+    if: github.event_name == 'workflow_dispatch' && inputs.benchmark == 'field-alpha'
+    runs-on: [self-hosted, linux, x64, ct-benchmark]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          CT_LOAD_HOST: ${{ inputs.host }}
+          CT_LOAD_PORT: ${{ inputs.port }}
+          CT_CREDENTIAL_DIRECTORY: ${{ inputs.credential_directory }}
+        run: |
+          cmake -S client -B build/field-alpha -G Ninja
+          cmake --build build/field-alpha --target ct-field-alpha-load
+          mkdir -p benchmark-reports
+          test -n "$CT_CREDENTIAL_DIRECTORY"
+          mapfile -d '' credentials < <(find "$CT_CREDENTIAL_DIRECTORY" -maxdepth 1 -type f -name '*.credential' -print0)
+          test "${#credentials[@]}" -gt 0
+          build/field-alpha/ct-field-alpha-load \
+            "$CT_LOAD_HOST" "$CT_LOAD_PORT" 60 3 5 "${credentials[@]}" \
+            | tee benchmark-reports/field-alpha.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: field-alpha-report
+          path: benchmark-reports/
+
+  capacity:
+    if: github.event_name == 'schedule' || inputs.benchmark == 'capacity'
+    runs-on: [self-hosted, linux, x64, ct-benchmark]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p benchmark-reports
+          cargo test --manifest-path server/Cargo.toml \
+            settlement_footprint_supports_the_capacity_envelope \
+            -- --ignored --nocapture | tee benchmark-reports/capacity.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capacity-report
+          path: benchmark-reports/

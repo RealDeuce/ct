@@ -1,0 +1,95 @@
+# Rule-derived reconstruction of the fifty-ton medical cutter. Its detachable
+# pod is expressed through generic medical-ward, operating-theater, berth, and
+# airlock rules; exact armor and fuel leave 1.25 tons for medical stores.
+
+schema_version = 1
+design_id = "ct-source-ship-159"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-milligan",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "standard"
+airlocks = 2
+cargo_millitons = 1250
+
+[catalog]
+catalog_id = 159
+tag = "ship-159"
+family_id = 20
+upgrade_path_id = 4
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Proteus Mercy"
+primary_role = "medical-cutter"
+secondary_roles = ["casualty-evacuation", "field-hospital"]
+mission_tags = ["medical", "high-thrust", "atmospheric", "interplanetary"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This fifty-ton unarmed cutter carries a nineteen-bed medical ward, two operating theaters, four emergency low berths, and stores for treatment and casualty transfer. Four-gravity acceleration and two airlocks let it move patients quickly between a parent hospital ship, damaged vessels, stations, and surface disaster areas.",
+  "The dense medical fit leaves little general cargo and no sleeping accommodation beyond treatment facilities. It is a deployable clinical platform rather than a transport or combat craft and relies on a parent ship for strategic movement, staff rotation, and replenishment.",
+]
+
+[hull]
+id = "small-50"
+configuration = "streamlined"
+
+[armor]
+id = "small-craft-crystaliron-whole-points"
+points = 2
+
+[drives]
+maneuver = "sK"
+power = "sK"
+
+[fuel]
+power_plant_weeks = 2
+
+[control]
+id = "two-person-control-cabin"
+additional_passengers = 0
+
+[computer]
+id = "model-1"
+options = []
+
+[[equipment]]
+id = "operating-theater"
+quantity = 2
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 4
+
+[[parameterized_equipment]]
+id = "medical-ward"
+beds = 19
+
+[[crew]]
+role = "pilot"
+quantity = 2
+
+[assertions]
+hull_millitons = 50000
+accounted_displacement_millitons = 50000
+hull_points = 1
+structure_points = 1
+armor_points = 2
+thrust_g = 4
+fuel_millitons = 2600
+hardpoints = 1
+hardpoints_used = 0
+minimum_crew = 1
+crew = 2
+construction_weeks = 32
+pre_discount_price_credits = 33930000
+discount_credits = 0
+construction_price_credits = 33930000

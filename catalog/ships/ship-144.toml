@@ -1,0 +1,251 @@
+# Rule-derived conversion of source-inventory ship-144. The source describes
+# an in-system cutter even though it installs a skip-only Zimm drive. That
+# alternate drive, its fuel, one-year power cells, and duplicate life-support
+# plants are removed. The result is a normal CE system ship; recovered volume
+# becomes cargo.
+
+schema_version = 1
+design_id = "ct-source-ship-144"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-tech-update-2350",
+  "ship-source-type-3",
+  "cepheus-trader-2026",
+]
+tech_level = 12
+standard_design = false
+electronics = "basic-military"
+bridge_options = ["hardened-bridge", "holographic-controls"]
+power_options = ["emergency-power"]
+magazine_options = ["improved-magazine"]
+cargo_millitons = 32100
+
+[catalog]
+catalog_id = 144
+tag = "ship-144"
+family_id = 144
+upgrade_path_id = 4
+progression_stage = "starter"
+status = "active"
+vessel_kind = "ship"
+display_name = "Vidocq"
+primary_role = "security-cutter"
+secondary_roles = ["customs-enforcement", "boarding", "interception"]
+mission_tags = ["six-gravity", "in-system", "boarding", "point-defense"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This two-hundred-ton system cutter combines six-gravity acceleration, military sensors, armored critical systems, redundant emergency power, a brig, and a fast boarding launch. It is intended to intercept suspect traffic, compel inspection, and deliver enforcement personnel rather than undertake interstellar patrols.",
+  "Plasma weapons, a mixed defensive turret, and two point-defense nodes let the cutter dominate most merchants and resist light raiders. Removing the source's skip-only drive under normal CE travel rules creates a useful evidence-and-supply hold, but the ship remains confined to its home system and depends on local bases for strategic movement.",
+]
+
+[hull]
+id = "ship-200"
+configuration = "standard"
+
+[armor]
+id = "crystaliron"
+layers = 1
+
+[[hull_options]]
+id = "self-sealing"
+quantity = 1
+
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "bridge"
+
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "drives"
+
+[drives]
+maneuver = "F"
+power = "F"
+
+[fuel]
+jump_distance = 0
+jump_count = 0
+power_plant_weeks = 2
+
+[computer]
+id = "model-3"
+options = ["bis", "fib"]
+
+[[software]]
+id = "evade"
+level = 1
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[software]]
+id = "intellect"
+
+[[software]]
+id = "internal-security-1"
+
+[[software]]
+id = "point-defense-1"
+
+[[equipment]]
+id = "stateroom"
+quantity = 10
+
+[[equipment]]
+id = "galley-space"
+quantity = 4
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 5
+
+[[equipment]]
+id = "head-toilet"
+quantity = 1
+
+[[equipment]]
+id = "mini-galley"
+quantity = 1
+
+[[equipment]]
+id = "low-berth"
+quantity = 4
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+
+[[equipment]]
+id = "office"
+quantity = 1
+
+[[equipment]]
+id = "ships-brig"
+quantity = 2
+
+[[equipment]]
+id = "workshop"
+quantity = 1
+
+[[equipment]]
+id = "workroom-space"
+quantity = 2
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 20000
+quantity = 1
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["turret-plasma-gun", "turret-plasma-gun"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "missile-rack", "sandcaster"]
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-gatling-laser"
+quantity = 2
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 24
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 20
+
+[[carried_craft]]
+tag = "ship-145"
+quantity = 1
+
+[[crew]]
+role = "command"
+quantity = 3
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "sensors-operator"
+quantity = 1
+
+[[crew]]
+role = "medic"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 2
+
+[[crew]]
+role = "flight-crew"
+quantity = 1
+
+[[crew]]
+role = "other"
+quantity = 3
+
+[assertions]
+hull_millitons = 200000
+accounted_displacement_millitons = 200000
+hull_points = 4
+structure_points = 4
+armor_points = 4
+jump_rating = 0
+thrust_g = 6
+fuel_millitons = 12000
+jump_fuel_millitons = 0
+power_fuel_millitons = 12000
+hardpoints = 2
+hardpoints_used = 2
+point_defense_nodes = 2
+fire_control_millitons = 2000
+minimum_crew = 5
+crew = 14
+carried_craft_count = 1
+carried_craft_price_credits = 13690000
+hangar_capacity_millitons = 20000
+docking_capacity_millitons = 0
+construction_weeks = 44
+pre_discount_price_credits = 154200000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 154200000

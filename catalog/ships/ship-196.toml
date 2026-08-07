@@ -1,0 +1,86 @@
+# Rule-derived reconstruction of the Chapter 9 TL9 Merchant Freighter.
+
+schema_version = 1
+design_id = "ce-merchant-freighter"
+revision = 1
+ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016"]
+tech_level = 9
+standard_design = true
+electronics = "basic-civilian"
+unused_fire_control_stations = 4
+cargo_millitons = 261000
+
+[catalog]
+catalog_id = 196
+tag = "ship-196"
+family_id = 196
+upgrade_path_id = 1
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Fugger"
+primary_role = "freighter"
+secondary_roles = ["bulk-trader"]
+mission_tags = ["freight", "speculative-trade", "high-volume-cargo"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This four-hundred-ton merchant is built around a large, uncomplicated cargo hold. It is most effective on established one-parsec routes where regular freight or bulk speculative loads keep its carrying capacity employed.",
+  "The design sacrifices acceleration, jump reach, armament, and passenger capacity for economical freight volume. Four unused hardpoints permit later defensive fitting, but weapons and gunners would consume working capital without improving the ship's basic earning capacity.",
+]
+
+[hull]
+id = "ship-400"
+configuration = "standard"
+
+[armor]
+id = "titanium-steel"
+layers = 1
+
+[drives]
+jump = "B"
+maneuver = "B"
+power = "B"
+
+[fuel]
+jump_distance = 1
+jump_count = 1
+power_plant_weeks = 4
+
+[computer]
+id = "model-2"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 1
+
+[[equipment]]
+id = "stateroom"
+quantity = 4
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 2
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 3
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1

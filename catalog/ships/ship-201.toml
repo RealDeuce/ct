@@ -1,0 +1,72 @@
+# Hand-authored reconstruction of the core CE 40-ton pinnace.
+
+schema_version = 1
+design_id = "ce-pinnace"
+revision = 1
+ruleset_id = "ce-srd-2016.small-craft"
+source_ids = ["cepheus-engine-srd-2016"]
+tech_level = 9
+standard_design = true
+electronics = "standard"
+unused_fire_control_stations = 1
+cargo_millitons = 25000
+
+[catalog]
+catalog_id = 201
+tag = "ship-201"
+family_id = 201
+upgrade_path_id = 1
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Lighter"
+primary_role = "cargo-transfer"
+secondary_roles = ["lighterage", "utility"]
+mission_tags = ["cargo", "ship-to-shore", "interplanetary"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This pinnace is a fast cargo-transfer craft intended to connect a parent vessel with ports, stations, and surface facilities. Its five-gravity maneuver capability makes it useful where transfer time matters, while its hold can carry twenty-five tons.",
+  "The craft is unarmed but reserves its single fire-control station for later fitting. It has only one week of endurance and no jump drive, so its useful operating area remains within a supported planetary system.",
+]
+
+[hull]
+id = "small-40"
+configuration = "standard"
+
+[drives]
+maneuver = "sK"
+power = "sL"
+
+[fuel]
+power_plant_weeks = 1
+
+[control]
+id = "one-person-control-cabin"
+additional_passengers = 0
+
+[computer]
+id = "model-1"
+options = []
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[assertions]
+hull_millitons = 40000
+accounted_displacement_millitons = 40000
+hull_points = 0
+structure_points = 1
+armor_points = 0
+thrust_g = 5
+fuel_millitons = 1500
+hardpoints = 1
+hardpoints_used = 0
+minimum_crew = 1
+crew = 1
+construction_weeks = 31
+pre_discount_price_credits = 20630000
+discount_credits = 2063000
+construction_price_credits = 18567000

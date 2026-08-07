@@ -1,0 +1,716 @@
+# Authoritative PI-free grouping of active ship designs into design families.
+# Stable family IDs use the lowest-numbered founding member as an anchor.
+# The number has no setting, manufacturer, progression, or rank
+# meaning. Canonical player-facing names are assigned in names.toml.
+
+schema_version = 1
+catalog_revision = 1
+family_count = 113
+open_game_content_designations = [
+  "The complete original family grouping and anonymous family identifiers are Open Game Content.",
+]
+
+[[family]]
+family_id = 1
+tag = "family-1"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-1", "ship-2", "ship-3", "ship-4"]
+
+[[family]]
+family_id = 5
+tag = "family-5"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-5", "ship-158"]
+
+[[family]]
+family_id = 6
+tag = "family-6"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-6", "ship-176", "ship-177"]
+
+[[family]]
+family_id = 7
+tag = "family-7"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-7", "ship-8", "ship-145", "ship-146", "ship-185", "ship-189"]
+
+[[family]]
+family_id = 9
+tag = "family-9"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-9", "ship-11"]
+
+[[family]]
+family_id = 10
+tag = "family-10"
+grouping_basis = "independent-design"
+member_tags = ["ship-10"]
+
+[[family]]
+family_id = 12
+tag = "family-12"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-12", "ship-15"]
+
+[[family]]
+family_id = 13
+tag = "family-13"
+grouping_basis = "independent-design"
+member_tags = ["ship-13"]
+
+[[family]]
+family_id = 14
+tag = "family-14"
+grouping_basis = "independent-design"
+member_tags = ["ship-14"]
+
+[[family]]
+family_id = 16
+tag = "family-16"
+grouping_basis = "independent-design"
+member_tags = ["ship-16"]
+
+[[family]]
+family_id = 17
+tag = "family-17"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-17", "ship-19", "ship-178", "ship-179"]
+
+[[family]]
+family_id = 18
+tag = "family-18"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-18", "ship-134", "ship-165", "ship-181", "ship-187", "ship-212"]
+
+[[family]]
+family_id = 20
+tag = "family-20"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-20", "ship-21", "ship-24", "ship-159", "ship-188", "ship-209"]
+
+[[family]]
+family_id = 22
+tag = "family-22"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-22", "ship-151"]
+
+[[family]]
+family_id = 23
+tag = "family-23"
+grouping_basis = "independent-design"
+member_tags = ["ship-23"]
+
+[[family]]
+family_id = 25
+tag = "family-25"
+grouping_basis = "independent-design"
+member_tags = ["ship-25"]
+
+[[family]]
+family_id = 26
+tag = "family-26"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-26", "ship-33"]
+
+[[family]]
+family_id = 27
+tag = "family-27"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-27", "ship-28", "ship-31"]
+
+[[family]]
+family_id = 29
+tag = "family-29"
+grouping_basis = "independent-design"
+member_tags = ["ship-29"]
+
+[[family]]
+family_id = 30
+tag = "family-30"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-30", "ship-32"]
+
+[[family]]
+family_id = 34
+tag = "family-34"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-34", "ship-43"]
+
+[[family]]
+family_id = 35
+tag = "family-35"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-35", "ship-36"]
+
+[[family]]
+family_id = 37
+tag = "family-37"
+grouping_basis = "independent-design"
+member_tags = ["ship-37"]
+
+[[family]]
+family_id = 38
+tag = "family-38"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-38", "ship-39", "ship-40"]
+
+[[family]]
+family_id = 41
+tag = "family-41"
+grouping_basis = "independent-design"
+member_tags = ["ship-41"]
+
+[[family]]
+family_id = 42
+tag = "family-42"
+grouping_basis = "independent-design"
+member_tags = ["ship-42"]
+
+[[family]]
+family_id = 44
+tag = "family-44"
+grouping_basis = "independent-design"
+member_tags = ["ship-44"]
+
+[[family]]
+family_id = 45
+tag = "family-45"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-45", "ship-46"]
+
+[[family]]
+family_id = 47
+tag = "family-47"
+grouping_basis = "independent-design"
+member_tags = ["ship-47"]
+
+[[family]]
+family_id = 48
+tag = "family-48"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-48", "ship-55", "ship-56"]
+
+[[family]]
+family_id = 49
+tag = "family-49"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-49", "ship-50", "ship-51", "ship-52"]
+
+[[family]]
+family_id = 53
+tag = "family-53"
+grouping_basis = "independent-design"
+member_tags = ["ship-53"]
+
+[[family]]
+family_id = 54
+tag = "family-54"
+grouping_basis = "shared-lineage"
+member_tags = [
+  "ship-54",
+  "ship-57",
+  "ship-58",
+  "ship-59",
+  "ship-60",
+  "ship-62",
+  "ship-65",
+  "ship-161",
+  "ship-162",
+  "ship-163",
+  "ship-164",
+  "ship-166",
+  "ship-167",
+  "ship-168",
+]
+
+[[family]]
+family_id = 61
+tag = "family-61"
+grouping_basis = "independent-design"
+member_tags = ["ship-61"]
+
+[[family]]
+family_id = 63
+tag = "family-63"
+grouping_basis = "independent-design"
+member_tags = ["ship-63"]
+
+[[family]]
+family_id = 64
+tag = "family-64"
+grouping_basis = "independent-design"
+member_tags = ["ship-64"]
+
+[[family]]
+family_id = 66
+tag = "family-66"
+grouping_basis = "independent-design"
+member_tags = ["ship-66"]
+
+[[family]]
+family_id = 67
+tag = "family-67"
+grouping_basis = "independent-design"
+member_tags = ["ship-67"]
+
+[[family]]
+family_id = 68
+tag = "family-68"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-68", "ship-69", "ship-72", "ship-139", "ship-140", "ship-141"]
+
+[[family]]
+family_id = 70
+tag = "family-70"
+grouping_basis = "independent-design"
+member_tags = ["ship-70"]
+
+[[family]]
+family_id = 71
+tag = "family-71"
+grouping_basis = "independent-design"
+member_tags = ["ship-71"]
+
+[[family]]
+family_id = 73
+tag = "family-73"
+grouping_basis = "independent-design"
+member_tags = ["ship-73"]
+
+[[family]]
+family_id = 74
+tag = "family-74"
+grouping_basis = "independent-design"
+member_tags = ["ship-74"]
+
+[[family]]
+family_id = 75
+tag = "family-75"
+grouping_basis = "independent-design"
+member_tags = ["ship-75"]
+
+[[family]]
+family_id = 76
+tag = "family-76"
+grouping_basis = "independent-design"
+member_tags = ["ship-76"]
+
+[[family]]
+family_id = 77
+tag = "family-77"
+grouping_basis = "independent-design"
+member_tags = ["ship-77"]
+
+[[family]]
+family_id = 78
+tag = "family-78"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-78", "ship-79"]
+
+[[family]]
+family_id = 80
+tag = "family-80"
+grouping_basis = "shared-lineage"
+member_tags = [
+  "ship-80",
+  "ship-82",
+  "ship-83",
+  "ship-86",
+  "ship-88",
+  "ship-152",
+  "ship-153",
+  "ship-154",
+  "ship-155",
+  "ship-156",
+  "ship-157",
+]
+
+[[family]]
+family_id = 81
+tag = "family-81"
+grouping_basis = "independent-design"
+member_tags = ["ship-81"]
+
+[[family]]
+family_id = 84
+tag = "family-84"
+grouping_basis = "independent-design"
+member_tags = ["ship-84"]
+
+[[family]]
+family_id = 85
+tag = "family-85"
+grouping_basis = "independent-design"
+member_tags = ["ship-85"]
+
+[[family]]
+family_id = 87
+tag = "family-87"
+grouping_basis = "independent-design"
+member_tags = ["ship-87"]
+
+[[family]]
+family_id = 89
+tag = "family-89"
+grouping_basis = "independent-design"
+member_tags = ["ship-89"]
+
+[[family]]
+family_id = 90
+tag = "family-90"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-90", "ship-96"]
+
+[[family]]
+family_id = 91
+tag = "family-91"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-91", "ship-95"]
+
+[[family]]
+family_id = 92
+tag = "family-92"
+grouping_basis = "independent-design"
+member_tags = ["ship-92"]
+
+[[family]]
+family_id = 93
+tag = "family-93"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-93", "ship-160"]
+
+[[family]]
+family_id = 94
+tag = "family-94"
+grouping_basis = "independent-design"
+member_tags = ["ship-94"]
+
+[[family]]
+family_id = 97
+tag = "family-97"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-97", "ship-98", "ship-101"]
+
+[[family]]
+family_id = 99
+tag = "family-99"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-99", "ship-107"]
+
+[[family]]
+family_id = 100
+tag = "family-100"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-100", "ship-102"]
+
+[[family]]
+family_id = 103
+tag = "family-103"
+grouping_basis = "independent-design"
+member_tags = ["ship-103"]
+
+[[family]]
+family_id = 104
+tag = "family-104"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-104", "ship-105"]
+
+[[family]]
+family_id = 106
+tag = "family-106"
+grouping_basis = "independent-design"
+member_tags = ["ship-106"]
+
+[[family]]
+family_id = 108
+tag = "family-108"
+grouping_basis = "independent-design"
+member_tags = ["ship-108"]
+
+[[family]]
+family_id = 109
+tag = "family-109"
+grouping_basis = "independent-design"
+member_tags = ["ship-109"]
+
+[[family]]
+family_id = 110
+tag = "family-110"
+grouping_basis = "independent-design"
+member_tags = ["ship-110"]
+
+[[family]]
+family_id = 111
+tag = "family-111"
+grouping_basis = "independent-design"
+member_tags = ["ship-111"]
+
+[[family]]
+family_id = 112
+tag = "family-112"
+grouping_basis = "independent-design"
+member_tags = ["ship-112"]
+
+[[family]]
+family_id = 113
+tag = "family-113"
+grouping_basis = "independent-design"
+member_tags = ["ship-113"]
+
+[[family]]
+family_id = 114
+tag = "family-114"
+grouping_basis = "independent-design"
+member_tags = ["ship-114"]
+
+[[family]]
+family_id = 115
+tag = "family-115"
+grouping_basis = "independent-design"
+member_tags = ["ship-115"]
+
+[[family]]
+family_id = 116
+tag = "family-116"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-116", "ship-118"]
+
+[[family]]
+family_id = 117
+tag = "family-117"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-117", "ship-119", "ship-120"]
+
+[[family]]
+family_id = 121
+tag = "family-121"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-121", "ship-122"]
+
+[[family]]
+family_id = 123
+tag = "family-123"
+grouping_basis = "independent-design"
+member_tags = ["ship-123"]
+
+[[family]]
+family_id = 124
+tag = "family-124"
+grouping_basis = "independent-design"
+member_tags = ["ship-124"]
+
+[[family]]
+family_id = 125
+tag = "family-125"
+grouping_basis = "independent-design"
+member_tags = ["ship-125"]
+
+[[family]]
+family_id = 126
+tag = "family-126"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-126", "ship-127"]
+
+[[family]]
+family_id = 128
+tag = "family-128"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-128", "ship-129", "ship-130"]
+
+[[family]]
+family_id = 131
+tag = "family-131"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-131", "ship-132", "ship-133"]
+
+[[family]]
+family_id = 135
+tag = "family-135"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-135", "ship-136", "ship-137", "ship-138"]
+
+[[family]]
+family_id = 142
+tag = "family-142"
+grouping_basis = "independent-design"
+member_tags = ["ship-142"]
+
+[[family]]
+family_id = 143
+tag = "family-143"
+grouping_basis = "independent-design"
+member_tags = ["ship-143"]
+
+[[family]]
+family_id = 144
+tag = "family-144"
+grouping_basis = "independent-design"
+member_tags = ["ship-144"]
+
+[[family]]
+family_id = 147
+tag = "family-147"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-147", "ship-148", "ship-149", "ship-150", "ship-190"]
+
+[[family]]
+family_id = 169
+tag = "family-169"
+grouping_basis = "shared-lineage"
+member_tags = ["ship-169", "ship-170", "ship-171", "ship-172", "ship-173", "ship-174", "ship-175"]
+
+[[family]]
+family_id = 180
+tag = "family-180"
+grouping_basis = "independent-design"
+member_tags = ["ship-180"]
+
+[[family]]
+family_id = 182
+tag = "family-182"
+grouping_basis = "independent-design"
+member_tags = ["ship-182"]
+
+[[family]]
+family_id = 183
+tag = "family-183"
+grouping_basis = "independent-design"
+member_tags = ["ship-183"]
+
+[[family]]
+family_id = 184
+tag = "family-184"
+grouping_basis = "independent-design"
+member_tags = ["ship-184"]
+
+[[family]]
+family_id = 186
+tag = "family-186"
+grouping_basis = "independent-design"
+member_tags = ["ship-186"]
+
+[[family]]
+family_id = 191
+tag = "family-191"
+grouping_basis = "independent-design"
+member_tags = ["ship-191"]
+
+[[family]]
+family_id = 192
+tag = "family-192"
+grouping_basis = "independent-design"
+member_tags = ["ship-192"]
+
+[[family]]
+family_id = 193
+tag = "family-193"
+grouping_basis = "independent-design"
+member_tags = ["ship-193"]
+
+[[family]]
+family_id = 194
+tag = "family-194"
+grouping_basis = "independent-design"
+member_tags = ["ship-194"]
+
+[[family]]
+family_id = 195
+tag = "family-195"
+grouping_basis = "independent-design"
+member_tags = ["ship-195"]
+
+[[family]]
+family_id = 196
+tag = "family-196"
+grouping_basis = "independent-design"
+member_tags = ["ship-196"]
+
+[[family]]
+family_id = 197
+tag = "family-197"
+grouping_basis = "independent-design"
+member_tags = ["ship-197"]
+
+[[family]]
+family_id = 198
+tag = "family-198"
+grouping_basis = "independent-design"
+member_tags = ["ship-198"]
+
+[[family]]
+family_id = 199
+tag = "family-199"
+grouping_basis = "independent-design"
+member_tags = ["ship-199"]
+
+[[family]]
+family_id = 200
+tag = "family-200"
+grouping_basis = "independent-design"
+member_tags = ["ship-200"]
+
+[[family]]
+family_id = 201
+tag = "family-201"
+grouping_basis = "independent-design"
+member_tags = ["ship-201"]
+
+[[family]]
+family_id = 202
+tag = "family-202"
+grouping_basis = "independent-design"
+member_tags = ["ship-202"]
+
+[[family]]
+family_id = 203
+tag = "family-203"
+grouping_basis = "independent-design"
+member_tags = ["ship-203"]
+
+[[family]]
+family_id = 204
+tag = "family-204"
+grouping_basis = "independent-design"
+member_tags = ["ship-204"]
+
+[[family]]
+family_id = 205
+tag = "family-205"
+grouping_basis = "independent-design"
+member_tags = ["ship-205"]
+
+[[family]]
+family_id = 206
+tag = "family-206"
+grouping_basis = "independent-design"
+member_tags = ["ship-206"]
+
+[[family]]
+family_id = 207
+tag = "family-207"
+grouping_basis = "independent-design"
+member_tags = ["ship-207"]
+
+[[family]]
+family_id = 208
+tag = "family-208"
+grouping_basis = "independent-design"
+member_tags = ["ship-208"]
+
+[[family]]
+family_id = 210
+tag = "family-210"
+grouping_basis = "independent-design"
+member_tags = ["ship-210"]
+
+[[family]]
+family_id = 211
+tag = "family-211"
+grouping_basis = "independent-design"
+member_tags = ["ship-211"]
+
+[[family]]
+family_id = 213
+tag = "family-213"
+grouping_basis = "independent-design"
+member_tags = ["ship-213"]

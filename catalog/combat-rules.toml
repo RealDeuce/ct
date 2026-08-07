@@ -1,0 +1,170 @@
+# Normalized Open Game Content used by the vessel-combat engine.  This is
+# authoritative game data, not a PDF extraction.  Ship catalog records refer
+# to these identities; every installed weapon must resolve here.
+schema_version = 1
+ruleset_id = "cepheus-trader.vessel-combat"
+revision = 1
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "cepheus-trader-2026"]
+
+# difficulty_dm is ordered Adjacent, Close, Short, Medium, Long, Very Long,
+# Distant.  -99 means the weapon cannot attack at that range.
+# Traits: beam permits sand; missile has delayed impact and point defence;
+# radiation causes the CE bonus crew hit; meson ignores armour and starts on
+# the internal table; screen identifies the defensive screen that applies.
+
+[[weapon]]
+id = "beam-laser"
+dice = 1
+modifier = 0
+difficulty_dm = [-2, -2, -2, 0, -2, -2, -2]
+traits = ["beam"]
+
+[[weapon]]
+id = "pulse-laser"
+dice = 2
+modifier = 0
+difficulty_dm = [-2, -2, 0, -2, -2, -4, -99]
+traits = ["beam"]
+
+[[weapon]]
+id = "particle-beam"
+dice = 3
+modifier = 0
+difficulty_dm = [-4, -2, -2, -2, 0, -2, -2]
+traits = ["beam", "radiation"]
+
+[[weapon]]
+id = "sandcaster"
+dice = 0
+modifier = 1
+difficulty_dm = [2, 0, -2, -99, -99, -99, -99]
+traits = ["sand", "ammunition"]
+ammunition = "sandcaster-canister"
+
+[[weapon]]
+id = "missile-rack"
+dice = 1
+modifier = 0
+difficulty_dm = [-99, -99, 0, 0, 0, 0, 0]
+traits = ["missile", "ammunition"]
+ammunition = "standard-missile"
+
+[[weapon]]
+id = "turret-plasma-gun"
+dice = 2
+modifier = 4
+difficulty_dm = [-2, -2, -2, 0, -2, -2, -2]
+traits = ["beam", "radiation"]
+
+[[weapon]]
+id = "turret-railgun"
+dice = 1
+modifier = 0
+difficulty_dm = [-2, -2, 0, -2, -4, -99, -99]
+traits = ["ammunition"]
+ammunition = "turret-railgun-basic"
+
+[[weapon]]
+id = "particle-beam-barbette"
+dice = 4
+modifier = 0
+difficulty_dm = [-4, -2, -2, -2, 0, -2, -2]
+traits = ["beam", "radiation"]
+
+[[weapon]]
+id = "plasma-barbette"
+dice = 4
+modifier = 0
+difficulty_dm = [-2, -2, -2, 0, -2, -2, -2]
+traits = ["beam", "radiation"]
+
+[[weapon]]
+id = "railgun-barbette"
+dice = 3
+modifier = 0
+difficulty_dm = [-2, -2, 0, -2, -4, -99, -99]
+traits = ["ammunition"]
+ammunition = "railgun-basic"
+
+[[weapon]]
+id = "missile-bank"
+dice = 1
+modifier = 0
+difficulty_dm = [-99, -99, 0, 0, 0, 0, 0]
+traits = ["missile", "ammunition", "bay"]
+ammunition = "standard-missile"
+
+[[weapon]]
+id = "particle-beam-bay"
+dice = 6
+modifier = 0
+difficulty_dm = [-4, -2, -2, -2, 0, -2, -2]
+traits = ["beam", "radiation", "bay"]
+
+[[weapon]]
+id = "fusion-gun-bay"
+dice = 5
+modifier = 0
+difficulty_dm = [-2, -2, -2, 0, -2, -2, -2]
+traits = ["beam", "radiation", "bay"]
+
+[[weapon]]
+id = "meson-gun-bay"
+dice = 5
+modifier = 0
+difficulty_dm = [-4, -4, -2, -2, 0, -2, -2]
+traits = ["beam", "radiation", "meson", "bay"]
+
+[[weapon]]
+id = "torpedo-bay-50"
+dice = 4
+modifier = 0
+difficulty_dm = [-99, -99, 0, 0, 0, 0, 0]
+traits = ["missile", "ammunition", "bay"]
+ammunition = "torpedo-basic"
+
+[[weapon]]
+id = "railgun-bay-50"
+dice = 3
+modifier = 0
+difficulty_dm = [-2, -2, 0, -2, -4, -99, -99]
+traits = ["ammunition", "bay"]
+ammunition = "railgun-basic"
+
+[[weapon]]
+id = "torpedo-bay-100"
+dice = 4
+modifier = 0
+difficulty_dm = [-99, -99, 0, 0, 0, 0, 0]
+traits = ["missile", "ammunition", "bay"]
+ammunition = "torpedo-basic"
+
+[[weapon]]
+id = "meson-gun-bay-100"
+dice = 7
+modifier = 0
+difficulty_dm = [-4, -4, -2, -2, 0, -2, -2]
+traits = ["beam", "radiation", "meson", "bay"]
+
+# These aliases occur in catalog records normalized from larger-source bays.
+[[weapon]]
+id = "particle-beam-bay-100"
+dice = 7
+modifier = 0
+difficulty_dm = [-4, -2, -2, -2, 0, -2, -2]
+traits = ["beam", "radiation", "bay"]
+
+[[weapon]]
+id = "fusion-gun-bay-100"
+dice = 7
+modifier = 0
+difficulty_dm = [-2, -2, -2, 0, -2, -2, -2]
+traits = ["beam", "radiation", "bay"]
+
+[[weapon]]
+id = "railgun-bay-100"
+dice = 4
+modifier = 0
+difficulty_dm = [-2, -2, 0, -2, -4, -99, -99]
+traits = ["ammunition", "bay"]
+ammunition = "railgun-basic"

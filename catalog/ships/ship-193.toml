@@ -1,0 +1,134 @@
+# Hand-authored Jump-2, freight-first starter revision of the Chapter 9
+# Frontier Trader. The source design and its MCr82.314 price remain comparison
+# material only; see docs/ship-construction-audit.md.
+
+schema_version = 1
+design_id = "ce-frontier-trader"
+revision = 2
+ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016"]
+tech_level = 9
+standard_design = true
+electronics = "basic-civilian"
+cargo_millitons = 92000
+thrust_g = 2
+
+[catalog]
+catalog_id = 193
+tag = "ship-193"
+family_id = 193
+upgrade_path_id = 3
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Crusoe"
+primary_role = "trader"
+secondary_roles = ["armed-merchant", "passenger"]
+mission_tags = ["jump-2", "frontier-trade", "freight", "speculative-trade", "passengers", "mail", "self-defense"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This Jump-2 frontier merchant combines a 92-ton cargo hold with enough acceleration and turret firepower to operate beyond the safest commercial lanes. Fuel processing and scoops support independent refueling when refined fuel is unavailable or too expensive.",
+  "Freight and speculative trade are its primary business. Twelve staterooms and twelve low berths preserve useful passenger, mail, charter, and evacuation options without imposing a dedicated liner's accommodation burden or two-steward establishment.",
+]
+
+[hull]
+id = "ship-300"
+configuration = "standard"
+
+[armor]
+id = "titanium-steel"
+layers = 1
+
+[drives]
+jump = "C"
+maneuver = "C"
+power = "C"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 4
+
+[computer]
+id = "model-2"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[equipment]]
+id = "stateroom"
+quantity = 12
+
+[[equipment]]
+id = "low-berth"
+quantity = 12
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 3
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["pulse-laser", "pulse-laser", "pulse-laser"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["pulse-laser", "pulse-laser", "pulse-laser"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["sandcaster", "sandcaster", "sandcaster"]
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 100
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 3
+
+[[crew]]
+role = "steward"
+quantity = 1
+
+[assertions]
+hull_millitons = 300000
+accounted_displacement_millitons = 300000
+hull_points = 6
+structure_points = 6
+armor_points = 2
+jump_rating = 2
+thrust_g = 2
+fuel_millitons = 72000
+jump_fuel_millitons = 60000
+power_fuel_millitons = 12000
+hardpoints = 3
+hardpoints_used = 3
+fire_control_millitons = 3000
+minimum_crew = 6
+crew = 7
+construction_weeks = 52
+pre_discount_price_credits = 95060000
+discount_credits = 9501000
+architect_fee_credits = 0
+construction_price_credits = 85559000

@@ -1,0 +1,77 @@
+# Hand-authored reconstruction of the core CE modular cutter chassis. Module
+# contents are separate catalog loadouts and are not included in this price.
+
+schema_version = 1
+design_id = "ce-modular-cutter-chassis"
+revision = 1
+ruleset_id = "ce-srd-2016.small-craft"
+source_ids = ["cepheus-engine-srd-2016"]
+tech_level = 9
+standard_design = true
+electronics = "standard"
+unused_fire_control_stations = 1
+cargo_millitons = 1300
+
+[catalog]
+catalog_id = 209
+tag = "ship-209"
+family_id = 20
+upgrade_path_id = 1
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Proteus Modular"
+primary_role = "modular-transport"
+secondary_roles = ["utility", "ship-to-shore"]
+mission_tags = ["module-berth", "interplanetary", "carrier-craft"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This cutter is a reusable propulsion and control chassis built around a sealed thirty-ton module berth. Swapping modules allows one craft to serve cargo, passenger, fuel, laboratory, prison, or vehicle-transfer work without rebuilding its drives and controls.",
+  "The chassis has four-gravity performance and room for one passenger beside the pilot, but only a very small hold outside the module. Its utility and final price depend on the installed module, which is a separate loadout rather than hidden inside this hull record.",
+]
+
+[hull]
+id = "small-50"
+configuration = "standard"
+
+[drives]
+maneuver = "sK"
+power = "sK"
+
+[fuel]
+power_plant_weeks = 1
+
+[control]
+id = "one-person-control-cabin"
+additional_passengers = 1
+
+[computer]
+id = "model-1"
+options = []
+
+[[parameterized_equipment]]
+id = "module-berth"
+contained_millitons = 30000
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[assertions]
+hull_millitons = 50000
+accounted_displacement_millitons = 50000
+hull_points = 1
+structure_points = 1
+armor_points = 0
+thrust_g = 4
+fuel_millitons = 1300
+hardpoints = 1
+hardpoints_used = 0
+minimum_crew = 1
+crew = 1
+construction_weeks = 32
+pre_discount_price_credits = 27005000
+discount_credits = 2700500
+construction_price_credits = 24304500

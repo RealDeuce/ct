@@ -1,0 +1,153 @@
+# Rule-derived normalized reconstruction of source catalog row ship-143.
+schema_version = 1
+design_id = "ct-source-ship-143"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-loki", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+bridge_options = ["hardened-bridge", "holographic-controls"]
+power_options = ["emergency-power"]
+magazine_options = ["improved-magazine"]
+unused_fire_control_stations = 0
+cargo_millitons = 143200
+[catalog]
+catalog_id = 143
+tag = "ship-143"
+family_id = 143
+upgrade_path_id = 6
+progression_stage = "light"
+status = "active"
+vessel_kind = "starship"
+display_name = "Moriarty"
+primary_role = "commerce-raider"
+secondary_roles = []
+mission_tags = ["jump-2", "commerce-raider", "normalized"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 800-ton commerce raider is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+[hull]
+id = "ship-800"
+configuration = "streamlined"
+[armor]
+id = "crystaliron-whole-points"
+points = 4
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "bridge"
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "drives"
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "ordnance-magazines"
+[drives]
+jump = "J"
+maneuver = "N"
+power = "R"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 3
+[computer]
+id = "model-3"
+options = ["bis", "fib"]
+quantity = 1
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 2
+[[software]]
+id = "point-defense-2"
+[[equipment]]
+id = "stateroom"
+quantity = 4
+[[equipment]]
+id = "crew-berthing"
+quantity = 5
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 5
+[[equipment]]
+id = "galley-space"
+quantity = 12
+[[equipment]]
+id = "crew-recreation"
+quantity = 15
+[[equipment]]
+id = "low-berth"
+quantity = 10
+[[equipment]]
+id = "briefing-room"
+quantity = 1
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+[[equipment]]
+id = "office"
+quantity = 1
+[[equipment]]
+id = "small-office"
+quantity = 2
+[[equipment]]
+id = "ships-brig"
+quantity = 8
+[[equipment]]
+id = "workshop"
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 2
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[mounts]]
+id = "double-turret"
+weapons = ["missile-rack", "sandcaster"]
+quantity = 2
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "beam-laser"]
+quantity = 2
+[[barbettes]]
+id = "plasma-barbette"
+quantity = 2
+[[bays]]
+id = "particle-beam-bay"
+quantity = 2
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 8
+[[ammunition]]
+id = "standard-missile"
+quantity = 192
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 80
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 1
+[[crew]]
+role = "turret-gunner"
+quantity = 4
+[[crew]]
+role = "bay-gunner"
+quantity = 4
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "other"
+quantity = 28

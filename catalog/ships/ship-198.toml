@@ -1,0 +1,82 @@
+# Rule-derived reconstruction of the Chapter 9 TL9 Courier.
+
+schema_version = 1
+design_id = "ce-courier"
+revision = 1
+ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016"]
+tech_level = 9
+standard_design = true
+electronics = "basic-civilian"
+unused_fire_control_stations = 1
+cargo_millitons = 16000
+
+[catalog]
+catalog_id = 198
+tag = "ship-198"
+family_id = 198
+upgrade_path_id = 2
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Pony Express"
+primary_role = "courier"
+secondary_roles = ["passenger", "priority-cargo"]
+mission_tags = ["mail", "dispatch", "priority-cargo", "charter"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This streamlined courier moves dispatches, essential personnel, and compact priority loads across two parsecs. Four staterooms and an emergency berth support small charters without surrendering the cargo space needed for mail or valuable freight.",
+  "The ship is fast for its size but unarmed and too small for low-margin bulk trade. Its success depends on schedules, information, and cargo value rather than volume, while streamlined construction and fuel processing allow flexible planetary and wilderness operation.",
+]
+
+[hull]
+id = "ship-100"
+configuration = "streamlined"
+
+[armor]
+id = "titanium-steel"
+layers = 1
+
+[drives]
+jump = "A"
+maneuver = "B"
+power = "B"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 4
+
+[computer]
+id = "model-2"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[equipment]]
+id = "stateroom"
+quantity = 4
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 2
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1

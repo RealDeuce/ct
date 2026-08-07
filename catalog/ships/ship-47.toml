@@ -1,0 +1,72 @@
+# Rule-derived normalized reconstruction of source catalog row ship-47.
+schema_version = 1
+design_id = "ct-source-ship-47"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-hfgf", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+unused_fire_control_stations = 0
+cargo_millitons = 113000
+[catalog]
+catalog_id = 47
+tag = "ship-47"
+family_id = 47
+upgrade_path_id = 7
+progression_stage = "starter"
+status = "active"
+vessel_kind = "ship"
+display_name = "Antaeus"
+primary_role = "planetary-transport"
+secondary_roles = []
+mission_tags = ["in-system", "thrust", "armed"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 200-ton planetary transport is reconstructed as a complete standard-CE design with no jump drive, normalized maneuver and power machinery, 4 points of armor, and the source role's principal accommodations, support systems, and armament.", "The design is directly usable by the game construction engine. Its cargo hold is the exact remainder after every fitted component is evaluated, so published rounded or incompatible allocations do not become hidden displacement adjustments."]
+[hull]
+id = "ship-200"
+configuration = "streamlined"
+[armor]
+id = "crystaliron-whole-points"
+points = 4
+[drives]
+maneuver = "C"
+power = "C"
+[fuel]
+jump_distance = 0
+jump_count = 0
+power_plant_weeks = 2
+[computer]
+id = "model-3"
+options = []
+[[software]]
+id = "fire-control"
+level = 1
+[[equipment]]
+id = "stateroom"
+quantity = 3
+[[equipment]]
+id = "steerage"
+quantity = 25
+[[equipment]]
+id = "additional-airlock"
+quantity = 3
+[[mounts]]
+id = "single-turret"
+weapons = ["sandcaster"]
+quantity = 2
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 40
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 1
+[[crew]]
+role = "turret-gunner"
+quantity = 2

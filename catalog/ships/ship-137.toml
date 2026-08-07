@@ -1,0 +1,198 @@
+# Rule-derived reconstruction of the 1,000-ton kinetic-attack destroyer.
+# The deleted heavy-railgun family is replaced by two additional normalized
+# particle-beam bays, preserving a distinct four-bay direct-fire variant.
+
+schema_version = 1
+design_id = "ct-source-ship-137"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-grand-duke", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+bridge_options = ["hardened-bridge", "holographic-controls"]
+power_options = ["emergency-power"]
+magazine_options = ["improved-magazine"]
+cargo_millitons = 2600
+[catalog]
+catalog_id = 137
+tag = "ship-137"
+family_id = 135
+upgrade_path_id = 8
+progression_stage = "medium"
+status = "active"
+vessel_kind = "starship"
+display_name = "Corvus"
+primary_role = "direct-fire-destroyer"
+secondary_roles = ["fleet-combat", "particle-attack"]
+mission_tags = ["jump-2", "thrust-5", "particle-bays", "point-defense"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This 1,000-ton direct-fire destroyer uses the series' protected five-gravity hull, redundant command systems, extensive crew support, drones, and fast boat. Four particle-beam bays replace the source profile's removed heavy-railgun and higher-tech fusion systems.",
+  "Six turrets and ten laser point-defense nodes protect the ship while its uniform bay battery simplifies ammunition logistics. It remains a dense, crew-intensive fleet combatant with almost no earning capacity outside naval service.",
+]
+[hull]
+id = "ship-1000"
+configuration = "standard"
+[armor]
+id = "crystaliron-whole-points"
+points = 5
+[[hull_options]]
+id = "radiation-shielding"
+quantity = 1
+[[hull_options]]
+id = "self-sealing"
+quantity = 1
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "bridge"
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "drives"
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "ordnance-magazines"
+[drives]
+jump = "K"
+maneuver = "S"
+power = "S"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 4
+[computer]
+id = "model-3"
+options = ["bis", "fib"]
+quantity = 2
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "evade"
+level = 1
+[[software]]
+id = "fire-control"
+level = 2
+[[software]]
+id = "intellect"
+[[software]]
+id = "internal-security-2"
+[[software]]
+id = "point-defense-2"
+[[software]]
+id = "point-defense-drone-1"
+[[equipment]]
+id = "stateroom"
+quantity = 10
+[[equipment]]
+id = "crew-berthing"
+quantity = 12
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 12
+[[equipment]]
+id = "galley-space"
+quantity = 104
+[[equipment]]
+id = "crew-recreation"
+quantity = 35
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+[[equipment]]
+id = "fuel-processor"
+quantity = 4
+[[equipment]]
+id = "armory"
+quantity = 2
+[[equipment]]
+id = "briefing-room"
+quantity = 1
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 2
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+[[equipment]]
+id = "office"
+quantity = 3
+[[equipment]]
+id = "small-office"
+quantity = 2
+[[equipment]]
+id = "ships-brig"
+quantity = 3
+[[equipment]]
+id = "workshop"
+quantity = 2
+[[equipment]]
+id = "point-defense-drones"
+quantity = 4
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 4
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 30000
+quantity = 1
+[[bays]]
+id = "particle-beam-bay"
+quantity = 4
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 4
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "sandcaster"]
+quantity = 2
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 10
+[[ammunition]]
+id = "standard-missile"
+quantity = 96
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 80
+[[carried_craft]]
+tag = "ship-134"
+quantity = 1
+[[crew]]
+role = "command"
+quantity = 14
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 6
+[[crew]]
+role = "sensors-operator"
+quantity = 3
+[[crew]]
+role = "medic"
+quantity = 4
+[[crew]]
+role = "turret-gunner"
+quantity = 6
+[[crew]]
+role = "bay-gunner"
+quantity = 4
+[[crew]]
+role = "flight-crew"
+quantity = 2
+[[crew]]
+role = "marine"
+quantity = 12
+[[crew]]
+role = "other"
+quantity = 51

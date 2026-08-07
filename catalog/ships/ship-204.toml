@@ -1,0 +1,156 @@
+# Corrected rule-derived patrol frigate. The Chapter 9 specification is one
+# ton over hull; this version reduces cargo from 23 tons to 22 tons.
+
+schema_version = 1
+design_id = "ct-corrected-patrol-frigate"
+revision = 1
+ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = true
+electronics = "advanced"
+cargo_millitons = 22000
+thrust_g = 4
+
+[catalog]
+catalog_id = 204
+tag = "ship-204"
+family_id = 204
+upgrade_path_id = 7
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Perry"
+primary_role = "patrol"
+secondary_roles = ["interception", "escort"]
+mission_tags = ["naval", "patrol", "fighters", "missile-combat"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This patrol frigate combines a two-parsec jump radius, strong acceleration, two carried fighters, and a marine detachment in a compact independent command. Advanced sensors and stealth treatment support interception, customs enforcement, reconnaissance, and convoy escort.",
+  "The frigate has enough mission cargo for stores, prizes, or relief supplies, but it is not a merchant ship. Fighter support, missile replenishment, and a twenty-person crew make it expensive to operate without naval, privateering, or security revenue.",
+]
+
+[hull]
+id = "ship-300"
+configuration = "standard"
+
+[armor]
+id = "crystaliron"
+layers = 2
+
+[[hull_options]]
+id = "stealth"
+quantity = 1
+
+[drives]
+jump = "C"
+maneuver = "F"
+power = "F"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 4
+
+[computer]
+id = "model-3"
+options = ["fib"]
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[equipment]]
+id = "stateroom"
+quantity = 10
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 5
+
+[[equipment]]
+id = "armory"
+quantity = 1
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 5
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "custom-hangar"
+quantity = 1
+contained_millitons = 20000
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "missile-rack"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "missile-rack"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[ammunition]]
+id = "smart-missile"
+quantity = 120
+
+[[carried_craft]]
+tag = "ship-200"
+quantity = 2
+
+[[crew]]
+role = "command"
+quantity = 1
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 2
+
+[[crew]]
+role = "turret-gunner"
+quantity = 3
+
+[[crew]]
+role = "flight-crew"
+quantity = 2
+
+[[crew]]
+role = "marine"
+quantity = 10
+
+[assertions]
+hull_millitons = 300000
+accounted_displacement_millitons = 300000
+hull_points = 6
+structure_points = 6
+armor_points = 8
+jump_rating = 2
+thrust_g = 4
+fuel_millitons = 84000
+jump_fuel_millitons = 60000
+power_fuel_millitons = 24000
+hardpoints = 3
+hardpoints_used = 3
+fire_control_millitons = 3000
+minimum_crew = 6
+crew = 20
+carried_craft_count = 2
+carried_craft_price_credits = 23319000
+construction_weeks = 52

@@ -1,0 +1,72 @@
+# Rule-derived reconstruction of source catalog row ship-42.
+schema_version = 1
+design_id = "ct-source-ship-42"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-socs-4-6", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+airlocks = 1
+cargo_millitons = 32300
+[catalog]
+catalog_id = 42
+tag = "ship-42"
+family_id = 42
+upgrade_path_id = 8
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Ballista"
+primary_role = "missile-escort-boat"
+secondary_roles = []
+mission_tags = ["escort", "missiles"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This eighty-ton missile escort boat combines five-gravity maneuver, armor, four crew, three compact staterooms, and a missile rack. Its large stores hold supports patrols, escort work, rescue cargo, or additional mission equipment.", "It is designed for persistent local screening rather than interstellar independence. The crew can remain aboard between sorties, but the craft still needs a base or carrier for jump transport and full missile replenishment."]
+[hull]
+id = "small-80"
+configuration = "streamlined"
+[armor]
+id = "small-craft-crystaliron-whole-points"
+points = 4
+[drives]
+maneuver = "sQ"
+power = "sQ"
+[fuel]
+power_plant_weeks = 1
+[control]
+id = "four-person-control-cabin"
+additional_passengers = 0
+[computer]
+id = "model-2"
+options = []
+[[software]]
+id = "evade"
+level = 1
+[[software]]
+id = "fire-control"
+level = 1
+[[equipment]]
+id = "small-craft-stateroom"
+quantity = 3
+[[equipment]]
+id = "small-craft-fuel-processor"
+quantity = 1
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[mounts]]
+id = "single-turret"
+weapons = ["missile-rack"]
+[[ammunition]]
+id = "standard-missile"
+quantity = 12
+[[crew]]
+role = "pilot"
+quantity = 2
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+[[crew]]
+role = "other"
+quantity = 1

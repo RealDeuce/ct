@@ -1,0 +1,205 @@
+# Rule-derived normalized reconstruction of source catalog row ship-180.
+schema_version = 1
+design_id = "ct-source-ship-180"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-lion", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+bridge_options = ["command-bridge", "hardened-bridge", "holographic-controls"]
+power_options = ["emergency-power"]
+magazine_options = ["improved-magazine"]
+unused_fire_control_stations = 0
+cargo_millitons = 959100
+[catalog]
+catalog_id = 180
+tag = "ship-180"
+family_id = 180
+upgrade_path_id = 7
+progression_stage = "capital"
+status = "active"
+vessel_kind = "starship"
+display_name = "Trafalgar"
+primary_role = "dreadnought"
+secondary_roles = []
+mission_tags = ["jump-2", "dreadnought", "normalized"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 5000-ton dreadnought is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+[hull]
+id = "ship-5000"
+configuration = "streamlined"
+[armor]
+id = "crystaliron-whole-points"
+points = 10
+[[hull_options]]
+id = "radiation-shielding"
+quantity = 1
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "bridge"
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "drives"
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "ordnance-magazines"
+[drives]
+jump = "Z"
+maneuver = "Z"
+power = "Z"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 3
+[computer]
+id = "model-3"
+options = ["bis", "fib"]
+quantity = 2
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 2
+[[software]]
+id = "point-defense-2"
+[[equipment]]
+id = "stateroom"
+quantity = 37
+[[equipment]]
+id = "crew-berthing"
+quantity = 31
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 31
+[[equipment]]
+id = "galley-space"
+quantity = 100
+[[equipment]]
+id = "crew-recreation"
+quantity = 150
+[[equipment]]
+id = "mini-galley"
+quantity = 1
+[[equipment]]
+id = "armory"
+quantity = 4
+[[equipment]]
+id = "briefing-room"
+quantity = 5
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 10
+[[equipment]]
+id = "gymnasium"
+quantity = 4
+[[equipment]]
+id = "interrogation-room-large"
+quantity = 1
+[[equipment]]
+id = "office"
+quantity = 12
+[[equipment]]
+id = "operating-theater"
+quantity = 1
+[[equipment]]
+id = "ships-brig"
+quantity = 6
+[[equipment]]
+id = "small-office"
+quantity = 12
+[[equipment]]
+id = "training-station"
+quantity = 12
+[[equipment]]
+id = "workshop"
+quantity = 4
+[[equipment]]
+id = "powered-armor-maintenance-workshop"
+quantity = 25
+[[equipment]]
+id = "point-defense-drones"
+quantity = 20
+[[parameterized_equipment]]
+id = "commissary"
+crew = 297
+[[parameterized_equipment]]
+id = "medical-ward"
+beds = 12
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 100000
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 12
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "sandcaster"]
+quantity = 10
+[[barbettes]]
+id = "plasma-barbette"
+quantity = 8
+[[barbettes]]
+id = "railgun-barbette"
+quantity = 6
+[[bays]]
+id = "torpedo-bay-100"
+quantity = 2
+[[bays]]
+id = "meson-gun-bay"
+quantity = 6
+[[bays]]
+id = "particle-beam-bay"
+quantity = 6
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 50
+[[ammunition]]
+id = "torpedo-basic"
+quantity = 12
+[[ammunition]]
+id = "railgun-basic"
+quantity = 576
+[[ammunition]]
+id = "standard-missile"
+quantity = 1440
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 400
+[[carried_craft]]
+tag = "ship-176"
+quantity = 1
+[[carried_craft]]
+tag = "ship-177"
+quantity = 1
+[[carried_craft]]
+tag = "ship-178"
+quantity = 2
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 5
+[[crew]]
+role = "turret-gunner"
+quantity = 22
+[[crew]]
+role = "bay-gunner"
+quantity = 28
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "other"
+quantity = 239

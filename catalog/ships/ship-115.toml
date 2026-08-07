@@ -1,0 +1,292 @@
+# Rule-derived reconstruction of the 2,000-ton gunboat carrier. Its six
+# externally clamped 300-ton gunboats raise loaded displacement to 3,800
+# tons, so standard CE Y drives and jump fuel are sized against the 4,000-ton
+# performance bracket. Reaction mass, radiators, spin-gravity pods, and
+# reaction-thrust protection are removed.
+
+schema_version = 1
+design_id = "ct-source-ship-115"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-lcg",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 10
+standard_design = false
+electronics = "basic-military"
+bridge_options = [
+  "command-bridge",
+  "hardened-bridge",
+  "holographic-controls",
+]
+external_load_millitons = 1800000
+cargo_millitons = 188750
+
+[catalog]
+catalog_id = 115
+tag = "ship-115"
+family_id = 115
+upgrade_path_id = 7
+progression_stage = "heavy"
+status = "active"
+vessel_kind = "starship"
+display_name = "Midway"
+primary_role = "gunboat-carrier"
+secondary_roles = ["fleet-support", "mobile-base"]
+mission_tags = ["jump-2", "external-gunboats", "carrier", "point-defense"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This 2,000-ton carrier transports six 300-ton gunboats on external clamps while four utility craft occupy its internal hangar. Drives and jump fuel are sized for the 3,800-ton loaded combination, preserving two-gravity maneuver and a two-parsec jump radius with the full flotilla attached.",
+  "Twenty weapon turrets and twenty point-defense nodes protect the carrier, while extensive berthing, medical, repair, workshop, detention, and ammunition facilities sustain its crews. The carrier is a mobile naval base rather than a merchant ship; its value and combat power depend heavily on retaining and servicing its gunboat group.",
+]
+
+[hull]
+id = "ship-2000"
+configuration = "close-structure"
+
+[armor]
+id = "titanium-steel"
+layers = 1
+
+[[hull_options]]
+id = "radiation-shielding"
+quantity = 1
+
+[[hull_options]]
+id = "self-sealing"
+quantity = 1
+
+[drives]
+jump = "Y"
+maneuver = "Y"
+power = "Y"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+
+[computer]
+id = "model-2"
+options = ["fib"]
+quantity = 3
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "evade"
+level = 2
+
+[[software]]
+id = "fire-control"
+level = 2
+
+[[software]]
+id = "internal-security-1"
+
+[[software]]
+id = "point-defense-1"
+
+[[equipment]]
+id = "stateroom"
+quantity = 18
+
+[[equipment]]
+id = "crew-berthing"
+quantity = 19
+
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 19
+
+[[equipment]]
+id = "galley-space"
+quantity = 151
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 115
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 15
+
+[[equipment]]
+id = "office"
+quantity = 3
+
+[[equipment]]
+id = "armory"
+quantity = 4
+
+[[equipment]]
+id = "briefing-room"
+quantity = 2
+
+[[equipment]]
+id = "operating-theater"
+quantity = 1
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 4
+
+[[equipment]]
+id = "ships-brig"
+quantity = 4
+
+[[equipment]]
+id = "gymnasium"
+quantity = 5
+
+[[equipment]]
+id = "workshop"
+quantity = 2
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 6
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 80000
+quantity = 1
+
+[[docking_clamps]]
+id = "docking-clamp-300"
+quantity = 6
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["turret-railgun", "turret-railgun", "turret-railgun"]
+quantity = 5
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 5
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "missile-rack"]
+quantity = 5
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["sandcaster", "sandcaster", "sandcaster"]
+quantity = 5
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-minigun"
+quantity = 10
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 10
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 180
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 300
+
+[[ammunition]]
+id = "turret-railgun-basic"
+quantity = 450
+
+[[carried_craft]]
+tag = "ship-70"
+quantity = 6
+
+[[carried_craft]]
+tag = "ship-124"
+quantity = 2
+
+[[carried_craft]]
+tag = "ship-187"
+quantity = 2
+
+[[crew]]
+role = "command"
+quantity = 23
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 10
+
+[[crew]]
+role = "sensors-operator"
+quantity = 5
+
+[[crew]]
+role = "medic"
+quantity = 6
+
+[[crew]]
+role = "turret-gunner"
+quantity = 20
+
+[[crew]]
+role = "flight-crew"
+quantity = 24
+
+[[crew]]
+role = "marine"
+quantity = 6
+
+[[crew]]
+role = "other"
+quantity = 55
+
+[assertions]
+hull_millitons = 2000000
+effective_displacement_millitons = 3800000
+accounted_displacement_millitons = 2000000
+hull_points = 40
+structure_points = 40
+armor_points = 2
+jump_rating = 2
+thrust_g = 2
+fuel_millitons = 806000
+jump_fuel_millitons = 760000
+power_fuel_millitons = 46000
+hardpoints = 20
+hardpoints_used = 20
+point_defense_nodes = 20
+fire_control_millitons = 20000
+minimum_crew = 23
+crew = 151
+carried_craft_count = 10
+carried_craft_displacement_millitons = 1880000
+carried_craft_price_credits = 1066120000
+hangar_capacity_millitons = 80000
+docking_capacity_millitons = 1800000
+construction_weeks = 188
+pre_discount_price_credits = 2204727500
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 2204727500

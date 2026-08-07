@@ -1,0 +1,66 @@
+# Rule-derived reconstruction of source catalog row ship-32.
+schema_version = 1
+design_id = "ct-source-ship-32"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-hfgf", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+airlocks = 2
+cargo_millitons = 17600
+[catalog]
+catalog_id = 32
+tag = "ship-32"
+family_id = 30
+upgrade_path_id = 7
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Goliath"
+primary_role = "assault-transport"
+secondary_roles = []
+mission_tags = ["troop-transport", "beam-laser"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 90-ton assault transport is a normalized CE small craft with sP maneuver and power machinery, 8 points of crystaliron protection, space for 50 passengers, and one beam laser. It is fitted for troop-transport, beam-laser work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+[hull]
+id = "small-90"
+configuration = "streamlined"
+[armor]
+id = "small-craft-crystaliron-whole-points"
+points = 8
+[drives]
+maneuver = "sP"
+power = "sP"
+[fuel]
+power_plant_weeks = 1
+[control]
+id = "four-person-control-cabin"
+additional_passengers = 0
+[computer]
+id = "model-2"
+options = []
+[[software]]
+id = "evade"
+level = 1
+[[software]]
+id = "fire-control"
+level = 1
+[[equipment]]
+id = "acceleration-seat"
+quantity = 50
+[[equipment]]
+id = "small-craft-stateroom"
+quantity = 2
+[[mounts]]
+id = "single-turret"
+weapons = ["beam-laser"]
+[[crew]]
+role = "pilot"
+quantity = 2
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+[[crew]]
+role = "other"
+quantity = 1

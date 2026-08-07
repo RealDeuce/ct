@@ -1,0 +1,169 @@
+# Original rule-derived correction of the internally inconsistent Chapter 9
+# raider concept: Jump-2, six hardpoints for six turrets, and three carried
+# craft in a correctly sized hangar.
+
+schema_version = 1
+design_id = "ct-corrected-raider"
+revision = 1
+ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = true
+electronics = "basic-civilian"
+cargo_millitons = 55000
+thrust_g = 4
+
+[catalog]
+catalog_id = 206
+tag = "ship-206"
+family_id = 206
+upgrade_path_id = 6
+progression_stage = "light"
+status = "active"
+vessel_kind = "starship"
+display_name = "Blackbeard"
+primary_role = "raider"
+secondary_roles = ["privateer", "armed-merchant"]
+mission_tags = ["boarding", "prize-taking", "fighters", "cargo"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This raider is an independent armed command built to intercept merchant traffic, compel surrender, and carry prize crews or captured goods. Six beam-laser turrets, two fighters, a ship's boat, detention cells, and marine accommodation support both privateering and outlaw operations.",
+  "A two-parsec jump radius and useful hold give it strategic freedom, but the large crew and carried-craft establishment consume money quickly. It earns poorly from ordinary freight relative to its capital cost and becomes conspicuous wherever its legal authority is not recognized.",
+]
+
+[hull]
+id = "ship-600"
+configuration = "standard"
+
+[armor]
+id = "titanium-steel"
+layers = 4
+
+[drives]
+jump = "F"
+maneuver = "M"
+power = "M"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 4
+
+[computer]
+id = "model-3"
+options = ["fib"]
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[equipment]]
+id = "stateroom"
+quantity = 12
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 6
+
+[[equipment]]
+id = "armory"
+quantity = 1
+
+[[equipment]]
+id = "detention-cell"
+quantity = 4
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 6
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "custom-hangar"
+quantity = 1
+contained_millitons = 50000
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[carried_craft]]
+tag = "ship-200"
+quantity = 2
+
+[[carried_craft]]
+tag = "ship-202"
+quantity = 1
+
+[[crew]]
+role = "command"
+quantity = 1
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 2
+
+[[crew]]
+role = "turret-gunner"
+quantity = 6
+
+[[crew]]
+role = "flight-crew"
+quantity = 3
+
+[[crew]]
+role = "marine"
+quantity = 10
+
+[assertions]
+hull_millitons = 600000
+accounted_displacement_millitons = 600000
+hull_points = 12
+structure_points = 12
+armor_points = 8
+jump_rating = 2
+thrust_g = 4
+fuel_millitons = 168000
+jump_fuel_millitons = 120000
+power_fuel_millitons = 48000
+hardpoints = 6
+hardpoints_used = 6
+fire_control_millitons = 6000
+minimum_crew = 9
+crew = 24
+carried_craft_count = 3
+carried_craft_price_credits = 39996000
+construction_weeks = 76

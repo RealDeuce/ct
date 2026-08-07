@@ -1,0 +1,51 @@
+# Rule-derived reconstruction of source catalog row ship-177.
+schema_version = 1
+design_id = "ct-source-ship-177"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-lion", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "standard"
+airlocks = 1
+cargo_millitons = 1900
+[catalog]
+catalog_id = 177
+tag = "ship-177"
+family_id = 6
+upgrade_path_id = 1
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Zephyrus"
+primary_role = "flag-barge"
+secondary_roles = []
+mission_tags = ["flag-transport", "passengers"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 20-ton flag barge is a normalized CE small craft with sF maneuver and power machinery, 2 points of crystaliron protection, space for 4 passengers. It is fitted for flag-transport, passengers work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+[hull]
+id = "small-20"
+configuration = "streamlined"
+[armor]
+id = "small-craft-crystaliron-whole-points"
+points = 2
+[drives]
+maneuver = "sF"
+power = "sF"
+[fuel]
+power_plant_weeks = 1
+[control]
+id = "one-person-cockpit"
+additional_passengers = 0
+[computer]
+id = "model-1"
+options = []
+[[equipment]]
+id = "small-craft-stateroom"
+quantity = 4
+[[equipment]]
+id = "small-craft-fuel-processor"
+quantity = 1
+[[crew]]
+role = "pilot"
+quantity = 1

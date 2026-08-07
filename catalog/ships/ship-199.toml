@@ -1,0 +1,86 @@
+# Rule-derived reconstruction of the Chapter 9 TL9 Yacht.
+
+schema_version = 1
+design_id = "ce-yacht"
+revision = 1
+ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016"]
+tech_level = 9
+standard_design = true
+electronics = "basic-civilian"
+unused_fire_control_stations = 1
+cargo_millitons = 12000
+
+[catalog]
+catalog_id = 199
+tag = "ship-199"
+family_id = 199
+upgrade_path_id = 1
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Cleopatra"
+primary_role = "yacht"
+secondary_roles = ["passenger", "diplomatic"]
+mission_tags = ["luxury", "passengers", "charter", "diplomatic"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This small streamlined yacht provides comfortable two-parsec transportation for an owner, guests, and a compact entourage. Luxuries integrated into the accommodation support high-status travel without requiring a dedicated steward.",
+  "The design has little cargo space and no installed weaponry, so it is poorly suited to commercial freight or dangerous frontiers. Its value lies in privacy, access, and flexible planetary operation rather than direct earning power or combat resilience.",
+]
+
+[hull]
+id = "ship-100"
+configuration = "streamlined"
+
+[armor]
+id = "titanium-steel"
+layers = 1
+
+[drives]
+jump = "A"
+maneuver = "A"
+power = "A"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 4
+
+[computer]
+id = "model-2"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[equipment]]
+id = "stateroom"
+quantity = 6
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 3
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 2
+
+[[equipment]]
+id = "luxuries"
+quantity = 2
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1

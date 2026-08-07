@@ -1,0 +1,126 @@
+# Rule-derived reconstruction of the 300-ton long-range survey variant.
+
+schema_version = 1
+design_id = "ct-source-ship-150"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-copeline", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+bridge_options = ["holographic-controls"]
+cargo_millitons = 2500
+[catalog]
+catalog_id = 150
+tag = "ship-150"
+family_id = 147
+upgrade_path_id = 4
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Tizard"
+primary_role = "long-range-survey"
+secondary_roles = ["exploration", "reconnaissance"]
+mission_tags = ["jump-2", "two-jump-endurance", "laboratory", "survey"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This 300-ton survey ship carries two complete Jump-2 fuel loads, advanced sensors, a laboratory, probe drones, ten personnel, a fast launch, and a vehicle bay. Three turrets provide stronger protection than the merchant variants while preserving a small stores hold.",
+  "Long endurance and carried craft let the crew investigate sparse or poorly serviced systems without immediate port support. The specialized fit leaves little commercial capacity and remains too lightly protected for deliberate fleet combat.",
+]
+[hull]
+id = "ship-300"
+configuration = "streamlined"
+[armor]
+id = "crystaliron"
+layers = 1
+[drives]
+jump = "C"
+maneuver = "E"
+power = "E"
+[fuel]
+jump_distance = 2
+jump_count = 2
+power_plant_weeks = 2
+[computer]
+id = "model-2"
+options = ["bis"]
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 1
+[[software]]
+id = "intellect"
+[[equipment]]
+id = "stateroom"
+quantity = 8
+[[equipment]]
+id = "galley-space"
+quantity = 10
+[[equipment]]
+id = "crew-recreation"
+quantity = 20
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+[[equipment]]
+id = "office"
+quantity = 1
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[equipment]]
+id = "laboratory"
+quantity = 1
+[[equipment]]
+id = "probe-drones"
+quantity = 2
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[hangars]]
+id = "standard-hangar"
+contained_millitons = 24000
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "missile-rack", "sandcaster"]
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 2
+[[ammunition]]
+id = "standard-missile"
+quantity = 12
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 20
+[[carried_craft]]
+tag = "ship-146"
+quantity = 1
+[[crew]]
+role = "command"
+quantity = 1
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 2
+[[crew]]
+role = "turret-gunner"
+quantity = 3
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "other"
+quantity = 1

@@ -1,0 +1,245 @@
+# Rule-derived conversion of the earlier 1,000-ton hospital-ship fit. Ordinary
+# Jump and exact two-week power fuel replace alternate machinery; generic
+# medical, accommodation, and hangar rules turn the source's under-allocation
+# into 106.5 tons of medical stores and cargo.
+
+schema_version = 1
+design_id = "ct-source-ship-93"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-socs-15",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+bridge_options = ["holographic-controls"]
+unused_fire_control_stations = 4
+magazine_options = ["improved-magazine"]
+cargo_millitons = 106500
+
+[catalog]
+catalog_id = 93
+tag = "ship-93"
+family_id = 93
+upgrade_path_id = 4
+progression_stage = "medium"
+status = "active"
+vessel_kind = "starship"
+display_name = "Nightingale"
+primary_role = "hospital-ship"
+secondary_roles = ["casualty-evacuation", "disaster-relief"]
+mission_tags = ["medical", "jump-2", "small-craft", "point-defense"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This earlier thousand-ton hospital-ship fit supports one hundred general-care patients, ten isolation patients, four operating theaters, and an eighty-one-person operating and medical complement. Two medical cutters and a transfer launch extend treatment to damaged vessels and planetary disaster sites.",
+  "The ship has a two-parsec jump radius, three-gravity acceleration, six sandcaster turrets, ten point-defense lasers, and a large normalized stores hold. It is less capable in maneuver and endurance than the later fit but can carry substantially more relief supplies while retaining the same core clinical mission.",
+]
+
+[hull]
+id = "ship-1000"
+configuration = "standard"
+
+[armor]
+id = "crystaliron"
+layers = 1
+
+[drives]
+jump = "H"
+maneuver = "L"
+power = "L"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+
+[computer]
+id = "model-3"
+options = ["fib"]
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "evade"
+level = 1
+
+[[software]]
+id = "intellect"
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[software]]
+id = "point-defense-2"
+
+[[equipment]]
+id = "stateroom"
+quantity = 13
+
+[[equipment]]
+id = "crew-berthing"
+quantity = 8
+
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 9
+
+[[equipment]]
+id = "galley-space"
+quantity = 28
+
+[[equipment]]
+id = "mini-galley"
+quantity = 3
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 150
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 5
+
+[[equipment]]
+id = "operating-theater"
+quantity = 4
+
+[[equipment]]
+id = "briefing-room"
+quantity = 2
+
+[[equipment]]
+id = "office"
+quantity = 3
+
+[[equipment]]
+id = "chapel-space"
+quantity = 4
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 10
+
+[[equipment]]
+id = "escape-pod"
+quantity = 40
+
+[[equipment]]
+id = "workshop"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-ward"
+beds = 100
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 10
+
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 110000
+quantity = 1
+
+[[mounts]]
+id = "double-turret"
+weapons = ["sandcaster", "sandcaster"]
+quantity = 6
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 10
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 120
+
+[[carried_craft]]
+tag = "ship-158"
+quantity = 1
+
+[[carried_craft]]
+tag = "ship-159"
+quantity = 2
+
+[[crew]]
+role = "command"
+quantity = 8
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 4
+
+[[crew]]
+role = "sensors-operator"
+quantity = 4
+
+[[crew]]
+role = "medic"
+quantity = 44
+
+[[crew]]
+role = "turret-gunner"
+quantity = 6
+
+[[crew]]
+role = "flight-crew"
+quantity = 5
+
+[[crew]]
+role = "other"
+quantity = 8
+
+[assertions]
+hull_millitons = 1000000
+accounted_displacement_millitons = 1000000
+hull_points = 20
+structure_points = 20
+armor_points = 4
+jump_rating = 2
+thrust_g = 3
+fuel_millitons = 222000
+jump_fuel_millitons = 200000
+power_fuel_millitons = 22000
+hardpoints = 10
+hardpoints_used = 6
+point_defense_nodes = 10
+fire_control_millitons = 10000
+minimum_crew = 9
+crew = 81
+carried_craft_count = 3
+carried_craft_price_credits = 76690000
+hangar_capacity_millitons = 110000
+docking_capacity_millitons = 0
+construction_weeks = 108
+pre_discount_price_credits = 580260000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 580260000

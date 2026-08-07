@@ -1,0 +1,213 @@
+# Rule-derived reconstruction of the three-hundred-ton gunboat. Standard CE
+# maneuver drive removes reaction mass, radiator, and reaction-thrust
+# protection. The reduced particle installation becomes a normal 51-ton bay,
+# and every defensive node and ammunition load is explicit.
+
+schema_version = 1
+design_id = "ct-source-ship-70"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-lcg",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 10
+standard_design = false
+electronics = "basic-military"
+bridge_options = ["hardened-bridge"]
+cargo_millitons = 99500
+
+[catalog]
+catalog_id = 70
+tag = "ship-70"
+family_id = 70
+upgrade_path_id = 8
+progression_stage = "starter"
+status = "active"
+vessel_kind = "ship"
+display_name = "Monitor"
+primary_role = "gunboat"
+secondary_roles = ["escort", "interceptor"]
+mission_tags = ["in-system", "thrust-4", "particle-beam", "point-defense"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This three-hundred-ton gunboat combines four-gravity maneuver, radiation shielding, hardened controls, redundant computers, repair drones, emergency berths, and complete escape capacity. Replacing reaction propulsion with ordinary CE maneuver drive produces useful stores and patrol-cargo volume without sacrificing acceleration.",
+  "A particle-beam bay and railgun barbette provide the main strike, with a mixed laser, missile, and sandcaster turret plus three point-defense nodes for close protection. It is a compact naval combatant with no jump capability and therefore depends on a carrier, tender, or permanent system base.",
+]
+
+[hull]
+id = "ship-300"
+configuration = "standard"
+
+[armor]
+id = "crystaliron"
+layers = 1
+
+[[hull_options]]
+id = "radiation-shielding"
+quantity = 1
+
+[drives]
+maneuver = "F"
+power = "F"
+
+[fuel]
+jump_distance = 0
+jump_count = 0
+power_plant_weeks = 4
+
+[computer]
+id = "model-2"
+options = ["fib"]
+quantity = 4
+
+[[software]]
+id = "evade"
+level = 2
+
+[[software]]
+id = "fire-control"
+level = 2
+
+[[software]]
+id = "point-defense-1"
+
+[[equipment]]
+id = "stateroom"
+quantity = 2
+
+[[equipment]]
+id = "crew-berthing"
+quantity = 2
+
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 2
+
+[[equipment]]
+id = "galley-space"
+quantity = 14
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 10
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+
+[[equipment]]
+id = "escape-pod"
+quantity = 14
+
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[bays]]
+id = "particle-beam-bay"
+quantity = 1
+
+[[barbettes]]
+id = "railgun-barbette"
+quantity = 1
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "missile-rack", "sandcaster"]
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-minigun"
+quantity = 2
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 1
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 36
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 20
+
+[[ammunition]]
+id = "railgun-basic"
+quantity = 80
+
+[[crew]]
+role = "command"
+quantity = 2
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 2
+
+[[crew]]
+role = "sensors-operator"
+quantity = 1
+
+[[crew]]
+role = "medic"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+
+[[crew]]
+role = "bay-gunner"
+quantity = 2
+
+[[crew]]
+role = "other"
+quantity = 3
+
+[assertions]
+hull_millitons = 300000
+effective_displacement_millitons = 300000
+accounted_displacement_millitons = 300000
+hull_points = 6
+structure_points = 6
+armor_points = 4
+jump_rating = 0
+thrust_g = 4
+fuel_millitons = 24000
+jump_fuel_millitons = 0
+power_fuel_millitons = 24000
+hardpoints = 3
+hardpoints_used = 3
+point_defense_nodes = 3
+fire_control_millitons = 7000
+minimum_crew = 6
+crew = 14
+carried_craft_count = 0
+carried_craft_displacement_millitons = 0
+carried_craft_price_credits = 0
+hangar_capacity_millitons = 0
+docking_capacity_millitons = 0
+construction_weeks = 52
+pre_discount_price_credits = 168990000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 168990000

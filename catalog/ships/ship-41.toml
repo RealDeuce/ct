@@ -1,0 +1,91 @@
+# Rule-derived normalized reconstruction of source catalog row ship-41.
+schema_version = 1
+design_id = "ct-source-ship-41"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-socs-7-9", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+unused_fire_control_stations = 0
+cargo_millitons = 13000
+[catalog]
+catalog_id = 41
+tag = "ship-41"
+family_id = 41
+upgrade_path_id = 4
+progression_stage = "starter"
+status = "active"
+vessel_kind = "ship"
+display_name = "Warden"
+primary_role = "customs-cutter"
+secondary_roles = []
+mission_tags = ["in-system", "thrust", "armed"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 100-ton customs cutter is reconstructed as a complete standard-CE design with no jump drive, normalized maneuver and power machinery, 4 points of armor, and the source role's principal accommodations, support systems, and armament.", "The design is directly usable by the game construction engine. Its cargo hold is the exact remainder after every fitted component is evaluated, so published rounded or incompatible allocations do not become hidden displacement adjustments."]
+[hull]
+id = "ship-100"
+configuration = "streamlined"
+[armor]
+id = "crystaliron-whole-points"
+points = 4
+[drives]
+maneuver = "C"
+power = "C"
+[fuel]
+jump_distance = 0
+jump_count = 0
+power_plant_weeks = 2
+[computer]
+id = "model-3"
+options = []
+[[software]]
+id = "fire-control"
+level = 1
+[[equipment]]
+id = "stateroom"
+quantity = 4
+[[equipment]]
+id = "fuel-processor"
+quantity = 2
+[[equipment]]
+id = "low-berth"
+quantity = 4
+[[equipment]]
+id = "ships-brig"
+quantity = 2
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+[[hangars]]
+id = "standard-hangar"
+contained_millitons = 20000
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 1
+[[carried_craft]]
+tag = "ship-7"
+quantity = 1
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 1
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "other"
+quantity = 3

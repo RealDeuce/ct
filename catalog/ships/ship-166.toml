@@ -1,0 +1,148 @@
+# Rule-derived reconstruction of the corresponding source catalog design. Source
+# specification values are normalized through the active CE construction rules.
+
+schema_version = 1
+design_id = "ct-source-ship-166"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-rucker", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 9
+standard_design = false
+electronics = "standard"
+unused_fire_control_stations = 0
+cargo_millitons = 21700
+thrust_g = 2
+
+[catalog]
+catalog_id = 166
+tag = "ship-166"
+family_id = 54
+upgrade_path_id = 5
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Nemo"
+primary_role = "patrol-ship"
+secondary_roles = ["boarding", "customs"]
+mission_tags = ["jump-2", "particle-barbette", "carried-boat", "patrol"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This patrol conversion adds military electronics, three fully fitted hardpoints, naval accommodations, and a full hangar for an armed fast boat. Its particle-beam barbette gives it authority over ordinary merchants while the mixed and laser turrets cover routine warning and defensive fire.",
+  "The ship is intended for customs inspections, local patrol, and boarding work rather than fleet battle. Carrying the boat and a nineteen-person crew consumes most commercial capacity, leaving only a modest hold for stores, seized goods, or mission cargo.",
+]
+
+[hull]
+id = "ship-300"
+configuration = "streamlined"
+[armor]
+id = "titanium-steel"
+layers = 2
+[drives]
+jump = "C"
+maneuver = "C"
+power = "C"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "model-2"
+options = []
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 1
+[[software]]
+id = "evade"
+level = 1
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 4
+[[equipment]]
+id = "stateroom"
+quantity = 8
+[[equipment]]
+id = "crew-berthing"
+quantity = 2
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 2
+[[equipment]]
+id = "galley-space"
+quantity = 24
+[[equipment]]
+id = "crew-recreation"
+quantity = 4
+[[equipment]]
+id = "low-berth"
+quantity = 15
+[[equipment]]
+id = "office"
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+[[hangars]]
+id = "standard-hangar"
+contained_millitons = 4000
+quantity = 1
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 30000
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "missile-rack", "sandcaster"]
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 1
+[[barbettes]]
+id = "particle-beam-barbette"
+quantity = 1
+[[ammunition]]
+id = "standard-missile"
+quantity = 48
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 80
+[[carried_craft]]
+tag = "ship-165"
+quantity = 1
+[[crew]]
+role = "command"
+quantity = 2
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 2
+[[crew]]
+role = "sensors-operator"
+quantity = 1
+[[crew]]
+role = "turret-gunner"
+quantity = 2
+[[crew]]
+role = "bay-gunner"
+quantity = 1
+[[crew]]
+role = "flight-crew"
+quantity = 2
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "marine"
+quantity = 4
+[[crew]]
+role = "other"
+quantity = 2

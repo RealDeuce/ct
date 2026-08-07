@@ -1,0 +1,48 @@
+# Rule-derived reconstruction of source catalog row ship-5.
+schema_version = 1
+design_id = "ct-source-ship-5"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-socs-7-9", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "standard"
+airlocks = 1
+cargo_millitons = 350
+[catalog]
+catalog_id = 5
+tag = "ship-5"
+family_id = 5
+upgrade_path_id = 1
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Charon"
+primary_role = "fast-passenger-launch"
+secondary_roles = []
+mission_tags = ["thrust-6", "passengers"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 10-ton fast passenger launch is a normalized CE small craft with sC maneuver and power machinery, 2 points of crystaliron protection, space for 6 passengers. It is fitted for thrust-6, passengers work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+[hull]
+id = "small-10"
+configuration = "streamlined"
+[armor]
+id = "small-craft-crystaliron-whole-points"
+points = 2
+[drives]
+maneuver = "sC"
+power = "sC"
+[fuel]
+power_plant_weeks = 1
+[control]
+id = "one-person-cockpit"
+additional_passengers = 0
+[computer]
+id = "model-1"
+options = []
+[[equipment]]
+id = "acceleration-seat"
+quantity = 6
+[[crew]]
+role = "pilot"
+quantity = 1

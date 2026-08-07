@@ -1,0 +1,114 @@
+# Rule-derived reconstruction of the 300-ton mixed passenger/cargo module.
+
+schema_version = 1
+design_id = "ct-source-ship-148"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-copeline", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+bridge_options = ["holographic-controls"]
+unused_fire_control_stations = 2
+cargo_millitons = 35500
+[catalog]
+catalog_id = 148
+tag = "ship-148"
+family_id = 147
+upgrade_path_id = 1
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Solander"
+primary_role = "passenger-merchant"
+secondary_roles = ["cargo", "charter"]
+mission_tags = ["jump-2", "thrust-3", "passengers", "merchant"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This 300-ton mixed merchant devotes its modular section to accommodation for twenty-four passengers while retaining a useful freight hold. Ten crew, complete galley and recreation allocations, medical support, a vehicle bay, and one turret support scheduled frontier service.",
+  "The balanced layout can earn from both passengers and cargo but cannot match a dedicated freighter's hold or a liner's scale. Empty rooms and irregular freight demand therefore require careful route and contract planning.",
+]
+[hull]
+id = "ship-300"
+configuration = "streamlined"
+[armor]
+id = "crystaliron"
+layers = 1
+[drives]
+jump = "C"
+maneuver = "E"
+power = "E"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "model-2"
+options = ["bis"]
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 1
+[[software]]
+id = "intellect"
+[[equipment]]
+id = "stateroom"
+quantity = 20
+[[equipment]]
+id = "galley-space"
+quantity = 34
+[[equipment]]
+id = "crew-recreation"
+quantity = 35
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+[[equipment]]
+id = "office"
+quantity = 1
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[hangars]]
+id = "standard-hangar"
+contained_millitons = 4000
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "missile-rack", "sandcaster"]
+quantity = 1
+[[ammunition]]
+id = "standard-missile"
+quantity = 12
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 20
+[[crew]]
+role = "command"
+quantity = 2
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 2
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "other"
+quantity = 2

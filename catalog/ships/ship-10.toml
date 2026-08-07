@@ -1,0 +1,92 @@
+# Rule-derived reconstruction of the twenty-ton armed fast launch. The source
+# fixed beam mount is represented by the CE single hardpoint mount; its
+# anti-personnel autocannons are portable crew weapons rather than ship-combat
+# installations and therefore do not consume hull displacement here.
+
+schema_version = 1
+design_id = "ct-source-ship-10"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-wgttfotc",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "standard"
+airlocks = 1
+cargo_millitons = 2500
+
+[catalog]
+catalog_id = 10
+tag = "ship-10"
+family_id = 10
+upgrade_path_id = 4
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Argo"
+primary_role = "boarding-launch"
+secondary_roles = ["passenger-transfer", "prize-crew-transfer"]
+mission_tags = ["boarding", "passengers", "high-thrust", "atmospheric"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This twenty-ton armed launch carries ten seated passengers and a small cargo load at six gravities. Crystaliron armor, a beam laser, an airlock, and streamlining equip it to deliver boarding or prize crews, recover survivors, and move personnel between a cruiser, stations, and planetary surfaces.",
+  "The launch has no jump drive or sleeping accommodation and carries only two weeks of power-plant fuel. Its weapon and high acceleration make it more capable than a civilian transfer craft, but it remains dependent on a parent ship or base for interstellar movement, ammunition, and sustained support.",
+]
+
+[hull]
+id = "small-20"
+configuration = "streamlined"
+
+[armor]
+id = "crystaliron"
+layers = 1
+
+[drives]
+maneuver = "sF"
+power = "sG"
+
+[fuel]
+power_plant_weeks = 2
+
+[control]
+id = "one-person-cockpit"
+additional_passengers = 0
+
+[computer]
+id = "model-1"
+options = []
+
+[[equipment]]
+id = "acceleration-seat"
+quantity = 10
+
+[[mounts]]
+id = "single-turret"
+weapons = ["beam-laser"]
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[assertions]
+hull_millitons = 20000
+accounted_displacement_millitons = 20000
+hull_points = 0
+structure_points = 1
+armor_points = 4
+thrust_g = 6
+fuel_millitons = 2000
+hardpoints = 1
+hardpoints_used = 1
+minimum_crew = 1
+crew = 1
+construction_weeks = 29
+pre_discount_price_credits = 15390000
+discount_credits = 0
+construction_price_credits = 15390000

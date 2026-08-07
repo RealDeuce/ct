@@ -1,0 +1,883 @@
+# Normalized construction additions from the third-edition naval-architecture
+# source. Shared CE components are not duplicated here. Conflicts are resolved
+# by ct-ruleset.toml.
+
+schema_version = 1
+module_id = "ct.af3.structures-and-components"
+module_revision = 1
+extends_ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["ship-source-a-f", "cepheus-engine-srd-2016"]
+
+[scope]
+maximum_hull_tons = 20000
+
+# Intermediate hull tonnages use their published construction-table bracket.
+# This preserves the tabulated price and time rather than inventing a
+# proportional price from a published ship's reported total.
+[[hull]]
+id = "ship-120"
+tons = 120
+code = "1"
+price_credits = 2000000
+construction_weeks = 36
+[[drive_performance]]
+hull_tons = 120
+values = { A = 1, B = 2, C = 3, D = 4, E = 5, F = 6 }
+[[hull]]
+id = "ship-350"
+tons = 350
+code = "4"
+price_credits = 16000000
+construction_weeks = 60
+[[drive_performance]]
+hull_tons = 350
+values = { B = 1, C = 1, D = 2, E = 2, F = 3, G = 3, H = 4, J = 4, K = 5, L = 5, M = 6, N = 6 }
+
+[[hull]]
+id = "ship-550"
+tons = 550
+code = "6"
+price_credits = 48000000
+construction_weeks = 76
+[[drive_performance]]
+hull_tons = 550
+values = { C = 1, D = 1, E = 1, F = 2, G = 2, H = 2, J = 3, K = 3, L = 3, M = 4, N = 4, P = 4, Q = 5, R = 5, S = 5, T = 6, U = 6, V = 6 }
+
+# The source's worked 1,500-ton design uses the next CE hull-code bracket:
+# code G, its 1,600-ton construction price, and the corresponding drive row.
+[[hull]]
+id = "ship-1500"
+tons = 1500
+code = "G"
+price_credits = 160000000
+construction_weeks = 156
+[[hull]]
+id = "ship-1900"
+tons = 1900
+code = "K"
+price_credits = 190000000
+construction_weeks = 180
+[[hull]]
+id = "ship-2500"
+tons = 2500
+code = "CA"
+price_credits = 300000000
+construction_weeks = 268
+[[drive_performance]]
+hull_tons = 2500
+values = { Q = 1, R = 1, S = 1, T = 2, U = 2, V = 2, W = 3, X = 3, Y = 3, Z = 4 }
+[[hull]]
+id = "ship-3800"
+tons = 3800
+code = "CB"
+price_credits = 400000000
+construction_weeks = 348
+[[drive_performance]]
+hull_tons = 3800
+values = { V = 1, W = 1, X = 1, Y = 2, Z = 2 }
+[[hull]]
+id = "ship-4500"
+tons = 4500
+code = "CC"
+price_credits = 500000000
+construction_weeks = 348
+
+# These source hull rows are for non-Jump capital structures. The selected
+# sources do not contain a Jump-capable ship or Jump-drive performance rule
+# above 5,000 tons.
+[[hull]]
+id = "ship-6000"
+tons = 6000
+code = "CD"
+price_credits = 600000000
+sections = 2
+interstellar_status = "in-system-only"
+[[hull]]
+id = "ship-7000"
+tons = 7000
+code = "CE"
+price_credits = 700000000
+sections = 2
+interstellar_status = "in-system-only"
+[[hull]]
+id = "ship-8000"
+tons = 8000
+code = "CF"
+price_credits = 800000000
+sections = 3
+interstellar_status = "in-system-only"
+[[hull]]
+id = "ship-9000"
+tons = 9000
+code = "CG"
+price_credits = 900000000
+sections = 3
+interstellar_status = "in-system-only"
+[[hull]]
+id = "ship-10000"
+tons = 10000
+code = "CH"
+price_credits = 1000000000
+sections = 3
+interstellar_status = "in-system-only"
+[[hull]]
+id = "ship-15000"
+tons = 15000
+code = "CJ"
+price_credits = 1500000000
+sections = 3
+interstellar_status = "in-system-only"
+[[hull]]
+id = "ship-20000"
+tons = 20000
+code = "CK"
+price_credits = 2000000000
+sections = 3
+interstellar_status = "in-system-only"
+
+[[hull_section]]
+hull_tons = 3000
+hull_code = "CA"
+sections = 2
+total_hull_points = 60
+total_structure_points = 60
+points_per_section = 30
+[[hull_section]]
+hull_tons = 4000
+hull_code = "CB"
+sections = 2
+total_hull_points = 80
+total_structure_points = 80
+points_per_section = 40
+[[hull_section]]
+hull_tons = 5000
+hull_code = "CC"
+sections = 2
+total_hull_points = 100
+total_structure_points = 100
+points_per_section = 50
+[[hull_section]]
+hull_tons = 6000
+hull_code = "CD"
+sections = 2
+total_hull_points = 120
+total_structure_points = 120
+points_per_section = 60
+[[hull_section]]
+hull_tons = 7000
+hull_code = "CE"
+sections = 2
+total_hull_points = 140
+total_structure_points = 140
+points_per_section = 70
+[[hull_section]]
+hull_tons = 8000
+hull_code = "CF"
+sections = 3
+total_hull_points = 160
+total_structure_points = 160
+points_per_section = 53
+unallocated_points = 1
+
+[[drive_performance]]
+hull_tons = 1500
+values = { H = 1, J = 1, K = 1, L = 2, M = 2, N = 2, P = 3, Q = 3, R = 3, S = 4, T = 4, U = 4, V = 4, W = 4, X = 5, Y = 5, Z = 5 }
+[[drive_performance]]
+hull_tons = 1900
+values = { K = 1, L = 1, M = 1, N = 2, P = 2, Q = 2, R = 3, S = 3, T = 3, U = 4, V = 4, W = 4, X = 4, Y = 4, Z = 4 }
+[[drive_performance]]
+hull_tons = 4500
+values = { W = 1, X = 1, Y = 1, Z = 2 }
+[[hull_section]]
+hull_tons = 9000
+hull_code = "CG"
+sections = 3
+total_hull_points = 180
+total_structure_points = 180
+points_per_section = 60
+[[hull_section]]
+hull_tons = 10000
+hull_code = "CH"
+sections = 3
+total_hull_points = 200
+total_structure_points = 200
+points_per_section = 66
+unallocated_points = 2
+[[hull_section]]
+hull_tons = 15000
+hull_code = "CJ"
+sections = 3
+total_hull_points = 300
+total_structure_points = 300
+points_per_section = 100
+[[hull_section]]
+hull_tons = 20000
+hull_code = "CK"
+sections = 3
+total_hull_points = 400
+total_structure_points = 400
+points_per_section = 133
+unallocated_points = 1
+
+[[configuration]]
+id = "close-structure"
+hull_price_percent = 90
+includes_fuel_scoops = false
+may_install_fuel_scoops = false
+may_land_in_thin_atmosphere = true
+spinal_bearing_percent = 60
+[[configuration]]
+id = "dispersed-structure"
+hull_price_percent = 50
+includes_fuel_scoops = false
+may_install_fuel_scoops = false
+may_land = false
+allows_spinal_weapon = false
+spinal_bearing_percent = 60
+
+[[structural_option]]
+id = "reinforced-structure"
+formula = "hull-volume-percent"
+volume_percent_per_increment = 5
+price_credits_per_installed_ton = 200000
+bonuses = [
+  { maximum_hull_tons = 90, points_per_increment = 1 },
+  { maximum_hull_tons = 1000, points_per_increment = 2 },
+  { maximum_hull_tons = 3000, points_per_increment = 4 },
+  { maximum_hull_tons = 20000, points_per_increment = 8 },
+]
+[[structural_option]]
+id = "reinforced-hull"
+formula = "hull-volume-percent"
+volume_percent_per_increment = 10
+price_credits_per_installed_ton = 100000
+bonuses = [
+  { maximum_hull_tons = 90, points_per_increment = 3 },
+  { maximum_hull_tons = 1000, points_per_increment = 5 },
+  { maximum_hull_tons = 3000, points_per_increment = 10 },
+  { maximum_hull_tons = 20000, points_per_increment = 20 },
+]
+[[structural_option]]
+id = "armored-bulkheads"
+formula = "protected-system-volume-percent"
+protected_system_volume_percent = 10
+price_credits_per_installed_ton = 200000
+negated_hits = 1
+parameter = "protected_component_id"
+[[structural_option]]
+id = "modular-hull"
+formula = "base-hull-price-percent"
+maximum_hull_volume_percent = 75
+price_percent_per_modular_percent = 1
+forbidden_contents = [
+  "bridge",
+  "jump-drive",
+  "maneuver-drive",
+  "power-plant",
+  "structural-option",
+  "armor",
+]
+
+# The source permits whole points. Rates are exact fractions of the matching
+# CE five-percent layer; no alternative material values are introduced.
+[[armor_extension]]
+id = "titanium-steel-whole-points"
+base_armor_id = "titanium-steel"
+volume_basis_points_per_point = 250
+base_hull_price_basis_points_per_point = 250
+maximum_protection_formula = "minimum-of-tech-level-and-9"
+[[armor_extension]]
+id = "crystaliron-whole-points"
+base_armor_id = "crystaliron"
+volume_basis_points_per_point = 125
+base_hull_price_basis_points_per_point = 500
+maximum_protection_formula = "minimum-of-tech-level-and-12"
+
+[[hull_option]]
+id = "heat-shielding"
+min_tl = 7
+price_credits_per_hull_ton = 100000
+maximum_quantity = 1
+[[hull_option]]
+id = "radiation-shielding"
+min_tl = 8
+price_credits_per_hull_ton = 100000
+maximum_quantity = 1
+mutually_exclusive_with = ["magnetogravitic-screen"]
+[[hull_option]]
+id = "electrified-hull"
+min_tl = 9
+price_credits_per_hull_ton = 200000
+maximum_quantity = 1
+requires_operational_power_plant = true
+
+[[power_option]]
+id = "emergency-power"
+formula = "main-power-plant-percent"
+volume_percent = 10
+price_percent = 10
+duration_minutes = 30
+
+[[excluded_component]]
+id = "fusion-power-fuel-cells"
+min_tl = 8
+source_formula = "power-plant-volume-percent"
+source_volume_percent = 10
+source_minimum_millitons = 1000
+source_duration_days = 365
+source_replacement_credits_per_installed_ton = 12000
+reason = "Excluded: Cepheus Trader uses standard CE power-plant fuel and refueling."
+
+[[bridge_extension]]
+id = "expanded-standard-bridge-sizes"
+sizes = [
+  { maximum_hull_tons = 3000, displacement_millitons = 60000 },
+  { maximum_hull_tons = 5000, displacement_millitons = 80000 },
+  { maximum_hull_tons = 8000, displacement_millitons = 90000 },
+  { maximum_hull_tons = 20000, displacement_millitons = 100000 },
+]
+[[bridge_option]]
+id = "command-bridge"
+volume_percent = 150
+price_percent = 150
+naval_tactics_dm = 1
+[[bridge_option]]
+id = "compact-bridge"
+volume_percent = 75
+price_percent = 110
+bridge_skill_dm = -1
+[[bridge_option]]
+id = "hardened-bridge"
+volume_percent = 100
+price_percent = 125
+emp_immune = true
+radiation_reduction_rads = 1000
+[[bridge_option]]
+id = "holographic-controls"
+volume_percent = 100
+price_percent = 125
+initiative_dm = 2
+[[bridge_option]]
+id = "secondary-bridge"
+volume_from_standard_bridge_allocation = true
+maximum_standard_bridge_percent = 25
+minimum_hull_tons = 1000
+
+[[computer]]
+id = "af-model-4b"
+min_tl = 12
+rating = 25
+price_credits = 10000000
+[[computer]]
+id = "capital-core-3"
+minimum_hull_tons = 2000
+maximum_hull_tons = 5000
+min_tl = 9
+rating = 40
+price_credits = 12000000
+displacement_included_in_bridge = true
+[[computer]]
+id = "capital-core-4"
+minimum_hull_tons = 5001
+maximum_hull_tons = 10000
+min_tl = 10
+rating = 50
+price_credits = 30000000
+displacement_included_in_bridge = true
+[[computer]]
+id = "capital-core-5"
+minimum_hull_tons = 10001
+maximum_hull_tons = 20000
+min_tl = 11
+rating = 60
+price_credits = 30000000
+displacement_included_in_bridge = true
+
+[[electronics]]
+id = "survey-sensors"
+min_tl = 12
+dm = 1
+displacement_millitons = 10000
+price_credits = 10000000
+equivalent_base_id = "advanced"
+[[electronics_upgrade]]
+id = "improved-signal-processing"
+min_tl = 11
+dm = 2
+displacement_millitons = 1000
+price_credits = 4000000
+range_band_bonus = 1
+jamming_dm_multiplier = 2
+[[electronics_upgrade]]
+id = "distributed-arrays"
+min_tl = 11
+minimum_hull_tons = 5000
+volume_percent_of_sensor_suite = 300
+price_percent_of_sensor_suite = 300
+forbidden_base_ids = ["standard"]
+maximum_quantity = 1
+[[electronics_upgrade]]
+id = "extended-arrays"
+min_tl = 11
+volume_percent_of_sensor_suite = 300
+price_percent_of_sensor_suite = 300
+forbidden_base_ids = ["standard"]
+maximum_quantity = 1
+prevents_maneuver_while_deployed = true
+prevents_jump_while_deployed = true
+[[electronics_upgrade]]
+id = "rapid-extended-arrays"
+min_tl = 11
+volume_percent_of_sensor_suite = 300
+price_percent_of_sensor_suite = 500
+forbidden_base_ids = ["standard"]
+maximum_quantity = 1
+[[equipment]]
+id = "lifeform-scanner"
+unit = "installation"
+min_tl = 12
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 2000000
+[[equipment]]
+id = "mail-services-array"
+unit = "installation"
+min_tl = 10
+displacement_millitons_per_unit = 5000
+price_credits_per_unit = 15000000
+[[blocked_component]]
+id = "mineralogy-suite"
+reason = "The source construction table gives five tons but no price."
+
+# Accommodation and internal components.
+[[equipment]]
+id = "steerage"
+unit = "passenger"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 50000
+capacity_per_unit = 1
+[[equipment]]
+id = "high-class-stateroom"
+unit = "room"
+displacement_millitons_per_unit = 8000
+price_credits_per_unit = 1000000
+capacity_per_unit = 4
+[[equipment]]
+id = "compact-stateroom"
+unit = "room"
+displacement_millitons_per_unit = 2000
+price_credits_per_unit = 500000
+capacity_per_unit = 2
+crew_capacity_per_unit = 2
+[[equipment]]
+id = "crew-berthing"
+unit = "berthing-unit"
+displacement_millitons_per_unit = 6000
+price_credits_per_unit = 500000
+capacity_per_unit = 8
+crew_capacity_per_unit = 8
+[[equipment]]
+id = "head-toilet"
+unit = "installation"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 50000
+[[equipment]]
+id = "head-toilet-shower"
+unit = "installation"
+displacement_millitons_per_unit = 1500
+price_credits_per_unit = 100000
+[[equipment]]
+id = "additional-airlock"
+unit = "ton"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 100000
+minimum_quantity = 1
+[[equipment]]
+id = "astrographic-cartography-room"
+unit = "room"
+displacement_millitons_per_unit = 2000
+price_credits_per_unit = 2000000
+[[equipment]]
+id = "autodoc"
+unit = "installation"
+min_tl = 10
+displacement_millitons_per_unit = 500
+price_credits_per_unit = 500000
+[[equipment]]
+id = "casino-space"
+unit = "patron"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 500000
+[[equipment]]
+id = "chapel-space"
+unit = "ton"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 200000
+minimum_quantity = 2
+maximum_quantity = 4
+[[parameterized_equipment]]
+id = "commissary"
+formula = "crew-ratio-with-minimum-and-administration"
+crew_per_quarter_ton = 5
+minimum_millitons = 1500
+administration_millitons = 1000
+price_credits_per_installed_ton = 100000
+parameter = "crew"
+[[equipment]]
+id = "crew-recreation"
+unit = "off-watch-person"
+displacement_millitons_per_unit = 200
+price_credits_per_unit = 40000
+[[equipment]]
+id = "interrogation-room-small"
+unit = "room"
+displacement_millitons_per_unit = 2000
+price_credits_per_unit = 250000
+[[equipment]]
+id = "interrogation-room-large"
+unit = "room"
+displacement_millitons_per_unit = 4000
+price_credits_per_unit = 750000
+[[equipment]]
+id = "garden-space"
+unit = "ton"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 250000
+minimum_quantity = 4
+[[equipment]]
+id = "galley-space"
+unit = "crew"
+displacement_millitons_per_unit = 250
+price_credits_per_unit = 62500
+[[equipment]]
+id = "gymnasium"
+unit = "installation"
+displacement_millitons_per_unit = 4000
+price_credits_per_unit = 1000000
+[[equipment]]
+id = "high-class-dining-seat"
+unit = "seat"
+displacement_millitons_per_unit = 250
+price_credits_per_unit = 250000
+[[parameterized_equipment]]
+id = "medical-bay"
+formula = "first-unit-plus-additional-units"
+first_unit_millitons = 2000
+additional_unit_millitons = 1000
+price_credits_per_unit = 500000
+parameter = "beds"
+[[parameterized_equipment]]
+id = "medical-ward"
+formula = "first-unit-plus-additional-units"
+first_unit_millitons = 2000
+additional_unit_millitons = 1000
+price_credits_per_unit = 500000
+maximum_units = 200
+parameter = "beds"
+[[equipment]]
+id = "operating-theater"
+unit = "theater"
+displacement_millitons_per_unit = 2000
+price_credits_per_unit = 1500000
+[[equipment_option]]
+id = "medical-isolation"
+applies_to = ["medical-bay", "medical-ward"]
+price_percent = 150
+[[equipment]]
+id = "mini-galley"
+unit = "installation"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 20000
+[[equipment]]
+id = "mineral-refinery-tl7"
+unit = "ton"
+min_tl = 7
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 500000
+production_millitons_per_day_per_unit = 500
+crew_per_installed_tons = 10
+[[equipment]]
+id = "mineral-refinery-tl10"
+unit = "ton"
+min_tl = 10
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 1000000
+production_millitons_per_day_per_unit = 1000
+crew_per_installed_tons = 15
+[[equipment]]
+id = "mineral-refinery-tl12"
+unit = "ton"
+min_tl = 12
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 2000000
+production_millitons_per_day_per_unit = 2000
+crew_per_installed_tons = 30
+[[equipment]]
+id = "office"
+unit = "office"
+displacement_millitons_per_unit = 2000
+price_credits_per_unit = 200000
+[[equipment]]
+id = "small-office"
+unit = "office"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 50000
+[[equipment]]
+id = "powered-armor-maintenance-workshop"
+unit = "ton"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 200000
+suits_supported_per_unit = 6
+minimum_quantity = 2
+[[equipment]]
+id = "retail-space"
+unit = "ton"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 250000
+minimum_quantity = 2
+maximum_quantity = 8
+[[equipment]]
+id = "sensor-control-room"
+unit = "room"
+displacement_millitons_per_unit = 2000
+price_credits_per_unit = 1000000
+[[equipment]]
+id = "sensor-control-workstation"
+unit = "station"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 500000
+[[equipment]]
+id = "ships-brig"
+unit = "cell"
+displacement_millitons_per_unit = 1500
+price_credits_per_unit = 250000
+[[equipment]]
+id = "small-craft-ready-room"
+unit = "crew"
+displacement_millitons_per_unit = 500
+price_credits_per_unit = 125000
+[[equipment]]
+id = "pool-or-spa-space"
+unit = "user"
+displacement_millitons_per_unit = 500
+price_credits_per_unit = 250000
+[[equipment]]
+id = "theater-seat"
+unit = "seat"
+displacement_millitons_per_unit = 250
+price_credits_per_unit = 250000
+[[equipment]]
+id = "training-station"
+unit = "user"
+displacement_millitons_per_unit = 2000
+price_credits_per_unit = 400000
+[[equipment]]
+id = "underway-replenishment-system"
+unit = "ton"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 500000
+[[equipment]]
+id = "workroom-space"
+unit = "ton"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 100000
+minimum_quantity = 2
+maximum_quantity = 4
+[[equipment]]
+id = "workshop"
+unit = "installation"
+displacement_millitons_per_unit = 4000
+price_credits_per_unit = 1000000
+
+[[excluded_component]]
+id = "separate-environmental-plant"
+source_formula = "two-tons-plus-tech-dependent-population-increments"
+reason = "CE accommodations already include environmental and life-support volume."
+[[excluded_component]]
+id = "separate-life-support-plant"
+source_formula = "two-tons-plus-quarter-ton-per-twenty-five-people"
+reason = "CE accommodations already include environmental and life-support volume."
+
+# External components.
+[[parameterized_equipment]]
+id = "aerofins"
+formula = "hull-volume-percent"
+hull_volume_percent = 5
+price_credits_per_installed_ton = 100000
+[[equipment]]
+id = "breaching-tube"
+unit = "tube"
+displacement_millitons_per_unit = 3000
+price_credits_per_unit = 3000000
+[[docking_clamp]]
+id = "docking-clamp-30"
+displacement_millitons = 1000
+maximum_attached_millitons = 30000
+price_credits = 500000
+[[docking_clamp]]
+id = "docking-clamp-90"
+displacement_millitons = 5000
+maximum_attached_millitons = 90000
+price_credits = 1000000
+[[docking_clamp]]
+id = "docking-clamp-300"
+displacement_millitons = 10000
+maximum_attached_millitons = 300000
+price_credits = 2000000
+[[docking_clamp]]
+id = "docking-clamp-2000"
+displacement_millitons = 20000
+maximum_attached_millitons = 2000000
+price_credits = 4000000
+[[docking_clamp]]
+id = "docking-clamp-capital"
+displacement_millitons = 50000
+minimum_attached_millitons = 2000000
+price_credits = 8000000
+[[equipment]]
+id = "grappling-arm"
+unit = "arm"
+displacement_millitons_per_unit = 2000
+price_credits_per_unit = 1000000
+maximum_manipulated_millitons_per_unit = 2000
+[[equipment]]
+id = "heavy-grappling-arm"
+unit = "arm"
+displacement_millitons_per_unit = 6000
+price_credits_per_unit = 3000000
+maximum_manipulated_millitons_per_unit = 10000
+
+# Craft support and drones. Shared CE entries whose source values conflict are
+# intentionally absent; ct-ruleset.toml records why the CE value wins.
+[[equipment]]
+id = "point-defense-drones"
+unit = "set-of-five"
+minimum_hull_tons = 500
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 500000
+[[equipment]]
+id = "reentry-capsule"
+unit = "capsule"
+min_tl = 8
+displacement_millitons_per_unit = 500
+price_credits_per_unit = 20000
+capacity_per_unit = 1
+[[equipment]]
+id = "reentry-pod"
+unit = "pod"
+min_tl = 9
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 150000
+capacity_per_unit = 2
+
+[[hangar]]
+id = "standard-hangar"
+formula = "contained-volume-percent"
+contained_volume_percent = 110
+price_credits_per_installed_ton = 200000
+rounding = "nearest-whole-ton"
+[[hangar]]
+id = "full-hangar"
+formula = "contained-volume-percent"
+contained_volume_percent = 130
+price_credits_per_installed_ton = 200000
+rounding = "nearest-whole-ton"
+equivalent_core_rule_id = "custom-hangar"
+[[hangar]]
+id = "hangar-deck"
+formula = "largest-craft-volume-percent"
+contained_volume_percent = 200
+price_credits_per_installed_ton = 250000
+rounding = "nearest-whole-ton"
+[[launch_facility]]
+id = "flight-deck"
+formula = "largest-craft-volume-multiple"
+contained_volume_multiple = 3
+price_credits_per_installed_ton = 500000
+[[launch_facility]]
+id = "recovery-deck"
+formula = "largest-craft-volume-multiple"
+contained_volume_multiple = 4
+price_credits_per_installed_ton = 500000
+
+[[cargo_option]]
+id = "superior-cargo-hold"
+formula = "allocated-volume"
+price_credits_per_allocated_ton = 10000
+[[cargo_option]]
+id = "armored-cargo-hold"
+formula = "allocated-volume-plus-percent"
+installation_volume_percent = 5
+price_credits_per_allocated_ton = 100000
+[[cargo_option]]
+id = "liquid-cargo-hold"
+formula = "allocated-volume"
+price_credits_per_allocated_ton = 8000
+[[cargo_option]]
+id = "freezer-cargo-hold"
+formula = "allocated-volume"
+price_credits_per_allocated_ton = 9000
+[[cargo_option]]
+id = "concealed-compartment"
+formula = "allocated-volume"
+maximum_hull_volume_percent = 5
+price_credits_per_allocated_ton = 20000
+[[cargo_option]]
+id = "external-cargo-mount"
+formula = "external-capacity"
+price_credits_per_capacity_ton = 1000
+forbidden_configurations = ["streamlined", "distributed", "close-structure", "dispersed-structure"]
+[[cargo_option]]
+id = "cargo-access-lock"
+formula = "cargo-volume-band"
+price_credits_per_installed_ton = 100000
+sizes = [
+  { maximum_cargo_tons = 19, displacement_millitons = 2000 },
+  { maximum_cargo_tons = 50, displacement_millitons = 8000 },
+  { maximum_cargo_tons = 100, displacement_millitons = 12000 },
+  { maximum_cargo_tons = 300, displacement_millitons = 16000 },
+  { maximum_cargo_tons = 500, displacement_millitons = 20000 },
+  { maximum_cargo_tons = 20000, displacement_millitons = 24000 },
+]
+[[cargo_option]]
+id = "cargo-conveyor"
+formula = "fixed"
+displacement_millitons = 1500
+price_credits = 15000
+[[cargo_option]]
+id = "modular-cargo-hold"
+formula = "cargo-volume-percent"
+cargo_volume_percent = 10
+price_credits_per_installed_ton = 200000
+[[cargo_option]]
+id = "overhead-cargo-crane"
+formula = "fixed-plus-cargo-volume-ratio"
+fixed_millitons = 2000
+additional_millitons_per_cargo_tons = 500
+cargo_tons_per_additional_increment = 200
+price_credits_per_installed_ton = 800000
+
+[[livestock_hold]]
+id = "livestock-tiny"
+displacement_millitons_per_animal = 100
+price_credits_per_animal = 10000
+monthly_life_support_credits_per_animal = 10
+[[livestock_hold]]
+id = "livestock-small"
+displacement_millitons_per_animal = 300
+price_credits_per_animal = 50000
+monthly_life_support_credits_per_animal = 10
+[[livestock_hold]]
+id = "livestock-medium"
+displacement_millitons_per_animal = 500
+price_credits_per_animal = 100000
+monthly_life_support_credits_per_animal = 10
+[[livestock_hold]]
+id = "livestock-large"
+displacement_millitons_per_animal = 1000
+price_credits_per_animal = 200000
+monthly_life_support_credits_per_animal = 10
+[[livestock_hold]]
+id = "livestock-huge"
+displacement_millitons_per_animal = 3000
+price_credits_per_animal = 500000
+monthly_life_support_credits_per_animal = 10

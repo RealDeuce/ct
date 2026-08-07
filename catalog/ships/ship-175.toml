@@ -1,0 +1,81 @@
+# Rule-derived reconstruction of the 100-ton extended-range survey trader.
+schema_version = 1
+design_id = "ct-source-ship-175"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-opportunity", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 12
+standard_design = false
+electronics = "advanced"
+bridge_options = ["holographic-controls"]
+unused_fire_control_stations = 1
+cargo_millitons = 1500
+[catalog]
+catalog_id = 175
+tag = "ship-175"
+family_id = 169
+upgrade_path_id = 3
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Gulf Stream"
+primary_role = "extended-range-scout-trader"
+secondary_roles = ["survey", "frontier-courier"]
+mission_tags = ["jump-2", "two-jump-endurance", "advanced-sensors", "small-ship"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This 100-ton scout-trader carries two complete Jump-2 fuel loads, advanced sensors, four crew staterooms, an autodoc, and a tiny stores hold. Four-gravity maneuver and an empty hardpoint preserve useful frontier flexibility.",
+  "The second jump load permits travel across sparse or expensive refueling routes, but leaves almost no revenue cargo. It is better suited to survey, reconnaissance, and urgent remote work than ordinary trade.",
+]
+[hull]
+id = "ship-100"
+configuration = "streamlined"
+[armor]
+id = "crystaliron"
+layers = 1
+[drives]
+jump = "A"
+maneuver = "B"
+power = "B"
+[fuel]
+jump_distance = 2
+jump_count = 2
+power_plant_weeks = 2
+[computer]
+id = "model-2"
+options = ["bis"]
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 1
+[[software]]
+id = "intellect"
+[[equipment]]
+id = "stateroom"
+quantity = 3
+[[equipment]]
+id = "galley-space"
+quantity = 4
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+[[equipment]]
+id = "autodoc"
+quantity = 1
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[crew]]
+role = "command"
+quantity = 1
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 1

@@ -1,0 +1,61 @@
+# Rule-derived reconstruction of the forty-ton utility pinnace. Standard
+# small-craft drives, whole-point armor, passenger seats, aerofins, and exact
+# one-week power fuel replace rounded source allocations.
+
+schema_version = 1
+design_id = "ct-source-ship-151"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-atlas", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "standard"
+airlocks = 1
+cargo_millitons = 10800
+
+[catalog]
+catalog_id = 151
+tag = "ship-151"
+family_id = 22
+upgrade_path_id = 1
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Albatross"
+primary_role = "utility-pinnace"
+secondary_roles = ["passenger-transfer", "cargo-transfer"]
+mission_tags = ["thrust-5", "passengers", "cargo", "atmospheric"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This forty-ton utility pinnace carries sixteen seated passengers and a useful cargo load at five gravities. Crystaliron armor, an airlock, aerofins, and a streamlined hull support transfers between a merchant ship, orbital facilities, and planetary surfaces.",
+  "The craft is unarmed and has no jump drive or sleeping accommodation. One-week endurance and external carriage make it a flexible merchant auxiliary, but it depends on a parent ship or base for interstellar movement and sustained support.",
+]
+
+[hull]
+id = "small-40"
+configuration = "streamlined"
+[armor]
+id = "crystaliron"
+layers = 1
+[drives]
+maneuver = "sK"
+power = "sK"
+[fuel]
+power_plant_weeks = 1
+[control]
+id = "two-person-control-cabin"
+additional_passengers = 0
+[computer]
+id = "model-1"
+options = []
+
+[[equipment]]
+id = "acceleration-seat"
+quantity = 16
+[[parameterized_equipment]]
+id = "aerofins"
+quantity = 1
+
+[[crew]]
+role = "pilot"
+quantity = 2

@@ -1,0 +1,54 @@
+# Rule-derived reconstruction of the twenty-ton fast launch. Exact CE
+# two-week fuel consumes the source table's rounded unallocated volume.
+
+schema_version = 1
+design_id = "ct-source-ship-146"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-copeline", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "standard"
+airlocks = 1
+cargo_millitons = 4000
+
+[catalog]
+catalog_id = 146
+tag = "ship-146"
+family_id = 7
+upgrade_path_id = 1
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Caduceus"
+primary_role = "fast-launch"
+secondary_roles = ["passenger-transfer", "survey-support"]
+mission_tags = ["thrust-6", "passengers", "cargo", "atmospheric"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This twenty-ton launch carries ten seated passengers and four tons of cargo at six gravities. Armor, an airlock, and streamlining equip it for personnel, sample, and equipment transfers between a survey ship, stations, orbit, and planetary surfaces.",
+  "The craft is unarmed and has neither jump drive nor sleeping accommodation. It provides useful local reach but depends on a parent ship or base for interstellar travel and sustained support.",
+]
+[hull]
+id = "small-20"
+configuration = "streamlined"
+[armor]
+id = "crystaliron"
+layers = 1
+[drives]
+maneuver = "sF"
+power = "sF"
+[fuel]
+power_plant_weeks = 2
+[control]
+id = "one-person-cockpit"
+additional_passengers = 0
+[computer]
+id = "model-1"
+options = []
+[[equipment]]
+id = "acceleration-seat"
+quantity = 10
+[[crew]]
+role = "pilot"
+quantity = 1

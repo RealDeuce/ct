@@ -1,0 +1,57 @@
+# Rule-derived reconstruction of source catalog row ship-13.
+schema_version = 1
+design_id = "ct-source-ship-13"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-socs-4-6", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+airlocks = 0
+cargo_millitons = 475
+[catalog]
+catalog_id = 13
+tag = "ship-13"
+family_id = 13
+upgrade_path_id = 7
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Orion"
+primary_role = "patrol-fighter"
+secondary_roles = []
+mission_tags = ["fighter", "patrol"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This ten-ton patrol fighter uses six-gravity acceleration, light armor, and twelve missiles to inspect traffic and intercept small intruders close to a base or carrier. Its tiny residual compartment holds only immediate mission stores.", "It is effective as a numerous local screen rather than an independent vessel. One pilot, one week of fuel, and no jump drive force it to operate inside a tightly supported patrol area."]
+[hull]
+id = "small-10"
+configuration = "streamlined"
+[armor]
+id = "small-craft-crystaliron-whole-points"
+points = 1
+[drives]
+maneuver = "sC"
+power = "sC"
+[fuel]
+power_plant_weeks = 1
+[control]
+id = "one-person-cockpit"
+additional_passengers = 0
+[computer]
+id = "model-2"
+options = []
+[[software]]
+id = "evade"
+level = 1
+[[software]]
+id = "fire-control"
+level = 1
+[[mounts]]
+id = "single-turret"
+weapons = ["missile-rack"]
+[[ammunition]]
+id = "standard-missile"
+quantity = 12
+[[crew]]
+role = "pilot"
+quantity = 1

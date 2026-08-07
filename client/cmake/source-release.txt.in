@@ -1,0 +1,10 @@
+Cepheus Trader client source correspondence
+
+Product version: @PROJECT_VERSION@
+
+Source release: @CT_SOURCE_RELEASE_URL@
+
+The corresponding source for this package includes the vendored OpenDoors
+library and the build files needed to relink the client with a modified copy.
+If the source-release field is empty, this is a developer package rather than
+an official release artifact.

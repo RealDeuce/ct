@@ -1,0 +1,167 @@
+# Rule-derived reconstruction of the artificial-gravity retrofit. Standard CE
+# maneuver drive already supplies the gravity behavior for which this source
+# variant sacrificed reaction mass, so its normalized fit converges with the
+# other two family members rather than retaining a fictitious component.
+
+schema_version = 1
+design_id = "ct-source-ship-132"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-freedom",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+unused_fire_control_stations = 1
+cargo_millitons = 172000
+
+[catalog]
+catalog_id = 132
+tag = "ship-132"
+family_id = 131
+upgrade_path_id = 1
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Bellamy Plus"
+primary_role = "merchant"
+secondary_roles = ["passenger", "armed-trader"]
+mission_tags = ["freight", "passengers", "jump-2", "radiation-shielded"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This retrofit represents merchant hulls rebuilt to provide continuous onboard gravity. Under ordinary CE maneuver-drive rules that capability is intrinsic, leaving a large hold alongside rooms for eight middle passengers, radiation protection, medical support, a workshop, and fuel purification.",
+  "Two laser turrets and a mixed missile-and-sand turret make the ship unusually well armed for its acceleration, while a reserved fourth hardpoint permits later customization. Once its source-specific gravity and reaction systems are translated to CE machinery, this variant has the same usable bill of materials as the other normalized family members.",
+]
+
+[hull]
+id = "ship-400"
+configuration = "standard"
+
+[armor]
+id = "titanium-steel-whole-points"
+points = 1
+
+[[hull_options]]
+id = "radiation-shielding"
+quantity = 1
+
+[[hull_options]]
+id = "self-sealing"
+quantity = 1
+
+[drives]
+jump = "D"
+maneuver = "B"
+power = "D"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 3
+
+[computer]
+id = "model-2"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[equipment]]
+id = "stateroom"
+quantity = 10
+
+[[equipment]]
+id = "galley-space"
+quantity = 12
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 15
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 2
+
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+
+[[equipment]]
+id = "workshop"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "beam-laser"]
+quantity = 2
+
+[[mounts]]
+id = "double-turret"
+weapons = ["sandcaster", "missile-rack"]
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 20
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 12
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 3
+
+[assertions]
+hull_millitons = 400000
+accounted_displacement_millitons = 400000
+hull_points = 8
+structure_points = 8
+armor_points = 1
+jump_rating = 2
+thrust_g = 1
+fuel_millitons = 92000
+jump_fuel_millitons = 80000
+power_fuel_millitons = 12000
+hardpoints = 4
+hardpoints_used = 3
+point_defense_nodes = 0
+fire_control_millitons = 4000
+minimum_crew = 6
+crew = 6
+carried_craft_count = 0
+carried_craft_price_credits = 0
+hangar_capacity_millitons = 0
+docking_capacity_millitons = 0
+construction_weeks = 60
+pre_discount_price_credits = 160285000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 160285000

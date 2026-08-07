@@ -1,0 +1,119 @@
+# Rule-derived normalized reconstruction of source catalog row ship-76.
+schema_version = 1
+design_id = "ct-source-ship-76"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-socs-4-6", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+unused_fire_control_stations = 1
+cargo_millitons = 30000
+[catalog]
+catalog_id = 76
+tag = "ship-76"
+family_id = 76
+upgrade_path_id = 4
+progression_stage = "light"
+status = "active"
+vessel_kind = "starship"
+display_name = "Nansen"
+primary_role = "long-range-scout"
+secondary_roles = []
+mission_tags = ["jump-2", "armed", "long-range-scout"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 500-ton long range scout preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+[hull]
+id = "ship-500"
+configuration = "streamlined"
+[armor]
+id = "crystaliron-whole-points"
+points = 4
+[drives]
+jump = "E"
+maneuver = "H"
+power = "H"
+[fuel]
+jump_distance = 2
+jump_count = 2
+power_plant_weeks = 2
+[computer]
+id = "model-3"
+options = ["bis"]
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 2
+[[equipment]]
+id = "stateroom"
+quantity = 10
+[[equipment]]
+id = "briefing-room"
+quantity = 1
+[[equipment]]
+id = "laboratory"
+quantity = 2
+[[equipment]]
+id = "fuel-processor"
+quantity = 6
+[[equipment]]
+id = "probe-drones"
+quantity = 2
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 2
+[[equipment]]
+id = "low-berth"
+quantity = 6
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 2
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 30000
+quantity = 1
+[[hangars]]
+id = "standard-hangar"
+contained_millitons = 14000
+quantity = 1
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "beam-laser"]
+quantity = 2
+[[mounts]]
+id = "double-turret"
+weapons = ["sandcaster", "sandcaster"]
+quantity = 1
+[[mounts]]
+id = "double-turret"
+weapons = ["missile-rack", "missile-rack"]
+quantity = 1
+[[ammunition]]
+id = "standard-missile"
+quantity = 24
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 40
+[[carried_craft]]
+tag = "ship-17"
+quantity = 1
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 1
+[[crew]]
+role = "turret-gunner"
+quantity = 4
+[[crew]]
+role = "medic"
+quantity = 1

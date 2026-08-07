@@ -1,0 +1,229 @@
+# Rule-derived conversion of source-inventory ship-126. Its Zimm and reaction
+# drives, reaction mass, separate environmental plants, spin-gravity pods, and
+# reaction-drive radiators are replaced by normal CE Jump, maneuver, power,
+# life-support, and artificial-gravity rules. The power plant is raised to Q
+# so it can actually support Jump drive Q. Recovered volume becomes cargo.
+
+schema_version = 1
+design_id = "ct-source-ship-126"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-alcyone",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+power_options = ["emergency-power"]
+unused_fire_control_stations = 11
+external_load_millitons = 40000
+cargo_millitons = 1076900
+
+[catalog]
+catalog_id = 126
+tag = "ship-126"
+family_id = 126
+upgrade_path_id = 1
+progression_stage = "medium"
+status = "active"
+vessel_kind = "starship"
+display_name = "Leviathan"
+primary_role = "bulk-freighter"
+secondary_roles = ["speculative-trader", "container-carrier"]
+mission_tags = ["bulk-freight", "jump-2", "external-craft", "armed-merchant"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This nineteen-hundred-ton distributed freighter is built around a very large hold, two-parsec jump range, and externally docked work craft. Eight defensive turrets, radiation shielding, self-sealing hull construction, repair drones, and emergency power give it the resilience expected of a long-haul commercial carrier.",
+  "Replacing the source vessel's reaction propulsion and spin-gravity machinery with standard CE systems releases more than five hundred additional tons for freight. The result earns best on high-volume routes and can support speculative cargo on a large scale, but one-gravity acceleration and a distributed hull make it unsuitable for surface operations or aggressive pursuit.",
+]
+
+[hull]
+id = "ship-1900"
+configuration = "distributed"
+
+[armor]
+id = "titanium-steel-whole-points"
+points = 1
+
+[[hull_options]]
+id = "self-sealing"
+quantity = 1
+
+[[hull_options]]
+id = "radiation-shielding"
+quantity = 1
+
+[drives]
+jump = "Q"
+maneuver = "K"
+power = "Q"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 4
+
+[computer]
+id = "model-2"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[equipment]]
+id = "stateroom"
+quantity = 9
+
+[[equipment]]
+id = "crew-berthing"
+quantity = 3
+
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 4
+
+[[equipment]]
+id = "galley-space"
+quantity = 4
+
+[[equipment]]
+id = "mini-galley"
+quantity = 1
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 10
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 10
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 4
+
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+
+[[equipment]]
+id = "office"
+quantity = 1
+
+[[equipment]]
+id = "workshop"
+quantity = 1
+
+[[equipment]]
+id = "workroom-space"
+quantity = 2
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 2
+
+[[docking_clamps]]
+id = "docking-clamp-30"
+quantity = 2
+
+[[mounts]]
+id = "double-turret"
+weapons = ["missile-rack", "sandcaster"]
+quantity = 2
+
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "beam-laser"]
+quantity = 6
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 24
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 40
+
+[[carried_craft]]
+tag = "ship-124"
+quantity = 1
+
+[[carried_craft]]
+tag = "ship-125"
+quantity = 1
+
+[[crew]]
+role = "command"
+quantity = 9
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 4
+
+[[crew]]
+role = "sensors-operator"
+quantity = 1
+
+[[crew]]
+role = "medic"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 8
+
+[[crew]]
+role = "other"
+quantity = 1
+
+[assertions]
+hull_millitons = 1900000
+effective_displacement_millitons = 1940000
+accounted_displacement_millitons = 1900000
+hull_points = 38
+structure_points = 38
+armor_points = 1
+jump_rating = 2
+thrust_g = 1
+fuel_millitons = 448000
+jump_fuel_millitons = 388000
+power_fuel_millitons = 60000
+hardpoints = 19
+hardpoints_used = 8
+point_defense_nodes = 0
+fire_control_millitons = 19000
+minimum_crew = 11
+crew = 26
+carried_craft_count = 2
+carried_craft_displacement_millitons = 40000
+carried_craft_price_credits = 20562500
+hangar_capacity_millitons = 0
+docking_capacity_millitons = 60000
+construction_weeks = 180
+pre_discount_price_credits = 773442500
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 773442500

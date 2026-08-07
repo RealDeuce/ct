@@ -1,0 +1,126 @@
+# Rule-derived conversion of source-inventory ship-27. Its Z-drive is replaced
+# by the ordinary CE Jump drive, and the reserved ordnance magazine is loaded
+# with twelve standard missiles as a concrete catalog loadout.
+
+schema_version = 1
+design_id = "ct-source-ship-27"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+unused_fire_control_stations = 1
+cargo_millitons = 20000
+
+[catalog]
+catalog_id = 27
+tag = "ship-27"
+family_id = 27
+upgrade_path_id = 1
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Mercator"
+primary_role = "light-trader"
+secondary_roles = ["courier", "owner-operator"]
+mission_tags = ["freight", "fast-cargo", "atmospheric", "refit-ready"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This hundred-ton light trader is intended for an owner-operator carrying compact, high-value freight. A two-parsec jump radius, four-gravity acceleration, streamlined hull, and fuel processor support rapid trips between surface ports and nearby systems.",
+  "Four crew staterooms leave little room for paying passengers, and the twenty-ton hold cannot compete with larger merchants on bulk cargo. Its empty hardpoint, allocated fire-control station, and stocked ordnance magazine make a later defensive refit straightforward.",
+]
+
+[hull]
+id = "ship-100"
+configuration = "streamlined"
+
+[armor]
+id = "crystaliron"
+layers = 1
+
+[drives]
+jump = "A"
+maneuver = "B"
+power = "B"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+
+[computer]
+id = "model-2"
+options = ["fib"]
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[equipment]]
+id = "stateroom"
+quantity = 4
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 12
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "other"
+quantity = 1
+
+[assertions]
+hull_millitons = 100000
+accounted_displacement_millitons = 100000
+hull_points = 2
+structure_points = 2
+armor_points = 4
+jump_rating = 2
+thrust_g = 4
+fuel_millitons = 24000
+jump_fuel_millitons = 20000
+power_fuel_millitons = 4000
+hardpoints = 1
+hardpoints_used = 0
+fire_control_millitons = 1000
+minimum_crew = 3
+crew = 4
+carried_craft_count = 0
+carried_craft_price_credits = 0
+hangar_capacity_millitons = 0
+construction_weeks = 36
+pre_discount_price_credits = 41755000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 41755000

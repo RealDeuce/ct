@@ -1,0 +1,57 @@
+# Rule-derived reconstruction of the source thirty-ton armed boat.
+
+schema_version = 1
+design_id = "ct-source-ship-165"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-rucker", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "standard"
+airlocks = 1
+cargo_millitons = 4000
+
+[catalog]
+catalog_id = 165
+tag = "ship-165"
+family_id = 18
+upgrade_path_id = 5
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Wayfarer Armed"
+primary_role = "armed-fast-boat"
+secondary_roles = ["boarding", "passenger-transfer"]
+mission_tags = ["thrust-6", "beam-laser", "passengers", "atmospheric"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This thirty-ton armed boat moves twelve seated passengers and a small cargo load at six gravities. Crystaliron protection, a beam laser, streamlining, and an airlock suit boarding, rescue, personnel transfer, and surface access.",
+  "The boat has no jump drive or overnight accommodations and relies on a parent ship for interstellar movement and sustained support. Its weapon is useful against light craft but does not make it an independent combatant.",
+]
+
+[hull]
+id = "small-30"
+configuration = "streamlined"
+[armor]
+id = "crystaliron"
+layers = 1
+[drives]
+maneuver = "sJ"
+power = "sJ"
+[fuel]
+power_plant_weeks = 2
+[control]
+id = "two-person-control-cabin"
+additional_passengers = 0
+[computer]
+id = "model-1"
+options = []
+[[equipment]]
+id = "acceleration-seat"
+quantity = 12
+[[mounts]]
+id = "single-turret"
+weapons = ["beam-laser"]
+[[crew]]
+role = "pilot"
+quantity = 2

@@ -1,0 +1,81 @@
+# Rule-derived reconstruction of the 100-ton maximum-cargo light trader.
+schema_version = 1
+design_id = "ct-source-ship-172"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-opportunity", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 12
+standard_design = false
+electronics = "basic-civilian"
+bridge_options = ["holographic-controls"]
+unused_fire_control_stations = 1
+cargo_millitons = 27500
+[catalog]
+catalog_id = 172
+tag = "ship-172"
+family_id = 169
+upgrade_path_id = 1
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Pennsylvania"
+primary_role = "maximum-cargo-trader"
+secondary_roles = ["speculative-trade", "frontier-freight"]
+mission_tags = ["jump-2", "thrust-4", "cargo", "double-occupancy"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This 100-ton trader uses two double-occupancy staterooms to maximize cargo while retaining four-gravity maneuver, Jump-2 range, an autodoc, and an empty weapon station. Four crew can operate it without passenger-service overhead.",
+  "The crowded accommodation favors working crews and short port turnarounds. Its unusually efficient hold makes it the family's strongest pure trader, though limited protection still rewards caution and route knowledge.",
+]
+[hull]
+id = "ship-100"
+configuration = "streamlined"
+[armor]
+id = "crystaliron"
+layers = 1
+[drives]
+jump = "A"
+maneuver = "B"
+power = "B"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "model-2"
+options = ["bis"]
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 1
+[[software]]
+id = "intellect"
+[[equipment]]
+id = "stateroom"
+quantity = 2
+[[equipment]]
+id = "galley-space"
+quantity = 4
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+[[equipment]]
+id = "autodoc"
+quantity = 1
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[crew]]
+role = "command"
+quantity = 1
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 1

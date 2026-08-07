@@ -1,0 +1,20 @@
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.sln text eol=crlf
+*.vcxproj text eol=crlf
+
+*.gif binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+
+# Preserve imported third-party source and license text byte-for-byte even
+# where the upstream files use historical whitespace conventions.
+client/third_party/opendoors/** -whitespace
+client/third_party/licenses/** -whitespace

@@ -1,0 +1,111 @@
+# Hand-authored Jump-2 starter revision of the Chapter 9 Merchant Trader.
+# All mechanics and assertions come from the selected Chapter 8 construction
+# ruleset; the published Chapter 9 design remains comparison material only.
+
+schema_version = 1
+design_id = "ce-merchant-trader"
+revision = 2
+ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016"]
+tech_level = 9
+standard_design = true
+electronics = "basic-civilian"
+unused_fire_control_stations = 2
+cargo_millitons = 53000
+thrust_g = 1
+
+[catalog]
+catalog_id = 192
+tag = "ship-192"
+family_id = 192
+upgrade_path_id = 1
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Hudson"
+primary_role = "trader"
+secondary_roles = ["passenger", "mail"]
+mission_tags = ["jump-2", "freight", "speculative-trade", "passengers", "mail"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This compact Jump-2 merchant starship is designed for dependable operation on established routes. Its staterooms and low berths let the captain combine freight, passengers, and mail rather than depending on a single market.",
+  "A 53-ton hold rewards careful route selection and mixed manifests while retaining direct access across the Federation's ordinary two-parsec links. The design is economical and flexible, but it lacks installed weapons and cannot absorb the operating mistakes or hostile attention that a larger armed trader might survive.",
+]
+
+[hull]
+id = "ship-200"
+configuration = "standard"
+
+[armor]
+id = "titanium-steel"
+layers = 1
+
+[drives]
+jump = "B"
+maneuver = "A"
+power = "B"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 4
+
+[computer]
+id = "model-2"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[equipment]]
+id = "stateroom"
+quantity = 10
+
+[[equipment]]
+id = "low-berth"
+quantity = 20
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 2
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[assertions]
+hull_millitons = 200000
+accounted_displacement_millitons = 200000
+hull_points = 4
+structure_points = 4
+armor_points = 2
+jump_rating = 2
+thrust_g = 1
+fuel_millitons = 48000
+jump_fuel_millitons = 40000
+power_fuel_millitons = 8000
+hardpoints = 2
+hardpoints_used = 0
+fire_control_millitons = 2000
+minimum_crew = 3
+crew = 3
+construction_weeks = 44
+pre_discount_price_credits = 56910000
+discount_credits = 5691000
+architect_fee_credits = 0
+construction_price_credits = 51219000

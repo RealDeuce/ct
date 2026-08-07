@@ -1,0 +1,123 @@
+# CE-compatible conversion of source-inventory ship-35. The source's sW drive
+# is outside the CE 80-ton performance row and its extra beam turret conflicts
+# with CE's single-hardpoint small-craft rule. Minimum CE five-gravity drives
+# free nine tons, assigned to cargo.
+
+schema_version = 1
+design_id = "ct-source-ship-35"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+additional_fire_control_stations = 1
+airlocks = 1
+cargo_millitons = 10000
+
+[catalog]
+catalog_id = 35
+tag = "ship-35"
+family_id = 35
+upgrade_path_id = 9
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Congreve"
+primary_role = "missile-boat"
+secondary_roles = ["interceptor", "strike-craft"]
+mission_tags = ["missiles", "military-sensors", "five-gravity", "crew-endurance"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This large missile boat carries two fixed launchers and twelve tons of reloads for coordinated attacks on ships or installations. Four control positions, military electronics, three staterooms, escape pods, and two weeks of fuel support missions longer than a cockpit fighter can sustain.",
+  "The CE-compatible conversion removes the source's second weapon mount and replaces oversized drives with the minimum five-gravity installation. The recovered space becomes mission cargo, but the craft remains non-jump-capable and depends on a base or carrier for strategic movement.",
+]
+
+[hull]
+id = "small-80"
+configuration = "streamlined"
+
+[armor]
+id = "crystaliron"
+layers = 1
+
+[drives]
+maneuver = "sR"
+power = "sR"
+
+[fuel]
+power_plant_weeks = 2
+
+[control]
+id = "four-person-control-cabin"
+additional_passengers = 0
+
+[computer]
+id = "model-2"
+options = ["fib"]
+
+[[software]]
+id = "fire-control"
+level = 2
+
+[[software]]
+id = "evade"
+level = 1
+
+[[equipment]]
+id = "stateroom"
+quantity = 3
+
+[[equipment]]
+id = "escape-pod"
+quantity = 3
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+
+[[mounts]]
+id = "double-turret"
+weapons = ["missile-rack", "missile-rack"]
+fixed = true
+pop_up = false
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 144
+
+[[crew]]
+role = "command"
+quantity = 1
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "gunner"
+quantity = 1
+
+[assertions]
+hull_millitons = 80000
+accounted_displacement_millitons = 80000
+hull_points = 1
+structure_points = 2
+armor_points = 4
+thrust_g = 5
+fuel_millitons = 5000
+hardpoints = 1
+hardpoints_used = 1
+minimum_crew = 2
+crew = 4
+construction_weeks = 34

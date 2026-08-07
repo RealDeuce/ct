@@ -1,0 +1,133 @@
+# Rule-derived reconstruction of the 800-ton missile ship. Six source
+# fifty-ton missile bays become normalized 51-ton CE missile banks; drives
+# are raised to preserve three-gravity performance with the docked boat.
+
+schema_version = 1
+design_id = "ct-source-ship-157"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-atlas", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+external_load_millitons = 30000
+cargo_millitons = 17500
+
+[catalog]
+catalog_id = 157
+tag = "ship-157"
+family_id = 80
+upgrade_path_id = 9
+progression_stage = "light"
+status = "active"
+vessel_kind = "starship"
+display_name = "Cyclops"
+primary_role = "missile-ship"
+secondary_roles = ["fleet-fire-support", "armed-merchant-conversion"]
+mission_tags = ["jump-2", "thrust-3", "missile-banks", "magazine"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This 800-ton missile ship replaces almost the entire modular cargo capacity with six missile banks and a large magazine. Two mixed turrets provide close defense, while three-gravity maneuver and a docked utility boat support fleet deployment and local operations.",
+  "Its heavy salvo can threaten larger ships, but the unarmored hull, limited residual cargo, and ammunition expense make it dependent on escorts and naval logistics. Once its magazine is depleted, the conversion has little independent commercial value.",
+]
+
+[hull]
+id = "ship-800"
+configuration = "standard"
+[[hull_options]]
+id = "self-sealing"
+quantity = 1
+[drives]
+jump = "J"
+maneuver = "L"
+power = "L"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "model-3"
+options = []
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "evade"
+level = 1
+[[software]]
+id = "fire-control"
+level = 2
+[[software]]
+id = "intellect"
+
+[[equipment]]
+id = "stateroom"
+quantity = 20
+[[equipment]]
+id = "galley-space"
+quantity = 30
+[[equipment]]
+id = "low-berth"
+quantity = 10
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+[[equipment]]
+id = "fuel-processor"
+quantity = 9
+[[equipment]]
+id = "office"
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[docking_clamps]]
+id = "docking-clamp-30"
+quantity = 1
+[[bays]]
+id = "missile-bank"
+quantity = 6
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "missile-rack", "sandcaster"]
+quantity = 2
+[[ammunition]]
+id = "standard-missile"
+quantity = 504
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 80
+[[carried_craft]]
+tag = "ship-187"
+quantity = 1
+
+[[crew]]
+role = "command"
+quantity = 6
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 5
+[[crew]]
+role = "sensors-operator"
+quantity = 2
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "turret-gunner"
+quantity = 2
+[[crew]]
+role = "bay-gunner"
+quantity = 6
+[[crew]]
+role = "other"
+quantity = 6

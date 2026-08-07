@@ -1,0 +1,138 @@
+# Rule-derived reconstruction of the 800-ton armed merchant. Two particle
+# barbettes and six defensive turrets consume all hardpoints; ordinary Jump
+# and external-craft mass replace source alternate-drive assumptions.
+
+schema_version = 1
+design_id = "ct-source-ship-156"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-atlas", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+external_load_millitons = 30000
+cargo_millitons = 361500
+
+[catalog]
+catalog_id = 156
+tag = "ship-156"
+family_id = 80
+upgrade_path_id = 5
+progression_stage = "light"
+status = "active"
+vessel_kind = "starship"
+display_name = "Odysseus"
+primary_role = "armed-merchant"
+secondary_roles = ["privateer", "secure-freight"]
+mission_tags = ["jump-2", "cargo", "particle-barbettes", "merchant"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This 800-ton armed merchant combines a substantial modular cargo hold with two particle-beam barbettes and six dual defensive turrets. Passenger rooms, low berths, medical support, and an externally docked utility boat preserve broad commercial utility.",
+  "The full armament requires a larger crew and consumes every hardpoint, but it does not make the unarmored freighter a line warship. It is suited to privateering, dangerous routes, and valuable cargo where deterrence and prize-taking justify reduced margins.",
+]
+
+[hull]
+id = "ship-800"
+configuration = "standard"
+[[hull_options]]
+id = "self-sealing"
+quantity = 1
+[drives]
+jump = "J"
+maneuver = "J"
+power = "J"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "model-3"
+options = []
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "evade"
+level = 1
+[[software]]
+id = "fire-control"
+level = 1
+[[software]]
+id = "intellect"
+
+[[equipment]]
+id = "stateroom"
+quantity = 20
+[[equipment]]
+id = "galley-space"
+quantity = 26
+[[equipment]]
+id = "low-berth"
+quantity = 20
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+[[equipment]]
+id = "fuel-processor"
+quantity = 9
+[[equipment]]
+id = "office"
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[docking_clamps]]
+id = "docking-clamp-30"
+quantity = 1
+[[barbettes]]
+id = "particle-beam-barbette"
+quantity = 2
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "beam-laser"]
+quantity = 2
+[[mounts]]
+id = "double-turret"
+weapons = ["missile-rack", "missile-rack"]
+quantity = 2
+[[mounts]]
+id = "double-turret"
+weapons = ["sandcaster", "sandcaster"]
+quantity = 2
+[[ammunition]]
+id = "standard-missile"
+quantity = 24
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 40
+[[carried_craft]]
+tag = "ship-187"
+quantity = 1
+
+[[crew]]
+role = "command"
+quantity = 1
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 3
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "turret-gunner"
+quantity = 6
+[[crew]]
+role = "bay-gunner"
+quantity = 2
+[[crew]]
+role = "other"
+quantity = 1

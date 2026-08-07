@@ -1,0 +1,221 @@
+# Rule-derived conversion of source-inventory ship-127, the in-system variant
+# of ship-126. The Zimm and reaction systems are removed entirely in favor of
+# a normal CE maneuver drive. Its former interstellar-drive and fuel volume,
+# as well as the reaction and spin-gravity allocations, becomes cargo.
+
+schema_version = 1
+design_id = "ct-source-ship-127"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-alcyone",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+power_options = ["emergency-power"]
+unused_fire_control_stations = 11
+external_load_millitons = 40000
+cargo_millitons = 1581400
+
+[catalog]
+catalog_id = 127
+tag = "ship-127"
+family_id = 126
+upgrade_path_id = 1
+progression_stage = "medium"
+status = "active"
+vessel_kind = "ship"
+display_name = "Behemoth"
+primary_role = "in-system-bulk-hauler"
+secondary_roles = ["orbital-freighter", "lighterage-base"]
+mission_tags = ["bulk-freight", "in-system", "external-craft", "armed-merchant"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This in-system sister to the interstellar bulk freighter removes all jump machinery to maximize local freight capacity. It retains the defensive turrets, radiation shielding, self-sealing distributed hull, emergency power, repair systems, and two externally docked work craft of the long-haul design.",
+  "More than four fifths of the hull is usable cargo volume, making the ship effective for orbital consolidation, moon-to-moon transport, and feeding jump-capable carriers. It cannot leave its system and accelerates at only one gravity, so its extraordinary capacity is balanced by long transfer times and complete dependence on local trade infrastructure.",
+]
+
+[hull]
+id = "ship-1900"
+configuration = "distributed"
+
+[armor]
+id = "titanium-steel-whole-points"
+points = 1
+
+[[hull_options]]
+id = "self-sealing"
+quantity = 1
+
+[[hull_options]]
+id = "radiation-shielding"
+quantity = 1
+
+[drives]
+maneuver = "K"
+power = "K"
+
+[fuel]
+jump_distance = 0
+jump_count = 0
+power_plant_weeks = 4
+
+[computer]
+id = "model-2"
+options = []
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[equipment]]
+id = "stateroom"
+quantity = 9
+
+[[equipment]]
+id = "crew-berthing"
+quantity = 3
+
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 4
+
+[[equipment]]
+id = "galley-space"
+quantity = 4
+
+[[equipment]]
+id = "mini-galley"
+quantity = 1
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 10
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 10
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 4
+
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+
+[[equipment]]
+id = "office"
+quantity = 1
+
+[[equipment]]
+id = "workshop"
+quantity = 1
+
+[[equipment]]
+id = "workroom-space"
+quantity = 2
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 2
+
+[[docking_clamps]]
+id = "docking-clamp-30"
+quantity = 2
+
+[[mounts]]
+id = "double-turret"
+weapons = ["missile-rack", "sandcaster"]
+quantity = 2
+
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "beam-laser"]
+quantity = 6
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 24
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 40
+
+[[carried_craft]]
+tag = "ship-124"
+quantity = 1
+
+[[carried_craft]]
+tag = "ship-125"
+quantity = 1
+
+[[crew]]
+role = "command"
+quantity = 9
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 4
+
+[[crew]]
+role = "sensors-operator"
+quantity = 1
+
+[[crew]]
+role = "medic"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 8
+
+[[crew]]
+role = "other"
+quantity = 1
+
+[assertions]
+hull_millitons = 1900000
+accounted_displacement_millitons = 1900000
+hull_points = 38
+structure_points = 38
+armor_points = 1
+jump_rating = 0
+thrust_g = 1
+fuel_millitons = 40000
+jump_fuel_millitons = 0
+power_fuel_millitons = 40000
+hardpoints = 19
+hardpoints_used = 8
+point_defense_nodes = 0
+fire_control_millitons = 19000
+minimum_crew = 11
+crew = 26
+carried_craft_count = 2
+carried_craft_price_credits = 20562500
+hangar_capacity_millitons = 0
+docking_capacity_millitons = 60000
+construction_weeks = 180
+pre_discount_price_credits = 579242500
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 579242500

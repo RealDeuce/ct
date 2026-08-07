@@ -1,0 +1,184 @@
+# Rule-derived conversion of the 350-ton mobile support vessel. Its oversized
+# alternate skip drive and skip fuel become an ordinary Jump-2 drive and exact
+# CE fuel. Normalized accommodation, repair drones, and workshop allocation
+# leave 148.75 tons of usable cargo around the large external docking clamp.
+
+schema_version = 1
+design_id = "ct-source-ship-123"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-b-c",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 12
+standard_design = false
+electronics = "standard"
+bridge_options = ["hardened-bridge", "holographic-controls"]
+cargo_millitons = 148750
+
+[catalog]
+catalog_id = 123
+tag = "ship-123"
+family_id = 123
+upgrade_path_id = 4
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Cradle"
+primary_role = "mobile-support"
+secondary_roles = ["jump-tender", "logistics"]
+mission_tags = ["docking", "freight", "jump-2", "point-defense"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This three-hundred-fifty-ton support ship carries a large external docking clamp capable of moving a vessel far larger than itself. A two-parsec jump radius, two-gravity acceleration, extensive freight space, fuel processing, repair drones, workshop, and hardened holographic bridge let a small crew reposition or sustain stranded and non-jump vessels.",
+  "Three point-defense lasers offer protection against missiles but the ship has no offensive armament. Its value lies in rescue, ferry, repair, and logistical work; while carrying another ship it becomes a conspicuous, slow-to-defend target that should depend on escorts and careful routing.",
+]
+
+[hull]
+id = "ship-350"
+configuration = "standard"
+
+[armor]
+id = "crystaliron-whole-points"
+points = 2
+
+[[hull_options]]
+id = "self-sealing"
+quantity = 1
+
+[drives]
+jump = "D"
+maneuver = "D"
+power = "D"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 3
+
+[computer]
+id = "model-3"
+options = ["bis", "fib"]
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "evade"
+level = 1
+
+[[software]]
+id = "intellect"
+
+[[software]]
+id = "internal-security-2"
+
+[[software]]
+id = "point-defense-1"
+
+[[equipment]]
+id = "stateroom"
+quantity = 1
+
+[[equipment]]
+id = "crew-berthing"
+quantity = 1
+
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 1
+
+[[equipment]]
+id = "mini-galley"
+quantity = 1
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 5
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 4
+
+[[equipment]]
+id = "autodoc"
+quantity = 1
+
+[[equipment]]
+id = "workshop"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[docking_clamps]]
+id = "docking-clamp-2000"
+quantity = 1
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 3
+
+[[crew]]
+role = "command"
+quantity = 1
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 2
+
+[[crew]]
+role = "sensors-operator"
+quantity = 1
+
+[[crew]]
+role = "other"
+quantity = 1
+
+[assertions]
+hull_millitons = 350000
+accounted_displacement_millitons = 350000
+hull_points = 7
+structure_points = 7
+armor_points = 2
+jump_rating = 2
+thrust_g = 2
+fuel_millitons = 82000
+jump_fuel_millitons = 70000
+power_fuel_millitons = 12000
+hardpoints = 3
+hardpoints_used = 0
+point_defense_nodes = 3
+fire_control_millitons = 0
+minimum_crew = 3
+crew = 7
+carried_craft_count = 0
+carried_craft_price_credits = 0
+hangar_capacity_millitons = 0
+docking_capacity_millitons = 2000000
+construction_weeks = 60
+pre_discount_price_credits = 143770000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 143770000

@@ -1,0 +1,88 @@
+# Rule-derived reconstruction of the twenty-ton fast launch carried by
+# source-inventory ship-144. Exact CE power fuel consumes the source's
+# otherwise unallocated three-tenths of a ton.
+
+schema_version = 1
+design_id = "ct-source-ship-145"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-type-3",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "standard"
+airlocks = 1
+additional_fire_control_stations = 0
+cargo_millitons = 4000
+
+[catalog]
+catalog_id = 145
+tag = "ship-145"
+family_id = 7
+upgrade_path_id = 1
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Caduceus"
+primary_role = "fast-launch"
+secondary_roles = ["boarding", "inspection", "cargo-transfer"]
+mission_tags = ["six-gravity", "passengers", "cargo", "carrier-craft"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This streamlined fast launch carries a pilot, ten seated passengers, and four tons of cargo at six gravities. Crystaliron armor gives boarding and inspection teams limited protection during close approaches to uncooperative vessels.",
+  "The launch is unarmed and has only two weeks of power endurance, but its combination of acceleration, seating, cargo access, and armor makes it a practical interface between a patrol ship and its targets. It remains dependent on a carrier or local base and has no interstellar capability.",
+]
+
+[hull]
+id = "small-20"
+configuration = "streamlined"
+
+[armor]
+id = "crystaliron"
+layers = 1
+
+[drives]
+maneuver = "sF"
+power = "sF"
+
+[fuel]
+power_plant_weeks = 2
+
+[control]
+id = "one-person-cockpit"
+additional_passengers = 0
+
+[computer]
+id = "model-1"
+options = []
+
+[[equipment]]
+id = "acceleration-seat"
+quantity = 10
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[assertions]
+hull_millitons = 20000
+accounted_displacement_millitons = 20000
+hull_points = 0
+structure_points = 1
+armor_points = 4
+thrust_g = 6
+fuel_millitons = 1800
+hardpoints = 1
+hardpoints_used = 0
+minimum_crew = 1
+crew = 1
+construction_weeks = 29
+pre_discount_price_credits = 13690000
+discount_credits = 0
+construction_price_credits = 13690000

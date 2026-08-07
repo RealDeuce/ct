@@ -1,0 +1,894 @@
+# Normalized Open Game Content from the Cepheus Engine SRD ship-construction
+# sequence.  This file is an input to design, not an extraction from a
+# published ship specification.
+
+schema_version = 1
+ruleset_id = "ce-srd-2016.shipbuilding"
+ruleset_revision = 1
+source_ids = ["cepheus-engine-srd-2016"]
+
+[units]
+displacement = "milliton"
+currency = "credit"
+
+[construction]
+standard_design_discount_percent = 10
+standard_discount_excludes = ["fuel", "ammunition"]
+new_design_plan_percent = 1
+new_design_plan_time_weeks = 4
+
+[derived]
+hull_points_per_tons = 50
+structure_points_per_tons = 50
+hardpoint_tons = 100
+
+[[hull]]
+id = "ship-100"
+tons = 100
+code = "1"
+price_credits = 2000000
+construction_weeks = 36
+[[hull]]
+id = "ship-200"
+tons = 200
+code = "2"
+price_credits = 8000000
+construction_weeks = 44
+[[hull]]
+id = "ship-300"
+tons = 300
+code = "3"
+price_credits = 12000000
+construction_weeks = 52
+[[hull]]
+id = "ship-400"
+tons = 400
+code = "4"
+price_credits = 16000000
+construction_weeks = 60
+[[hull]]
+id = "ship-500"
+tons = 500
+code = "5"
+price_credits = 32000000
+construction_weeks = 68
+[[hull]]
+id = "ship-600"
+tons = 600
+code = "6"
+price_credits = 48000000
+construction_weeks = 76
+[[hull]]
+id = "ship-700"
+tons = 700
+code = "7"
+price_credits = 64000000
+construction_weeks = 84
+[[hull]]
+id = "ship-800"
+tons = 800
+code = "8"
+price_credits = 80000000
+construction_weeks = 92
+[[hull]]
+id = "ship-900"
+tons = 900
+code = "9"
+price_credits = 90000000
+construction_weeks = 100
+[[hull]]
+id = "ship-1000"
+tons = 1000
+code = "A"
+price_credits = 100000000
+construction_weeks = 108
+[[hull]]
+id = "ship-1200"
+tons = 1200
+code = "C"
+price_credits = 120000000
+construction_weeks = 124
+[[hull]]
+id = "ship-1400"
+tons = 1400
+code = "E"
+price_credits = 140000000
+construction_weeks = 140
+[[hull]]
+id = "ship-1600"
+tons = 1600
+code = "G"
+price_credits = 160000000
+construction_weeks = 156
+[[hull]]
+id = "ship-1800"
+tons = 1800
+code = "J"
+price_credits = 180000000
+construction_weeks = 172
+[[hull]]
+id = "ship-2000"
+tons = 2000
+code = "L"
+price_credits = 200000000
+construction_weeks = 188
+[[hull]]
+id = "ship-3000"
+tons = 3000
+code = "M"
+price_credits = 300000000
+construction_weeks = 268
+[[hull]]
+id = "ship-4000"
+tons = 4000
+code = "N"
+price_credits = 400000000
+construction_weeks = 348
+[[hull]]
+id = "ship-5000"
+tons = 5000
+code = "P"
+price_credits = 500000000
+construction_weeks = 428
+
+[[configuration]]
+id = "distributed"
+hull_price_percent = 90
+includes_fuel_scoops = false
+may_install_fuel_scoops = false
+atmospheric_dm = -4
+failed_atmospheric_damage_d6 = 2
+[[configuration]]
+id = "standard"
+hull_price_percent = 100
+includes_fuel_scoops = false
+may_install_fuel_scoops = true
+atmospheric_dm = -2
+[[configuration]]
+id = "streamlined"
+hull_price_percent = 110
+includes_fuel_scoops = true
+may_install_fuel_scoops = true
+atmospheric_dm = 0
+
+[[armor]]
+id = "titanium-steel"
+min_tl = 7
+volume_percent_per_layer = 5
+minimum_millitons_per_layer = 1000
+protection_per_layer = 2
+base_hull_price_percent_per_layer = 5
+[[armor]]
+id = "crystaliron"
+min_tl = 10
+volume_percent_per_layer = 5
+minimum_millitons_per_layer = 1000
+protection_per_layer = 4
+base_hull_price_percent_per_layer = 20
+[[armor]]
+id = "bonded-superdense"
+min_tl = 14
+volume_percent_per_layer = 5
+minimum_millitons_per_layer = 1000
+protection_per_layer = 6
+base_hull_price_percent_per_layer = 50
+
+[[hull_option]]
+id = "reflec"
+min_tl = 10
+price_credits_per_hull_ton = 100000
+maximum_quantity = 1
+laser_armor_bonus = 3
+[[hull_option]]
+id = "self-sealing"
+min_tl = 9
+price_credits_per_hull_ton = 10000
+maximum_quantity = 1
+[[hull_option]]
+id = "stealth"
+min_tl = 11
+price_credits_per_hull_ton = 100000
+maximum_quantity = 1
+detection_dm = -4
+
+# A single drive row is an atomic rules-table row.  Selecting code A twice is
+# two installations of the same drive definition, not a new component type.
+[[drive]]
+code = "A"
+jump_millitons = 10000
+jump_price_credits = 10000000
+maneuver_millitons = 2000
+maneuver_price_credits = 4000000
+power_millitons = 4000
+power_price_credits = 8000000
+power_fuel_millitons_per_week = 1000
+[[drive]]
+code = "B"
+jump_millitons = 15000
+jump_price_credits = 20000000
+maneuver_millitons = 3000
+maneuver_price_credits = 8000000
+power_millitons = 7000
+power_price_credits = 16000000
+power_fuel_millitons_per_week = 2000
+[[drive]]
+code = "C"
+jump_millitons = 20000
+jump_price_credits = 30000000
+maneuver_millitons = 5000
+maneuver_price_credits = 12000000
+power_millitons = 10000
+power_price_credits = 24000000
+power_fuel_millitons_per_week = 3000
+[[drive]]
+code = "D"
+jump_millitons = 25000
+jump_price_credits = 40000000
+maneuver_millitons = 7000
+maneuver_price_credits = 16000000
+power_millitons = 13000
+power_price_credits = 32000000
+power_fuel_millitons_per_week = 4000
+[[drive]]
+code = "E"
+jump_millitons = 30000
+jump_price_credits = 50000000
+maneuver_millitons = 9000
+maneuver_price_credits = 20000000
+power_millitons = 16000
+power_price_credits = 40000000
+power_fuel_millitons_per_week = 5000
+[[drive]]
+code = "F"
+jump_millitons = 35000
+jump_price_credits = 60000000
+maneuver_millitons = 11000
+maneuver_price_credits = 24000000
+power_millitons = 19000
+power_price_credits = 48000000
+power_fuel_millitons_per_week = 6000
+[[drive]]
+code = "G"
+jump_millitons = 40000
+jump_price_credits = 70000000
+maneuver_millitons = 13000
+maneuver_price_credits = 28000000
+power_millitons = 22000
+power_price_credits = 56000000
+power_fuel_millitons_per_week = 7000
+[[drive]]
+code = "H"
+jump_millitons = 45000
+jump_price_credits = 80000000
+maneuver_millitons = 15000
+maneuver_price_credits = 32000000
+power_millitons = 25000
+power_price_credits = 64000000
+power_fuel_millitons_per_week = 8000
+[[drive]]
+code = "J"
+jump_millitons = 50000
+jump_price_credits = 90000000
+maneuver_millitons = 17000
+maneuver_price_credits = 36000000
+power_millitons = 28000
+power_price_credits = 72000000
+power_fuel_millitons_per_week = 9000
+[[drive]]
+code = "K"
+jump_millitons = 55000
+jump_price_credits = 100000000
+maneuver_millitons = 19000
+maneuver_price_credits = 40000000
+power_millitons = 31000
+power_price_credits = 80000000
+power_fuel_millitons_per_week = 10000
+[[drive]]
+code = "L"
+jump_millitons = 60000
+jump_price_credits = 110000000
+maneuver_millitons = 21000
+maneuver_price_credits = 44000000
+power_millitons = 34000
+power_price_credits = 88000000
+power_fuel_millitons_per_week = 11000
+[[drive]]
+code = "M"
+jump_millitons = 65000
+jump_price_credits = 120000000
+maneuver_millitons = 23000
+maneuver_price_credits = 48000000
+power_millitons = 37000
+power_price_credits = 96000000
+power_fuel_millitons_per_week = 12000
+[[drive]]
+code = "N"
+jump_millitons = 70000
+jump_price_credits = 130000000
+maneuver_millitons = 25000
+maneuver_price_credits = 52000000
+power_millitons = 40000
+power_price_credits = 104000000
+power_fuel_millitons_per_week = 13000
+[[drive]]
+code = "P"
+jump_millitons = 75000
+jump_price_credits = 140000000
+maneuver_millitons = 27000
+maneuver_price_credits = 56000000
+power_millitons = 43000
+power_price_credits = 112000000
+power_fuel_millitons_per_week = 14000
+[[drive]]
+code = "Q"
+jump_millitons = 80000
+jump_price_credits = 150000000
+maneuver_millitons = 29000
+maneuver_price_credits = 60000000
+power_millitons = 46000
+power_price_credits = 120000000
+power_fuel_millitons_per_week = 15000
+[[drive]]
+code = "R"
+jump_millitons = 85000
+jump_price_credits = 160000000
+maneuver_millitons = 31000
+maneuver_price_credits = 64000000
+power_millitons = 49000
+power_price_credits = 128000000
+power_fuel_millitons_per_week = 16000
+[[drive]]
+code = "S"
+jump_millitons = 90000
+jump_price_credits = 170000000
+maneuver_millitons = 33000
+maneuver_price_credits = 68000000
+power_millitons = 52000
+power_price_credits = 136000000
+power_fuel_millitons_per_week = 17000
+[[drive]]
+code = "T"
+jump_millitons = 95000
+jump_price_credits = 180000000
+maneuver_millitons = 35000
+maneuver_price_credits = 72000000
+power_millitons = 55000
+power_price_credits = 144000000
+power_fuel_millitons_per_week = 18000
+[[drive]]
+code = "U"
+jump_millitons = 100000
+jump_price_credits = 190000000
+maneuver_millitons = 37000
+maneuver_price_credits = 76000000
+power_millitons = 58000
+power_price_credits = 152000000
+power_fuel_millitons_per_week = 19000
+[[drive]]
+code = "V"
+jump_millitons = 105000
+jump_price_credits = 200000000
+maneuver_millitons = 39000
+maneuver_price_credits = 80000000
+power_millitons = 61000
+power_price_credits = 160000000
+power_fuel_millitons_per_week = 20000
+[[drive]]
+code = "W"
+jump_millitons = 110000
+jump_price_credits = 210000000
+maneuver_millitons = 41000
+maneuver_price_credits = 84000000
+power_millitons = 64000
+power_price_credits = 168000000
+power_fuel_millitons_per_week = 21000
+[[drive]]
+code = "X"
+jump_millitons = 115000
+jump_price_credits = 220000000
+maneuver_millitons = 43000
+maneuver_price_credits = 88000000
+power_millitons = 67000
+power_price_credits = 176000000
+power_fuel_millitons_per_week = 22000
+[[drive]]
+code = "Y"
+jump_millitons = 120000
+jump_price_credits = 230000000
+maneuver_millitons = 45000
+maneuver_price_credits = 92000000
+power_millitons = 70000
+power_price_credits = 182000000
+power_fuel_millitons_per_week = 23000
+[[drive]]
+code = "Z"
+jump_millitons = 125000
+jump_price_credits = 240000000
+maneuver_millitons = 47000
+maneuver_price_credits = 96000000
+power_millitons = 73000
+power_price_credits = 192000000
+power_fuel_millitons_per_week = 24000
+
+# Values absent from the printed tables are absent here, rather than encoded
+# as zero.  The same lookup governs both jump and maneuver performance.
+[[drive_performance]]
+hull_tons = 100
+values = { A = 2, B = 4, C = 6 }
+[[drive_performance]]
+hull_tons = 200
+values = { A = 1, B = 2, C = 3, D = 4, E = 5, F = 6 }
+[[drive_performance]]
+hull_tons = 300
+values = { B = 1, C = 2, D = 2, E = 3, F = 4, G = 4, H = 5, J = 6 }
+[[drive_performance]]
+hull_tons = 400
+values = { B = 1, C = 1, D = 2, E = 2, F = 3, G = 3, H = 4, J = 4, K = 5, L = 5, M = 6, N = 6 }
+[[drive_performance]]
+hull_tons = 500
+values = { C = 1, D = 1, E = 2, F = 2, G = 2, H = 3, J = 3, K = 4, L = 4, M = 4, N = 5, P = 5, Q = 6, R = 6, S = 6 }
+[[drive_performance]]
+hull_tons = 600
+values = { C = 1, D = 1, E = 1, F = 2, G = 2, H = 2, J = 3, K = 3, L = 3, M = 4, N = 4, P = 4, Q = 5, R = 5, S = 5, T = 6, U = 6, V = 6 }
+[[drive_performance]]
+hull_tons = 700
+values = { D = 1, E = 1, F = 1, G = 2, H = 2, J = 2, K = 3, L = 3, M = 3, N = 4, P = 4, Q = 4, R = 5, S = 5, T = 5, U = 6, V = 6, W = 6, X = 6, Y = 6, Z = 6 }
+[[drive_performance]]
+hull_tons = 800
+values = { D = 1, E = 1, F = 1, G = 2, H = 2, J = 2, K = 3, L = 3, M = 3, N = 4, P = 4, Q = 4, R = 5, S = 5, T = 5, U = 5, V = 6, W = 6, X = 6, Y = 6, Z = 6 }
+[[drive_performance]]
+hull_tons = 900
+values = { E = 1, F = 1, G = 1, H = 2, J = 2, K = 2, L = 3, M = 3, N = 3, P = 4, Q = 4, R = 4, S = 5, T = 5, U = 5, V = 5, W = 6, X = 6, Y = 6, Z = 6 }
+[[drive_performance]]
+hull_tons = 1000
+values = { E = 1, F = 1, G = 1, H = 2, J = 2, K = 2, L = 3, M = 3, N = 3, P = 4, Q = 4, R = 4, S = 5, T = 5, U = 5, V = 5, W = 5, X = 6, Y = 6, Z = 6 }
+[[drive_performance]]
+hull_tons = 1200
+values = { F = 1, G = 1, H = 1, J = 2, K = 2, L = 2, M = 3, N = 3, P = 3, Q = 4, R = 4, S = 4, T = 5, U = 5, V = 5, W = 5, X = 5, Y = 5, Z = 6 }
+[[drive_performance]]
+hull_tons = 1400
+values = { G = 1, H = 1, J = 1, K = 2, L = 2, M = 2, N = 3, P = 3, Q = 3, R = 4, S = 4, T = 4, U = 4, V = 5, W = 5, X = 5, Y = 5, Z = 5 }
+[[drive_performance]]
+hull_tons = 1600
+values = { H = 1, J = 1, K = 1, L = 2, M = 2, N = 2, P = 3, Q = 3, R = 3, S = 4, T = 4, U = 4, V = 4, W = 4, X = 5, Y = 5, Z = 5 }
+[[drive_performance]]
+hull_tons = 1800
+values = { J = 1, K = 1, L = 1, M = 2, N = 2, P = 2, Q = 3, R = 3, S = 3, T = 4, U = 4, V = 4, W = 4, X = 4, Y = 4, Z = 5 }
+[[drive_performance]]
+hull_tons = 2000
+values = { K = 1, L = 1, M = 1, N = 2, P = 2, Q = 2, R = 3, S = 3, T = 3, U = 4, V = 4, W = 4, X = 4, Y = 4, Z = 4 }
+[[drive_performance]]
+hull_tons = 3000
+values = { Q = 1, R = 1, S = 1, T = 2, U = 2, V = 2, W = 3, X = 3, Y = 3, Z = 4 }
+[[drive_performance]]
+hull_tons = 4000
+values = { V = 1, W = 1, X = 1, Y = 2, Z = 2 }
+[[drive_performance]]
+hull_tons = 5000
+values = { W = 1, X = 1, Y = 1, Z = 2 }
+
+[bridge]
+price_credits_per_100_hull_tons = 500000
+sizes = [
+  { maximum_hull_tons = 200, displacement_millitons = 10000 },
+  { maximum_hull_tons = 1000, displacement_millitons = 20000 },
+  { maximum_hull_tons = 2000, displacement_millitons = 40000 },
+  { maximum_hull_tons = 5000, displacement_millitons = 60000 },
+]
+
+[[computer]]
+id = "model-1"
+min_tl = 7
+rating = 5
+price_credits = 30000
+[[computer]]
+id = "model-2"
+min_tl = 9
+rating = 10
+price_credits = 160000
+[[computer]]
+id = "model-3"
+min_tl = 11
+rating = 15
+price_credits = 2000000
+[[computer]]
+id = "model-4"
+min_tl = 12
+rating = 20
+price_credits = 5000000
+[[computer]]
+id = "model-5"
+min_tl = 13
+rating = 25
+price_credits = 10000000
+[[computer]]
+id = "model-6"
+min_tl = 14
+rating = 30
+price_credits = 20000000
+[[computer]]
+id = "model-7"
+min_tl = 15
+rating = 35
+price_credits = 30000000
+
+[[computer_option]]
+id = "bis"
+price_percent_of_computer = 50
+jump_control_rating_bonus = 5
+[[computer_option]]
+id = "fib"
+price_percent_of_computer = 50
+emp_immune = true
+
+[[software]]
+id = "auto-repair"
+min_tl = 10
+rating_per_level = 10
+price_credits_per_level = 5000000
+maximum_level = 2
+[[software]]
+id = "evade"
+min_tl = 9
+base_rating = 0
+rating_per_level = 5
+price_credits_per_level = 1000000
+maximum_level = 3
+[[software]]
+id = "fire-control"
+min_tl = 9
+rating_per_level = 5
+price_credits_per_level = 2000000
+maximum_level = 5
+[[software]]
+id = "jump-control"
+min_tl = 9
+rating_per_level = 5
+price_credits_per_level = 100000
+maximum_level = 6
+[[software]]
+id = "jump-course-tape"
+min_tl = 9
+rating_per_level = 1
+price_credits_per_level = 1000
+maximum_level = 6
+
+[[electronics]]
+id = "standard"
+min_tl = 8
+dm = -4
+displacement_millitons = 0
+price_credits = 0
+included_in_bridge = true
+[[electronics]]
+id = "basic-civilian"
+min_tl = 9
+dm = -2
+displacement_millitons = 1000
+price_credits = 50000
+[[electronics]]
+id = "basic-military"
+min_tl = 10
+dm = 0
+displacement_millitons = 2000
+price_credits = 1000000
+[[electronics]]
+id = "advanced"
+min_tl = 11
+dm = 1
+displacement_millitons = 3000
+price_credits = 2000000
+[[electronics]]
+id = "very-advanced"
+min_tl = 12
+dm = 2
+displacement_millitons = 5000
+price_credits = 4000000
+
+# Equipment quantities use the named unit.  No quantity-specific component
+# IDs are permitted.
+[[equipment]]
+id = "stateroom"
+unit = "room"
+displacement_millitons_per_unit = 4000
+price_credits_per_unit = 500000
+capacity_per_unit = 2
+[[equipment]]
+id = "low-berth"
+unit = "berth"
+displacement_millitons_per_unit = 500
+price_credits_per_unit = 50000
+capacity_per_unit = 1
+[[equipment]]
+id = "emergency-low-berth"
+unit = "berth"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 100000
+capacity_per_unit = 4
+[[equipment]]
+id = "barracks"
+unit = "marine"
+displacement_millitons_per_unit = 2000
+price_credits_per_unit = 100000
+capacity_per_unit = 1
+[[equipment]]
+id = "armory"
+unit = "installation"
+displacement_millitons_per_unit = 2000
+price_credits_per_unit = 500000
+[[equipment]]
+id = "briefing-room"
+unit = "room"
+displacement_millitons_per_unit = 4000
+price_credits_per_unit = 500000
+[[equipment]]
+id = "detention-cell"
+unit = "cell"
+displacement_millitons_per_unit = 2000
+price_credits_per_unit = 250000
+[[equipment]]
+id = "fuel-scoop"
+unit = "installation"
+displacement_millitons_per_unit = 0
+price_credits_per_unit = 1000000
+maximum_quantity = 1
+[[equipment]]
+id = "fuel-processor"
+unit = "ton"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 50000
+processing_millitons_per_day_per_unit = 20000
+[[equipment]]
+id = "laboratory"
+unit = "scientist-station"
+displacement_millitons_per_unit = 4000
+price_credits_per_unit = 1000000
+[[equipment]]
+id = "library"
+unit = "room"
+displacement_millitons_per_unit = 4000
+price_credits_per_unit = 4000000
+[[equipment]]
+id = "luxuries"
+unit = "ton"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 100000
+steward_equivalent_per_unit = 1
+[[equipment]]
+id = "vault"
+unit = "installation"
+displacement_millitons_per_unit = 12000
+price_credits_per_unit = 6000000
+internal_capacity_millitons_per_unit = 6000
+[[equipment]]
+id = "atv-hangar"
+unit = "vehicle"
+displacement_millitons_per_unit = 13000
+price_credits_per_unit = 2600000
+[[equipment]]
+id = "air-raft-hangar"
+unit = "vehicle"
+displacement_millitons_per_unit = 5000
+price_credits_per_unit = 1000000
+[[equipment]]
+id = "cutter-hangar"
+unit = "craft"
+displacement_millitons_per_unit = 65000
+price_credits_per_unit = 13000000
+craft_capacity_millitons_per_unit = 50000
+[[equipment]]
+id = "escape-pod"
+unit = "passenger"
+displacement_millitons_per_unit = 500
+price_credits_per_unit = 100000
+[[equipment]]
+id = "lifeboat-hangar"
+unit = "craft"
+displacement_millitons_per_unit = 26000
+price_credits_per_unit = 5200000
+craft_capacity_millitons_per_unit = 20000
+[[equipment]]
+id = "mining-drones"
+unit = "set"
+displacement_millitons_per_unit = 10000
+price_credits_per_unit = 2000000
+[[equipment]]
+id = "pinnace-hangar"
+unit = "craft"
+displacement_millitons_per_unit = 52000
+price_credits_per_unit = 10400000
+craft_capacity_millitons_per_unit = 40000
+[[equipment]]
+id = "probe-drones"
+unit = "set-of-five"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 200000
+[[equipment]]
+id = "ships-boat-hangar"
+unit = "craft"
+displacement_millitons_per_unit = 39000
+price_credits_per_unit = 7800000
+craft_capacity_millitons_per_unit = 30000
+[[equipment]]
+id = "shuttle-hangar"
+unit = "craft"
+displacement_millitons_per_unit = 122500
+price_credits_per_unit = 24500000
+craft_capacity_millitons_per_unit = 95000
+
+# These installations require typed dimensions.  Their formula selects the
+# evaluator behavior; a design cannot supply its own rate or multiplier.
+[[parameterized_equipment]]
+id = "custom-hangar"
+formula = "contained-volume-percent"
+contained_volume_percent = 130
+price_credits_per_installed_ton = 200000
+parameter = "contained_millitons"
+[[parameterized_equipment]]
+id = "launch-tube"
+formula = "contained-volume-multiple"
+contained_volume_multiple = 25
+price_credits_per_installed_ton = 500000
+parameter = "largest_craft_millitons"
+[[parameterized_equipment]]
+id = "repair-drones"
+formula = "hull-volume-percent"
+hull_volume_percent = 1
+price_credits_per_installed_ton = 200000
+[[parameterized_equipment]]
+id = "module-berth"
+formula = "contained-volume-percent"
+contained_volume_percent = 110
+price_credits_per_installed_ton = 200000
+parameter = "contained_millitons"
+
+[[mount]]
+id = "single-turret"
+min_tl = 7
+weapon_capacity = 1
+displacement_millitons = 1000
+price_credits = 200000
+hardpoints = 1
+[[mount]]
+id = "double-turret"
+min_tl = 8
+weapon_capacity = 2
+displacement_millitons = 1000
+price_credits = 500000
+hardpoints = 1
+[[mount]]
+id = "triple-turret"
+min_tl = 9
+weapon_capacity = 3
+displacement_millitons = 1000
+price_credits = 1000000
+hardpoints = 1
+
+[[weapon]]
+id = "missile-rack"
+min_tl = 6
+price_credits = 750000
+[[weapon]]
+id = "pulse-laser"
+min_tl = 7
+price_credits = 500000
+[[weapon]]
+id = "sandcaster"
+min_tl = 7
+price_credits = 250000
+[[weapon]]
+id = "particle-beam"
+min_tl = 8
+price_credits = 4000000
+[[weapon]]
+id = "beam-laser"
+min_tl = 9
+price_credits = 1000000
+
+[[bay]]
+id = "missile-bank"
+min_tl = 6
+displacement_millitons = 51000
+price_credits = 12000000
+hardpoints = 1
+[[bay]]
+id = "particle-beam-bay"
+min_tl = 8
+displacement_millitons = 51000
+price_credits = 20000000
+hardpoints = 1
+[[bay]]
+id = "meson-gun-bay"
+min_tl = 11
+displacement_millitons = 51000
+price_credits = 50000000
+hardpoints = 1
+[[bay]]
+id = "fusion-gun-bay"
+min_tl = 12
+displacement_millitons = 51000
+price_credits = 8000000
+hardpoints = 1
+
+[[screen]]
+id = "meson-screen"
+min_tl = 12
+displacement_millitons = 50000
+price_credits = 60000000
+[[screen]]
+id = "nuclear-damper"
+min_tl = 12
+displacement_millitons = 50000
+price_credits = 50000000
+
+[[ammunition]]
+id = "sandcaster-canister"
+min_tl = 5
+units_per_ton = 20
+price_credits_per_unit = 500
+[[ammunition]]
+id = "standard-missile"
+min_tl = 6
+units_per_ton = 12
+price_credits_per_unit = 1250
+[[ammunition]]
+id = "smart-missile"
+min_tl = 8
+units_per_ton = 12
+price_credits_per_unit = 2500
+[[ammunition]]
+id = "nuclear-missile"
+min_tl = 6
+units_per_ton = 12
+price_credits_per_unit = 3750
+
+# A design states its actual crew manifest.  These records define recognized
+# roles and the minimum formulas the evaluator can derive from the fitted ship.
+[[crew_role]]
+id = "command"
+minimum_formula = "none"
+[[crew_role]]
+id = "pilot"
+minimum_formula = "one"
+[[crew_role]]
+id = "navigator"
+minimum_formula = "one"
+[[crew_role]]
+id = "engineer"
+minimum_formula = "one-with-drives"
+full_formula = "one-per-35-drive-tons"
+[[crew_role]]
+id = "sensors-operator"
+minimum_formula = "none"
+[[crew_role]]
+id = "medic"
+minimum_formula = "none"
+full_formula = "one-per-120-persons"
+[[crew_role]]
+id = "steward"
+minimum_formula = "none"
+full_formula = "one-per-four-high-or-ten-middle-passengers"
+[[crew_role]]
+id = "turret-gunner"
+minimum_formula = "one-per-turret"
+[[crew_role]]
+id = "bay-gunner"
+minimum_formula = "one-per-bay"
+full_formula = "two-per-bay"
+[[crew_role]]
+id = "screen-operator"
+minimum_formula = "one-per-screen"
+full_formula = "four-per-screen"
+[[crew_role]]
+id = "chief-security-officer"
+minimum_formula = "none"
+[[crew_role]]
+id = "flight-crew"
+minimum_formula = "none"
+full_formula = "one-per-craft-plus-one-support-per-three"
+[[crew_role]]
+id = "marine"
+minimum_formula = "none"
+[[crew_role]]
+id = "other"
+minimum_formula = "none"

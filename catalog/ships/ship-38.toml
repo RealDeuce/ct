@@ -1,0 +1,146 @@
+# Rule-derived reconstruction of the basic 200-ton source trader. Ordinary
+# Jump drive replaces the Zimm drive. The source's contradictory repair-drone
+# row is replaced by the CE hull-percentage rule, and the delivered armament is
+# made concrete: one beam laser plus one reserved fire-control station.
+
+schema_version = 1
+design_id = "ct-source-ship-38"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-coner",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+unused_fire_control_stations = 1
+cargo_millitons = 88700
+thrust_g = 3
+
+[catalog]
+catalog_id = 38
+tag = "ship-38"
+family_id = 38
+upgrade_path_id = 3
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Marco Polo"
+primary_role = "trader"
+secondary_roles = ["frontier-freighter", "owner-operator"]
+mission_tags = ["freight", "jump-2", "atmospheric", "configurable"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This two-hundred-ton frontier trader devotes nearly half its hull to freight while retaining a two-parsec jump radius, three-gravity acceleration, fuel purification, repair drones, and double-occupancy rooms for its four-person crew. Its streamlined hull can serve surface ports without support craft.",
+  "One beam laser gives the ship a basic defense and a second hardpoint has fire control reserved for an owner-selected turret. The design is inexpensive and flexible, but it carries no passenger accommodation and its modest computer and sensors favor ordinary commercial work over exploration or combat.",
+]
+
+[hull]
+id = "ship-200"
+configuration = "streamlined"
+
+[drives]
+jump = "B"
+maneuver = "C"
+power = "C"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+
+[computer]
+id = "model-2"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[software]]
+id = "intellect"
+
+[[equipment]]
+id = "stateroom"
+quantity = 4
+
+[[equipment]]
+id = "galley-space"
+quantity = 4
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 4
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+
+[[equipment]]
+id = "autodoc"
+quantity = 1
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser"]
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+
+[assertions]
+hull_millitons = 200000
+accounted_displacement_millitons = 200000
+hull_points = 4
+structure_points = 4
+armor_points = 0
+jump_rating = 2
+thrust_g = 3
+fuel_millitons = 46000
+jump_fuel_millitons = 40000
+power_fuel_millitons = 6000
+hardpoints = 2
+hardpoints_used = 1
+point_defense_nodes = 0
+fire_control_millitons = 2000
+minimum_crew = 4
+crew = 4
+carried_craft_count = 0
+carried_craft_price_credits = 0
+hangar_capacity_millitons = 0
+docking_capacity_millitons = 0
+construction_weeks = 44
+pre_discount_price_credits = 74170000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 74170000

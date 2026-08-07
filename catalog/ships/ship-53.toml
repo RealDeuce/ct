@@ -1,0 +1,81 @@
+# Rule-derived normalized reconstruction of source catalog row ship-53.
+schema_version = 1
+design_id = "ct-source-ship-53"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-socs-4-6", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+unused_fire_control_stations = 0
+cargo_millitons = 2000
+thrust_g = 5
+[catalog]
+catalog_id = 53
+tag = "ship-53"
+family_id = 53
+upgrade_path_id = 4
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Challenger"
+primary_role = "armed-survey-courier"
+secondary_roles = []
+mission_tags = ["jump-2", "thrust", "armed"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 120-ton armed survey courier is reconstructed as a complete standard-CE design with a two-parsec jump radius, normalized maneuver and power machinery, 4 points of armor, and the source role's principal accommodations, support systems, and armament.", "The design is directly usable by the game construction engine. Its cargo hold is the exact remainder after every fitted component is evaluated, so published rounded or incompatible allocations do not become hidden displacement adjustments."]
+[hull]
+id = "ship-120"
+configuration = "streamlined"
+[armor]
+id = "crystaliron-whole-points"
+points = 4
+[drives]
+jump = "B"
+maneuver = "E"
+power = "E"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "model-3"
+options = []
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 1
+[[equipment]]
+id = "stateroom"
+quantity = 4
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[hangars]]
+id = "standard-hangar"
+contained_millitons = 5000
+quantity = 1
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "sandcaster"]
+quantity = 1
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 20
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 1
+[[crew]]
+role = "turret-gunner"
+quantity = 1

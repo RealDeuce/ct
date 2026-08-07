@@ -1,0 +1,100 @@
+# Source-audit-only technology-adjustment tables. They are not composed into
+# the game rules: applying the expansion's generic power-plant scaling would
+# invalidate baseline CE designs at the same TL.
+
+schema_version = 1
+module_id = "ct.af3.technology-source"
+module_revision = 1
+extends_ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["ship-source-a-f", "cepheus-engine-srd-2016"]
+status = "source-audit-only"
+
+[new_old-technology-discount]
+discount_percent_per_tl = 5
+maximum_discount_percent = 20
+
+[[maneuver_drive_standard_tl]]
+performance = 1
+standard_tl = 7
+[[maneuver_drive_standard_tl]]
+performance = 2
+standard_tl = 7
+[[maneuver_drive_standard_tl]]
+performance = 3
+standard_tl = 8
+[[maneuver_drive_standard_tl]]
+performance = 4
+standard_tl = 8
+[[maneuver_drive_standard_tl]]
+performance = 5
+standard_tl = 8
+[[maneuver_drive_standard_tl]]
+performance = 6
+standard_tl = 9
+
+[[power_plant_technology_adjustment]]
+minimum_tl = 8
+maximum_tl = 10
+volume_percent = 125
+price_percent = 100
+[[power_plant_technology_adjustment]]
+minimum_tl = 11
+maximum_tl = 12
+volume_percent = 100
+price_percent = 100
+
+[[weapon_technology_adjustment]]
+tl_delta = -1
+volume_percent = 200
+price_percent = 150
+upgrade_slots = 0
+[[weapon_technology_adjustment]]
+tl_delta = 0
+volume_percent = 100
+price_percent = 100
+upgrade_slots = 0
+[[weapon_technology_adjustment]]
+tl_delta = 1
+volume_percent = 90
+price_percent = 110
+upgrade_slots = 1
+[[weapon_technology_adjustment]]
+tl_delta = 2
+volume_percent = 75
+price_percent = 125
+upgrade_slots = 2
+[[weapon_technology_adjustment]]
+tl_delta = 3
+volume_percent = 60
+price_percent = 200
+upgrade_slots = 3
+
+[[weapon_upgrade]]
+id = "source-accurate"
+upgrade_slots = 2
+attack_dm = 1
+[[weapon_upgrade]]
+id = "source-easy-to-repair"
+upgrade_slots = 1
+repair_dm = 1
+[[weapon_upgrade]]
+id = "source-high-yield"
+upgrade_slots = 1
+damage_ones_count_as = 2
+[[weapon_upgrade]]
+id = "source-long-range"
+upgrade_slots = 1
+optimum_range_band_bonus = 1
+[[weapon_upgrade]]
+id = "source-resilient"
+upgrade_slots = 2
+capital_weapon_only = true
+negated_hits = 1
+[[weapon_upgrade]]
+id = "source-variable-range"
+upgrade_slots = 2
+optimum_range_band_variation = 1
+[[weapon_upgrade]]
+id = "source-very-high-yield"
+upgrade_slots = 2
+damage_ones_and_twos_count_as = 3

@@ -1,0 +1,232 @@
+# Rule-derived reconstruction of the 4,500-ton commercial carrier. Standard
+# CE Z drives replace bespoke three-gravity machinery, limiting acceleration
+# to two gravities. One-year cells become two weeks of fuel; all remaining
+# construction formulas produce a 2,647.2-ton cargo capacity.
+
+schema_version = 1
+design_id = "ct-source-ship-182"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-tech-update-2350",
+  "ship-source-trade-empire",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+bridge_options = ["holographic-controls"]
+power_options = ["emergency-power"]
+unused_fire_control_stations = 25
+cargo_millitons = 2647200
+
+[catalog]
+catalog_id = 182
+tag = "ship-182"
+family_id = 182
+upgrade_path_id = 1
+progression_stage = "heavy"
+status = "active"
+vessel_kind = "starship"
+display_name = "Silk Road"
+primary_role = "commercial-carrier"
+secondary_roles = ["bulk-freighter", "fleet-logistics"]
+mission_tags = ["bulk-cargo", "jump-2", "small-craft", "point-defense"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This 4,500-ton commercial carrier moves more than 2,600 tons of freight across a two-parsec jump while two utility boats handle passengers and cargo away from major docking facilities. A large crew, medical support, workshops, offices, repair drones, emergency power, and a capital computer support sustained high-volume operations.",
+  "Twenty beam-laser turrets and forty-five point-defense lasers provide substantial protection, with twenty-five hardpoints reserved for later fitting. Standard CE drives limit the immense hull to two-gravity maneuver, so it is a valuable logistical asset that depends on route planning and escorts rather than speed.",
+]
+
+[hull]
+id = "ship-4500"
+configuration = "standard"
+
+[armor]
+id = "crystaliron"
+layers = 1
+
+[drives]
+jump = "Z"
+maneuver = "Z"
+power = "Z"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+
+[computer]
+id = "capital-core-3"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "evade"
+level = 1
+
+[[software]]
+id = "intellect"
+
+[[software]]
+id = "internal-security-2"
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[software]]
+id = "point-defense-2"
+
+[[equipment]]
+id = "stateroom"
+quantity = 15
+
+[[equipment]]
+id = "crew-berthing"
+quantity = 10
+
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 11
+
+[[equipment]]
+id = "galley-space"
+quantity = 48
+
+[[equipment]]
+id = "mini-galley"
+quantity = 1
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 50
+
+[[equipment]]
+id = "armory"
+quantity = 1
+
+[[equipment]]
+id = "briefing-room"
+quantity = 1
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 2
+
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+
+[[equipment]]
+id = "office"
+quantity = 2
+
+[[equipment]]
+id = "small-office"
+quantity = 4
+
+[[equipment]]
+id = "ships-brig"
+quantity = 2
+
+[[equipment]]
+id = "workshop"
+quantity = 3
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 3
+
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 60000
+quantity = 1
+
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "beam-laser"]
+quantity = 20
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 45
+
+[[carried_craft]]
+tag = "ship-181"
+quantity = 2
+
+[[crew]]
+role = "command"
+quantity = 15
+
+[[crew]]
+role = "pilot"
+quantity = 2
+
+[[crew]]
+role = "navigator"
+quantity = 2
+
+[[crew]]
+role = "engineer"
+quantity = 6
+
+[[crew]]
+role = "sensors-operator"
+quantity = 4
+
+[[crew]]
+role = "medic"
+quantity = 3
+
+[[crew]]
+role = "turret-gunner"
+quantity = 20
+
+[[crew]]
+role = "flight-crew"
+quantity = 4
+
+[[crew]]
+role = "other"
+quantity = 23
+
+[assertions]
+hull_millitons = 4500000
+accounted_displacement_millitons = 4500000
+hull_points = 90
+structure_points = 90
+armor_points = 4
+jump_rating = 2
+thrust_g = 2
+fuel_millitons = 948000
+jump_fuel_millitons = 900000
+power_fuel_millitons = 48000
+hardpoints = 45
+hardpoints_used = 20
+point_defense_nodes = 45
+fire_control_millitons = 45000
+minimum_crew = 23
+crew = 79
+carried_craft_count = 2
+carried_craft_price_credits = 39080000
+hangar_capacity_millitons = 60000
+docking_capacity_millitons = 0
+construction_weeks = 348
+pre_discount_price_credits = 1422175000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 1422175000

@@ -1,0 +1,334 @@
+# Later construction refinements from the Earth-sector technology update.
+# Instantaneous quantum communications are intentionally absent: they are an
+# excluded rule in ct-ruleset.toml, not an installable component.
+
+schema_version = 1
+module_id = "ct.earth-tech-2350"
+module_revision = 1
+extends_module_id = "ct.af3.structures-and-components"
+source_ids = [
+  "ship-source-tech-update-2350",
+  "ship-source-a-f",
+  "cepheus-engine-srd-2016",
+]
+
+[[excluded_component]]
+id = "tech-fusion-power-fuel-cells"
+supersedes_id = "fusion-power-fuel-cells"
+min_tl = 8
+source_formula = "power-plant-volume-percent"
+source_volume_percent = 10
+source_minimum_millitons = 1000
+source_duration_days = 365
+source_replacement_credits_per_installed_ton = 12000
+reason = "Excluded: Cepheus Trader uses standard CE power-plant fuel and refueling."
+
+[[computer]]
+id = "tech-model-5"
+min_tl = 13
+rating = 30
+price_credits = 20000000
+[[computer]]
+id = "tech-model-5a"
+min_tl = 13
+rating = 35
+price_credits = 30000000
+[[computer]]
+id = "tech-capital-core-5"
+minimum_hull_tons = 2000
+maximum_hull_tons = 5000
+min_tl = 12
+rating = 70
+price_credits = 40000000
+displacement_included_in_bridge = true
+[[computer]]
+id = "tech-capital-core-6"
+minimum_hull_tons = 5001
+maximum_hull_tons = 10000
+min_tl = 12
+rating = 70
+price_credits = 40000000
+displacement_included_in_bridge = true
+[[computer]]
+id = "tech-capital-core-7"
+minimum_hull_tons = 10001
+maximum_hull_tons = 15000
+min_tl = 13
+rating = 80
+price_credits = 50000000
+displacement_included_in_bridge = true
+[[computer]]
+id = "tech-capital-core-8"
+minimum_hull_tons = 15001
+maximum_hull_tons = 20000
+min_tl = 13
+rating = 90
+price_credits = 70000000
+displacement_included_in_bridge = true
+
+[[electronics_upgrade]]
+id = "enhanced-signal-processing"
+min_tl = 13
+dm = 4
+displacement_millitons = 2000
+price_credits = 8000000
+range_band_bonus = 2
+immune_to_jamming = true
+[[electronics]]
+id = "countermeasures"
+min_tl = 13
+dm = 4
+displacement_millitons = 7000
+price_credits = 6000000
+
+[[excluded_component]]
+id = "quantum-entanglement-communicator"
+source_displacement_millitons = 8000
+source_price_credits = 50000000
+reason = "Cepheus Trader has no ansible or instantaneous interstellar communication."
+
+[[weapon]]
+id = "tech-turret-fusion-gun"
+min_tl = 13
+price_credits = 3000000
+optimum_range = "medium"
+damage = "3d6+3"
+[[weapon]]
+id = "tech-turret-particle-beam"
+min_tl = 13
+price_credits = 4000000
+optimum_range = "long"
+damage = "3d6+4"
+causes_crew_hit = true
+[[weapon]]
+id = "tech-turret-xray-laser"
+min_tl = 13
+price_credits = 3000000
+optimum_range = "short"
+damage = "3d6+2"
+causes_crew_hit = true
+
+[[bay]]
+id = "tech-heavy-particle-beam-bay"
+supersedes_id = "particle-beam-bay-500"
+min_tl = 11
+displacement_millitons = 501000
+price_credits = 100000000
+hardpoints = 5
+minimum_power_plant_rating = 3
+damage = "12d6+4"
+causes_crew_hit = true
+[[bay]]
+id = "tech-heavy-torpedo-bay"
+min_tl = 11
+displacement_millitons = 501000
+price_credits = 90000000
+hardpoints = 5
+minimum_power_plant_rating = 3
+salvo_units = 8
+[[bay]]
+id = "tech-heavy-meson-gun-bay"
+supersedes_id = "meson-gun-bay-500"
+min_tl = 11
+displacement_millitons = 501000
+price_credits = 220000000
+hardpoints = 5
+minimum_power_plant_rating = 3
+damage = "11d6+4"
+causes_crew_hit = true
+[[bay]]
+id = "tech-heavy-fusion-gun-bay"
+supersedes_id = "fusion-gun-bay-500"
+min_tl = 12
+displacement_millitons = 501000
+price_credits = 130000000
+hardpoints = 5
+minimum_power_plant_rating = 3
+damage = "11d6+4"
+
+[[ammunition]]
+id = "heavy-torpedo-basic"
+min_tl = 7
+units_per_twenty_tons = 2
+price_credits_per_unit = 25000
+damage = "6d6"
+[[ammunition]]
+id = "heavy-torpedo-nuclear"
+min_tl = 7
+units_per_twenty_tons = 2
+price_credits_per_unit = 400000
+damage = "9d6"
+[[ammunition]]
+id = "heavy-torpedo-ortillery"
+min_tl = 8
+units_per_twenty_tons = 2
+price_credits_per_unit = 300000
+damage = "12d6"
+[[ammunition]]
+id = "heavy-torpedo-multi-warhead"
+min_tl = 8
+units_per_twenty_tons = 2
+price_credits_per_unit = 600000
+damage = "9d6-times-4"
+[[ammunition]]
+id = "heavy-torpedo-bomb-pumped"
+min_tl = 9
+units_per_twenty_tons = 2
+price_credits_per_unit = 500000
+damage = "10d6"
+causes_crew_hit = true
+[[ammunition]]
+id = "heavy-torpedo-multi-warhead-bomb-pumped"
+min_tl = 10
+units_per_twenty_tons = 2
+price_credits_per_unit = 1000000
+damage = "10d6-times-4"
+causes_crew_hit = true
+
+[[spinal_weapon]]
+id = "tech-particle-spinal-f"
+min_tl = 12
+displacement_millitons = 1500000
+price_credits = 3500000000
+damage = 300
+[[spinal_weapon]]
+id = "tech-particle-spinal-g"
+min_tl = 13
+displacement_millitons = 3500000
+price_credits = 2500000000
+damage = 400
+[[spinal_weapon]]
+id = "tech-meson-spinal-d"
+min_tl = 13
+displacement_millitons = 14000000
+price_credits = 14000000000
+damage = 400
+[[spinal_weapon]]
+id = "tech-railgun-spinal-d"
+min_tl = 11
+displacement_millitons = 2000000
+price_credits = 4200000000
+damage = 200
+[[spinal_weapon]]
+id = "tech-railgun-spinal-e"
+min_tl = 12
+displacement_millitons = 4000000
+price_credits = 5400000000
+damage = 300
+[[spinal_weapon]]
+id = "tech-railgun-spinal-f"
+min_tl = 12
+displacement_millitons = 1500000
+price_credits = 5000000000
+damage = 200
+[[spinal_weapon]]
+id = "tech-railgun-spinal-g"
+min_tl = 13
+displacement_millitons = 4000000
+price_credits = 4500000000
+damage = 400
+
+[[screen]]
+id = "tech-magnetogravitic-screen-light"
+supersedes_id = "magnetogravitic-screen-light"
+min_tl = 13
+maximum_hull_code = "CE"
+displacement_millitons = 25000
+price_credits = 70000000
+mutually_exclusive_with = ["radiation-shielding"]
+cannot_operate_in_atmosphere = true
+[[screen]]
+id = "tech-magnetogravitic-screen-heavy"
+supersedes_id = "magnetogravitic-screen-heavy"
+min_tl = 13
+minimum_hull_code = "CF"
+displacement_millitons = 35000
+price_credits = 90000000
+mutually_exclusive_with = ["radiation-shielding"]
+cannot_operate_in_atmosphere = true
+[[screen]]
+id = "tech-meson-screen-light"
+min_tl = 13
+maximum_hull_code = "CE"
+displacement_millitons = 15000
+price_credits = 40000000
+[[screen]]
+id = "tech-meson-screen-heavy"
+min_tl = 13
+minimum_hull_code = "CF"
+displacement_millitons = 30000
+price_credits = 60000000
+
+[[equipment]]
+id = "ecm-drones"
+unit = "set-of-five"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 4000000
+requires_electronics_capability = "jamming"
+
+[[software]]
+id = "tech-evade-3"
+min_tl = 13
+rating = 20
+price_credits = 4000000
+[[software]]
+id = "tech-fire-control-5"
+min_tl = 14
+rating = 20
+price_credits = 12000000
+[[software]]
+id = "tech-advanced-fire-control-2"
+min_tl = 13
+rating = 20
+price_credits = 17000000
+[[software]]
+id = "tech-point-defense-3"
+min_tl = 13
+rating = 10
+price_credits = 22000000
+[[software]]
+id = "tech-point-defense-drone-3"
+min_tl = 12
+rating = 10
+price_credits = 25000000
+[[software]]
+id = "tech-point-defense-drone-4"
+min_tl = 13
+rating = 15
+price_credits = 35000000
+[[software]]
+id = "tech-defensive-screen"
+min_tl = 13
+rating = 10
+price_credits = 7000000
+dm = 1
+[[software]]
+id = "tech-auto-gunner-1"
+min_tl = 13
+rating = 5
+price_credits = 6000000
+[[software]]
+id = "tech-launch-solution-3"
+min_tl = 13
+rating = 10
+price_credits = 18000000
+[[software]]
+id = "tech-battlespace-system-2"
+min_tl = 13
+rating = 10
+price_credits = 22000000
+[[software]]
+id = "tech-electronic-warfare-2"
+min_tl = 13
+rating = 10
+price_credits = 20000000
+[[software]]
+id = "tech-auto-repair-2"
+min_tl = 13
+rating = 15
+price_credits = 12000000
+[[software]]
+id = "tech-internal-security-3"
+min_tl = 13
+rating = 10
+price_credits = 8000000

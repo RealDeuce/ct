@@ -1,0 +1,84 @@
+# Rule-derived reconstruction of the 100-ton dispatch trader.
+schema_version = 1
+design_id = "ct-source-ship-174"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-opportunity", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 12
+standard_design = false
+electronics = "basic-civilian"
+bridge_options = ["holographic-controls"]
+unused_fire_control_stations = 1
+cargo_millitons = 2500
+[catalog]
+catalog_id = 174
+tag = "ship-174"
+family_id = 169
+upgrade_path_id = 2
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Postmaster"
+primary_role = "dispatch-ship"
+secondary_roles = ["courier", "urgent-charter"]
+mission_tags = ["jump-2", "thrust-6", "passengers", "priority-cargo"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This 100-ton dispatch ship reaches six gravities while carrying four crew, four passengers, and a compact priority-cargo hold. Jump-2 range, an autodoc, and a reserved hardpoint support mail, urgent charters, and official dispatch work.",
+  "High acceleration consumes the volume a freighter would use for cargo, so ordinary low-margin hauling is unattractive. Its value lies in getting people, information, and small valuable loads to the next system quickly.",
+]
+[hull]
+id = "ship-100"
+configuration = "streamlined"
+[armor]
+id = "crystaliron"
+layers = 1
+[drives]
+jump = "A"
+maneuver = "C"
+power = "C"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "model-2"
+options = ["bis"]
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 1
+[[software]]
+id = "intellect"
+[[equipment]]
+id = "stateroom"
+quantity = 6
+[[equipment]]
+id = "galley-space"
+quantity = 8
+[[equipment]]
+id = "crew-recreation"
+quantity = 5
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+[[equipment]]
+id = "autodoc"
+quantity = 1
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[crew]]
+role = "command"
+quantity = 1
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 1

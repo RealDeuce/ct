@@ -1,0 +1,75 @@
+# Hand-authored reconstruction of the core CE 10-ton fighter.
+
+schema_version = 1
+design_id = "ce-fighter"
+revision = 1
+ruleset_id = "ce-srd-2016.small-craft"
+source_ids = ["cepheus-engine-srd-2016"]
+tech_level = 9
+standard_design = true
+electronics = "standard"
+additional_fire_control_stations = 1
+cargo_millitons = 0
+
+[catalog]
+catalog_id = 200
+tag = "ship-200"
+family_id = 200
+upgrade_path_id = 7
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Thermopylae"
+primary_role = "fighter"
+secondary_roles = ["system-defense", "interception"]
+mission_tags = ["combat", "escort", "point-defense"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This compact fighter is built for short-range interception and fleet defense. Six-gravity acceleration and a pulse laser let it engage small craft or reinforce a larger vessel's defensive screen without consuming hangar volume on accommodations it cannot use.",
+  "The design has only a cockpit, one week of fuel, and no cargo capacity. It is therefore effective close to a carrier, station, or planetary base, but it is a poor independent patrol craft and has no interstellar capability.",
+]
+
+[hull]
+id = "small-10"
+configuration = "streamlined"
+
+[drives]
+maneuver = "sC"
+power = "sL"
+
+[fuel]
+power_plant_weeks = 1
+
+[control]
+id = "one-person-cockpit"
+additional_passengers = 0
+
+[computer]
+id = "model-1"
+options = ["fib"]
+
+[[mounts]]
+id = "single-turret"
+weapons = ["pulse-laser"]
+fixed = true
+pop_up = false
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[assertions]
+hull_millitons = 10000
+accounted_displacement_millitons = 10000
+hull_points = 0
+structure_points = 1
+armor_points = 0
+thrust_g = 6
+fuel_millitons = 1500
+hardpoints = 1
+hardpoints_used = 1
+minimum_crew = 1
+crew = 1
+construction_weeks = 28

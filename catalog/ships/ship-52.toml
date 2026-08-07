@@ -1,0 +1,86 @@
+# Rule-derived reconstruction of the TL11 300-ton in-system cargo variant.
+schema_version = 1
+design_id = "ct-source-ship-52"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-plf", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+bridge_options = ["holographic-controls"]
+unused_fire_control_stations = 2
+cargo_millitons = 211500
+[catalog]
+catalog_id = 52
+tag = "ship-52"
+family_id = 49
+upgrade_path_id = 1
+progression_stage = "starter"
+status = "active"
+vessel_kind = "ship"
+display_name = "Hamburg I"
+primary_role = "system-freighter"
+secondary_roles = ["orbital-logistics", "bulk-cargo"]
+mission_tags = ["in-system", "thrust-2", "cargo", "merchant"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This 300-ton local freighter removes the interstellar drive and carries six crew, a beam-laser turret, an autodoc, workshop, emergency berth, and a maximum cargo hold. Two-gravity maneuver serves routine in-system freight movement.",
+  "It cannot leave the system under its own power, but avoids paying for jump machinery it does not use. The design is suited to mature planetary economies, orbital transfer, and fleet logistics.",
+]
+[hull]
+id = "ship-300"
+configuration = "standard"
+[armor]
+id = "crystaliron-whole-points"
+points = 2
+[drives]
+maneuver = "C"
+power = "C"
+[fuel]
+power_plant_weeks = 2
+[computer]
+id = "model-2"
+options = ["bis"]
+[[software]]
+id = "fire-control"
+level = 1
+[[equipment]]
+id = "stateroom"
+quantity = 6
+[[equipment]]
+id = "galley-space"
+quantity = 6
+[[equipment]]
+id = "crew-recreation"
+quantity = 10
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[equipment]]
+id = "autodoc"
+quantity = 1
+[[equipment]]
+id = "workshop"
+quantity = 1
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[mounts]]
+id = "single-turret"
+weapons = ["beam-laser"]
+quantity = 1
+[[crew]]
+role = "command"
+quantity = 1
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 2
+[[crew]]
+role = "turret-gunner"
+quantity = 1

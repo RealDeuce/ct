@@ -1,0 +1,73 @@
+# Compatible small-craft construction options from Anderson & Felix Third
+# Edition. Its conflicting multi-slot weapon model remains source-audit-only;
+# these accommodation and support installations do not alter CE's one
+# hardpoint rule.
+
+schema_version = 1
+ruleset_id = "cepheus-trader.small-craft"
+ruleset_revision = 1
+extends_ruleset_id = "ce-srd-2016.small-craft"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "cepheus-trader-2026",
+]
+
+[[hull_option]]
+id = "small-craft-radiation-shielding"
+min_tl = 8
+price_credits_per_hull_ton = 100000
+maximum_quantity = 1
+
+[[armor_extension]]
+id = "small-craft-titanium-steel-whole-points"
+base_armor_id = "titanium-steel"
+volume_basis_points_per_point = 250
+base_hull_price_basis_points_per_point = 250
+
+[[armor_extension]]
+id = "small-craft-crystaliron-whole-points"
+base_armor_id = "crystaliron"
+volume_basis_points_per_point = 125
+base_hull_price_basis_points_per_point = 500
+
+[[control]]
+id = "four-person-control-cabin"
+displacement_millitons = 12000
+crew_capacity = 4
+passenger_capacity = 0
+
+[[equipment]]
+id = "acceleration-couch"
+unit = "six-passenger-couch"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 10000
+capacity_per_unit = 6
+
+[[equipment]]
+id = "acceleration-seat"
+unit = "seat"
+displacement_millitons_per_unit = 500
+price_credits_per_unit = 30000
+capacity_per_unit = 1
+
+[[equipment]]
+id = "small-craft-cabin-space"
+unit = "passenger"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 50000
+capacity_per_unit = 1
+
+[[equipment]]
+id = "small-craft-stateroom"
+unit = "room"
+displacement_millitons_per_unit = 2000
+price_credits_per_unit = 250000
+capacity_per_unit = 2
+
+[[equipment]]
+id = "small-craft-fuel-processor"
+unit = "processor"
+displacement_millitons_per_unit = 500
+price_credits_per_unit = 100000
+processing_millitons_per_day_per_unit = 2000

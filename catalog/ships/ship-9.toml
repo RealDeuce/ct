@@ -1,0 +1,75 @@
+# Rule-derived reconstruction of the ten-ton early-model interceptor. The
+# incompatible expansion multi-slot armament is reduced to CE's single
+# hardpoint and CE's minimum one-week power-fuel allocation.
+
+schema_version = 1
+design_id = "ct-source-ship-9"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-acc", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+airlocks = 0
+cargo_millitons = 475
+
+[catalog]
+catalog_id = 9
+tag = "ship-9"
+family_id = 9
+upgrade_path_id = 7
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Icarus I"
+primary_role = "interceptor"
+secondary_roles = ["space-superiority"]
+mission_tags = ["fighter", "thrust-6", "carrier-based"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This ten-ton carrier fighter combines six-gravity acceleration, military sensors, light crystaliron armor, and a missile rack in the smallest practical CE combat hull. It is intended to intercept hostile craft and contest the immediate battlespace around a carrier or defended installation.",
+  "A single pilot, one-week endurance, and negligible stores leave no margin for independent operations. The design trades the source profile's incompatible secondary weapon slot for the one-hardpoint CE armament model and must rely on its carrier for transport, maintenance, and rearming.",
+]
+
+[hull]
+id = "small-10"
+configuration = "streamlined"
+
+[armor]
+id = "small-craft-crystaliron-whole-points"
+points = 1
+
+[drives]
+maneuver = "sC"
+power = "sC"
+
+[fuel]
+power_plant_weeks = 1
+
+[control]
+id = "one-person-cockpit"
+additional_passengers = 0
+
+[computer]
+id = "model-2"
+options = ["fib"]
+
+[[software]]
+id = "evade"
+level = 1
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[mounts]]
+id = "single-turret"
+weapons = ["missile-rack"]
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 12
+
+[[crew]]
+role = "pilot"
+quantity = 1

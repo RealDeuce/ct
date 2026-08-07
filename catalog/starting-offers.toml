@@ -1,0 +1,307 @@
+# Canonical design selections for the 3 x 3 x 3 new-player offer matrix.
+# These records choose immutable catalog designs. Financing, title, authority,
+# reserves, staffing, and refit options belong to later versioned offer terms.
+
+schema_version = 1
+catalog_revision = 2
+offer_count = 27
+open_game_content_designations = [
+  "The complete original starting-offer design mapping, identifiers, package classifications, and selection rationales are Open Game Content.",
+]
+
+[[offer]]
+offer_id = 1
+tag = "starting-offer-1"
+home_path_id = 1
+trade_emphasis = "trade"
+institutional_order = "orderly"
+career = "trader"
+package_kind = "independent-commercial-charter"
+ship_tag = "ship-192"
+selection_rationale = "The economical Hudson is the orderly commercial baseline: an unarmed J-2 merchant with 53 tons of cargo and mixed passenger capacity."
+
+[[offer]]
+offer_id = 2
+tag = "starting-offer-2"
+home_path_id = 1
+trade_emphasis = "trade"
+institutional_order = "orderly"
+career = "privateer"
+package_kind = "private-armed-charter"
+ship_tag = "ship-45"
+selection_rationale = "The Sinbad keeps a useful 42-ton hold while adding J-2 reach, armor, and a mixed defensive turret for narrowly licensed escort and private-security work."
+
+[[offer]]
+offer_id = 3
+tag = "starting-offer-3"
+home_path_id = 1
+trade_emphasis = "trade"
+institutional_order = "orderly"
+career = "navy"
+package_kind = "public-service-commission"
+ship_tag = "ship-53"
+selection_rationale = "The compact Challenger replaces the never-admitted Jump customs-cutter refit with a real J-2 armed courier suited to inspection, survey, rescue, and customs dispatch."
+
+[[offer]]
+offer_id = 4
+tag = "starting-offer-4"
+home_path_id = 2
+trade_emphasis = "trade"
+institutional_order = "contested"
+career = "trader"
+package_kind = "independent-commercial-charter"
+ship_tag = "ship-161"
+selection_rationale = "The Hatteras is the canonical name of the selected 300-ton merchant design: J-2, self-refueling, armored, and able to combine 67.5 tons of cargo with passenger work."
+
+[[offer]]
+offer_id = 5
+tag = "starting-offer-5"
+home_path_id = 2
+trade_emphasis = "trade"
+institutional_order = "contested"
+career = "privateer"
+package_kind = "private-armed-charter"
+ship_tag = "ship-45"
+selection_rationale = "The Sinbad is the canonical 200-ton free-trader choice. Its unused hardpoint and charter terms support the intended privateer package while the admitted design retains 42 tons of cargo."
+
+[[offer]]
+offer_id = 6
+tag = "starting-offer-6"
+home_path_id = 2
+trade_emphasis = "trade"
+institutional_order = "contested"
+career = "navy"
+package_kind = "public-service-commission"
+ship_tag = "ship-166"
+selection_rationale = "The Nemo is the catalogued security and patrol member of its merchant family, retaining limited cargo while supporting boarding, customs, and convoy enforcement."
+
+[[offer]]
+offer_id = 7
+tag = "starting-offer-7"
+home_path_id = 3
+trade_emphasis = "trade"
+institutional_order = "chaotic"
+career = "trader"
+package_kind = "independent-commercial-charter"
+ship_tag = "ship-193"
+selection_rationale = "The Crusoe is the self-fueling J-2 frontier baseline: a freight-first merchant with 92 tons of cargo, supplemental passenger capacity, and enough armament for commercial survival where institutions are weak."
+
+[[offer]]
+offer_id = 8
+tag = "starting-offer-8"
+home_path_id = 3
+trade_emphasis = "trade"
+institutional_order = "chaotic"
+career = "privateer"
+package_kind = "private-armed-charter"
+ship_tag = "ship-66"
+selection_rationale = "The Drake supplies the old frontier-raider role as a real J-2, thrust-four catalog design with 42.5 tons of prize or trading cargo and carried boarding craft."
+
+[[offer]]
+offer_id = 9
+tag = "starting-offer-9"
+home_path_id = 3
+trade_emphasis = "trade"
+institutional_order = "chaotic"
+career = "navy"
+package_kind = "public-service-commission"
+ship_tag = "ship-38"
+selection_rationale = "The lightly armed Marco Polo replaces the hypothetical militia refit: a weak polity commissions an ordinary J-2 trader with a large hold as an escort, supply ship, and customs auxiliary."
+
+[[offer]]
+offer_id = 10
+tag = "starting-offer-10"
+home_path_id = 4
+trade_emphasis = "mixed"
+institutional_order = "orderly"
+career = "trader"
+package_kind = "independent-commercial-charter"
+ship_tag = "ship-45"
+selection_rationale = "The Sinbad gives a merchant in a regulated mixed region J-2 access, modest armor, passenger revenue, and one defensive turret without imposing a warship establishment."
+
+[[offer]]
+offer_id = 11
+tag = "starting-offer-11"
+home_path_id = 4
+trade_emphasis = "mixed"
+institutional_order = "orderly"
+career = "privateer"
+package_kind = "private-armed-charter"
+ship_tag = "ship-72"
+selection_rationale = "The Smollett is the canonical light escort and Q-ship selection, combining thrust four, boarding support, an armed merchant profile, and 48 tons of prize or commercial cargo."
+
+[[offer]]
+offer_id = 12
+tag = "starting-offer-12"
+home_path_id = 4
+trade_emphasis = "mixed"
+institutional_order = "orderly"
+career = "navy"
+package_kind = "public-service-commission"
+ship_tag = "ship-204"
+selection_rationale = "The Perry is a compact J-2 patrol frigate with fighters, marines, advanced sensors, and enough mission cargo for sustained customs, escort, and interception service."
+
+[[offer]]
+offer_id = 13
+tag = "starting-offer-13"
+home_path_id = 5
+trade_emphasis = "mixed"
+institutional_order = "contested"
+career = "trader"
+package_kind = "independent-commercial-charter"
+ship_tag = "ship-161"
+selection_rationale = "The Hatteras offers a contested-region merchant J-2 reach, armor, self-refueling, mixed revenue, and 67.5 tons of cargo without the payroll of a dedicated combatant."
+
+[[offer]]
+offer_id = 14
+tag = "starting-offer-14"
+home_path_id = 5
+trade_emphasis = "mixed"
+institutional_order = "contested"
+career = "privateer"
+package_kind = "private-armed-charter"
+ship_tag = "ship-166"
+selection_rationale = "The Nemo is the native Marque Marine starter: a patrol and boarding conversion whose title, prize rights, and limited commercial capacity place it squarely between merchant and navy play."
+
+[[offer]]
+offer_id = 15
+tag = "starting-offer-15"
+home_path_id = 5
+trade_emphasis = "mixed"
+institutional_order = "contested"
+career = "navy"
+package_kind = "public-service-commission"
+ship_tag = "ship-90"
+selection_rationale = "The Hawkwood supplies a serious J-2 patrol command with thrust four, armor eight, point defense, carried craft, and enough cargo to sustain distant anti-raider operations."
+
+[[offer]]
+offer_id = 16
+tag = "starting-offer-16"
+home_path_id = 6
+trade_emphasis = "mixed"
+institutional_order = "chaotic"
+career = "trader"
+package_kind = "independent-commercial-charter"
+ship_tag = "ship-168"
+selection_rationale = "The fast armed Robur lets a nominal merchant survive irregular authorities and predatory traffic while retaining enough cargo and passenger capacity for real trading progression."
+
+[[offer]]
+offer_id = 17
+tag = "starting-offer-17"
+home_path_id = 6
+trade_emphasis = "mixed"
+institutional_order = "chaotic"
+career = "privateer"
+package_kind = "private-armed-charter"
+ship_tag = "ship-140"
+selection_rationale = "The native Rogue Tide Silver is a thrust-four boarding raider with 44.5 tons of cargo, suitable for a syndicate, clan, doubtful letter of marque, or outright piracy."
+
+[[offer]]
+offer_id = 18
+tag = "starting-offer-18"
+home_path_id = 6
+trade_emphasis = "mixed"
+institutional_order = "chaotic"
+career = "navy"
+package_kind = "public-service-commission"
+ship_tag = "ship-74"
+selection_rationale = "The Marque gives a fragmented authority an armed J-2 brig with boarding craft and point defense; local commission rather than hull design distinguishes it from a private raider."
+
+[[offer]]
+offer_id = 19
+tag = "starting-offer-19"
+home_path_id = 7
+trade_emphasis = "combat"
+institutional_order = "orderly"
+career = "trader"
+package_kind = "independent-commercial-charter"
+ship_tag = "ship-61"
+selection_rationale = "The Argosy preserves the old naval-supply merchant role with J-2 reach and 182 tons of cargo, but its light armament leaves it dependent on convoy law and escort infrastructure."
+
+[[offer]]
+offer_id = 20
+tag = "starting-offer-20"
+home_path_id = 7
+trade_emphasis = "combat"
+institutional_order = "orderly"
+career = "privateer"
+package_kind = "private-armed-charter"
+ship_tag = "ship-74"
+selection_rationale = "The Marque is a formal escort brig whose boarding capability and prize work fit a tightly regulated letter of marque without granting the player title to a major fleet ship."
+
+[[offer]]
+offer_id = 21
+tag = "starting-offer-21"
+home_path_id = 7
+trade_emphasis = "combat"
+institutional_order = "orderly"
+career = "navy"
+package_kind = "public-service-commission"
+ship_tag = "ship-195"
+selection_rationale = "The native Admiralty Line Decatur is the regular-navy starter: a J-2, thrust-six corvette with advanced sensors, marines, and missile armament under institutional ownership."
+
+[[offer]]
+offer_id = 22
+tag = "starting-offer-22"
+home_path_id = 8
+trade_emphasis = "combat"
+institutional_order = "contested"
+career = "trader"
+package_kind = "independent-commercial-charter"
+ship_tag = "ship-168"
+selection_rationale = "The Robur replaces the never-admitted armored convoy-merchant refit with a real fast armed trader whose smaller hold prevents combat-region commerce from becoming the strongest pure-trade start."
+
+[[offer]]
+offer_id = 23
+tag = "starting-offer-23"
+home_path_id = 8
+trade_emphasis = "combat"
+institutional_order = "contested"
+career = "privateer"
+package_kind = "private-armed-charter"
+ship_tag = "ship-87"
+selection_rationale = "The Revenant is a heavy J-2 raider with boarding craft, troop capacity, and limited cargo; disputed title and large crew obligations keep its nominal value from becoming immediate player wealth."
+
+[[offer]]
+offer_id = 24
+tag = "starting-offer-24"
+home_path_id = 8
+trade_emphasis = "combat"
+institutional_order = "contested"
+career = "navy"
+package_kind = "public-service-commission"
+ship_tag = "ship-95"
+selection_rationale = "The Cook is the canonical current patrol-corvette selection: a 600-ton J-2, thrust-five command whose institutional ownership absorbs the cost of its crew and combat systems."
+
+[[offer]]
+offer_id = 25
+tag = "starting-offer-25"
+home_path_id = 9
+trade_emphasis = "combat"
+institutional_order = "chaotic"
+career = "trader"
+package_kind = "independent-commercial-charter"
+ship_tag = "ship-140"
+selection_rationale = "The Silver replaces the hypothetical blockade-runner refit with an admitted fast raider carrying 44.5 tons; heavy financing and crew shares make commerce possible without pretending it is an efficient freighter."
+
+[[offer]]
+offer_id = 26
+tag = "starting-offer-26"
+home_path_id = 9
+trade_emphasis = "combat"
+institutional_order = "chaotic"
+career = "privateer"
+package_kind = "private-armed-charter"
+ship_tag = "ship-206"
+selection_rationale = "The corrected Blackbeard provides the full independent-raider path with J-2 range, six turrets, fighters, boarding craft, detention space, and 55 tons for prizes or trade."
+
+[[offer]]
+offer_id = 27
+tag = "starting-offer-27"
+home_path_id = 9
+trade_emphasis = "combat"
+institutional_order = "chaotic"
+career = "navy"
+package_kind = "public-service-commission"
+ship_tag = "ship-87"
+selection_rationale = "The Revenant is the canonical longship selection. The same heavy raider hull becomes a state, clan, or warlord command through title, orders, logistics, and local law rather than a fictitious separate refit."

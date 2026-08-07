@@ -1,0 +1,273 @@
+# Rule-derived reconstruction of the four-hundred-ton patrol ship. Ordinary
+# Jump-1 replaces its skip-only Zimm installation. The full hangar becomes a
+# rugged docking clamp, preserving the carried launch while paying for real
+# jump fuel; gatling point defense is normalized to TL11 laser nodes.
+
+schema_version = 1
+design_id = "ct-source-ship-186"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-tech-update-2350",
+  "ship-source-wendy-earth-3",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+bridge_options = ["holographic-controls"]
+power_options = ["emergency-power"]
+magazine_options = ["improved-magazine"]
+external_load_millitons = 20000
+cargo_millitons = 900
+
+[catalog]
+catalog_id = 186
+tag = "ship-186"
+family_id = 186
+upgrade_path_id = 8
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Cerberus"
+primary_role = "patrol-ship"
+secondary_roles = ["system-defense", "interdiction"]
+mission_tags = ["jump-1", "thrust-6", "particle-bay", "point-defense"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This four-hundred-ton patrol ship combines six-gravity acceleration, heavy armor, radiation shielding, advanced sensors, emergency power, and a one-parsec jump radius. A fast launch rides on an external clamp for boarding, personnel transfer, and utility work without consuming pressurized hangar volume.",
+  "A particle-beam bay and particle-beam barbette provide heavy striking power, backed by laser, missile, and sandcaster turrets and four point-defense lasers. The dense military fit, large crew, and short jump radius make it a local enforcement and system-defense asset rather than an independent long-range cruiser.",
+]
+
+[hull]
+id = "ship-400"
+configuration = "streamlined"
+
+[armor]
+id = "crystaliron-whole-points"
+points = 10
+
+[[hull_options]]
+id = "radiation-shielding"
+quantity = 1
+
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "bridge"
+
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "drives"
+
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "ordnance-magazines"
+
+[drives]
+jump = "C"
+maneuver = "Q"
+power = "Q"
+
+[fuel]
+jump_distance = 1
+jump_count = 1
+power_plant_weeks = 2
+
+[computer]
+id = "model-3"
+options = ["bis", "fib"]
+
+[[software]]
+id = "jump-control"
+level = 1
+
+[[software]]
+id = "evade"
+level = 2
+
+[[software]]
+id = "fire-control"
+level = 2
+
+[[software]]
+id = "intellect"
+
+[[software]]
+id = "internal-security-2"
+
+[[software]]
+id = "point-defense-1"
+
+[[equipment]]
+id = "compact-stateroom"
+quantity = 4
+
+[[equipment]]
+id = "crew-berthing"
+quantity = 4
+
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 4
+
+[[equipment]]
+id = "galley-space"
+quantity = 4
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 4
+
+[[equipment]]
+id = "mini-galley"
+quantity = 1
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 2
+
+[[equipment]]
+id = "armory"
+quantity = 1
+
+[[equipment]]
+id = "briefing-room"
+quantity = 1
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 4
+
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+
+[[equipment]]
+id = "ships-brig"
+quantity = 2
+
+[[equipment]]
+id = "workshop"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 2
+
+[[docking_clamps]]
+id = "docking-clamp-30"
+quantity = 1
+
+[[bays]]
+id = "particle-beam-bay"
+quantity = 1
+
+[[barbettes]]
+id = "particle-beam-barbette"
+quantity = 1
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "sandcaster"]
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 4
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 120
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 40
+
+[[carried_craft]]
+tag = "ship-185"
+quantity = 1
+
+[[crew]]
+role = "command"
+quantity = 5
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 4
+
+[[crew]]
+role = "sensors-operator"
+quantity = 2
+
+[[crew]]
+role = "medic"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 2
+
+[[crew]]
+role = "bay-gunner"
+quantity = 2
+
+[[crew]]
+role = "flight-crew"
+quantity = 2
+
+[[crew]]
+role = "marine"
+quantity = 6
+
+[[crew]]
+role = "other"
+quantity = 4
+
+[assertions]
+hull_millitons = 400000
+effective_displacement_millitons = 420000
+accounted_displacement_millitons = 400000
+hull_points = 8
+structure_points = 8
+armor_points = 10
+jump_rating = 1
+thrust_g = 6
+fuel_millitons = 72000
+jump_fuel_millitons = 42000
+power_fuel_millitons = 30000
+hardpoints = 4
+hardpoints_used = 4
+point_defense_nodes = 4
+fire_control_millitons = 8000
+minimum_crew = 7
+crew = 30
+carried_craft_count = 1
+carried_craft_displacement_millitons = 20000
+carried_craft_price_credits = 13690000
+hangar_capacity_millitons = 0
+docking_capacity_millitons = 30000
+construction_weeks = 60
+pre_discount_price_credits = 385680000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 385680000

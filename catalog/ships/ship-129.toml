@@ -1,0 +1,213 @@
+# Naval replenishment conversion of ship-128. Fuel cells are replaced by two
+# weeks of ordinary CE power fuel and all accommodations and support systems
+# use normalized rules. The forward hold adds an underway-replenishment system.
+
+schema_version = 1
+design_id = "ct-source-ship-129"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-contessa",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+bridge_options = ["holographic-controls"]
+magazine_options = ["improved-magazine"]
+cargo_millitons = 244000
+
+[catalog]
+catalog_id = 129
+tag = "ship-129"
+family_id = 128
+upgrade_path_id = 7
+progression_stage = "light"
+status = "active"
+vessel_kind = "starship"
+display_name = "Bukhara"
+primary_role = "replenishment-ship"
+secondary_roles = ["fleet-tanker", "armed-logistics"]
+mission_tags = ["freight", "unrep", "jump-2", "thrust-3", "point-defense"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This fleet-support conversion carries a large replenishment load and can transfer stores while underway. Three-gravity acceleration and a two-parsec jump radius let it accompany mobile forces, while military sensors, a medical bed, repair drones, workshop, office, and generous crew accommodation sustain a twenty-person complement.",
+  "The same heavy laser battery and point-defense array as the commercial hull allow it to survive near contested routes, but it is a valuable support target rather than a line combatant. Its transfer gear and larger crew reduce cargo efficiency slightly in exchange for operational flexibility.",
+]
+
+[hull]
+id = "ship-600"
+configuration = "standard"
+
+[armor]
+id = "crystaliron"
+layers = 1
+
+[drives]
+jump = "H"
+maneuver = "J"
+power = "J"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+
+[computer]
+id = "model-3"
+options = ["bis"]
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "intellect"
+
+[[software]]
+id = "internal-security-1"
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[software]]
+id = "point-defense-1"
+
+[[equipment]]
+id = "stateroom"
+quantity = 6
+
+[[equipment]]
+id = "crew-berthing"
+quantity = 2
+
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 2
+
+[[equipment]]
+id = "galley-space"
+quantity = 16
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 20
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 2
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+
+[[equipment]]
+id = "office"
+quantity = 1
+
+[[equipment]]
+id = "workshop"
+quantity = 1
+
+[[equipment]]
+id = "underway-replenishment-system"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 5
+
+[[mounts]]
+id = "single-turret"
+weapons = ["sandcaster"]
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 6
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 20
+
+[[crew]]
+role = "command"
+quantity = 4
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 3
+
+[[crew]]
+role = "sensors-operator"
+quantity = 2
+
+[[crew]]
+role = "medic"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 6
+
+[[crew]]
+role = "other"
+quantity = 2
+
+[assertions]
+hull_millitons = 600000
+accounted_displacement_millitons = 600000
+hull_points = 12
+structure_points = 12
+armor_points = 4
+jump_rating = 2
+thrust_g = 3
+fuel_millitons = 138000
+jump_fuel_millitons = 120000
+power_fuel_millitons = 18000
+hardpoints = 6
+hardpoints_used = 6
+point_defense_nodes = 6
+fire_control_millitons = 6000
+minimum_crew = 9
+crew = 20
+carried_craft_count = 0
+carried_craft_price_credits = 0
+hangar_capacity_millitons = 0
+docking_capacity_millitons = 0
+construction_weeks = 76
+pre_discount_price_credits = 308710000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 308710000

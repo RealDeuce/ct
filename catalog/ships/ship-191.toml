@@ -1,0 +1,281 @@
+# Rule-derived reconstruction of the 2,500-ton exploration carrier. Its
+# intermediate hull uses the printed next CE bracket, ordinary Jump replaces
+# Zimm drive, and prohibited long-duration fuel cells become two weeks of
+# power fuel. Source TL12 survey sensors are downgraded to TL11 advanced
+# sensors; the unpriced mineralogy suite is not silently assigned a value.
+
+schema_version = 1
+design_id = "ct-source-ship-191"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-tech-update-2350",
+  "ship-source-wendy-earth-4",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+bridge_options = ["holographic-controls"]
+power_options = ["emergency-power"]
+magazine_options = ["improved-magazine"]
+external_load_millitons = 80000
+cargo_millitons = 2000
+
+[catalog]
+catalog_id = 191
+tag = "ship-191"
+family_id = 191
+upgrade_path_id = 4
+progression_stage = "heavy"
+status = "active"
+vessel_kind = "starship"
+display_name = "Faraday"
+primary_role = "exploration-carrier"
+secondary_roles = ["survey", "science-support"]
+mission_tags = ["jump-2", "survey", "parasite-scouts", "laboratories"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This 2,500-ton exploration carrier supports two long-range scouts, a survey cutter, and a utility boat alongside laboratories, cartography, sensor control, workshops, gardens, medical support, and offices. Two consecutive two-parsec jumps, extensive fuel processing, repair drones, and emergency power allow a large scientific expedition to operate far from developed ports.",
+  "Twenty laser turrets, five mixed defensive turrets, and twenty-five point-defense lasers protect the expedition without turning it into a line warship. The large hangar and specialist accommodation make it a capable mobile survey base, but its size, crew, carried craft, and mission facilities impose major operating and logistical costs.",
+]
+
+[hull]
+id = "ship-2500"
+configuration = "standard"
+
+[armor]
+id = "crystaliron-whole-points"
+points = 2
+
+[[hull_options]]
+id = "self-sealing"
+quantity = 1
+
+[drives]
+jump = "T"
+maneuver = "T"
+power = "T"
+
+[fuel]
+jump_distance = 2
+jump_count = 2
+power_plant_weeks = 2
+
+[computer]
+id = "capital-core-3"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[software]]
+id = "intellect"
+
+[[software]]
+id = "internal-security-2"
+
+[[software]]
+id = "point-defense-1"
+
+[[equipment]]
+id = "stateroom"
+quantity = 22
+
+[[equipment]]
+id = "crew-berthing"
+quantity = 4
+
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 5
+
+[[equipment]]
+id = "galley-space"
+quantity = 54
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 50
+
+[[equipment]]
+id = "mini-galley"
+quantity = 1
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 20
+
+[[equipment]]
+id = "briefing-room"
+quantity = 1
+
+[[equipment]]
+id = "astrographic-cartography-room"
+quantity = 1
+
+[[equipment]]
+id = "office"
+quantity = 6
+
+[[equipment]]
+id = "small-office"
+quantity = 2
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 2
+
+[[equipment]]
+id = "garden-space"
+quantity = 32
+
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+
+[[equipment]]
+id = "laboratory"
+quantity = 4
+
+[[equipment]]
+id = "sensor-control-room"
+quantity = 1
+
+[[equipment]]
+id = "workshop"
+quantity = 4
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 600000
+quantity = 1
+
+[[docking_clamps]]
+id = "docking-clamp-30"
+quantity = 1
+
+[[docking_clamps]]
+id = "docking-clamp-90"
+quantity = 1
+
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "beam-laser"]
+quantity = 20
+
+[[mounts]]
+id = "double-turret"
+weapons = ["missile-rack", "sandcaster"]
+quantity = 5
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 25
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 120
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 200
+
+[[carried_craft]]
+tag = "ship-190"
+quantity = 2
+
+[[carried_craft]]
+tag = "ship-187"
+quantity = 1
+
+[[carried_craft]]
+tag = "ship-188"
+quantity = 1
+
+[[crew]]
+role = "command"
+quantity = 10
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 8
+
+[[crew]]
+role = "sensors-operator"
+quantity = 4
+
+[[crew]]
+role = "medic"
+quantity = 2
+
+[[crew]]
+role = "turret-gunner"
+quantity = 25
+
+[[crew]]
+role = "flight-crew"
+quantity = 4
+
+[[crew]]
+role = "other"
+quantity = 11
+
+[assertions]
+hull_millitons = 2500000
+effective_displacement_millitons = 2580000
+accounted_displacement_millitons = 2500000
+hull_points = 50
+structure_points = 50
+armor_points = 2
+jump_rating = 2
+thrust_g = 2
+fuel_millitons = 1068000
+jump_fuel_millitons = 1032000
+power_fuel_millitons = 36000
+hardpoints = 25
+hardpoints_used = 25
+point_defense_nodes = 25
+fire_control_millitons = 25000
+minimum_crew = 28
+crew = 66
+carried_craft_count = 4
+carried_craft_displacement_millitons = 680000
+carried_craft_price_credits = 397055000
+hangar_capacity_millitons = 600000
+docking_capacity_millitons = 120000
+construction_weeks = 268
+pre_discount_price_credits = 1511425000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 1511425000

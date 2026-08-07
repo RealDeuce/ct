@@ -1,0 +1,140 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to package
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: "2"
+
+jobs:
+  unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            runner: '["self-hosted", "linux", "amd64"]'
+          - platform: linux-arm64
+            runner: '["self-hosted", "linux", "arm64"]'
+          - platform: macos-arm64
+            runner: '["self-hosted", "macos", "arm64"]'
+          - platform: macos-x86_64
+            runner: '["self-hosted", "macos", "x86_64"]'
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Configure, test, and package
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}/archive/refs/tags/${{ inputs.tag || github.ref_name }}.tar.gz
+        run: |
+          cmake -S client -B build/release -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCT_PORTABLE_CLIENT=ON \
+            -DCT_SOURCE_RELEASE_URL="$SOURCE_URL"
+          cmake --build build/release
+          ctest --test-dir build/release --output-on-failure
+          cpack --config build/release/CPackConfig.cmake -B release-artifacts
+          python3 tools/verify_client_package.py release-artifacts/*.* \
+            --version 0.7.0 --run --require-source-url
+          python3 tools/inspect_client_dependencies.py \
+            build/release/cepheus-trader-door build/release/cepheus-trader-sysop \
+            --report release-artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt
+          python3 tools/collect_release_artifacts.py build/release release-artifacts --label ${{ matrix.platform }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: release-artifacts/
+          if-no-files-found: error
+
+  freebsd:
+    runs-on: [self-hosted, freebsd14, amd64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Configure, test, and package
+        env:
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}/archive/refs/tags/${{ inputs.tag || github.ref_name }}.tar.gz
+        run: |
+          cmake -S client -B build/release -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCT_PORTABLE_CLIENT=ON -DCT_SOURCE_RELEASE_URL="$SOURCE_URL"
+          cmake --build build/release
+          ctest --test-dir build/release --output-on-failure
+          cpack --config build/release/CPackConfig.cmake -B release-artifacts
+          python3 tools/verify_client_package.py release-artifacts/*.tar.xz --version 0.7.0 --run --require-source-url
+          python3 tools/inspect_client_dependencies.py build/release/cepheus-trader-door build/release/cepheus-trader-sysop --report release-artifacts/DYNAMIC-DEPENDENCIES-freebsd14-amd64.txt
+          python3 tools/collect_release_artifacts.py build/release release-artifacts --label freebsd14-amd64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-freebsd14-amd64
+          path: release-artifacts/
+
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x86_64
+            runner: '["self-hosted", "windows", "x86_64"]'
+            toolchain: client/cmake/toolchains/mingw-x86_64.cmake
+          - platform: windows-x86
+            runner: '["self-hosted", "windows", "x86"]'
+            toolchain: client/cmake/toolchains/mingw-i686.cmake
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Configure, test, and package
+        shell: pwsh
+        env:
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}/archive/refs/tags/${{ inputs.tag || github.ref_name }}.tar.gz
+        run: |
+          cmake -S client -B build/release -G Ninja `
+            "-DCMAKE_TOOLCHAIN_FILE=${{ matrix.toolchain }}" `
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DCT_PORTABLE_CLIENT=ON `
+            "-DCT_SOURCE_RELEASE_URL=$env:SOURCE_URL"
+          cmake --build build/release --config RelWithDebInfo
+          ctest --test-dir build/release -C RelWithDebInfo --output-on-failure
+          cpack --config build/release/CPackConfig.cmake -C RelWithDebInfo -B release-artifacts
+          $archive = Get-ChildItem release-artifacts/*.zip | Select-Object -First 1
+          python tools/verify_client_package.py $archive.FullName --version 0.7.0 --run --require-source-url
+          python tools/inspect_client_dependencies.py build/release/cepheus-trader-door.exe build/release/cepheus-trader-sysop.exe --report "release-artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt"
+          python tools/collect_release_artifacts.py build/release release-artifacts --label ${{ matrix.platform }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: release-artifacts/
+          if-no-files-found: error
+
+  publish:
+    needs: [unix, freebsd, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Create release and upload assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --generate-notes --title "Cepheus Trader $RELEASE_TAG"
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber

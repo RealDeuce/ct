@@ -1,0 +1,232 @@
+# Rule-derived reconstruction of the 3,800-ton strike-carrier block. The
+# source's four-gravity performance exceeds the standard-drive table at this
+# hull size and is normalized to two gravities; one-year fuel cells, heavy
+# railguns, and TL12-only screens and defensive weapons are removed.
+
+schema_version = 1
+design_id = "ct-source-ship-120"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-acc", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+bridge_options = ["command-bridge", "holographic-controls"]
+power_options = ["emergency-power"]
+magazine_options = ["improved-magazine"]
+cargo_millitons = 175360
+
+[catalog]
+catalog_id = 120
+tag = "ship-120"
+family_id = 117
+upgrade_path_id = 9
+progression_stage = "heavy"
+status = "active"
+vessel_kind = "starship"
+display_name = "Mitchell"
+primary_role = "strike-carrier"
+secondary_roles = ["fighter-operations", "anti-ship-strike"]
+mission_tags = ["jump-2", "thrust-2", "carrier", "strike-fighters"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This 3,800-ton strike carrier fields fifty interceptors, fifteen two-seat strike fighters, two launches, and two utility boats. Dedicated launch and recovery decks, extensive hangar and workshop capacity, and accommodation for 413 personnel support a mixed combat air group.",
+  "Twenty-six turrets and thirty-three laser nodes protect the carrier, while its strike craft deliver the offensive weight. Standard CE drives limit the normalized ship to two gravities, making escort, scouting, and disciplined flight operations essential to its survival.",
+]
+
+[hull]
+id = "ship-3800"
+configuration = "standard"
+[armor]
+id = "crystaliron-whole-points"
+points = 4
+[[hull_options]]
+id = "radiation-shielding"
+quantity = 1
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "bridge"
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "drives"
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "ordnance-magazines"
+
+[drives]
+jump = "Y"
+maneuver = "Z"
+power = "Z"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "capital-core-3"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "advanced-fire-control-1"
+[[software]]
+id = "battlespace-system-1"
+[[software]]
+id = "electronic-warfare-1"
+[[software]]
+id = "evade"
+level = 2
+[[software]]
+id = "intellect"
+[[software]]
+id = "internal-security-2"
+[[software]]
+id = "launch-solution-2"
+[[software]]
+id = "point-defense-2"
+
+[[equipment]]
+id = "stateroom"
+quantity = 44
+[[equipment]]
+id = "crew-berthing"
+quantity = 41
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 41
+[[equipment]]
+id = "galley-space"
+quantity = 413
+[[equipment]]
+id = "crew-recreation"
+quantity = 150
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+[[equipment]]
+id = "fuel-processor"
+quantity = 15
+[[equipment]]
+id = "armory"
+quantity = 4
+[[equipment]]
+id = "briefing-room"
+quantity = 6
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 10
+[[equipment]]
+id = "gymnasium"
+quantity = 4
+[[equipment]]
+id = "interrogation-room-large"
+quantity = 1
+[[equipment]]
+id = "office"
+quantity = 12
+[[equipment]]
+id = "operating-theater"
+quantity = 1
+[[equipment]]
+id = "ships-brig"
+quantity = 6
+[[equipment]]
+id = "small-office"
+quantity = 15
+[[equipment]]
+id = "theater-seat"
+quantity = 80
+[[equipment]]
+id = "workshop"
+quantity = 16
+[[equipment]]
+id = "powered-armor-maintenance-workshop"
+quantity = 25
+
+[[parameterized_equipment]]
+id = "commissary"
+crew = 413
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-ward"
+beds = 12
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 825000
+quantity = 1
+[[launch_facilities]]
+id = "flight-deck"
+largest_craft_millitons = 15000
+quantity = 2
+[[launch_facilities]]
+id = "recovery-deck"
+largest_craft_millitons = 15000
+quantity = 1
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 14
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "sandcaster"]
+quantity = 12
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 33
+[[ammunition]]
+id = "standard-missile"
+quantity = 432
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 768
+
+[[carried_craft]]
+tag = "ship-11"
+quantity = 50
+[[carried_craft]]
+tag = "ship-25"
+quantity = 15
+[[carried_craft]]
+tag = "ship-185"
+quantity = 2
+[[carried_craft]]
+tag = "ship-187"
+quantity = 2
+
+[[crew]]
+role = "command"
+quantity = 120
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 15
+[[crew]]
+role = "sensors-operator"
+quantity = 8
+[[crew]]
+role = "medic"
+quantity = 12
+[[crew]]
+role = "turret-gunner"
+quantity = 26
+[[crew]]
+role = "flight-crew"
+quantity = 145
+[[crew]]
+role = "marine"
+quantity = 25
+[[crew]]
+role = "other"
+quantity = 60

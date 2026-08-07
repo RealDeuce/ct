@@ -1,0 +1,104 @@
+# Rule-derived normalized reconstruction of source catalog row ship-80.
+schema_version = 1
+design_id = "ct-source-ship-80"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-socs-17", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+unused_fire_control_stations = 6
+external_load_millitons = 40000
+cargo_millitons = 373000
+[catalog]
+catalog_id = 80
+tag = "ship-80"
+family_id = 80
+upgrade_path_id = 1
+progression_stage = "light"
+status = "active"
+vessel_kind = "starship"
+display_name = "Ithaca"
+primary_role = "modular-freighter"
+secondary_roles = []
+mission_tags = ["jump-2", "armed", "modular-freighter"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 800-ton modular freighter preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+[hull]
+id = "ship-800"
+configuration = "standard"
+[[hull_options]]
+id = "self-sealing"
+quantity = 1
+[drives]
+jump = "J"
+maneuver = "J"
+power = "J"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "model-3"
+options = ["bis"]
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 2
+[[equipment]]
+id = "stateroom"
+quantity = 20
+[[equipment]]
+id = "galley-space"
+quantity = 16
+[[equipment]]
+id = "low-berth"
+quantity = 20
+[[equipment]]
+id = "office"
+quantity = 1
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[docking_clamps]]
+id = "docking-clamp-90"
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "missile-rack", "sandcaster"]
+quantity = 2
+[[ammunition]]
+id = "standard-missile"
+quantity = 24
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 40
+[[carried_craft]]
+tag = "ship-151"
+quantity = 1
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 1
+[[crew]]
+role = "turret-gunner"
+quantity = 2
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "other"
+quantity = 4

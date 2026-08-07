@@ -1,0 +1,140 @@
+# Rule-derived normalized reconstruction of source catalog row ship-89.
+schema_version = 1
+design_id = "ct-source-ship-89"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-socs-14", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+bridge_options = ["holographic-controls"]
+unused_fire_control_stations = 0
+cargo_millitons = 344500
+[catalog]
+catalog_id = 89
+tag = "ship-89"
+family_id = 89
+upgrade_path_id = 7
+progression_stage = "medium"
+status = "active"
+vessel_kind = "starship"
+display_name = "Fabius"
+primary_role = "fleet-replenishment-ship"
+secondary_roles = []
+mission_tags = ["jump-2", "armed", "fleet-replenishment-ship"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 1000-ton fleet replenishment ship preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+[hull]
+id = "ship-1000"
+configuration = "standard"
+[armor]
+id = "crystaliron-whole-points"
+points = 4
+[drives]
+jump = "H"
+maneuver = "H"
+power = "H"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "model-3"
+options = ["bis"]
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 2
+[[software]]
+id = "point-defense-2"
+[[equipment]]
+id = "stateroom"
+quantity = 6
+[[equipment]]
+id = "crew-berthing"
+quantity = 5
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 5
+[[equipment]]
+id = "galley-space"
+quantity = 24
+[[equipment]]
+id = "crew-recreation"
+quantity = 25
+[[equipment]]
+id = "armory"
+quantity = 1
+[[equipment]]
+id = "briefing-room"
+quantity = 1
+[[equipment]]
+id = "office"
+quantity = 1
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+[[equipment]]
+id = "fuel-processor"
+quantity = 5
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[equipment]]
+id = "workshop"
+quantity = 2
+[[equipment]]
+id = "underway-replenishment-system"
+quantity = 10
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 2
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 110000
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 4
+[[mounts]]
+id = "triple-turret"
+weapons = ["sandcaster", "sandcaster", "sandcaster"]
+quantity = 3
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "missile-rack"]
+quantity = 3
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 10
+[[ammunition]]
+id = "standard-missile"
+quantity = 96
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 60
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 1
+[[crew]]
+role = "turret-gunner"
+quantity = 10
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "other"
+quantity = 35

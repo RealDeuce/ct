@@ -1,0 +1,91 @@
+# Rule-derived normalized reconstruction of source catalog row ship-46.
+schema_version = 1
+design_id = "ct-source-ship-46"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-socs-4-6", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+unused_fire_control_stations = 1
+cargo_millitons = 41000
+[catalog]
+catalog_id = 46
+tag = "ship-46"
+family_id = 45
+upgrade_path_id = 2
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Sinbad"
+primary_role = "passenger-trader"
+secondary_roles = []
+mission_tags = ["jump-2", "thrust", "armed"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 200-ton passenger trader is reconstructed as a complete standard-CE design with a two-parsec jump radius, normalized maneuver and power machinery, 4 points of armor, and the source role's principal accommodations, support systems, and armament.", "The design is directly usable by the game construction engine. Its cargo hold is the exact remainder after every fitted component is evaluated, so published rounded or incompatible allocations do not become hidden displacement adjustments."]
+[hull]
+id = "ship-200"
+configuration = "streamlined"
+[armor]
+id = "crystaliron-whole-points"
+points = 4
+[drives]
+jump = "B"
+maneuver = "C"
+power = "C"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "model-3"
+options = []
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 1
+[[equipment]]
+id = "stateroom"
+quantity = 11
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+[[equipment]]
+id = "low-berth"
+quantity = 10
+[[equipment]]
+id = "air-raft-hangar"
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "missile-rack", "sandcaster"]
+quantity = 1
+[[ammunition]]
+id = "standard-missile"
+quantity = 12
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 20
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 1
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "other"
+quantity = 1

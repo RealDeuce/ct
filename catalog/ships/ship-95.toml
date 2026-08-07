@@ -1,0 +1,258 @@
+# Rule-derived correction of source-inventory ship-95. The source allocations
+# total 602 tons. Replacing Z-drive H with ordinary Jump drive F recovers ten
+# tons; the corrected build assigns the resulting net eight tons to cargo.
+# The source also omits the cost of six point-defense node mounts and of its
+# carried boat; both are real construction costs here.
+
+schema_version = 1
+design_id = "ct-source-ship-95"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 12
+standard_design = false
+electronics = "advanced"
+bridge_options = ["holographic-controls"]
+magazine_options = ["improved-magazine"]
+cargo_millitons = 28000
+thrust_g = 5
+
+[catalog]
+catalog_id = 95
+tag = "ship-95"
+family_id = 91
+upgrade_path_id = 7
+progression_stage = "light"
+status = "active"
+vessel_kind = "starship"
+display_name = "Cook"
+primary_role = "patrol-corvette"
+secondary_roles = ["customs-enforcement", "anti-raider", "escort"]
+mission_tags = ["patrol", "interception", "boarding", "point-defense"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This streamlined patrol corvette is built to inspect traffic, pursue raiders, escort merchant traffic, and remain on station for extended law-enforcement work. Five-gravity acceleration, a two-parsec jump radius, radiation shielding, reinforced structure, and redundant computers make it difficult to disable or evade.",
+  "Particle barbettes provide the main striking power while laser, missile, and sandcaster turrets cover routine engagements. Six independent point-defense nodes, a brig, an armory, medical facilities, probe drones, and an armed ship's boat support interception and boarding missions; the modest hold remains useful for seized cargo or patrol supplies.",
+]
+
+[hull]
+id = "ship-600"
+configuration = "streamlined"
+
+[armor]
+id = "crystaliron-whole-points"
+points = 4
+
+[[hull_options]]
+id = "radiation-shielding"
+quantity = 1
+
+[[structural_options]]
+id = "reinforced-structure"
+increments = 1
+
+[drives]
+jump = "F"
+maneuver = "S"
+power = "S"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 4
+
+[computer]
+id = "model-3"
+options = ["bis", "fib"]
+quantity = 2
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "evade"
+level = 2
+
+[[software]]
+id = "fire-control"
+level = 2
+
+[[software]]
+id = "intellect"
+
+[[software]]
+id = "internal-security-2"
+
+[[software]]
+id = "launch-solution-1"
+
+[[software]]
+id = "point-defense-1"
+
+[[equipment]]
+id = "stateroom"
+quantity = 19
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 8
+
+[[equipment]]
+id = "armory"
+quantity = 1
+
+[[equipment]]
+id = "briefing-room"
+quantity = 1
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 2
+
+[[equipment]]
+id = "escape-pod"
+quantity = 18
+
+[[equipment]]
+id = "office"
+quantity = 1
+
+[[equipment]]
+id = "probe-drones"
+quantity = 1
+
+[[equipment]]
+id = "ships-brig"
+quantity = 4
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 2
+
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 30000
+quantity = 1
+
+[[barbettes]]
+id = "particle-beam-barbette"
+quantity = 2
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 2
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "missile-rack"]
+quantity = 1
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["sandcaster", "sandcaster", "sandcaster"]
+quantity = 1
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-gatling-laser"
+quantity = 3
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 3
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 72
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 60
+
+[[carried_craft]]
+tag = "ship-18"
+quantity = 1
+
+[[crew]]
+role = "command"
+quantity = 6
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 6
+
+[[crew]]
+role = "sensors-operator"
+quantity = 2
+
+[[crew]]
+role = "medic"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 4
+
+[[crew]]
+role = "bay-gunner"
+quantity = 2
+
+[[crew]]
+role = "flight-crew"
+quantity = 2
+
+[[crew]]
+role = "marine"
+quantity = 6
+
+[[crew]]
+role = "other"
+quantity = 5
+
+[assertions]
+hull_millitons = 600000
+accounted_displacement_millitons = 600000
+hull_points = 12
+structure_points = 14
+armor_points = 4
+jump_rating = 2
+thrust_g = 5
+fuel_millitons = 188000
+jump_fuel_millitons = 120000
+power_fuel_millitons = 68000
+hardpoints = 6
+hardpoints_used = 6
+point_defense_nodes = 6
+fire_control_millitons = 14000
+minimum_crew = 9
+crew = 36
+carried_craft_count = 1
+carried_craft_price_credits = 20580000
+hangar_capacity_millitons = 30000
+construction_weeks = 76
+pre_discount_price_credits = 521750000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 521750000

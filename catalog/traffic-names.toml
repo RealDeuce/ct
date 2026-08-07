@@ -1,0 +1,54 @@
+# Open Game Content naming vocabulary for seed-derived ordinary traffic.
+# Contacts use these pools by upgrade-path specialty. The generated contact,
+# ship name, transponder, and operator are projections and are not persisted.
+
+schema_version = 1
+catalog_revision = 1
+open_game_content_designations = [
+  "The complete traffic naming vocabulary and generation convention are Open Game Content.",
+]
+
+[[path]]
+path_id = 1
+operator_label = "Exchange"
+ship_names = ["Abacus", "Mercator", "Caravan", "Cornucopia", "Ledger", "Silk Road"]
+
+[[path]]
+path_id = 2
+operator_label = "Venture"
+ship_names = ["Hermes", "Nemo", "Verne", "Odyssey", "Venture", "Far Horizon"]
+
+[[path]]
+path_id = 3
+operator_label = "Frontier"
+ship_names = ["Crusoe", "Prospector", "Frontier", "Wayfarer", "Pioneer", "Outrider"]
+
+[[path]]
+path_id = 4
+operator_label = "Survey"
+ship_names = ["Galileo", "Curie", "Humboldt", "Surveyor", "Kepler", "Polymath"]
+
+[[path]]
+path_id = 5
+operator_label = "Marque"
+ship_names = ["Drake", "Marque", "Corsair", "Reprisal", "Prize", "Hawkwood"]
+
+[[path]]
+path_id = 6
+operator_label = "Independent"
+ship_names = ["Blackbeard", "Rogue", "Silver", "Revenant", "Tempest", "Freebooter"]
+
+[[path]]
+path_id = 7
+operator_label = "Admiralty"
+ship_names = ["Perry", "Nelson", "Togo", "Salamis", "Corbett", "Admiralty"]
+
+[[path]]
+path_id = 8
+operator_label = "Defense"
+ship_names = ["Warden", "Redoubt", "Bastion", "Aegis", "Sentinel", "Horatius"]
+
+[[path]]
+path_id = 9
+operator_label = "Arsenal"
+ship_names = ["Ballista", "Thunderbolt", "Enyo", "Meteor", "Maelstrom", "Nemesis"]

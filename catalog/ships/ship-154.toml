@@ -1,0 +1,128 @@
+# Rule-derived reconstruction of the 800-ton passenger-pod variant. Seventy
+# passenger places, complete galley and recreation allocations, ordinary
+# Jump, and external-craft mass are represented directly.
+
+schema_version = 1
+design_id = "ct-source-ship-154"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-atlas", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+unused_fire_control_stations = 6
+external_load_millitons = 30000
+cargo_millitons = 104750
+
+[catalog]
+catalog_id = 154
+tag = "ship-154"
+family_id = 80
+upgrade_path_id = 1
+progression_stage = "light"
+status = "active"
+vessel_kind = "starship"
+display_name = "Nausithous"
+primary_role = "passenger-freighter"
+secondary_roles = ["scheduled-liner", "charter"]
+mission_tags = ["jump-2", "passengers", "modular-pods", "merchant"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This 800-ton passenger variant fills most detachable pod positions with stateroom, galley, and recreation modules. It carries seventy high passengers, twenty low berths, a fifteen-person service crew, a utility boat, and a residual freight hold.",
+  "The configuration earns well on busy scheduled routes or charters but exposes the operator to empty-berth risk and higher service payroll. Two mixed turrets offer only basic protection, so route safety and reliable passenger demand matter more than combat capability.",
+]
+
+[hull]
+id = "ship-800"
+configuration = "standard"
+[[hull_options]]
+id = "self-sealing"
+quantity = 1
+[drives]
+jump = "J"
+maneuver = "J"
+power = "J"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "model-3"
+options = []
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "evade"
+level = 1
+[[software]]
+id = "fire-control"
+level = 1
+[[software]]
+id = "intellect"
+
+[[equipment]]
+id = "stateroom"
+quantity = 80
+[[equipment]]
+id = "galley-space"
+quantity = 85
+[[equipment]]
+id = "crew-recreation"
+quantity = 50
+[[equipment]]
+id = "low-berth"
+quantity = 20
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+[[equipment]]
+id = "fuel-processor"
+quantity = 9
+[[equipment]]
+id = "office"
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[docking_clamps]]
+id = "docking-clamp-30"
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "missile-rack", "sandcaster"]
+quantity = 2
+[[ammunition]]
+id = "standard-missile"
+quantity = 24
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 40
+[[carried_craft]]
+tag = "ship-187"
+quantity = 1
+
+[[crew]]
+role = "command"
+quantity = 2
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 4
+[[crew]]
+role = "turret-gunner"
+quantity = 2
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "other"
+quantity = 4

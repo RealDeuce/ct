@@ -1,0 +1,141 @@
+# Rule-derived reconstruction of the 400-ton armed passenger yacht.
+
+schema_version = 1
+design_id = "ct-source-ship-139"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-jinsokuna", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+bridge_options = ["holographic-controls"]
+power_options = ["emergency-power"]
+magazine_options = ["improved-magazine"]
+cargo_millitons = 31250
+[catalog]
+catalog_id = 139
+tag = "ship-139"
+family_id = 68
+upgrade_path_id = 2
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Trelawney"
+primary_role = "armed-yacht"
+secondary_roles = ["passenger", "executive-transport"]
+mission_tags = ["jump-2", "thrust-4", "passengers", "armed"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This 400-ton armed yacht carries ten passengers with a fifteen-person crew, a luxury boat, two vehicles, and complete social and support spaces. Four laser-heavy turrets, light armor, and four-gravity maneuver provide credible protection without abandoning passenger service.",
+  "The yacht offers comfort, speed, and autonomy for wealthy or official travelers, but its crew and accommodations consume most revenue volume. It can repel opportunistic attack yet remains unsuited to fighting purpose-built warships.",
+]
+[hull]
+id = "ship-400"
+configuration = "streamlined"
+[armor]
+id = "crystaliron"
+layers = 1
+[[hull_options]]
+id = "self-sealing"
+quantity = 1
+[drives]
+jump = "D"
+maneuver = "H"
+power = "H"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "model-2"
+options = ["bis"]
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 1
+[[software]]
+id = "intellect"
+[[software]]
+id = "internal-security-1"
+[[equipment]]
+id = "stateroom"
+quantity = 16
+[[equipment]]
+id = "galley-space"
+quantity = 25
+[[equipment]]
+id = "crew-recreation"
+quantity = 65
+[[equipment]]
+id = "fuel-processor"
+quantity = 5
+[[equipment]]
+id = "briefing-room"
+quantity = 1
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+[[equipment]]
+id = "workshop"
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 30000
+quantity = 1
+[[hangars]]
+id = "standard-hangar"
+contained_millitons = 10000
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 2
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "missile-rack"]
+quantity = 1
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "sandcaster"]
+quantity = 1
+[[ammunition]]
+id = "standard-missile"
+quantity = 12
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 20
+[[carried_craft]]
+tag = "ship-142"
+quantity = 1
+[[crew]]
+role = "command"
+quantity = 3
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 3
+[[crew]]
+role = "turret-gunner"
+quantity = 4
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "other"
+quantity = 2

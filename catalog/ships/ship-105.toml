@@ -1,0 +1,132 @@
+# Rule-derived normalized reconstruction of source catalog row ship-105.
+schema_version = 1
+design_id = "ct-source-ship-105"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-socs-1-3", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+bridge_options = ["command-bridge", "hardened-bridge", "holographic-controls"]
+unused_fire_control_stations = 0
+external_load_millitons = 1140000
+cargo_millitons = 892500
+[catalog]
+catalog_id = 105
+tag = "ship-105"
+family_id = 104
+upgrade_path_id = 8
+progression_stage = "medium"
+status = "active"
+vessel_kind = "ship"
+display_name = "Ares"
+primary_role = "parasite-attack-carrier"
+secondary_roles = []
+mission_tags = ["in-system", "parasite-attack-carrier", "normalized"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 1400-ton parasite attack carrier is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+[hull]
+id = "ship-1400"
+configuration = "standard"
+[armor]
+id = "crystaliron-whole-points"
+points = 1
+[drives]
+maneuver = "W"
+power = "W"
+[fuel]
+jump_distance = 0
+jump_count = 0
+power_plant_weeks = 3
+[computer]
+id = "model-3"
+options = ["bis", "fib"]
+quantity = 2
+[[software]]
+id = "fire-control"
+level = 2
+[[software]]
+id = "point-defense-2"
+[[equipment]]
+id = "stateroom"
+quantity = 21
+[[equipment]]
+id = "armory"
+quantity = 2
+[[equipment]]
+id = "office"
+quantity = 2
+[[equipment]]
+id = "briefing-room"
+quantity = 3
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+[[equipment]]
+id = "fuel-processor"
+quantity = 10
+[[equipment]]
+id = "workshop"
+quantity = 5
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 2
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 8
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 20000
+quantity = 1
+[[docking_clamps]]
+id = "docking-clamp-300"
+quantity = 4
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 6
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "missile-rack"]
+quantity = 4
+[[mounts]]
+id = "triple-turret"
+weapons = ["sandcaster", "sandcaster", "sandcaster"]
+quantity = 4
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 14
+[[ammunition]]
+id = "standard-missile"
+quantity = 144
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 160
+[[carried_craft]]
+tag = "ship-48"
+quantity = 12
+[[carried_craft]]
+tag = "ship-7"
+quantity = 1
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 2
+[[crew]]
+role = "turret-gunner"
+quantity = 14
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "other"
+quantity = 22

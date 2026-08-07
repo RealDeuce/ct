@@ -1,0 +1,228 @@
+# Rule-derived reconstruction of the 3,000-ton second-block fleet carrier.
+# Ordinary Jump replaces Zimm drive; the deleted railgun family and TL12-only
+# field screen are omitted, and all carrier facilities use executable rules.
+
+schema_version = 1
+design_id = "ct-source-ship-119"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-acc", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+bridge_options = ["command-bridge", "holographic-controls"]
+power_options = ["emergency-power"]
+magazine_options = ["improved-magazine"]
+cargo_millitons = 91980
+
+[catalog]
+catalog_id = 119
+tag = "ship-119"
+family_id = 117
+upgrade_path_id = 7
+progression_stage = "heavy"
+status = "active"
+vessel_kind = "starship"
+display_name = "Wright"
+primary_role = "fleet-carrier"
+secondary_roles = ["fighter-operations", "flag-command"]
+mission_tags = ["jump-2", "thrust-3", "carrier", "space-superiority"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This 3,000-ton fleet carrier deploys fifty interceptors plus two launches and two utility boats. Armor, radiation shielding, a command bridge, dedicated launch and recovery facilities, and extensive maintenance and crew spaces support sustained task-force flight operations.",
+  "Twenty-four defensive turrets and thirty laser point-defense nodes protect the parent ship while its fighters provide reach and concentrated force. It is a large institutional asset whose effectiveness depends on trained flight crews, ammunition, maintenance stores, and preservation of the air group.",
+]
+
+[hull]
+id = "ship-3000"
+configuration = "standard"
+[armor]
+id = "crystaliron-whole-points"
+points = 4
+[[hull_options]]
+id = "radiation-shielding"
+quantity = 1
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "bridge"
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "drives"
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "ordnance-magazines"
+
+[drives]
+jump = "T"
+maneuver = "W"
+power = "W"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "capital-core-3"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "advanced-fire-control-1"
+[[software]]
+id = "battlespace-system-1"
+[[software]]
+id = "electronic-warfare-1"
+[[software]]
+id = "evade"
+level = 2
+[[software]]
+id = "intellect"
+[[software]]
+id = "internal-security-2"
+[[software]]
+id = "launch-solution-2"
+[[software]]
+id = "point-defense-2"
+
+[[equipment]]
+id = "stateroom"
+quantity = 36
+[[equipment]]
+id = "crew-berthing"
+quantity = 37
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 37
+[[equipment]]
+id = "galley-space"
+quantity = 363
+[[equipment]]
+id = "crew-recreation"
+quantity = 150
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+[[equipment]]
+id = "fuel-processor"
+quantity = 15
+[[equipment]]
+id = "armory"
+quantity = 4
+[[equipment]]
+id = "briefing-room"
+quantity = 6
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 10
+[[equipment]]
+id = "gymnasium"
+quantity = 4
+[[equipment]]
+id = "interrogation-room-large"
+quantity = 1
+[[equipment]]
+id = "office"
+quantity = 12
+[[equipment]]
+id = "operating-theater"
+quantity = 1
+[[equipment]]
+id = "ships-brig"
+quantity = 6
+[[equipment]]
+id = "small-office"
+quantity = 15
+[[equipment]]
+id = "theater-seat"
+quantity = 80
+[[equipment]]
+id = "workshop"
+quantity = 14
+[[equipment]]
+id = "powered-armor-maintenance-workshop"
+quantity = 25
+
+[[parameterized_equipment]]
+id = "commissary"
+crew = 363
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-ward"
+beds = 12
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 600000
+quantity = 1
+[[launch_facilities]]
+id = "flight-deck"
+largest_craft_millitons = 10000
+quantity = 2
+[[launch_facilities]]
+id = "recovery-deck"
+largest_craft_millitons = 10000
+quantity = 1
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 14
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "sandcaster"]
+quantity = 10
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 30
+[[ammunition]]
+id = "standard-missile"
+quantity = 360
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 384
+
+[[carried_craft]]
+tag = "ship-11"
+quantity = 50
+[[carried_craft]]
+tag = "ship-185"
+quantity = 2
+[[carried_craft]]
+tag = "ship-187"
+quantity = 2
+
+[[crew]]
+role = "command"
+quantity = 90
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 12
+[[crew]]
+role = "sensors-operator"
+quantity = 6
+[[crew]]
+role = "medic"
+quantity = 12
+[[crew]]
+role = "turret-gunner"
+quantity = 24
+[[crew]]
+role = "flight-crew"
+quantity = 100
+[[crew]]
+role = "marine"
+quantity = 25
+[[crew]]
+role = "other"
+quantity = 92

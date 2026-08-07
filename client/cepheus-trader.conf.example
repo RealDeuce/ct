@@ -1,0 +1,6 @@
+# Shared BBS installation settings for cepheus-trader-sysop and
+# cepheus-trader-door. The PSK does not belong in this file.
+server=127.0.0.1
+game-port=7323
+sysop-port=7325
+credential-file=cepheus-trader.credential

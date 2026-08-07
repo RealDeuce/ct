@@ -1,0 +1,197 @@
+# Rule-derived correction of the core CE dreadnought. Core armor is purchased
+# in six-point layers, so this build uses armor 12 rather than the impossible
+# printed armor 14. Remaining valid volume becomes cargo.
+
+schema_version = 1
+design_id = "ct-corrected-dreadnought"
+revision = 1
+ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "cepheus-trader-2026"]
+tech_level = 14
+standard_design = true
+electronics = "very-advanced"
+cargo_millitons = 635000
+
+[catalog]
+catalog_id = 210
+tag = "ship-210"
+family_id = 210
+upgrade_path_id = 7
+progression_stage = "capital"
+status = "active"
+vessel_kind = "starship"
+display_name = "Jutland"
+primary_role = "dreadnought"
+secondary_roles = ["fleet-command", "carrier"]
+mission_tags = ["capital-combat", "bays", "screens", "fighters", "marines"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This five-thousand-ton dreadnought is a fleet centerpiece with fusion and missile bays, heavy beam-laser batteries, two defensive screens, twenty fighters, two modular cutters, and a large marine force. A two-parsec jump radius lets it move between strategic bases without depending on a tender for every deployment.",
+  "The ship demands a major polity's crew, maintenance base, ammunition supply, and operating budget. Its large hold supports fleet stores and long campaigns, but it is too expensive and visible for ordinary trade and too valuable to risk without intelligence, escorts, and a clear strategic objective.",
+]
+
+[hull]
+id = "ship-5000"
+configuration = "standard"
+
+[armor]
+id = "bonded-superdense"
+layers = 2
+
+[[hull_options]]
+id = "stealth"
+quantity = 1
+
+[drives]
+jump = "Z"
+maneuver = "Z"
+power = "Z"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 4
+
+[computer]
+id = "model-6"
+options = ["fib"]
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[equipment]]
+id = "stateroom"
+quantity = 101
+
+[[equipment]]
+id = "barracks"
+quantity = 60
+
+[[equipment]]
+id = "low-berth"
+quantity = 223
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 56
+
+[[equipment]]
+id = "armory"
+quantity = 6
+
+[[equipment]]
+id = "escape-pod"
+quantity = 223
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 54
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "custom-hangar"
+quantity = 1
+contained_millitons = 300000
+
+[[mounts]]
+id = "triple-turret"
+quantity = 35
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[bays]]
+id = "fusion-gun-bay"
+quantity = 10
+
+[[bays]]
+id = "missile-bank"
+quantity = 5
+
+[[screens]]
+id = "meson-screen"
+quantity = 1
+
+[[screens]]
+id = "nuclear-damper"
+quantity = 1
+
+[[ammunition]]
+id = "smart-missile"
+quantity = 3600
+
+[[carried_craft]]
+tag = "ship-200"
+quantity = 20
+
+[[carried_craft]]
+tag = "ship-209"
+quantity = 2
+
+[[crew]]
+role = "command"
+quantity = 10
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 2
+
+[[crew]]
+role = "engineer"
+quantity = 3
+
+[[crew]]
+role = "medic"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 35
+
+[[crew]]
+role = "bay-gunner"
+quantity = 15
+
+[[crew]]
+role = "screen-operator"
+quantity = 2
+
+[[crew]]
+role = "flight-crew"
+quantity = 45
+
+[[crew]]
+role = "marine"
+quantity = 60
+
+[[crew]]
+role = "other"
+quantity = 49
+
+[assertions]
+hull_millitons = 5000000
+accounted_displacement_millitons = 5000000
+hull_points = 100
+structure_points = 100
+armor_points = 12
+jump_rating = 2
+thrust_g = 2
+fuel_millitons = 1096000
+jump_fuel_millitons = 1000000
+power_fuel_millitons = 96000
+hardpoints = 50
+hardpoints_used = 50
+fire_control_millitons = 50000
+minimum_crew = 55
+crew = 223
+carried_craft_count = 22
+carried_craft_price_credits = 281799000
+construction_weeks = 428

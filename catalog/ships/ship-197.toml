@@ -1,0 +1,90 @@
+# Rule-derived reconstruction of the Chapter 9 TL9 Merchant Liner.
+
+schema_version = 1
+design_id = "ce-merchant-liner"
+revision = 1
+ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016"]
+tech_level = 9
+standard_design = true
+electronics = "basic-civilian"
+unused_fire_control_stations = 3
+cargo_millitons = 46000
+
+[catalog]
+catalog_id = 197
+tag = "ship-197"
+family_id = 197
+upgrade_path_id = 1
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Pullman"
+primary_role = "passenger"
+secondary_roles = ["trader", "low-berth-transport"]
+mission_tags = ["passengers", "low-berths", "freight", "scheduled-service"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This merchant liner devotes nearly half its hull to staterooms and supplements them with low berths and a useful cargo hold. It is intended for scheduled service on dense routes where passenger demand is predictable.",
+  "Revenue depends on occupancy and competent steward service; empty cabins are expensive volume that cannot earn freight income. The ship has only one-parsec reach, low acceleration, and no installed weapons, making route stability and port access more important than tactical flexibility.",
+]
+
+[hull]
+id = "ship-300"
+configuration = "standard"
+
+[armor]
+id = "titanium-steel"
+layers = 1
+
+[drives]
+jump = "B"
+maneuver = "B"
+power = "B"
+
+[fuel]
+jump_distance = 1
+jump_count = 1
+power_plant_weeks = 4
+
+[computer]
+id = "model-2"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 1
+
+[[equipment]]
+id = "stateroom"
+quantity = 35
+
+[[equipment]]
+id = "low-berth"
+quantity = 20
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 2
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "steward"
+quantity = 4

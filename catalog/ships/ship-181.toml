@@ -1,0 +1,87 @@
+# Rule-derived reconstruction of the carrier's thirty-ton utility boat. Exact
+# CE power fuel consumes the source's rounded shortfall and leaves the stated
+# four-ton cargo hold alongside fourteen passenger seats.
+
+schema_version = 1
+design_id = "ct-source-ship-181"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-trade-empire",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "standard"
+airlocks = 1
+cargo_millitons = 4000
+
+[catalog]
+catalog_id = 181
+tag = "ship-181"
+family_id = 18
+upgrade_path_id = 1
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Wayfarer Cargo"
+primary_role = "utility-boat"
+secondary_roles = ["passenger-transfer", "cargo-transfer"]
+mission_tags = ["passengers", "cargo", "high-thrust", "interplanetary"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This thirty-ton utility boat moves fourteen seated passengers and four tons of cargo at six gravities. Armor, an airlock, and a large cargo door support routine personnel and freight transfer between a large carrier, orbital facilities, and planetary surfaces.",
+  "The boat is unarmed and has no sleeping accommodation or jump drive. It is optimized for rapid local handling and depends on its parent ship or a base for long-term support and interstellar movement.",
+]
+
+[hull]
+id = "small-30"
+configuration = "streamlined"
+
+[armor]
+id = "crystaliron"
+layers = 1
+
+[drives]
+maneuver = "sJ"
+power = "sJ"
+
+[fuel]
+power_plant_weeks = 2
+
+[control]
+id = "two-person-control-cabin"
+additional_passengers = 0
+
+[computer]
+id = "model-1"
+options = []
+
+[[equipment]]
+id = "acceleration-seat"
+quantity = 14
+
+[[crew]]
+role = "pilot"
+quantity = 2
+
+[assertions]
+hull_millitons = 30000
+accounted_displacement_millitons = 30000
+hull_points = 0
+structure_points = 1
+armor_points = 4
+thrust_g = 6
+fuel_millitons = 2400
+hardpoints = 1
+hardpoints_used = 0
+minimum_crew = 1
+crew = 2
+construction_weeks = 30
+pre_discount_price_credits = 19540000
+discount_credits = 0
+construction_price_credits = 19540000

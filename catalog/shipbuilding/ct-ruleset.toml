@@ -1,0 +1,384 @@
+# Cepheus Trader's explicit construction-rule composition policy.
+#
+# Source construction rules never replace the CE baseline merely because a
+# field has the same name. Every collision below has a recorded resolution.
+
+schema_version = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+ruleset_revision = 1
+extends_ruleset_ids = [
+  "ce-srd-2016.shipbuilding",
+  "ce-srd-2016.small-craft",
+]
+extension_module_ids = [
+  "ct.af3.structures-and-components",
+  "ct.af3.armament",
+  "ct.earth-tech-2350",
+]
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+
+[interstellar_drive_policy]
+drive = "jump"
+operational_ruleset = "ce-srd-2016"
+fuel_formula = "hull-tonnage-times-jump-number-times-10-percent"
+nominal_duration = "one-week"
+allows_in_system_transit = false
+has_routes_or_points = false
+has_emitter_nodes = false
+has_recharge_cycle = false
+has_military_grade = false
+has_bubble_failure = false
+
+# The source Z-drive letter is retained only to audit a source design. New
+# game designs use the optimized J-drive letter. Source-preserving conversion
+# is available for forensic comparison but is not the game default.
+[[drive_conversion]]
+hull_tons = 100
+source_z_code = "A"
+source_preserving_j_code = "A"
+optimized_j_code = "A"
+recovered_millitons = 0
+[[drive_conversion]]
+hull_tons = 200
+source_z_code = "B"
+source_preserving_j_code = "B"
+optimized_j_code = "B"
+recovered_millitons = 0
+[[drive_conversion]]
+hull_tons = 300
+source_z_code = "C"
+source_preserving_j_code = "C"
+optimized_j_code = "C"
+recovered_millitons = 0
+[[drive_conversion]]
+hull_tons = 400
+source_z_code = "D"
+source_preserving_j_code = "D"
+optimized_j_code = "D"
+recovered_millitons = 0
+[[drive_conversion]]
+hull_tons = 500
+source_z_code = "G"
+source_preserving_j_code = "G"
+optimized_j_code = "E"
+recovered_millitons = 10000
+[[drive_conversion]]
+hull_tons = 600
+source_z_code = "H"
+source_preserving_j_code = "H"
+optimized_j_code = "F"
+recovered_millitons = 10000
+[[drive_conversion]]
+hull_tons = 700
+source_z_code = "J"
+source_preserving_j_code = "J"
+optimized_j_code = "G"
+recovered_millitons = 10000
+[[drive_conversion]]
+hull_tons = 800
+source_z_code = "J"
+source_preserving_j_code = "J"
+optimized_j_code = "G"
+recovered_millitons = 10000
+[[drive_conversion]]
+hull_tons = 900
+source_z_code = "K"
+source_preserving_j_code = "K"
+optimized_j_code = "H"
+recovered_millitons = 10000
+[[drive_conversion]]
+hull_tons = 1000
+source_z_code = "K"
+source_preserving_j_code = "K"
+optimized_j_code = "H"
+recovered_millitons = 10000
+[[drive_conversion]]
+hull_tons = 1200
+source_z_code = "L"
+source_preserving_j_code = "L"
+optimized_j_code = "J"
+recovered_millitons = 10000
+[[drive_conversion]]
+hull_tons = 1400
+source_z_code = "M"
+source_preserving_j_code = "M"
+optimized_j_code = "K"
+recovered_millitons = 10000
+[[drive_conversion]]
+hull_tons = 1600
+source_z_code = "N"
+source_preserving_j_code = "N"
+optimized_j_code = "L"
+recovered_millitons = 10000
+[[drive_conversion]]
+hull_tons = 1800
+source_z_code = "P"
+source_preserving_j_code = "P"
+optimized_j_code = "M"
+recovered_millitons = 10000
+[[drive_conversion]]
+hull_tons = 2000
+source_z_code = "Q"
+source_preserving_j_code = "Q"
+optimized_j_code = "N"
+recovered_millitons = 10000
+
+[[conflict]]
+id = "af3-z-drive"
+subject = "interstellar-drive"
+source_value = "Z-drive and its transit rules"
+core_value = "CE Jump drive and Jump travel rules"
+resolution = "core"
+reason = "Cepheus Trader uses the normal CE Jump drive."
+
+[[conflict]]
+id = "af3-drive-k-volume"
+subject = "jump-drive-K-volume"
+source_value = "65000 millitons"
+core_value = "55000 millitons"
+resolution = "core-source-typographical-error"
+reason = "The otherwise identical A-Z table breaks its sequence only in this cell."
+
+[[conflict]]
+id = "af3-maneuver-s-price"
+subject = "maneuver-drive-S-price"
+source_value = "58000000 credits"
+core_value = "68000000 credits"
+resolution = "core-source-typographical-error"
+reason = "The expansion table breaks the CE price sequence only in this cell."
+
+[[conflict]]
+id = "af3-armor-granularity"
+subject = "titanium-and-crystaliron-armor"
+source_value = "whole armor points"
+core_value = "five-percent layers"
+resolution = "extension"
+reason = "Whole-point purchases are adopted; volume and price remain derived from the CE layers."
+
+[[conflict]]
+id = "af3-radiation-shielding-price"
+subject = "radiation-shielding-price"
+source_value = "prose/worked designs: 100000; summary: 250000 credits per hull ton"
+core_value = "not present"
+resolution = "source-prose-and-worked-examples"
+reason = "Independent prose and worked examples agree; the summary cell is erroneous."
+
+[[conflict]]
+id = "af3-self-sealing-price"
+subject = "self-sealing-price"
+source_value = "prose: 10000; summary: 100000 credits per hull ton"
+core_value = "10000 credits per hull ton"
+resolution = "core-and-source-prose"
+reason = "The core rule and source prose agree; the summary cell is erroneous."
+
+[[conflict]]
+id = "af3-free-military-self-sealing"
+subject = "military-hull-self-sealing"
+source_value = "automatically included"
+core_value = "purchased hull option"
+resolution = "core"
+reason = "A legal or military classification cannot provide free construction value."
+
+[[conflict]]
+id = "af3-model-4b"
+subject = "computer-rating-25"
+source_value = "Model 4B at TL12"
+core_value = "Model 5 at TL13"
+resolution = "extension-with-distinct-id"
+reason = "The expansion computer is distinct and does not overwrite the CE model."
+
+[[conflict]]
+id = "af3-environmental-life-support"
+subject = "accommodation-life-support-volume"
+source_value = "separate mandatory environmental and life-support plants"
+core_value = "included in accommodation"
+resolution = "core"
+reason = "Converted game ships use the CE model and are not charged twice."
+
+[[conflict]]
+id = "af3-beam-laser"
+subject = "beam-laser"
+source_value = "TL7, 2d6"
+core_value = "TL9, 1d6"
+resolution = "core"
+reason = "Combat performance remains CE; construction price is identical."
+
+[[conflict]]
+id = "af3-pulse-laser"
+subject = "pulse-laser"
+source_value = "1d6"
+core_value = "2d6"
+resolution = "core"
+reason = "Combat performance remains CE; construction price is identical."
+
+[[conflict]]
+id = "af3-launch-tube"
+subject = "launch-tube"
+source_value = "five times largest craft"
+core_value = "twenty-five times largest craft"
+resolution = "core"
+reason = "The expansion rule is not a drop-in replacement for the CE launch tube."
+
+[[conflict]]
+id = "af3-mining-drones"
+subject = "mining-drones"
+source_value = "1000000 credits per set"
+core_value = "2000000 credits per set"
+resolution = "core"
+reason = "The shared component uses the core construction value."
+
+[[conflict]]
+id = "af3-probe-drones"
+subject = "probe-drones"
+source_value = "500000 credits per set"
+core_value = "200000 credits per set"
+resolution = "core"
+reason = "The shared component uses the core construction value."
+
+[[conflict]]
+id = "af3-reentry-pod-volume"
+subject = "reentry-pod"
+source_value = "prose: 1000; summary: 500 millitons"
+core_value = "not present"
+resolution = "source-prose"
+reason = "The full component rule is authoritative over the summary cell."
+
+[[conflict]]
+id = "af3-multiwarhead-missile-price"
+subject = "multi-warhead-missile-price"
+source_value = "table: 60000; prose: 40000 credits per twelve"
+core_value = "not present"
+resolution = "source-table"
+reason = "The construction table is authoritative; the contradiction remains documented."
+
+[[conflict]]
+id = "af3-point-defense-mount-price"
+subject = "point-defense-node-mount-price"
+source_value = "prose: 1000000; turret summary: 100000 credits"
+core_value = "not present"
+resolution = "source-prose"
+reason = "The dedicated point-defense construction rule states the complete pop-up node mount price."
+
+[[conflict]]
+id = "af3-powered-armor-workshop-price"
+subject = "powered-armor-maintenance-workshop-price"
+source_value = "prose: 200000; summary: 250000 credits per ton"
+core_value = "not present"
+resolution = "source-prose"
+reason = "The full component rule is authoritative over the summary cell."
+
+[[conflict]]
+id = "af3-cargo-access-lock-band"
+subject = "cargo-access-lock-volume-for-101-to-300-ton-hold"
+source_value = "printed table: 26000 millitons"
+core_value = "not present"
+resolution = "correct-source-typographical-error"
+reason = "The printed sequence 2, 8, 12, 26, 20, 24 is non-monotonic; the regular four-ton sequence establishes 16."
+
+[[conflict]]
+id = "af3-heavy-bay-minimum-tl"
+subject = "heavy-bay-minimum-tech-level"
+source_value = "prose: TL11; individual table rows: TL8 to TL12 by weapon"
+core_value = "not present"
+resolution = "source-prose-and-weapon-minimum"
+reason = "The mount requires TL11; a fitted weapon may impose a higher minimum."
+
+[[conflict]]
+id = "af3-small-craft-hulls"
+subject = "small-craft-hull-table"
+source_value = "ten-ton increments through a 100-ton small craft, with two dropped decimals"
+core_value = "five-ton increments from 10 through 95 tons"
+resolution = "core-source-typographical-errors-corrected-for-audit"
+reason = "The CE table is a strict superset at legal game sizes; 100 tons uses the normal ship sequence."
+
+[[conflict]]
+id = "af3-small-craft-weapon-slots"
+subject = "small-craft-armament-capacity"
+source_value = "separate ship, small-craft, and anti-personnel weapon-slot counts"
+core_value = "one hardpoint"
+resolution = "core-source-profile-retained"
+reason = "The incompatible expansion slot system is retained only for source audits pending an explicit combat-design decision."
+
+[[conflict]]
+id = "af3-generic-technology-adjustments"
+subject = "generic-component-tech-level-scaling"
+source_value = "source-profile volume, price, and weapon upgrade adjustments"
+core_value = "fixed CE component tables"
+resolution = "core-source-profile-retained"
+reason = "Applying the expansion scaling globally would invalidate baseline CE designs; the tables remain available for source audits."
+
+[[conflict]]
+id = "af3-standard-hangar-rounding"
+subject = "standard-hangar-rounding"
+source_value = "rule says nearest whole ton; worked four-ton vehicle uses five tons"
+core_value = "not present"
+resolution = "source-rule"
+reason = "The explicit construction rule wins; the worked design discrepancy is preserved for later reconstruction."
+
+[[conflict]]
+id = "af3-construction-time"
+subject = "construction-time"
+source_value = "custom/sister schedule and one week per 5MCr civilian rule"
+core_value = "CE hull table"
+resolution = "core"
+reason = "The unified game uses the CE hull construction schedule."
+
+[[conflict]]
+id = "tech-2350-quantum-communications"
+subject = "instantaneous-communications"
+source_value = "instant communication at any range"
+core_value = "mail carried by Jump-capable ships"
+resolution = "excluded"
+reason = "Cepheus Trader has no ansible or other FTL communication."
+
+[[excluded_rule]]
+id = "z-drive-points-and-routes"
+reason = "Replaced by ordinary CE Jump travel."
+[[excluded_rule]]
+id = "z-drive-skip-transit"
+reason = "Jump drives do not provide in-system skip transit."
+[[excluded_rule]]
+id = "z-drive-emitter-nodes"
+reason = "Not part of a CE Jump drive."
+[[excluded_rule]]
+id = "z-drive-recharge"
+reason = "Not part of CE Jump operation."
+[[excluded_rule]]
+id = "z-drive-military-grade"
+reason = "Not part of CE Jump construction."
+[[excluded_rule]]
+id = "z-drive-bubble-failure"
+reason = "Not part of CE Jump operation."
+[[excluded_rule]]
+id = "capital-z-drive-percentage"
+reason = "No CE-compatible Jump performance table exists beyond 5000 tons."
+[[excluded_rule]]
+id = "capital-maneuver-and-power-percentage-drives"
+reason = "Cepheus Trader uses the normal CE maneuver-drive and power-plant tables."
+[[excluded_rule]]
+id = "reaction-drive"
+reason = "Cepheus Trader uses the normal CE maneuver drive."
+[[excluded_rule]]
+id = "solar-sail"
+reason = "Cepheus Trader uses the normal CE maneuver drive."
+[[excluded_rule]]
+id = "chemical-power-plant"
+reason = "Cepheus Trader uses the normal CE fusion power plant."
+[[excluded_rule]]
+id = "fission-power-plant"
+reason = "Cepheus Trader uses the normal CE fusion power plant."
+[[excluded_rule]]
+id = "chemical-battery-power-plant"
+reason = "Cepheus Trader uses the normal CE fusion power plant."
+[[excluded_rule]]
+id = "quantum-entanglement-communicator"
+reason = "The setting explicitly has no instantaneous interstellar communications."
+
+[[excluded_rule]]
+id = "fusion-power-fuel-cells"
+reason = "One-year fuel-cell endurance is not part of Cepheus Trader; standard CE power-plant fuel and refueling apply."

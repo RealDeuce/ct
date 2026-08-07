@@ -1,0 +1,147 @@
+# Rule-derived correction of source-inventory ship-45. The printed source
+# allocations total 203 tons; this admitted build reduces cargo from 45 tons
+# to 42 tons. Z-drive B is replaced by ordinary Jump drive B.
+
+schema_version = 1
+design_id = "ct-source-ship-45"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+unused_fire_control_stations = 1
+cargo_millitons = 42000
+thrust_g = 3
+
+[catalog]
+catalog_id = 45
+tag = "ship-45"
+family_id = 45
+upgrade_path_id = 2
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Sinbad"
+primary_role = "trader"
+secondary_roles = ["passenger", "privateer-conversion"]
+mission_tags = ["freight", "passengers", "atmospheric", "armed"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This streamlined free trader combines a two-parsec jump radius, three-gravity acceleration, middle-passenger accommodation, low berths, and a compact freight hold. One mixed turret is installed and the second hardpoint already has fire-control and magazine space reserved for later expansion.",
+  "The ship is a flexible owner-operated platform rather than a bulk hauler. Its passenger rooms and defensive provisions consume capacity, while the small vehicle hangar and medical bed make it useful for charters, frontier service, and privateer refits that need more than a bare cargo box.",
+]
+
+[hull]
+id = "ship-200"
+configuration = "streamlined"
+
+[armor]
+id = "crystaliron"
+layers = 1
+
+[drives]
+jump = "B"
+maneuver = "C"
+power = "C"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+
+[computer]
+id = "model-2"
+options = ["bis"]
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[software]]
+id = "intellect"
+
+[[equipment]]
+id = "stateroom"
+quantity = 11
+
+[[equipment]]
+id = "low-berth"
+quantity = 10
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+
+[[hangars]]
+id = "standard-hangar"
+contained_millitons = 4500
+quantity = 1
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "missile-rack", "sandcaster"]
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 12
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 20
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+
+[[crew]]
+role = "other"
+quantity = 2
+
+[assertions]
+hull_millitons = 200000
+accounted_displacement_millitons = 200000
+hull_points = 4
+structure_points = 4
+armor_points = 4
+jump_rating = 2
+thrust_g = 3
+fuel_millitons = 46000
+jump_fuel_millitons = 40000
+power_fuel_millitons = 6000
+hardpoints = 2
+hardpoints_used = 1
+fire_control_millitons = 2000
+minimum_crew = 4
+crew = 6
+carried_craft_count = 0
+carried_craft_price_credits = 0
+hangar_capacity_millitons = 4500
+construction_weeks = 44

@@ -1,0 +1,176 @@
+# Rule-derived reconstruction of the 400-ton light escort and Q-ship.
+
+schema_version = 1
+design_id = "ct-source-ship-141"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-jinsokuna", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+bridge_options = ["hardened-bridge", "holographic-controls"]
+power_options = ["emergency-power"]
+magazine_options = ["improved-magazine"]
+cargo_millitons = 15500
+[catalog]
+catalog_id = 141
+tag = "ship-141"
+family_id = 68
+upgrade_path_id = 5
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Smollett"
+primary_role = "light-escort"
+secondary_roles = ["q-ship", "boarding"]
+mission_tags = ["jump-2", "thrust-4", "particle-barbettes", "point-defense"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This 400-ton escort carries thirty-two personnel, including a boarding force, behind hardened controls, light armor, and four-gravity drives. Two particle-beam barbettes, two mixed turrets, and three point-defense lasers provide concentrated fire in a merchant-sized hull.",
+  "A boat, vehicle bay, armory, brig, medical support, and residual cargo support escort or disguised Q-ship missions. Its limited size rewards surprise and disciplined engagements rather than standing in a fleet line.",
+]
+[hull]
+id = "ship-400"
+configuration = "streamlined"
+[armor]
+id = "crystaliron"
+layers = 1
+[[hull_options]]
+id = "self-sealing"
+quantity = 1
+[drives]
+jump = "D"
+maneuver = "H"
+power = "H"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 4
+[computer]
+id = "model-3"
+options = ["fib"]
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 1
+[[software]]
+id = "intellect"
+[[software]]
+id = "internal-security-1"
+[[software]]
+id = "point-defense-1"
+[[equipment]]
+id = "stateroom"
+quantity = 4
+[[equipment]]
+id = "crew-berthing"
+quantity = 2
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 2
+[[equipment]]
+id = "barracks"
+quantity = 12
+[[equipment]]
+id = "galley-space"
+quantity = 32
+[[equipment]]
+id = "crew-recreation"
+quantity = 10
+[[equipment]]
+id = "fuel-processor"
+quantity = 5
+[[equipment]]
+id = "armory"
+quantity = 1
+[[equipment]]
+id = "briefing-room"
+quantity = 1
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+[[equipment]]
+id = "office"
+quantity = 1
+[[equipment]]
+id = "ships-brig"
+quantity = 2
+[[equipment]]
+id = "workshop"
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 30000
+quantity = 1
+[[hangars]]
+id = "standard-hangar"
+contained_millitons = 5000
+quantity = 1
+[[barbettes]]
+id = "particle-beam-barbette"
+quantity = 2
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "missile-rack"]
+quantity = 1
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "sandcaster"]
+quantity = 1
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 3
+[[ammunition]]
+id = "standard-missile"
+quantity = 72
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 80
+[[carried_craft]]
+tag = "ship-142"
+quantity = 1
+[[crew]]
+role = "command"
+quantity = 4
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 4
+[[crew]]
+role = "sensors-operator"
+quantity = 2
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "turret-gunner"
+quantity = 2
+[[crew]]
+role = "bay-gunner"
+quantity = 2
+[[crew]]
+role = "flight-crew"
+quantity = 2
+[[crew]]
+role = "marine"
+quantity = 12
+[[crew]]
+role = "other"
+quantity = 3

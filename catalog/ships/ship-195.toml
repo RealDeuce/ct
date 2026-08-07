@@ -1,0 +1,128 @@
+# Corrected rule-derived version of the Chapter 9 TL11 Corvette. The printed
+# specification exceeds its hull by eight tons; this catalog design reduces
+# cargo from 25 tons to 17 tons and includes required Jump Control/2 software.
+
+schema_version = 1
+design_id = "ct-corrected-corvette"
+revision = 1
+ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = true
+electronics = "advanced"
+cargo_millitons = 17000
+thrust_g = 6
+
+[catalog]
+catalog_id = 195
+tag = "ship-195"
+family_id = 195
+upgrade_path_id = 7
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Decatur"
+primary_role = "naval"
+secondary_roles = ["patrol", "escort"]
+mission_tags = ["patrol", "interception", "escort", "missile-combat"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This compact naval corvette combines high acceleration, a two-parsec jump radius, missile armament, and a marine detachment in a hull suited to independent patrols. Stealth treatment and advanced sensors favor interception, reconnaissance, and attacks made with local intelligence.",
+  "The design is tightly packed and carries little revenue or mission cargo. Its missile magazines, specialized crew, and powerful drives impose substantial operating costs, while its modest hull cannot trade fire with larger fleet combatants for long.",
+]
+
+[hull]
+id = "ship-300"
+configuration = "standard"
+
+[armor]
+id = "crystaliron"
+layers = 2
+
+[[hull_options]]
+id = "stealth"
+quantity = 1
+
+[drives]
+jump = "C"
+maneuver = "J"
+power = "J"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 4
+
+[computer]
+id = "model-3"
+options = ["fib"]
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[equipment]]
+id = "stateroom"
+quantity = 9
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 5
+
+[[equipment]]
+id = "armory"
+quantity = 1
+
+[[equipment]]
+id = "detention-cell"
+quantity = 4
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 5
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "missile-rack"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "missile-rack"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[ammunition]]
+id = "smart-missile"
+quantity = 120
+
+[[crew]]
+role = "command"
+quantity = 1
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 2
+
+[[crew]]
+role = "turret-gunner"
+quantity = 3
+
+[[crew]]
+role = "marine"
+quantity = 10

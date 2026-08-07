@@ -1,0 +1,612 @@
+# Normalized armament additions. Existing CE mounts, weapons, bays, screens,
+# and ammunition remain in ce-core.toml unless ct-ruleset.toml explicitly says
+# otherwise.
+
+schema_version = 1
+module_id = "ct.af3.armament"
+module_revision = 1
+extends_ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["ship-source-a-f", "cepheus-engine-srd-2016"]
+
+[[point_defense_mount]]
+id = "point-defense-node-mount"
+min_tl = 6
+displacement_millitons = 0
+price_credits = 1000000
+hardpoint_node_capacity = 1
+[[point_defense_weapon]]
+id = "point-defense-minigun"
+min_tl = 6
+hit_dm = 0
+maximum_range = "close"
+damage = "3d6"
+shots = 100
+price_credits = 300000
+cannot_damage_ships = true
+[[point_defense_weapon]]
+id = "point-defense-laser"
+min_tl = 10
+hit_dm = 1
+maximum_range = "medium"
+damage = "4d6"
+price_credits = 500000
+cannot_damage_ships = true
+[[point_defense_weapon]]
+id = "point-defense-gatling-laser"
+min_tl = 12
+hit_dm = 2
+maximum_range = "short"
+damage = "4d6"
+price_credits = 1000000
+cannot_damage_ships = true
+[[point_defense_weapon]]
+id = "point-defense-vrf-gauss"
+min_tl = 12
+hit_dm = 1
+maximum_range = "short"
+damage = "5d6"
+shots = 1000
+price_credits = 750000
+cannot_damage_ships = true
+
+[[mount]]
+id = "quad-turret"
+min_tl = 12
+weapon_capacity = 4
+displacement_millitons = 1000
+price_credits = 2000000
+hardpoints = 1
+
+[[weapon]]
+id = "mining-laser"
+min_tl = 7
+price_credits = 500000
+optimum_range = "adjacent"
+damage = "2d6"
+hit_dm = -4
+[[weapon]]
+id = "turret-railgun"
+min_tl = 9
+price_credits = 1250000
+optimum_range = "short"
+ammunition_family = "turret-railgun-projectile"
+[[weapon]]
+id = "turret-plasma-gun"
+min_tl = 11
+price_credits = 2800000
+optimum_range = "medium"
+damage = "2d6+4"
+maximum_count_formula = "mount-capacity-minus-one"
+
+[[ammunition]]
+id = "ortillery-missile"
+min_tl = 7
+units_per_ton = 12
+price_credits_per_pack = 25000
+pack_units = 12
+damage = "4d6"
+[[ammunition]]
+id = "shockwave-missile"
+min_tl = 7
+units_per_ton = 12
+price_credits_per_pack = 35000
+pack_units = 12
+damage = "special"
+[[ammunition]]
+id = "decoy-missile"
+min_tl = 9
+units_per_ton = 12
+price_credits_per_pack = 35000
+pack_units = 12
+damage = "2d6"
+[[ammunition]]
+id = "fragmentation-missile"
+min_tl = 9
+units_per_ton = 12
+price_credits_per_pack = 20000
+pack_units = 12
+damage = "2d6"
+[[ammunition]]
+id = "long-range-missile"
+min_tl = 10
+units_per_ton = 12
+price_credits_per_pack = 35000
+pack_units = 12
+damage = "2d6-2"
+[[ammunition]]
+id = "multi-warhead-missile"
+min_tl = 10
+units_per_ton = 12
+price_credits_per_pack = 60000
+pack_units = 12
+damage = "2d6-times-1d6"
+
+[[ammunition]]
+id = "sandcaster-pebbles"
+min_tl = 7
+units_per_ton = 20
+price_credits_per_pack = 200000
+pack_units = 20
+damage = "1d3"
+[[ammunition]]
+id = "sandcaster-chaff"
+min_tl = 8
+units_per_ton = 20
+price_credits_per_pack = 250000
+pack_units = 20
+[[ammunition]]
+id = "sandcaster-sandcutter"
+min_tl = 8
+units_per_ton = 20
+price_credits_per_pack = 350000
+pack_units = 20
+
+[[ammunition]]
+id = "turret-railgun-basic"
+min_tl = 9
+units_per_ton = 30
+price_credits_per_pack = 5000
+pack_units = 30
+damage = "1d6"
+[[ammunition]]
+id = "turret-railgun-canister"
+min_tl = 9
+units_per_ton = 20
+price_credits_per_pack = 8000
+pack_units = 20
+damage = "1d6+2"
+[[ammunition]]
+id = "turret-railgun-penetrator"
+min_tl = 10
+units_per_ton = 15
+price_credits_per_pack = 15000
+pack_units = 15
+damage = "2d6"
+
+[[barbette]]
+id = "missile-barbette"
+min_tl = 7
+displacement_millitons = 5000
+price_credits = 4000000
+hardpoints = 1
+internal_ammunition_units = 24
+ammunition_units_per_ton = 12
+[[barbette]]
+id = "mine-launcher-barbette"
+min_tl = 8
+displacement_millitons = 5000
+price_credits = 2000000
+hardpoints = 1
+internal_ammunition_units = 6
+ammunition_units_per_ton = 6
+[[barbette]]
+id = "particle-beam-barbette"
+min_tl = 8
+displacement_millitons = 5000
+price_credits = 8000000
+hardpoints = 1
+damage = "4d6"
+[[barbette]]
+id = "railgun-barbette"
+min_tl = 9
+displacement_millitons = 5000
+price_credits = 4000000
+hardpoints = 1
+internal_ammunition_tons = 1
+ammunition_units_per_ton = 20
+[[barbette]]
+id = "torpedo-barbette"
+min_tl = 9
+displacement_millitons = 5000
+price_credits = 3000000
+hardpoints = 1
+internal_ammunition_units = 2
+ammunition_units_per_five_tons = 2
+[[barbette]]
+id = "plasma-barbette"
+min_tl = 11
+displacement_millitons = 5000
+price_credits = 5000000
+hardpoints = 1
+damage = "4d6"
+[[barbette]]
+id = "xray-laser-barbette"
+min_tl = 11
+displacement_millitons = 5000
+price_credits = 3000000
+hardpoints = 1
+damage = "3d6+1"
+causes_crew_hit = true
+
+[[mount_option]]
+id = "retractable-barbette"
+applies_to = "barbette"
+additional_millitons = 2000
+additional_price_credits = 3000000
+
+[[ammunition]]
+id = "railgun-basic"
+min_tl = 9
+units_per_ton = 16
+price_credits_per_pack = 5000
+pack_units = 16
+damage = "3d6"
+[[ammunition]]
+id = "railgun-canister"
+min_tl = 9
+units_per_ton = 16
+price_credits_per_pack = 8000
+pack_units = 16
+damage = "3d6"
+[[ammunition]]
+id = "railgun-penetrator"
+min_tl = 10
+units_per_ton = 12
+price_credits_per_pack = 15000
+pack_units = 12
+damage = "4d6"
+
+[[ammunition]]
+id = "mine-nuclear"
+min_tl = 8
+units_per_ton = 6
+price_credits_per_pack = 250000
+pack_units = 6
+damage = "4d6"
+[[ammunition]]
+id = "mine-standard"
+min_tl = 8
+units_per_ton = 6
+price_credits_per_pack = 20000
+pack_units = 6
+damage = "3d6"
+[[ammunition]]
+id = "mine-bomb-pumped-laser"
+min_tl = 9
+units_per_ton = 6
+price_credits_per_pack = 750000
+pack_units = 6
+damage = "5d6"
+
+[[ammunition]]
+id = "torpedo-basic"
+min_tl = 7
+units_per_five_tons = 2
+price_credits_per_unit = 50000
+damage = "4d6"
+[[ammunition]]
+id = "torpedo-nuclear"
+min_tl = 7
+units_per_five_tons = 2
+price_credits_per_unit = 180000
+damage = "6d6"
+causes_crew_hit = true
+[[ammunition]]
+id = "torpedo-ortillery"
+min_tl = 8
+units_per_five_tons = 2
+price_credits_per_unit = 120000
+damage = "8d6"
+[[ammunition]]
+id = "torpedo-bomb-pumped"
+min_tl = 9
+units_per_five_tons = 2
+price_credits_per_unit = 200000
+damage = "7d6"
+[[ammunition]]
+id = "torpedo-multi-warhead"
+min_tl = 10
+units_per_five_tons = 2
+price_credits_per_unit = 100000
+damage = "4d6-times-4"
+[[ammunition]]
+id = "torpedo-multi-warhead-nuclear"
+min_tl = 10
+units_per_five_tons = 2
+price_credits_per_unit = 1200000
+damage = "5d6-times-4"
+causes_crew_hit = true
+[[ammunition]]
+id = "torpedo-multi-warhead-bomb-pumped"
+min_tl = 11
+units_per_five_tons = 2
+price_credits_per_unit = 2200000
+damage = "6d6+1-times-4"
+
+# Fifty-ton bays already in CE retain CE identity and construction values.
+# These records add the otherwise absent bay sizes and weapon families.
+[[bay]]
+id = "torpedo-bay-50"
+min_tl = 9
+displacement_millitons = 51000
+price_credits = 12000000
+hardpoints = 1
+internal_ammunition_units = 6
+[[bay]]
+id = "railgun-bay-50"
+min_tl = 9
+displacement_millitons = 51000
+price_credits = 30000000
+hardpoints = 1
+internal_ammunition_units = 200
+[[bay]]
+id = "missile-bay-100"
+min_tl = 6
+displacement_millitons = 101000
+price_credits = 24000000
+hardpoints = 1
+internal_ammunition_units = 288
+[[bay]]
+id = "particle-beam-bay-100"
+min_tl = 8
+displacement_millitons = 101000
+price_credits = 40000000
+hardpoints = 1
+[[bay]]
+id = "torpedo-bay-100"
+min_tl = 9
+displacement_millitons = 101000
+price_credits = 24000000
+hardpoints = 1
+internal_ammunition_units = 12
+[[bay]]
+id = "fusion-gun-bay-100"
+min_tl = 12
+displacement_millitons = 101000
+price_credits = 16000000
+hardpoints = 1
+[[bay]]
+id = "meson-gun-bay-100"
+min_tl = 11
+displacement_millitons = 101000
+price_credits = 100000000
+hardpoints = 1
+[[bay]]
+id = "railgun-bay-100"
+min_tl = 9
+displacement_millitons = 101000
+price_credits = 60000000
+hardpoints = 1
+internal_ammunition_units = 400
+[[bay]]
+id = "particle-beam-bay-500"
+min_tl = 11
+displacement_millitons = 501000
+price_credits = 100000000
+hardpoints = 5
+minimum_power_plant_rating = 3
+internal_ammunition_units = 0
+[[bay]]
+id = "fusion-gun-bay-500"
+min_tl = 12
+displacement_millitons = 501000
+price_credits = 130000000
+hardpoints = 5
+minimum_power_plant_rating = 3
+[[bay]]
+id = "meson-gun-bay-500"
+min_tl = 11
+displacement_millitons = 501000
+price_credits = 220000000
+hardpoints = 5
+minimum_power_plant_rating = 3
+
+[[magazine_option]]
+id = "improved-magazine"
+price_credits_per_installed_ton = 100000
+negated_hits = 1
+
+[[spinal_weapon]]
+id = "particle-spinal-a"
+min_tl = 8
+displacement_millitons = 5000000
+price_credits = 3500000000
+damage = 200
+[[spinal_weapon]]
+id = "particle-spinal-b"
+min_tl = 12
+displacement_millitons = 3500000
+price_credits = 2100000000
+damage = 300
+[[spinal_weapon]]
+id = "particle-spinal-c"
+min_tl = 10
+displacement_millitons = 5000000
+price_credits = 3500000000
+damage = 300
+[[spinal_weapon]]
+id = "particle-spinal-e"
+min_tl = 12
+displacement_millitons = 4000000
+price_credits = 2800000000
+damage = 400
+[[spinal_weapon]]
+id = "meson-spinal-a"
+min_tl = 11
+displacement_millitons = 5000000
+price_credits = 5000000000
+damage = 200
+[[spinal_weapon]]
+id = "meson-spinal-b"
+min_tl = 11
+displacement_millitons = 8000000
+price_credits = 8000000000
+damage = 250
+[[spinal_weapon]]
+id = "meson-spinal-c"
+min_tl = 12
+displacement_millitons = 10000000
+price_credits = 10000000000
+damage = 350
+[[spinal_weapon]]
+id = "railgun-spinal-a"
+min_tl = 9
+displacement_millitons = 4000000
+price_credits = 3000000000
+damage = 130
+included_ammunition_units = 5
+[[spinal_weapon]]
+id = "railgun-spinal-b"
+min_tl = 10
+displacement_millitons = 5000000
+price_credits = 3500000000
+damage = 250
+included_ammunition_units = 5
+[[spinal_weapon]]
+id = "railgun-spinal-c"
+min_tl = 11
+displacement_millitons = 4500000
+price_credits = 4900000000
+damage = 300
+included_ammunition_units = 5
+
+[[spinal_weapon_improvement]]
+id = "particle-spinal-tech-improvement"
+size_and_price_percent_by_tl_increase = [90, 80, 70, 60]
+damage_percent_by_tl_increase = [105, 110, 115, 120]
+[[spinal_weapon_improvement]]
+id = "meson-spinal-tech-improvement"
+size_and_price_percent_by_tl_increase = [80]
+damage_percent_by_tl_increase = [110]
+[[spinal_weapon_improvement]]
+id = "railgun-spinal-tech-improvement"
+size_and_price_percent_by_tl_increase = [90, 80, 60, 50]
+damage_percent_by_tl_increase = [105, 110, 120, 130]
+[[mount_option]]
+id = "rapid-fire-spinal"
+applies_to = "spinal-weapon"
+volume_percent = 115
+price_percent = 115
+
+[[screen]]
+id = "magnetogravitic-screen-light"
+min_tl = 12
+maximum_hull_code = "CE"
+displacement_millitons = 30000
+price_credits = 60000000
+mutually_exclusive_with = ["radiation-shielding"]
+cannot_operate_in_atmosphere = true
+[[screen]]
+id = "magnetogravitic-screen-heavy"
+min_tl = 12
+minimum_hull_code = "CF"
+displacement_millitons = 40000
+price_credits = 80000000
+mutually_exclusive_with = ["radiation-shielding"]
+cannot_operate_in_atmosphere = true
+
+[[software]]
+id = "intellect"
+min_tl = 11
+rating = 10
+price_credits = 1000000
+[[software]]
+id = "advanced-fire-control-1"
+min_tl = 10
+rating = 15
+price_credits = 12000000
+[[software]]
+id = "advanced-fire-control-2"
+min_tl = 12
+rating = 25
+price_credits = 15000000
+[[software]]
+id = "point-defense-1"
+min_tl = 9
+rating = 5
+price_credits = 5000000
+[[software]]
+id = "point-defense-2"
+min_tl = 10
+rating = 10
+price_credits = 15000000
+[[software]]
+id = "point-defense-3"
+min_tl = 12
+rating = 15
+price_credits = 20000000
+[[software]]
+id = "point-defense-drone-1"
+min_tl = 11
+rating = 5
+price_credits = 10000000
+[[software]]
+id = "point-defense-drone-2"
+min_tl = 11
+rating = 10
+price_credits = 15000000
+[[software]]
+id = "point-defense-drone-3"
+min_tl = 11
+rating = 15
+price_credits = 25000000
+[[software]]
+id = "point-defense-drone-4"
+min_tl = 11
+rating = 20
+price_credits = 35000000
+[[software]]
+id = "defensive-screen"
+min_tl = 10
+rating = 10
+price_credits = 5000000
+[[software]]
+id = "auto-gunner-0"
+min_tl = 9
+rating = 5
+price_credits = 1000000
+[[software]]
+id = "auto-gunner-1"
+min_tl = 12
+rating = 10
+price_credits = 5000000
+[[software]]
+id = "launch-solution-1"
+min_tl = 8
+rating = 5
+price_credits = 10000000
+[[software]]
+id = "launch-solution-2"
+min_tl = 10
+rating = 10
+price_credits = 12000000
+[[software]]
+id = "launch-solution-3"
+min_tl = 12
+rating = 15
+price_credits = 16000000
+[[software]]
+id = "battlespace-system-1"
+min_tl = 9
+rating = 5
+price_credits = 18000000
+[[software]]
+id = "battlespace-system-2"
+min_tl = 12
+rating = 10
+price_credits = 24000000
+[[software]]
+id = "electronic-warfare-1"
+min_tl = 10
+rating = 10
+price_credits = 15000000
+[[software]]
+id = "electronic-warfare-2"
+min_tl = 12
+rating = 15
+price_credits = 18000000
+[[software]]
+id = "internal-security-1"
+min_tl = 10
+rating = 2
+price_credits = 6000000
+[[software]]
+id = "internal-security-2"
+min_tl = 11
+rating = 5
+price_credits = 8000000
+[[software]]
+id = "internal-security-3"
+min_tl = 12
+rating = 10
+price_credits = 10000000

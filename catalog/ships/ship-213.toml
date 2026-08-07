@@ -1,0 +1,95 @@
+# Rule-derived reconstruction of the armed cutter embedded in ship-87's
+# source. It has no reserved inventory row, so it receives a supplemental ID.
+# The source's simultaneous four-point armor, twenty-four seats, and eighteen
+# tons of cargo do not fit; exact whole-point armor and fuel leave 17.25 tons.
+
+schema_version = 1
+design_id = "ct-source-sc-raider-cutter"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-s-c",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "standard"
+airlocks = 1
+additional_fire_control_stations = 1
+cargo_millitons = 17250
+
+[catalog]
+catalog_id = 213
+tag = "ship-213"
+family_id = 213
+upgrade_path_id = 6
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Cutlass"
+primary_role = "armed-raider-cutter"
+secondary_roles = ["boarding", "cargo-transfer"]
+mission_tags = ["passengers", "cargo", "beam-laser", "carrier-craft"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This fifty-ton armed cutter carries two operators, twenty-four seated boarders, and 17.25 tons of cargo at four gravities. A fixed beam laser, armor, and an airlock support boarding, raider deployment, prize-crew transfer, and movement of captured stores.",
+  "The craft has two weeks of endurance but no jump capability or sleeping accommodation. It is a capacious local assault transport that depends on a parent ship for interstellar movement, major repairs, and sustained logistical support.",
+]
+
+[hull]
+id = "small-50"
+configuration = "streamlined"
+
+[armor]
+id = "small-craft-crystaliron-whole-points"
+points = 2
+
+[drives]
+maneuver = "sK"
+power = "sK"
+
+[fuel]
+power_plant_weeks = 2
+
+[control]
+id = "two-person-control-cabin"
+additional_passengers = 0
+
+[computer]
+id = "model-1"
+options = []
+
+[[equipment]]
+id = "acceleration-seat"
+quantity = 24
+
+[[mounts]]
+id = "single-turret"
+weapons = ["beam-laser"]
+fixed = true
+pop_up = false
+
+[[crew]]
+role = "pilot"
+quantity = 2
+
+[assertions]
+hull_millitons = 50000
+accounted_displacement_millitons = 50000
+hull_points = 1
+structure_points = 1
+armor_points = 2
+thrust_g = 4
+fuel_millitons = 2600
+hardpoints = 1
+hardpoints_used = 1
+minimum_crew = 1
+crew = 2
+construction_weeks = 32
+pre_discount_price_credits = 22650000
+discount_credits = 0
+construction_price_credits = 22650000

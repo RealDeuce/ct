@@ -1,0 +1,91 @@
+schema_version = 1
+
+# Each profile supplies four deterministic fragments for stellar names and
+# four for principal-world names. Patterns are normalized after substitution,
+# so an empty qualifier never leaves doubled whitespace. With 20 choices per
+# fragment, every profile has up to 160,000 system candidates before collision
+# retries. System names are allocated case-insensitively across the universe.
+
+[[profile]]
+id = 1
+tag = "federation"
+system_pattern = "{0}{1}{2}{3}"
+world_pattern = "{0} {1}{2}{3}"
+system_a = ["A", "Ad", "Al", "Am", "An", "Ar", "Bel", "Ca", "Cor", "Da", "El", "Er", "Ga", "Hel", "I", "Ka", "Lor", "Mar", "Nor", "Val"]
+system_b = ["a", "e", "i", "o", "u", "ae", "ai", "ea", "ei", "ia", "io", "oa", "oi", "ou", "ara", "eri", "ila", "ora", "uri", "y"]
+system_c = ["b", "c", "d", "f", "g", "l", "m", "n", "r", "s", "t", "v", "br", "dr", "gr", "ll", "nd", "nt", "st", "th"]
+system_d = ["a", "ae", "an", "ar", "en", "er", "ia", "ian", "ion", "is", "o", "on", "or", "os", "um", "us", "ael", "ara", "eron", "oria"]
+world_a = ["", "New", "Port", "Fort", "Free", "High", "North", "South", "East", "West", "Upper", "Lower", "Bright", "Green", "Red", "Silver", "Golden", "First", "Far", "Common"]
+world_b = ["Ald", "Ard", "Bell", "Cal", "Con", "Dun", "Eld", "Fair", "Glen", "Har", "Kel", "Lang", "Mar", "Nor", "Oak", "Pen", "Rose", "Sel", "Val", "Win"]
+world_c = ["a", "e", "i", "o", "u", "an", "en", "in", "on", "ar", "er", "or", "ia", "ora", "ara", "ell", "ett", "ing", "ow", "y"]
+world_d = ["", "a", "e", "ia", "is", "on", "or", "um", "ara", "eria", "haven", "land", "march", "mere", "port", "reach", "stead", "vale", "watch", "wick"]
+
+[[profile]]
+id = 2
+tag = "lyric"
+system_pattern = "{0}{1}{2}{3}"
+world_pattern = "{0} {1}{2}{3}"
+system_a = ["Ae", "Ael", "Ai", "Ari", "Cael", "Cei", "Ela", "Eli", "Fael", "Ila", "Iri", "Lae", "Lei", "Lio", "Nael", "Oli", "Rae", "Sai", "Thael", "Vae"]
+system_b = ["a", "e", "i", "o", "u", "ae", "ai", "ea", "ei", "ia", "ie", "io", "oa", "oe", "oi", "ou", "ua", "ue", "ui", "y"]
+system_c = ["l", "m", "n", "r", "s", "v", "ll", "ly", "mn", "nn", "nr", "rl", "rn", "rs", "ss", "th", "vl", "vr", "yr", "zh"]
+system_d = ["a", "ae", "ai", "al", "ara", "e", "ea", "el", "en", "ia", "iel", "ien", "ion", "is", "oa", "on", "ora", "os", "uel", "yra"]
+world_a = ["", "Aerial", "Azure", "Bright", "Dawn", "Evening", "First", "Golden", "High", "Luminous", "Morning", "New", "Open", "Pale", "Quiet", "Silver", "Singing", "Star", "Summer", "White"]
+world_b = ["Ae", "Ari", "Cae", "Ela", "Eli", "Fae", "Ila", "Iri", "Lae", "Lei", "Lia", "Nae", "Oli", "Rae", "Sai", "Sel", "Tha", "Vae", "Yla", "Zae"]
+world_c = ["la", "le", "li", "lo", "lu", "ma", "me", "mi", "na", "ne", "ni", "ra", "re", "ri", "sa", "se", "si", "va", "ve", "vi"]
+world_d = ["", "a", "e", "ia", "iel", "ien", "ion", "is", "ora", "os", "ara", "elle", "essa", "haven", "lume", "mere", "rise", "vale", "via", "yre"]
+
+[[profile]]
+id = 3
+tag = "marcher"
+system_pattern = "{0}{1}{2}{3}"
+world_pattern = "{0} {1}{2}{3}"
+system_a = ["B", "Br", "D", "Dr", "G", "Gr", "K", "Kr", "M", "N", "R", "Sk", "St", "T", "Th", "Tr", "V", "Vr", "Z", "Zh"]
+system_b = ["a", "e", "i", "o", "u", "aa", "ai", "au", "ea", "ei", "ia", "io", "oa", "oi", "ou", "ra", "re", "ri", "ro", "ur"]
+system_c = ["b", "d", "g", "k", "m", "n", "r", "t", "v", "z", "br", "dr", "gr", "kr", "nd", "ng", "rk", "rn", "sk", "st"]
+system_d = ["ak", "an", "ar", "ek", "en", "er", "ik", "in", "ir", "ok", "on", "or", "uk", "un", "ur", "grad", "mark", "orn", "rak", "var"]
+world_a = ["", "Black", "Cold", "Deep", "East", "Far", "First", "Fort", "Grey", "High", "Iron", "Last", "Long", "New", "North", "Red", "Stone", "Strong", "West", "White"]
+world_b = ["Bar", "Bran", "Dra", "Gar", "Gor", "Kar", "Kor", "Mar", "Mor", "Nar", "Rag", "Rak", "Sar", "Skar", "Sten", "Tar", "Tor", "Var", "Vor", "Zar"]
+world_c = ["a", "e", "i", "o", "u", "ad", "ag", "ak", "an", "ar", "en", "ik", "in", "ok", "on", "or", "ra", "ro", "ur", "va"]
+world_d = ["", "a", "ak", "an", "ar", "ek", "en", "grad", "hold", "in", "keep", "mark", "ok", "or", "ost", "rock", "stead", "tor", "ur", "watch"]
+
+[[profile]]
+id = 4
+tag = "classical"
+system_pattern = "{0}{1}{2}{3}"
+world_pattern = "{0} {1}{2}{3}"
+system_a = ["A", "Ae", "And", "Ant", "Cal", "Cass", "Cyr", "Del", "Dem", "Epi", "Ery", "Hel", "Her", "Ith", "Lys", "Mel", "Nau", "Or", "Pel", "The"]
+system_b = ["a", "e", "i", "o", "u", "ae", "ai", "au", "ea", "ei", "ia", "io", "oa", "oe", "oi", "ou", "ya", "ye", "yi", "yo"]
+system_c = ["c", "d", "l", "m", "n", "p", "r", "s", "t", "x", "ch", "cl", "dr", "ll", "mn", "nd", "ph", "st", "th", "tr"]
+system_d = ["a", "ae", "as", "ea", "es", "ia", "ion", "is", "os", "um", "us", "ara", "ides", "ion", "ora", "orus", "yra", "ys", "eon", "axis"]
+world_a = ["", "Arcadian", "Civic", "Crowned", "Doric", "Eastern", "First", "Golden", "High", "Imperial", "Ionian", "Lower", "New", "Northern", "Old", "Sacred", "Southern", "Upper", "Western", "White"]
+world_b = ["Aca", "Ala", "Cali", "Cassi", "Cyra", "Dela", "Deme", "Epi", "Ery", "Hela", "Hera", "Itha", "Lysa", "Mela", "Nau", "Ora", "Pela", "Thea", "Tira", "Xena"]
+world_c = ["ca", "da", "la", "ma", "na", "pa", "ra", "sa", "ta", "xa", "che", "cle", "dra", "lle", "mna", "nda", "pha", "sta", "tha", "tra"]
+world_d = ["", "a", "ea", "ia", "ion", "is", "os", "um", "us", "ara", "eon", "ides", "ora", "polis", "port", "ria", "rium", "thea", "yra", "ys"]
+
+[[profile]]
+id = 5
+tag = "northern"
+system_pattern = "{0}{1}{2}{3}"
+world_pattern = "{0} {1}{2}{3}"
+system_a = ["Alf", "Ask", "Bal", "Berg", "Dag", "Eik", "Falk", "Garm", "Hal", "Hraf", "Ing", "Jor", "Keld", "Leif", "Nord", "Ravn", "Sig", "Tor", "Ulf", "Vid"]
+system_b = ["a", "e", "i", "o", "u", "aa", "ae", "ai", "au", "ei", "ia", "io", "oa", "oi", "ou", "ya", "ye", "yi", "yo", "yu"]
+system_c = ["b", "d", "f", "g", "k", "l", "m", "n", "r", "s", "t", "v", "bj", "dr", "fj", "nd", "ng", "rn", "sk", "st"]
+system_d = ["a", "ar", "dal", "en", "er", "gard", "heim", "ing", "land", "mark", "nes", "or", "sen", "stad", "und", "ur", "vik", "vald", "orn", "oy"]
+world_a = ["", "East", "Far", "First", "Frost", "Green", "High", "Ice", "Long", "Low", "New", "North", "Old", "Raven", "Red", "Silver", "South", "Stone", "West", "White"]
+world_b = ["Alf", "Ask", "Bal", "Berg", "Dag", "Eik", "Falk", "Garm", "Hal", "Hraf", "Ing", "Jor", "Keld", "Leif", "Nord", "Ravn", "Sig", "Tor", "Ulf", "Vid"]
+world_c = ["a", "e", "i", "o", "u", "ad", "ag", "ak", "al", "an", "ar", "en", "er", "in", "or", "ra", "ro", "un", "ur", "va"]
+world_d = ["", "a", "dal", "en", "gard", "heim", "hold", "land", "mark", "ness", "rest", "stead", "und", "vale", "vik", "watch", "way", "wick", "wood", "oy"]
+
+[[profile]]
+id = 6
+tag = "mercantile"
+system_pattern = "{0}{1}{2}{3}"
+world_pattern = "{0} {1}{2}{3}"
+system_a = ["Bal", "Ban", "Cal", "Can", "Del", "Den", "Fal", "Fen", "Gal", "Gan", "Hal", "Han", "Kel", "Ken", "Mel", "Men", "Pel", "Pen", "Sel", "Sen"]
+system_b = ["a", "e", "i", "o", "u", "ae", "ai", "au", "ea", "ei", "ia", "io", "oa", "oi", "ou", "ra", "re", "ri", "ro", "ur"]
+system_c = ["b", "d", "g", "k", "l", "m", "n", "p", "r", "s", "t", "v", "br", "dr", "ld", "nd", "nt", "rn", "st", "tr"]
+system_d = ["a", "al", "an", "ar", "en", "er", "ia", "in", "is", "on", "or", "os", "um", "ara", "eria", "ora", "port", "ran", "ria", "us"]
+world_a = ["", "Charter", "Common", "Copper", "Crown", "East", "Exchange", "Free", "Golden", "Grand", "Guild", "High", "Market", "New", "Open", "Prosper", "Silver", "Union", "West", "World"]
+world_b = ["Anchor", "Bridge", "Caravan", "Concord", "Cross", "Gate", "Harbor", "Ledger", "Market", "Meridian", "Passage", "Port", "Prospect", "Road", "Scale", "Standard", "Transit", "Union", "Venture", "Way"]
+world_c = ["", "a", "e", "i", "o", "an", "en", "er", "ia", "ian", "ion", "is", "on", "or", "um", "ara", "eria", "ora", "us", "y"]
+world_d = ["", " Bay", " Cross", " Gate", " Haven", " Landing", " Market", " Port", " Reach", " Roads", " Station", " Vale", " Watch", " Wells", "burg", "ford", "land", "stead", "ton", "wick"]

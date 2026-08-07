@@ -1,0 +1,142 @@
+# Rule-derived conversion of source-inventory ship-43. Whole-point armor is
+# retained, Z-drive B becomes Jump drive B, and the printed 203-ton allocation
+# is corrected by reducing cargo from 30 tons to 27 tons.
+
+schema_version = 1
+design_id = "ct-source-ship-43"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+cargo_millitons = 27000
+
+[catalog]
+catalog_id = 43
+tag = "ship-43"
+family_id = 34
+upgrade_path_id = 3
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Humboldt"
+primary_role = "belter"
+secondary_roles = ["miner", "prospector"]
+mission_tags = ["mining", "cutter-support", "cargo", "frontier"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This two-hundred-ton prospecting ship is a mobile base for an independent mining crew. Mining drones, a diagnostic bed, fuel processing, a defensive mixed turret, and a fifty-ton craft hangar support extended work around belts and remote resource bodies.",
+  "The fitted hangar is intended for a separately acquired mining cutter, whose cost is not part of this hull. Without that cutter the ship can still prospect and process drone-gathered ore, but its modest hold and two-gravity acceleration make ordinary freight or pursuit work secondary.",
+]
+
+[hull]
+id = "ship-200"
+configuration = "standard"
+
+[armor]
+id = "crystaliron-whole-points"
+points = 2
+
+[drives]
+jump = "B"
+maneuver = "B"
+power = "B"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+
+[computer]
+id = "model-1"
+options = ["bis"]
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[equipment]]
+id = "stateroom"
+quantity = 4
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+
+[[equipment]]
+id = "mining-drones"
+quantity = 1
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+
+[[hangars]]
+id = "standard-hangar"
+contained_millitons = 50000
+quantity = 1
+
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "sandcaster"]
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 40
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+
+[assertions]
+hull_millitons = 200000
+accounted_displacement_millitons = 200000
+hull_points = 4
+structure_points = 4
+armor_points = 2
+jump_rating = 2
+thrust_g = 2
+fuel_millitons = 44000
+jump_fuel_millitons = 40000
+power_fuel_millitons = 4000
+hardpoints = 2
+hardpoints_used = 1
+fire_control_millitons = 1000
+minimum_crew = 4
+crew = 4
+carried_craft_count = 0
+carried_craft_price_credits = 0
+hangar_capacity_millitons = 50000
+construction_weeks = 44

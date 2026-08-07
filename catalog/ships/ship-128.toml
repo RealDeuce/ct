@@ -1,0 +1,186 @@
+# Rule-derived reconstruction of the 600-ton fast trader. Ordinary Jump drive
+# replaces Zimm drive and prohibited fuel cells become two weeks of CE power
+# fuel. Separate environmental plant rows are implicit in accommodation, while
+# repair drones and support spaces use their normalized construction formulas.
+
+schema_version = 1
+design_id = "ct-source-ship-128"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-contessa",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+bridge_options = ["holographic-controls"]
+magazine_options = ["improved-magazine"]
+cargo_millitons = 248000
+
+[catalog]
+catalog_id = 128
+tag = "ship-128"
+family_id = 128
+upgrade_path_id = 2
+progression_stage = "light"
+status = "active"
+vessel_kind = "starship"
+display_name = "Samarkand"
+primary_role = "fast-trader"
+secondary_roles = ["passenger", "armed-merchant"]
+mission_tags = ["freight", "passengers", "jump-2", "thrust-3", "point-defense"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This six-hundred-ton trader combines a large hold, rooms for eight middle passengers, three-gravity acceleration, and a two-parsec jump radius. Fuel processing, repair drones, a workshop, medical bed, office, gymnasium, and holographic bridge controls support independent operation on demanding routes.",
+  "Five triple laser turrets, a sandcaster, and six independent point-defense lasers make it expensive but difficult prey. The ship is best at moving valuable freight through dangerous regions; its extensive defenses and passenger facilities consume space and capital that a peaceful bulk carrier could devote to cargo.",
+]
+
+[hull]
+id = "ship-600"
+configuration = "standard"
+
+[armor]
+id = "crystaliron"
+layers = 1
+
+[drives]
+jump = "H"
+maneuver = "J"
+power = "J"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+
+[computer]
+id = "model-3"
+options = ["bis"]
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "intellect"
+
+[[software]]
+id = "internal-security-1"
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[software]]
+id = "point-defense-1"
+
+[[equipment]]
+id = "stateroom"
+quantity = 10
+
+[[equipment]]
+id = "galley-space"
+quantity = 8
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 15
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 2
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+
+[[equipment]]
+id = "gymnasium"
+quantity = 1
+
+[[equipment]]
+id = "office"
+quantity = 1
+
+[[equipment]]
+id = "workshop"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 5
+
+[[mounts]]
+id = "single-turret"
+weapons = ["sandcaster"]
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 6
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 20
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 6
+
+[assertions]
+hull_millitons = 600000
+accounted_displacement_millitons = 600000
+hull_points = 12
+structure_points = 12
+armor_points = 4
+jump_rating = 2
+thrust_g = 3
+fuel_millitons = 138000
+jump_fuel_millitons = 120000
+power_fuel_millitons = 18000
+hardpoints = 6
+hardpoints_used = 6
+point_defense_nodes = 6
+fire_control_millitons = 6000
+minimum_crew = 9
+crew = 9
+carried_craft_count = 0
+carried_craft_price_credits = 0
+hangar_capacity_millitons = 0
+docking_capacity_millitons = 0
+construction_weeks = 76
+pre_discount_price_credits = 307360000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 307360000

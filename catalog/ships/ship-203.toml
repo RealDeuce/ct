@@ -1,0 +1,72 @@
+# Hand-authored reconstruction of the core CE 90-ton shuttle.
+
+schema_version = 1
+design_id = "ce-shuttle"
+revision = 1
+ruleset_id = "ce-srd-2016.small-craft"
+source_ids = ["cepheus-engine-srd-2016"]
+tech_level = 9
+standard_design = true
+electronics = "standard"
+unused_fire_control_stations = 1
+cargo_millitons = 67400
+
+[catalog]
+catalog_id = 203
+tag = "ship-203"
+family_id = 203
+upgrade_path_id = 1
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Bactrian"
+primary_role = "bulk-transfer"
+secondary_roles = ["cargo-transfer", "lighterage"]
+mission_tags = ["cargo", "ship-to-shore", "interplanetary"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This shuttle favors payload over speed, providing a large hold for bulk movement between a parent vessel, orbital facilities, and planetary surfaces. Its two-person control cabin also has room for one additional passenger.",
+  "Three-gravity performance is adequate for routine logistics but slower than a pinnace or ship's boat. The craft is unarmed, has one week of endurance, and cannot jump, so it is best used in established transport chains.",
+]
+
+[hull]
+id = "small-90"
+configuration = "standard"
+
+[drives]
+maneuver = "sN"
+power = "sN"
+
+[fuel]
+power_plant_weeks = 1
+
+[control]
+id = "two-person-control-cabin"
+additional_passengers = 0
+
+[computer]
+id = "model-1"
+options = []
+
+[[crew]]
+role = "pilot"
+quantity = 2
+
+[assertions]
+hull_millitons = 90000
+accounted_displacement_millitons = 90000
+hull_points = 1
+structure_points = 2
+armor_points = 0
+thrust_g = 3
+fuel_millitons = 1900
+hardpoints = 1
+hardpoints_used = 0
+minimum_crew = 2
+crew = 2
+construction_weeks = 35
+pre_discount_price_credits = 28430000
+discount_credits = 2843000
+construction_price_credits = 25587000

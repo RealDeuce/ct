@@ -1,0 +1,309 @@
+# Rule-derived reconstruction of the 2,500-ton fleet cruiser. Ordinary CE
+# drives replace adjusted Zimm machinery. TL12 fusion bays and gatling point
+# defense become TL11 particle bays and laser nodes; the non-CE gravity screen
+# is omitted. All capital weapons, magazines, craft, and support spaces are
+# concrete construction selections.
+
+schema_version = 1
+design_id = "ct-source-ship-118"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-hfn",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+bridge_options = [
+  "command-bridge",
+  "hardened-bridge",
+  "holographic-controls",
+]
+magazine_options = ["improved-magazine"]
+cargo_millitons = 7750
+
+[catalog]
+catalog_id = 118
+tag = "ship-118"
+family_id = 116
+upgrade_path_id = 7
+progression_stage = "heavy"
+status = "active"
+vessel_kind = "starship"
+display_name = "Ravelin"
+primary_role = "fleet-cruiser"
+secondary_roles = ["line-combat", "squadron-command"]
+mission_tags = ["jump-2", "thrust-4", "capital-weapons", "command"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This 2,500-ton fleet cruiser combines a command bridge, redundant capital computers, reinforced structure, heavy armor, four-gravity maneuver, and a two-parsec jump radius. Extensive crew spaces, medical support, repair drones, workshops, probe drones, a launch, and an armed boat support prolonged squadron operations.",
+  "Meson, torpedo, and particle-beam bays form the main battery, while laser, missile, and sandcaster turrets and twenty-five point-defense lasers cover close defense. It is a powerful institutional warship whose large crew, ammunition demand, and operating cost make commercial independence impractical.",
+]
+
+[hull]
+id = "ship-2500"
+configuration = "streamlined"
+
+[armor]
+id = "crystaliron"
+layers = 2
+
+[[structural_options]]
+id = "reinforced-structure"
+increments = 1
+
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "bridge"
+
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "drives"
+
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "ordnance-magazines"
+
+[drives]
+jump = "T"
+maneuver = "Z"
+power = "Z"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+
+[computer]
+id = "capital-core-3"
+options = ["fib"]
+quantity = 2
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "battlespace-system-1"
+
+[[software]]
+id = "defensive-screen"
+
+[[software]]
+id = "evade"
+level = 2
+
+[[software]]
+id = "fire-control"
+level = 2
+
+[[software]]
+id = "intellect"
+
+[[software]]
+id = "internal-security-2"
+
+[[software]]
+id = "launch-solution-2"
+
+[[software]]
+id = "point-defense-2"
+
+[[equipment]]
+id = "stateroom"
+quantity = 12
+
+[[equipment]]
+id = "crew-berthing"
+quantity = 14
+
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 14
+
+[[equipment]]
+id = "galley-space"
+quantity = 123
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 150
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 10
+
+[[equipment]]
+id = "armory"
+quantity = 5
+
+[[equipment]]
+id = "briefing-room"
+quantity = 2
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 4
+
+[[equipment]]
+id = "workshop"
+quantity = 1
+
+[[equipment]]
+id = "escape-pod"
+quantity = 58
+
+[[equipment]]
+id = "office"
+quantity = 4
+
+[[equipment]]
+id = "ships-brig"
+quantity = 2
+
+[[equipment]]
+id = "probe-drones"
+quantity = 5
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 3
+
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 50000
+quantity = 1
+
+[[bays]]
+id = "meson-gun-bay"
+quantity = 4
+
+[[bays]]
+id = "torpedo-bay-100"
+quantity = 2
+
+[[bays]]
+id = "particle-beam-bay"
+quantity = 4
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 5
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "missile-rack"]
+quantity = 5
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["sandcaster", "sandcaster", "sandcaster"]
+quantity = 5
+
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 25
+
+[[ammunition]]
+id = "torpedo-basic"
+quantity = 48
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 600
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 600
+
+[[carried_craft]]
+tag = "ship-189"
+quantity = 1
+
+[[carried_craft]]
+tag = "ship-211"
+quantity = 1
+
+[[crew]]
+role = "command"
+quantity = 21
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 10
+
+[[crew]]
+role = "sensors-operator"
+quantity = 5
+
+[[crew]]
+role = "medic"
+quantity = 3
+
+[[crew]]
+role = "turret-gunner"
+quantity = 15
+
+[[crew]]
+role = "bay-gunner"
+quantity = 10
+
+[[crew]]
+role = "flight-crew"
+quantity = 4
+
+[[crew]]
+role = "marine"
+quantity = 12
+
+[[crew]]
+role = "other"
+quantity = 41
+
+[assertions]
+hull_millitons = 2500000
+accounted_displacement_millitons = 2500000
+hull_points = 50
+structure_points = 54
+armor_points = 8
+jump_rating = 2
+thrust_g = 4
+fuel_millitons = 548000
+jump_fuel_millitons = 500000
+power_fuel_millitons = 48000
+hardpoints = 25
+hardpoints_used = 25
+point_defense_nodes = 25
+fire_control_millitons = 25000
+minimum_crew = 28
+crew = 123
+carried_craft_count = 2
+carried_craft_displacement_millitons = 50000
+carried_craft_price_credits = 34430000
+hangar_capacity_millitons = 50000
+docking_capacity_millitons = 0
+construction_weeks = 268
+pre_discount_price_credits = 1610167500
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 1610167500

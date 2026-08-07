@@ -1,0 +1,153 @@
+# Steerage-passenger conversion of ship-38. The source's twenty-ton forward
+# hold becomes fifteen steerage places, two shower-equipped heads, and a
+# self-service galley/common area. Its stated thirty-person overload is an
+# operating hazard, not installed accommodation, and is not catalog capacity.
+
+schema_version = 1
+design_id = "ct-source-ship-39"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-coner",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "basic-civilian"
+unused_fire_control_stations = 1
+cargo_millitons = 68700
+
+[catalog]
+catalog_id = 39
+tag = "ship-39"
+family_id = 38
+upgrade_path_id = 1
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Niccolò Polo"
+primary_role = "steerage-trader"
+secondary_roles = ["passenger", "frontier-freighter"]
+mission_tags = ["freight", "passengers", "jump-2", "atmospheric"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This conversion replaces the forward freight compartment with fifteen steerage places, separate sanitary facilities, and a self-service galley and common area. It keeps the base trader's two-parsec jump radius, three-gravity acceleration, surface access, and useful main cargo hold.",
+  "The mixed layout can earn from both low-cost passengers and freight without requiring a dedicated steward, but its dense accommodation leaves little margin for comfort or life-support abuse. Published suggestions that more passengers might be crowded aboard describe dangerous overloading, not fitted capacity.",
+]
+
+[hull]
+id = "ship-200"
+configuration = "streamlined"
+
+[drives]
+jump = "B"
+maneuver = "C"
+power = "C"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+
+[computer]
+id = "model-2"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[software]]
+id = "intellect"
+
+[[equipment]]
+id = "stateroom"
+quantity = 4
+
+[[equipment]]
+id = "steerage"
+quantity = 15
+
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 2
+
+[[equipment]]
+id = "galley-space"
+quantity = 12
+
+[[equipment]]
+id = "crew-recreation"
+quantity = 4
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+
+[[equipment]]
+id = "autodoc"
+quantity = 1
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser"]
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+
+[assertions]
+hull_millitons = 200000
+accounted_displacement_millitons = 200000
+hull_points = 4
+structure_points = 4
+armor_points = 0
+jump_rating = 2
+thrust_g = 3
+fuel_millitons = 46000
+jump_fuel_millitons = 40000
+power_fuel_millitons = 6000
+hardpoints = 2
+hardpoints_used = 1
+point_defense_nodes = 0
+fire_control_millitons = 2000
+minimum_crew = 4
+crew = 4
+carried_craft_count = 0
+carried_craft_price_credits = 0
+hangar_capacity_millitons = 0
+docking_capacity_millitons = 0
+construction_weeks = 44
+pre_discount_price_credits = 75620000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 75620000

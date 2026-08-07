@@ -1,0 +1,168 @@
+# Rule-derived normalized reconstruction of source catalog row ship-113.
+schema_version = 1
+design_id = "ct-source-ship-113"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-hfgf", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+bridge_options = ["command-bridge", "hardened-bridge", "holographic-controls"]
+magazine_options = ["improved-magazine"]
+unused_fire_control_stations = 0
+cargo_millitons = 4000
+[catalog]
+catalog_id = 113
+tag = "ship-113"
+family_id = 113
+upgrade_path_id = 7
+progression_stage = "heavy"
+status = "active"
+vessel_kind = "starship"
+display_name = "Hannibal"
+primary_role = "assault-carrier"
+secondary_roles = []
+mission_tags = ["jump-2", "assault-carrier", "normalized"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 2500-ton assault carrier is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+[hull]
+id = "ship-2500"
+configuration = "streamlined"
+[armor]
+id = "crystaliron-whole-points"
+points = 4
+[drives]
+jump = "T"
+maneuver = "Z"
+power = "Z"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 3
+[computer]
+id = "model-3"
+options = ["bis", "fib"]
+quantity = 2
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 2
+[[software]]
+id = "point-defense-2"
+[[equipment]]
+id = "stateroom"
+quantity = 23
+[[equipment]]
+id = "crew-berthing"
+quantity = 15
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 16
+[[equipment]]
+id = "barracks"
+quantity = 200
+[[equipment]]
+id = "galley-space"
+quantity = 112
+[[equipment]]
+id = "crew-recreation"
+quantity = 140
+[[equipment]]
+id = "armory"
+quantity = 20
+[[equipment]]
+id = "briefing-room"
+quantity = 4
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 20
+[[equipment]]
+id = "workshop"
+quantity = 1
+[[equipment]]
+id = "office"
+quantity = 4
+[[equipment]]
+id = "ships-brig"
+quantity = 4
+[[equipment]]
+id = "probe-drones"
+quantity = 1
+[[equipment]]
+id = "atv-hangar"
+quantity = 5
+[[parameterized_equipment]]
+id = "medical-ward"
+beds = 20
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 100000
+quantity = 1
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 210000
+quantity = 1
+[[launch_facilities]]
+id = "flight-deck"
+largest_craft_millitons = 10000
+quantity = 2
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 13
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "missile-rack"]
+quantity = 5
+[[mounts]]
+id = "triple-turret"
+weapons = ["sandcaster", "sandcaster", "sandcaster"]
+quantity = 5
+[[bays]]
+id = "particle-beam-bay"
+quantity = 2
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 25
+[[ammunition]]
+id = "standard-missile"
+quantity = 240
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 300
+[[carried_craft]]
+tag = "ship-11"
+quantity = 10
+[[carried_craft]]
+tag = "ship-30"
+quantity = 2
+[[carried_craft]]
+tag = "ship-17"
+quantity = 1
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 3
+[[crew]]
+role = "turret-gunner"
+quantity = 23
+[[crew]]
+role = "bay-gunner"
+quantity = 2
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "other"
+quantity = 118

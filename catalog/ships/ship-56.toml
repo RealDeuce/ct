@@ -1,0 +1,74 @@
+# Rule-derived reconstruction of source catalog row ship-56.
+schema_version = 1
+design_id = "ct-source-ship-56"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-socs-1-3", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+airlocks = 2
+cargo_millitons = 31750
+[catalog]
+catalog_id = 56
+tag = "ship-56"
+family_id = 48
+upgrade_path_id = 8
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Glaucus"
+primary_role = "stealth-escort-boat"
+secondary_roles = []
+mission_tags = ["escort", "stealth", "missiles"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This stealth-coated ninety-five-ton escort boat combines maximum six-gravity drives, armor, a missile rack, forty-eight missiles, and compact accommodation for a four-person operating crew. Its remaining hold supports reconnaissance stores or an extended ambush patrol.", "Stealth and missile reach favor scouting and first-strike work, but the boat cannot jump and loses much of its advantage once detected. It depends on a carrier or hidden local base for strategic movement and rearming."]
+[hull]
+id = "small-95"
+configuration = "streamlined"
+[armor]
+id = "small-craft-crystaliron-whole-points"
+points = 4
+[[hull_options]]
+id = "stealth"
+[drives]
+maneuver = "sW"
+power = "sW"
+[fuel]
+power_plant_weeks = 1
+[control]
+id = "four-person-control-cabin"
+additional_passengers = 0
+[computer]
+id = "model-2"
+options = []
+[[software]]
+id = "evade"
+level = 1
+[[software]]
+id = "fire-control"
+level = 1
+[[equipment]]
+id = "small-craft-stateroom"
+quantity = 3
+[[equipment]]
+id = "small-craft-fuel-processor"
+quantity = 1
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[mounts]]
+id = "single-turret"
+weapons = ["missile-rack"]
+[[ammunition]]
+id = "standard-missile"
+quantity = 48
+[[crew]]
+role = "pilot"
+quantity = 2
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+[[crew]]
+role = "other"
+quantity = 1

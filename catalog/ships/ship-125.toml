@@ -1,0 +1,96 @@
+# Rule-derived conversion of source-inventory ship-125. The source's
+# scram-pulse reaction drive, reaction mass, and lifting-body cost multiplier
+# are replaced by ordinary CE maneuver drive and streamlining. Exact CE armor
+# and fuel calculations leave the recovered volume available to cargo.
+
+schema_version = 1
+design_id = "ct-source-ship-125"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-alcyone",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "standard"
+airlocks = 1
+additional_fire_control_stations = 0
+cargo_millitons = 16750
+
+[catalog]
+catalog_id = 125
+tag = "ship-125"
+family_id = 125
+upgrade_path_id = 1
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Nausicaa"
+primary_role = "ship's-boat"
+secondary_roles = ["landing-craft", "cargo-transfer", "lifeboat"]
+mission_tags = ["atmospheric", "passengers", "cargo", "carrier-craft"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This streamlined ship's boat moves two operators, four seated passengers, and a substantial local cargo load between a parent ship, stations, and planetary surfaces. Three-gravity acceleration and radiation shielding make it useful for routine lighterage as well as emergency evacuation.",
+  "The standard CE maneuver drive eliminates the source craft's reaction-mass burden and turns the recovered volume into cargo capacity. It remains an unarmed, non-jump craft with only two weeks of endurance, so it depends on its carrier or nearby facilities for sustained operations.",
+]
+
+[hull]
+id = "small-30"
+configuration = "streamlined"
+
+[armor]
+id = "small-craft-titanium-steel-whole-points"
+points = 1
+
+[[hull_options]]
+id = "small-craft-radiation-shielding"
+
+[drives]
+maneuver = "sE"
+power = "sE"
+
+[fuel]
+power_plant_weeks = 2
+
+[control]
+id = "two-person-cockpit"
+additional_passengers = 0
+
+[computer]
+id = "model-1"
+options = []
+
+[[equipment]]
+id = "acceleration-seat"
+quantity = 4
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "other"
+quantity = 1
+
+[assertions]
+hull_millitons = 30000
+accounted_displacement_millitons = 30000
+hull_points = 0
+structure_points = 1
+armor_points = 1
+thrust_g = 3
+fuel_millitons = 1600
+hardpoints = 1
+hardpoints_used = 0
+minimum_crew = 1
+crew = 2
+construction_weeks = 30
+pre_discount_price_credits = 14012500
+discount_credits = 0
+construction_price_credits = 14012500

@@ -1,0 +1,137 @@
+# Rule-derived reconstruction of the corresponding source catalog design. Source
+# specification values are normalized through the active CE construction rules.
+
+schema_version = 1
+design_id = "ct-source-ship-167"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-rucker", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 9
+standard_design = false
+electronics = "standard"
+unused_fire_control_stations = 0
+cargo_millitons = 700
+
+[catalog]
+catalog_id = 167
+tag = "ship-167"
+family_id = 54
+upgrade_path_id = 9
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Stahlstadt"
+primary_role = "missile-ship"
+secondary_roles = ["fleet-combat", "escort"]
+mission_tags = ["jump-2", "missile-bank", "armed"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "This missile conversion replaces the patrol boat and particle weapon with a fifty-one-ton missile bank and a deep ordnance magazine. A laser turret and dual-sandcaster turret protect the hull while naval accommodations support a nineteen-person combat crew.",
+  "The design can deliver a serious missile salvo from a small commercial hull, but ammunition volume leaves almost no earning capacity and makes every prolonged action expensive. It depends on fleet support and should avoid close combat once its magazine is depleted.",
+]
+
+[hull]
+id = "ship-300"
+configuration = "streamlined"
+[armor]
+id = "titanium-steel"
+layers = 2
+[drives]
+jump = "C"
+maneuver = "C"
+power = "C"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "model-2"
+options = []
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 1
+[[software]]
+id = "evade"
+level = 1
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 4
+[[equipment]]
+id = "stateroom"
+quantity = 8
+[[equipment]]
+id = "crew-berthing"
+quantity = 2
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 2
+[[equipment]]
+id = "galley-space"
+quantity = 24
+[[equipment]]
+id = "crew-recreation"
+quantity = 4
+[[equipment]]
+id = "low-berth"
+quantity = 15
+[[equipment]]
+id = "office"
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+[[hangars]]
+id = "standard-hangar"
+contained_millitons = 4000
+quantity = 1
+[[mounts]]
+id = "double-turret"
+weapons = ["sandcaster", "sandcaster"]
+quantity = 1
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "beam-laser"]
+quantity = 1
+[[bays]]
+id = "missile-bank"
+quantity = 1
+[[ammunition]]
+id = "standard-missile"
+quantity = 240
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 40
+[[crew]]
+role = "command"
+quantity = 2
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 2
+[[crew]]
+role = "sensors-operator"
+quantity = 1
+[[crew]]
+role = "turret-gunner"
+quantity = 2
+[[crew]]
+role = "bay-gunner"
+quantity = 1
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "marine"
+quantity = 4
+[[crew]]
+role = "other"
+quantity = 4

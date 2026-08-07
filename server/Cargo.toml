@@ -1,0 +1,42 @@
+[package]
+name = "cepheus-trader-server"
+version = "0.7.0"
+edition = "2024"
+description = "Authoritative Rust server for Cepheus Trader"
+license = "MIT"
+build = "build.rs"
+
+[[bin]]
+name = "cepheus-trader-universe-tour"
+path = "src/bin/universe_tour.rs"
+
+[dependencies]
+capnp = "0.26.2"
+getrandom = "0.4"
+heed = "0.22.1"
+thiserror = "2.0"
+tokio = { version = "1.49", features = [
+    "io-util",
+    "macros",
+    "net",
+    "rt-multi-thread",
+    "signal",
+    "sync",
+    "time",
+] }
+
+[build-dependencies]
+capnpc = "0.26.0"
+cc = "1.2"
+pkg-config = "0.3"
+
+[dev-dependencies]
+tempfile = "3.27"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+] }

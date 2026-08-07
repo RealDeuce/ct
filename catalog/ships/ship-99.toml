@@ -1,0 +1,240 @@
+# Rule-derived reconstruction of the 1,500-ton destroyer. Standard CE
+# maneuver drive removes reaction mass, radiators, spin-gravity pods, and
+# reaction-thrust protection. The recovered volume becomes a large logistics
+# hold while all weapons, ammunition, craft, and support spaces remain real.
+
+schema_version = 1
+design_id = "ct-source-ship-99"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = [
+  "cepheus-engine-srd-2016",
+  "ship-source-a-f",
+  "ship-source-hsocs-1",
+  "ship-source-tech-update-2350",
+  "cepheus-trader-2026",
+]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+bridge_options = ["hardened-bridge", "holographic-controls"]
+cargo_millitons = 568500
+
+[catalog]
+catalog_id = 99
+tag = "ship-99"
+family_id = 99
+upgrade_path_id = 7
+progression_stage = "medium"
+status = "active"
+vessel_kind = "starship"
+display_name = "Corbett"
+primary_role = "destroyer"
+secondary_roles = ["escort", "patrol"]
+mission_tags = ["jump-2", "thrust-3", "particle-beam", "boarding"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This 1,500-ton destroyer combines a two-parsec jump radius, three-gravity maneuver, radiation protection, hardened holographic controls, redundant computers, medical support, repair drones, probe drones, and three carried utility craft. Its large post-conversion hold can carry patrol stores, relief supplies, prizes, or tender cargo.",
+  "Six particle-beam barbettes and two railgun barbettes form the main battery, backed by laser, missile, and sandcaster turrets. The ship remains a crew-intensive combatant, but replacing reaction propulsion with ordinary CE maneuver drive greatly improves endurance and logistical utility.",
+]
+
+[hull]
+id = "ship-1500"
+configuration = "distributed"
+
+[armor]
+id = "titanium-steel"
+layers = 1
+
+[[hull_options]]
+id = "radiation-shielding"
+quantity = 1
+
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "drives"
+
+[[structural_options]]
+id = "armored-bulkheads"
+protected_component_id = "bridge"
+
+[drives]
+jump = "L"
+maneuver = "P"
+power = "P"
+
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 3
+
+[computer]
+id = "model-2"
+options = ["bis", "fib"]
+quantity = 2
+
+[[software]]
+id = "jump-control"
+level = 2
+
+[[software]]
+id = "evade"
+level = 1
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[equipment]]
+id = "stateroom"
+quantity = 27
+
+[[equipment]]
+id = "armory"
+quantity = 1
+
+[[equipment]]
+id = "briefing-room"
+quantity = 2
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 10
+
+[[equipment]]
+id = "probe-drones"
+quantity = 1
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 2
+
+[[equipment]]
+id = "escape-pod"
+quantity = 27
+
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 4
+
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 70000
+quantity = 1
+
+[[barbettes]]
+id = "particle-beam-barbette"
+quantity = 6
+
+[[barbettes]]
+id = "railgun-barbette"
+quantity = 2
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 2
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "missile-rack"]
+quantity = 2
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["sandcaster", "sandcaster", "sandcaster"]
+quantity = 3
+
+[[ammunition]]
+id = "standard-missile"
+quantity = 144
+
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 120
+
+[[ammunition]]
+id = "railgun-basic"
+quantity = 80
+
+[[carried_craft]]
+tag = "ship-187"
+quantity = 2
+
+[[carried_craft]]
+tag = "ship-124"
+quantity = 1
+
+[[crew]]
+role = "command"
+quantity = 14
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 6
+
+[[crew]]
+role = "sensors-operator"
+quantity = 3
+
+[[crew]]
+role = "medic"
+quantity = 2
+
+[[crew]]
+role = "turret-gunner"
+quantity = 7
+
+[[crew]]
+role = "bay-gunner"
+quantity = 8
+
+[[crew]]
+role = "flight-crew"
+quantity = 4
+
+[[crew]]
+role = "other"
+quantity = 1
+
+[assertions]
+hull_millitons = 1500000
+accounted_displacement_millitons = 1500000
+hull_points = 30
+structure_points = 30
+armor_points = 2
+jump_rating = 2
+thrust_g = 3
+fuel_millitons = 342000
+jump_fuel_millitons = 300000
+power_fuel_millitons = 42000
+hardpoints = 15
+hardpoints_used = 15
+point_defense_nodes = 0
+fire_control_millitons = 47000
+minimum_crew = 18
+crew = 47
+carried_craft_count = 3
+carried_craft_displacement_millitons = 70000
+carried_craft_price_credits = 45630000
+hangar_capacity_millitons = 70000
+docking_capacity_millitons = 0
+construction_weeks = 156
+pre_discount_price_credits = 762935000
+discount_credits = 0
+architect_fee_credits = 0
+construction_price_credits = 762935000

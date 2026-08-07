@@ -1,0 +1,51 @@
+# Rule-derived reconstruction of source catalog row ship-16.
+schema_version = 1
+design_id = "ct-source-ship-16"
+revision = 1
+ruleset_id = "cepheus-trader.small-craft"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-socs-4-6", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+airlocks = 0
+cargo_millitons = 0
+[catalog]
+catalog_id = 16
+tag = "ship-16"
+family_id = 16
+upgrade_path_id = 7
+progression_stage = "auxiliary"
+status = "active"
+vessel_kind = "small-craft"
+display_name = "Horatius"
+primary_role = "laser-interceptor"
+secondary_roles = []
+mission_tags = ["fighter", "beam-laser", "interceptor"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This ten-ton laser interceptor is the legal CE replacement for a published two-seat, over-armored missile fit that could not occupy its hull. A single pilot, six-gravity maneuver drive, and beam laser consume the complete normalized design.", "It provides ammunition-independent interception but has no armor, cargo, jump drive, or endurance beyond carrier operations. Survival depends on speed, numbers, and disciplined recovery rather than protection."]
+[hull]
+id = "small-10"
+configuration = "streamlined"
+[drives]
+maneuver = "sC"
+power = "sG"
+[fuel]
+power_plant_weeks = 1
+[control]
+id = "one-person-cockpit"
+additional_passengers = 0
+[computer]
+id = "model-2"
+options = []
+[[software]]
+id = "evade"
+level = 1
+[[software]]
+id = "fire-control"
+level = 1
+[[mounts]]
+id = "single-turret"
+weapons = ["beam-laser"]
+[[crew]]
+role = "pilot"
+quantity = 1

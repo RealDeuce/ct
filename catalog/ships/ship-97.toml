@@ -1,0 +1,108 @@
+# Rule-derived normalized reconstruction of source catalog row ship-97.
+schema_version = 1
+design_id = "ct-source-ship-97"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-hercules", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "advanced"
+unused_fire_control_stations = 15
+cargo_millitons = 1154000
+[catalog]
+catalog_id = 97
+tag = "ship-97"
+family_id = 97
+upgrade_path_id = 7
+progression_stage = "heavy"
+status = "active"
+vessel_kind = "starship"
+display_name = "Riga"
+primary_role = "fleet-tanker"
+secondary_roles = []
+mission_tags = ["jump-2", "fleet-tanker", "normalized"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 2000-ton fleet tanker is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+[hull]
+id = "ship-2000"
+configuration = "standard"
+[armor]
+id = "crystaliron-whole-points"
+points = 2
+[drives]
+jump = "Q"
+maneuver = "N"
+power = "Q"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 3
+[computer]
+id = "model-3"
+options = ["bis", "fib"]
+quantity = 2
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 2
+[[equipment]]
+id = "stateroom"
+quantity = 10
+[[equipment]]
+id = "galley-space"
+quantity = 12
+[[equipment]]
+id = "crew-recreation"
+quantity = 30
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+[[equipment]]
+id = "fuel-processor"
+quantity = 20
+[[equipment]]
+id = "underway-replenishment-system"
+quantity = 10
+[[equipment]]
+id = "office"
+quantity = 1
+[[equipment]]
+id = "workshop"
+quantity = 1
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 2
+[[hangars]]
+id = "full-hangar"
+contained_millitons = 30000
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "missile-rack", "sandcaster"]
+quantity = 5
+[[ammunition]]
+id = "standard-missile"
+quantity = 60
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 100
+[[carried_craft]]
+tag = "ship-17"
+quantity = 1
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 2
+[[crew]]
+role = "turret-gunner"
+quantity = 5
+[[crew]]
+role = "medic"
+quantity = 1

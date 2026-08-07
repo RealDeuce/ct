@@ -1,0 +1,232 @@
+# Source-audit data for expansion-only small-craft options. This module is not
+# in ct-ruleset.toml's extension_module_ids, because its weapon-slot model
+# conflicts with CE's single-hardpoint small-craft construction rule.
+
+schema_version = 1
+module_id = "ct.af3.small-craft-source"
+module_revision = 1
+extends_ruleset_id = "ce-srd-2016.small-craft"
+source_ids = ["ship-source-a-f", "cepheus-engine-srd-2016"]
+status = "source-audit-only"
+
+[correlation]
+drive_cost_table = "identical-to-ce-small-craft"
+drive_performance_at_source-hull-sizes = "identical-to-ce-small-craft"
+control_cabins = "identical-to-ce-small-craft"
+airlock = "identical-to-ce-small-craft"
+energy_weapon_limits = "identical-to-ce-small-craft"
+
+[[source_correction]]
+id = "small-hull-30-price"
+printed_price_credits = 13000000
+corrected_price_credits = 1300000
+corroboration = "worked design and monotonic hull-price table"
+[[source_correction]]
+id = "small-hull-100-price"
+printed_price_credits = 1000000
+corrected_price_credits = 2000000
+corroboration = "monotonic hull-price table"
+[[source_correction]]
+id = "small-drive-y-code"
+printed_code = "xY"
+corrected_code = "sY"
+corroboration = "A-through-Z drive-code sequence"
+
+[[small_craft_weapon_slots]]
+hull_tons = 10
+ship_weapon_slots = 1
+small_craft_weapon_slots = 1
+anti_personnel_weapon_slots = 2
+[[small_craft_weapon_slots]]
+hull_tons = 20
+ship_weapon_slots = 1
+small_craft_weapon_slots = 1
+anti_personnel_weapon_slots = 2
+[[small_craft_weapon_slots]]
+hull_tons = 30
+ship_weapon_slots = 1
+small_craft_weapon_slots = 1
+anti_personnel_weapon_slots = 2
+[[small_craft_weapon_slots]]
+hull_tons = 40
+ship_weapon_slots = 2
+small_craft_weapon_slots = 3
+anti_personnel_weapon_slots = 3
+[[small_craft_weapon_slots]]
+hull_tons = 50
+ship_weapon_slots = 2
+small_craft_weapon_slots = 3
+anti_personnel_weapon_slots = 3
+[[small_craft_weapon_slots]]
+hull_tons = 60
+ship_weapon_slots = 2
+small_craft_weapon_slots = 3
+anti_personnel_weapon_slots = 3
+[[small_craft_weapon_slots]]
+hull_tons = 70
+ship_weapon_slots = 3
+small_craft_weapon_slots = 4
+anti_personnel_weapon_slots = 4
+[[small_craft_weapon_slots]]
+hull_tons = 80
+ship_weapon_slots = 3
+small_craft_weapon_slots = 4
+anti_personnel_weapon_slots = 5
+[[small_craft_weapon_slots]]
+hull_tons = 90
+ship_weapon_slots = 4
+small_craft_weapon_slots = 5
+anti_personnel_weapon_slots = 6
+[[small_craft_weapon_slots]]
+hull_tons = 100
+ship_weapon_slots = 5
+small_craft_weapon_slots = 6
+anti_personnel_weapon_slots = 6
+
+[[equipment]]
+id = "source-small-craft-stateroom"
+unit = "room"
+displacement_millitons_per_unit = 2000
+price_credits_per_unit = 250000
+[[equipment]]
+id = "source-small-craft-cabin-space"
+unit = "ton"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 50000
+capacity_per_unit = 1
+[[equipment]]
+id = "source-acceleration-couch"
+unit = "six-passenger-couch"
+displacement_millitons_per_unit = 1000
+price_credits_per_unit = 10000
+capacity_per_unit = 6
+[[equipment]]
+id = "source-acceleration-seat"
+unit = "seat"
+displacement_millitons_per_unit = 500
+price_credits_per_unit = 30000
+capacity_per_unit = 1
+[[equipment]]
+id = "source-boarding-airlock"
+unit = "airlock"
+displacement_millitons_per_unit = 2000
+price_credits_per_unit = 400000
+[[equipment]]
+id = "source-small-craft-fuel-processor"
+unit = "processor"
+displacement_millitons_per_unit = 500
+price_credits_per_unit = 100000
+processing_millitons_per_day_per_unit = 2000
+
+[[small_craft_weapon]]
+id = "source-sc-pulse-laser"
+min_tl = 9
+weapon_slots = 1
+displacement_millitons = 0
+price_credits = 400000
+damage_to_ships = "1d6-3"
+damage_to_small_craft = "1d6"
+[[small_craft_weapon]]
+id = "source-sc-beam-laser"
+min_tl = 9
+weapon_slots = 1
+displacement_millitons = 0
+price_credits = 750000
+damage_to_ships = "1d6+2"
+damage_to_small_craft = "2d6"
+[[small_craft_weapon]]
+id = "source-sc-particle-beam-tl10"
+min_tl = 10
+weapon_slots = 2
+displacement_millitons = 1000
+price_credits = 5000000
+damage_to_ships = "2d6-3"
+damage_to_small_craft = "3d6-2"
+[[small_craft_weapon]]
+id = "source-sc-particle-beam-tl12"
+min_tl = 12
+weapon_slots = 2
+displacement_millitons = 1000
+price_credits = 5000000
+damage_to_ships = "2d6-3"
+damage_to_small_craft = "3d6"
+[[small_craft_weapon]]
+id = "source-sc-railgun"
+min_tl = 11
+weapon_slots = 1
+displacement_millitons = 500
+price_credits = 1000000
+
+[[small_craft_ammunition]]
+id = "source-sc-missile-basic"
+min_tl = 8
+units_per_half_ton = 12
+price_credits_per_pack = 12000
+pack_units = 12
+[[small_craft_ammunition]]
+id = "source-sc-missile-nuclear"
+min_tl = 8
+units_per_half_ton = 12
+price_credits_per_pack = 30000
+pack_units = 12
+[[small_craft_ammunition]]
+id = "source-sc-missile-long-range"
+min_tl = 10
+units_per_half_ton = 12
+price_credits_per_pack = 20000
+pack_units = 12
+[[small_craft_ammunition]]
+id = "source-sc-missile-long-range-nuclear"
+min_tl = 10
+units_per_ton = 12
+price_credits_per_pack = 45000
+pack_units = 12
+[[small_craft_ammunition]]
+id = "source-sc-anti-missile-sand-defense"
+min_tl = 8
+units_per_half_ton = 12
+price_credits_per_pack = 6000
+pack_units = 12
+[[small_craft_ammunition]]
+id = "source-sc-railgun-basic"
+min_tl = 11
+displacement_millitons_per_1000_units = 50
+price_credits_per_pack = 5000
+pack_units = 1000
+[[small_craft_ammunition]]
+id = "source-sc-railgun-penetrator"
+min_tl = 11
+displacement_millitons_per_1000_units = 50
+price_credits_per_pack = 8000
+pack_units = 1000
+
+[[drone_command]]
+id = "source-drone-command-tl8"
+min_tl = 8
+displacement_millitons_per_crew_replaced = 1500
+price_credits_per_crew_replaced = 500000
+function = "remote-noncombat"
+[[drone_command]]
+id = "source-drone-command-tl9"
+min_tl = 9
+displacement_millitons_per_crew_replaced = 1500
+price_credits_per_crew_replaced = 2000000
+function = "remote"
+[[drone_command]]
+id = "source-drone-command-tl10"
+min_tl = 10
+displacement_millitons_per_crew_replaced = 1500
+price_credits_per_crew_replaced = 5000000
+function = "autonomous-noncombat-or-remote"
+[[drone_command]]
+id = "source-drone-command-tl11"
+min_tl = 11
+displacement_millitons_per_crew_replaced = 1500
+price_credits_per_crew_replaced = 7000000
+function = "autonomous-characteristic-5-skill-1-or-remote"
+[[drone_command]]
+id = "source-drone-command-tl12"
+min_tl = 12
+displacement_millitons_per_crew_replaced = 1500
+price_credits_per_crew_replaced = 10000000
+function = "autonomous-characteristic-7-skill-2-or-remote"

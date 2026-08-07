@@ -1,0 +1,126 @@
+# Hand-authored reconstruction of the core CE research vessel.
+
+schema_version = 1
+design_id = "ce-research-vessel"
+revision = 1
+ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016"]
+tech_level = 9
+standard_design = true
+electronics = "basic-civilian"
+unused_fire_control_stations = 2
+cargo_millitons = 29000
+
+[catalog]
+catalog_id = 207
+tag = "ship-207"
+family_id = 207
+upgrade_path_id = 4
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Bacon"
+primary_role = "research"
+secondary_roles = ["survey", "expedition"]
+mission_tags = ["laboratory", "probe-drones", "launches", "cargo"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This research vessel supports a six-person scientific team with dedicated laboratories, probe drones, two launches, and a useful expedition hold. Fuel processing and a one-parsec jump drive let it work away from major ports while remaining affordable by institutional-starship standards.",
+  "The ship is unarmed and slow, and much of its capacity is committed to scientific spaces rather than revenue cargo. It works best under research grants, survey charters, or resource-prospecting contracts instead of ordinary speculative trade.",
+]
+
+[hull]
+id = "ship-200"
+configuration = "standard"
+
+[armor]
+id = "titanium-steel"
+layers = 1
+
+[drives]
+jump = "A"
+maneuver = "A"
+power = "A"
+
+[fuel]
+jump_distance = 1
+jump_count = 1
+power_plant_weeks = 4
+
+[computer]
+id = "model-2"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 1
+
+[[equipment]]
+id = "stateroom"
+quantity = 6
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 3
+
+[[equipment]]
+id = "lifeboat-hangar"
+quantity = 2
+
+[[equipment]]
+id = "probe-drones"
+quantity = 3
+
+[[equipment]]
+id = "laboratory"
+quantity = 6
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 2
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[carried_craft]]
+tag = "ship-194"
+quantity = 2
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "other"
+quantity = 6
+
+[assertions]
+hull_millitons = 200000
+accounted_displacement_millitons = 200000
+hull_points = 4
+structure_points = 4
+armor_points = 2
+jump_rating = 1
+thrust_g = 1
+fuel_millitons = 24000
+jump_fuel_millitons = 20000
+power_fuel_millitons = 4000
+hardpoints = 2
+hardpoints_used = 0
+fire_control_millitons = 2000
+minimum_crew = 3
+crew = 9
+carried_craft_count = 2
+carried_craft_price_credits = 9594000
+construction_weeks = 44

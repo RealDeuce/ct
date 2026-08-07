@@ -1,0 +1,149 @@
+# Hand-authored reconstruction of the core CE survey vessel.
+
+schema_version = 1
+design_id = "ce-survey-vessel"
+revision = 1
+ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016"]
+tech_level = 11
+standard_design = true
+electronics = "basic-civilian"
+cargo_millitons = 39000
+
+[catalog]
+catalog_id = 208
+tag = "ship-208"
+family_id = 208
+upgrade_path_id = 4
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Galileo"
+primary_role = "survey"
+secondary_roles = ["exploration", "patrol"]
+mission_tags = ["laboratory", "probe-drones", "launches", "armed"]
+open_game_content_designations = [
+  "The complete original catalog entry and adapted construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "This armed survey vessel carries laboratories, probe drones, and two launches for charting routes, inspecting remote bodies, and maintaining navigation infrastructure. Two one-parsec fuel loads give it better frontier endurance than an ordinary merchant of similar size.",
+  "Its beam turrets can discourage small raiders, but modest acceleration and light armor do not make it a warship. Scientific accommodation and endurance displace cargo, so the design depends on exploration, survey, patrol, or infrastructure contracts.",
+]
+
+[hull]
+id = "ship-300"
+configuration = "standard"
+
+[armor]
+id = "titanium-steel"
+layers = 1
+
+[drives]
+jump = "B"
+maneuver = "C"
+power = "C"
+
+[fuel]
+jump_distance = 1
+jump_count = 2
+power_plant_weeks = 4
+
+[computer]
+id = "model-2"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 1
+
+[[equipment]]
+id = "stateroom"
+quantity = 8
+
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 4
+
+[[equipment]]
+id = "lifeboat-hangar"
+quantity = 2
+
+[[equipment]]
+id = "probe-drones"
+quantity = 4
+
+[[equipment]]
+id = "laboratory"
+quantity = 6
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 4
+
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+
+[[carried_craft]]
+tag = "ship-194"
+quantity = 2
+
+[[crew]]
+role = "command"
+quantity = 1
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "medic"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 3
+
+[[crew]]
+role = "other"
+quantity = 6
+
+[assertions]
+hull_millitons = 300000
+accounted_displacement_millitons = 300000
+hull_points = 6
+structure_points = 6
+armor_points = 2
+jump_rating = 1
+thrust_g = 2
+fuel_millitons = 72000
+jump_fuel_millitons = 60000
+power_fuel_millitons = 12000
+hardpoints = 3
+hardpoints_used = 3
+fire_control_millitons = 3000
+minimum_crew = 6
+crew = 14
+carried_craft_count = 2
+carried_craft_price_credits = 9594000
+construction_weeks = 52

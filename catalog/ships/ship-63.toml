@@ -1,0 +1,111 @@
+# Rule-derived normalized reconstruction of source catalog row ship-63.
+schema_version = 1
+design_id = "ct-source-ship-63"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-socs-7-9", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+bridge_options = ["hardened-bridge", "holographic-controls"]
+unused_fire_control_stations = 0
+cargo_millitons = 49500
+[catalog]
+catalog_id = 63
+tag = "ship-63"
+family_id = 63
+upgrade_path_id = 4
+progression_stage = "starter"
+status = "active"
+vessel_kind = "ship"
+display_name = "Janus"
+primary_role = "system-patrol-ship"
+secondary_roles = []
+mission_tags = ["in-system", "thrust", "point-defense", "armed"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = ["This 200-ton system patrol ship is reconstructed as a complete standard-CE design with no jump drive, normalized maneuver and power machinery, 12 points of armor, and the source role's principal accommodations, support systems, and armament.", "The design is directly usable by the game construction engine. Its cargo hold is the exact remainder after every fitted component is evaluated, so published rounded or incompatible allocations do not become hidden displacement adjustments."]
+[hull]
+id = "ship-200"
+configuration = "streamlined"
+[armor]
+id = "crystaliron-whole-points"
+points = 11
+[drives]
+maneuver = "F"
+power = "F"
+[fuel]
+jump_distance = 0
+jump_count = 0
+power_plant_weeks = 2
+[computer]
+id = "model-3"
+options = []
+[[software]]
+id = "fire-control"
+level = 1
+[[software]]
+id = "point-defense-2"
+[[equipment]]
+id = "stateroom"
+quantity = 2
+[[equipment]]
+id = "crew-berthing"
+quantity = 2
+[[equipment]]
+id = "head-toilet-shower"
+quantity = 4
+[[equipment]]
+id = "galley-space"
+quantity = 8
+[[equipment]]
+id = "fuel-processor"
+quantity = 2
+[[equipment]]
+id = "ships-brig"
+quantity = 2
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[parameterized_equipment]]
+id = "repair-drones"
+quantity = 1
+[[hangars]]
+id = "standard-hangar"
+contained_millitons = 20000
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["beam-laser", "beam-laser", "beam-laser"]
+quantity = 1
+[[mounts]]
+id = "triple-turret"
+weapons = ["missile-rack", "missile-rack", "sandcaster"]
+quantity = 1
+[[point_defense]]
+mount_id = "point-defense-node-mount"
+weapon_id = "point-defense-laser"
+quantity = 3
+[[ammunition]]
+id = "standard-missile"
+quantity = 84
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 40
+[[carried_craft]]
+tag = "ship-7"
+quantity = 1
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 1
+[[crew]]
+role = "turret-gunner"
+quantity = 2
+[[crew]]
+role = "other"
+quantity = 3
