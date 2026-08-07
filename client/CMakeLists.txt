@@ -691,6 +691,12 @@ install(
   DESTINATION "${CMAKE_INSTALL_DATADIR}/cepheus-trader"
   COMPONENT Client
 )
+install(
+  FILES "${CMAKE_CURRENT_SOURCE_DIR}/../docs/sysop-guide.md"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/cepheus-trader"
+  RENAME "SYSOP-GUIDE.md"
+  COMPONENT Client
+)
 
 string(TOLOWER "${CMAKE_SYSTEM_NAME}" CT_PACKAGE_PLATFORM)
 set(

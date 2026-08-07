@@ -17,6 +17,7 @@ REQUIRED_BASENAMES = {
     "cepheus-trader-sysop",
     "cepheus-trader.conf.example",
     "README.md",
+    "SYSOP-GUIDE.md",
     "LICENSE.md",
     "OPEN_GAME_LICENSE.md",
     "THIRD_PARTY_LICENSES.md",

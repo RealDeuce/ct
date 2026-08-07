@@ -83,13 +83,15 @@ The administrator listener remains restricted to loopback addresses. Explicit
 listener values are strict: startup fails if any requested address cannot be
 resolved or bound.
 
-See the [client documentation](client/README.md) for BBS installation,
-configuration, credential bootstrap, and executable usage. Release builds and
-portable packages are covered by the [release process](docs/release-process.md).
+See the [sysop guide](docs/sysop-guide.md) for BBS installation,
+configuration, credential bootstrap, and door setup. Client development is
+covered by the [client documentation](client/README.md), and portable packages
+by the [release process](docs/release-process.md).
 
 ## Documentation
 
 - [Development roadmap](ROADMAP.md)
+- [BBS sysop installation and operations](docs/sysop-guide.md)
 - [Game design and implementation overview](docs/game-design.md)
 - [Milestone 7 field-alpha audit](docs/milestone-7-audit.md)
 - [Protocol and storage model](docs/rpc-and-storage-schema.md)

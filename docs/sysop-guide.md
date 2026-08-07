@@ -1,0 +1,309 @@
+# Cepheus Trader sysop guide
+
+This guide is for invited BBS sysops participating in the Cepheus Trader
+field test. The game is still in alpha and is not yet balanced for public
+enrollment. The server operator gives selected sysops a BBS ID and BBS PSK
+privately over Discord.
+
+The shared field-test server is `ct.bbsdev.net`. Player doors connect to port
+`7323`; the sysop utility connects to port `7325`.
+
+## Install the client package
+
+Download the archive for the BBS host from the
+[Cepheus Trader releases](https://github.com/RealDeuce/ct/releases):
+
+- `linux-x86_64` or `linux-aarch64` for Linux;
+- `darwin-x86_64` or `darwin-arm64` for macOS; or
+- `windows-x86` or `windows-x86_64` for Windows.
+
+Extract the complete archive into a dedicated door directory and use that
+directory as the door's working directory. The examples in this guide assume
+the current directory is that extracted top-level directory. Its `bin`
+directory contains:
+
+- `cepheus-trader-door`, the OpenDoors player door;
+- `cepheus-trader-sysop`, the BBS management utility; and
+- `libcepheus-trader-client-core.so`,
+  `libcepheus-trader-client-core.dylib`, or
+  `cepheus-trader-client-core.dll`, depending on the platform.
+
+On Windows the two programs have an `.exe` suffix. Keep the shared client-core
+library in the same directory as the programs. The `share/cepheus-trader`
+directory contains this guide, the example configuration, source
+correspondence, and license notices.
+
+Check the installation before adding it to the BBS:
+
+```console
+bin/cepheus-trader-door --version
+bin/cepheus-trader-sysop --version
+```
+
+Run the corresponding `.exe` files on Windows. Both commands must report the
+same product version.
+
+## Create the BBS credential and configuration
+
+Place the extracted package at a permanent location such as
+`/srv/bbs/doors/cepheus-trader`, change to that directory, and configure the
+BBS to use it as the door's working directory. The default filenames then work
+for both programs without repeated path options.
+
+Run `init-credential` interactively:
+
+```console
+cd /srv/bbs/doors/cepheus-trader
+bin/cepheus-trader-sysop \
+  --server ct.bbsdev.net --game-port 7323 --sysop-port 7325 \
+  init-credential
+```
+
+For example, a Windows installation may use:
+
+```console
+cd /d C:\BBS\Doors\CepheusTrader
+bin\cepheus-trader-sysop.exe --server ct.bbsdev.net --game-port 7323 --sysop-port 7325 init-credential
+```
+
+Enter the assigned BBS ID and 64-hex-digit BBS PSK when prompted. The utility
+hides the PSK while reading it. Do not put the PSK in a command-line argument,
+environment variable, command substitution, script, or ordinary log.
+
+The command creates three files without overwriting an existing installation:
+
+- `cepheus-trader.conf`, the non-secret shared configuration;
+- `cepheus-trader.credential`, the BBS ID and PSK; and
+- `cepheus-trader.identities`, the local BBS-account-to-player registry.
+
+On Unix, newly created directories are owner-only and the credential is mode
+`0600`. On Windows, the credential receives a protected DACL for its owner,
+Local System, and Administrators. Run the door and sysop utility under the
+same dedicated account, and ensure that other BBS users cannot read or replace
+these files.
+
+### Shared configuration
+
+The generated `cepheus-trader.conf` has this strict `key=value` form:
+
+```ini
+server=ct.bbsdev.net
+game-port=7323
+sysop-port=7325
+credential-file=cepheus-trader.credential
+identity-file=cepheus-trader.identities
+identity-name=real-name
+terminal-profile=auto
+terminal-columns=0
+terminal-rows=0
+```
+
+Blank lines and lines beginning with `#` are allowed. Every key is required;
+unknown and duplicate keys are errors.
+
+`credential-file` and `identity-file` may be absolute or relative. The default
+relative names are resolved from the directory containing
+`cepheus-trader.conf`.
+
+`identity-name` selects the BBS account field used in the local identity
+registry. Use `real-name` or `handle`. Keep this choice stable after players
+have entered the game; use the identity-management commands below to resolve
+an intentional account rename.
+
+`terminal-profile` accepts `auto`, `iso646`, `iso646-color`, or
+`cp437-color`. With `auto`, the door selects colour when OpenDoors reports an
+ANSI-capable session. `terminal-columns` is `0` for the reported width or a
+fixed value from 40 through 255. `terminal-rows` is `0` for the reported height
+or a fixed value from 24 through 255.
+
+## Configure the BBS in the game
+
+Set the BBS and polity names and the two orientation values:
+
+```console
+bin/cepheus-trader-sysop set-config "Dark Star BBS" "Far Reach" 65 25
+```
+
+Both orientation values range from 0 through 100:
+
+- `trade-combat` is 0 for completely trade-oriented and 100 for completely
+  combat-oriented.
+- `chaos-order` is 0 for completely chaotic and 100 for completely
+  institutionally orderly.
+
+Review the committed configuration:
+
+```console
+bin/cepheus-trader-sysop get-config
+```
+
+## Configure OpenDoors and the BBS launcher
+
+With the standard working directory, the door reads `cepheus-trader.conf`
+without an OpenDoors configuration directive. An optional `door.cfg` in that
+directory may override presentation for every session:
+
+```text
+CTProfile iso646|iso646-color|cp437-color
+CTColumns 40..255
+CTRows 24..255
+```
+
+Configure the BBS to start the process in the Cepheus Trader installation
+directory and pass the absolute path of the current session's drop file:
+
+```console
+bin/cepheus-trader-door -D /absolute/path/to/bbs/node/CURRENT-DROPFILE
+```
+
+Passing the file itself ensures that OpenDoors reads the current drop file
+when a node directory also contains stale files from earlier sessions or other
+drop-file formats.
+
+For an already-open TCP socket inherited from the BBS:
+
+```console
+bin/cepheus-trader-door -SOCKET DESCRIPTOR
+```
+
+`DESCRIPTOR` is the numeric socket descriptor or handle supplied by the BBS.
+OpenDoors also accepts its normal node, time, graphics, and silent-mode
+options. Quote paths according to the host operating system.
+
+An alternative layout may select another OpenDoors file with `-C FILE`, name
+another shared configuration with `CTConfig FILE`, and pass that same shared
+configuration to the sysop utility with `--config FILE`.
+
+The door reads the account name and, when available, the user-record index
+from OpenDoors. It records that local identity and sends only the assigned
+numeric player ID to the game server.
+
+### Local startup test
+
+Test configuration loading and terminal presentation without a drop file:
+
+```console
+bin/cepheus-trader-door -L -USERNAME "Test User"
+```
+
+At the opening screen, confirm that the title and menu render correctly, then
+quit. Entering the game assigns a persistent identity to the test name.
+
+## Manage local player identities
+
+List the local identity registry:
+
+```console
+bin/cepheus-trader-sysop identity-list
+```
+
+Each line reports the numeric player ID, active or retired state, BBS record
+index (or `none`), and account name. If a BBS account is renamed or its record
+number changes, update the existing mapping:
+
+```console
+bin/cepheus-trader-sysop identity-rename PLAYER_ID "New Name"
+bin/cepheus-trader-sysop identity-reindex PLAYER_ID RECORD_INDEX
+```
+
+Use `none` as the record index when the BBS does not provide one. Retire the
+mapping after its BBS account has been permanently deleted:
+
+```console
+bin/cepheus-trader-sysop identity-retire PLAYER_ID RETIRE
+```
+
+Retirement is permanent, and numeric player IDs are never reused. It changes
+the local BBS identity mapping; it does not delete the server-side captain or
+assets.
+
+## Manage player access and directives
+
+Inspect a player's server-side access state:
+
+```console
+bin/cepheus-trader-sysop player-access PLAYER_ID
+```
+
+Suspend or resume access with a recorded reason:
+
+```console
+bin/cepheus-trader-sysop suspend-player PLAYER_ID "REASON"
+bin/cepheus-trader-sysop resume-player PLAYER_ID "REASON"
+```
+
+Permanent removal requires the literal confirmation `REMOVE`:
+
+```console
+bin/cepheus-trader-sysop remove-player PLAYER_ID REMOVE "REASON"
+```
+
+Removal is an irreversible server-side tombstone. The player and assets remain
+in the persistent game history. Retire the local identity separately when the
+BBS account is also deleted.
+
+Tax and naval-demotion directives are delivered through the game's physical
+mail system rather than applied instantly:
+
+```console
+bin/cepheus-trader-sysop tax-player PLAYER_ID CREDITS
+bin/cepheus-trader-sysop demote-player PLAYER_ID NAVAL_GRADE_INDEX
+```
+
+If `set-config` may have reached the server before a connection failure, the
+utility reports the revision and command ID needed for an idempotent retry.
+Repeat the same command with the exact reported `--expected-revision` and
+`--command-id`.
+
+## Back up and upgrade a BBS installation
+
+Back up these BBS-specific files together and keep the backup private:
+
+- `cepheus-trader.conf`;
+- `cepheus-trader.credential`; and
+- `cepheus-trader.identities`.
+
+Prevent new door sessions while taking or restoring this backup. Preserve the
+credential's ownership and access controls. The identity registry is necessary
+to reconnect existing BBS accounts to their established game identities.
+
+To upgrade, stop new door launches, extract the new release into a separate
+directory, and replace the door, sysop utility, and shared client-core library
+as one matching set. Preserve the three BBS-specific files and the OpenDoors
+configuration. Run both `--version` checks before reopening the door.
+
+## Troubleshooting
+
+### The shared client-core library cannot be loaded
+
+Restore the shared `.so`, `.dylib`, or `.dll` from the same client archive and
+place it beside both executables. Do not mix files from different releases or
+architectures.
+
+### The shared configuration cannot be opened
+
+Confirm that the BBS starts the door in the installation directory containing
+`cepheus-trader.conf`, and that its account can traverse and read that
+directory. If present, `door.cfg` must be readable there as well. For an
+alternative layout, check the paths supplied by `-C`, `CTConfig`, and
+`--config`.
+
+### The credential is rejected
+
+Restore the original credential rather than creating another one. On Unix,
+confirm that it is a regular file owned by the door account with mode `0600`
+and a single hard link. On Windows, confirm that it has not become a reparse
+point and retains its protected access control list.
+
+### The server connection fails
+
+Confirm DNS resolution for `ct.bbsdev.net` and outbound TCP access to port
+`7323` for the player door and port `7325` for the sysop utility. Keep the
+hostname in the configuration so the client can use the IPv4 or IPv6 addresses
+published for the service.
+
+### A renamed or renumbered BBS account is rejected
+
+Run `identity-list`, identify the established numeric player ID, and use
+`identity-rename` or `identity-reindex` to make the registry match the current
+BBS account. Do not retire and recreate the mapping for an ordinary rename.
