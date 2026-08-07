@@ -151,6 +151,11 @@ command or owning another vessel does not teleport them. Review the task's
 destination, deadline, payment, failure terms, and required capacity before
 accepting it.
 
+A remote claim is not an award until the issuing office's confirmation reaches
+you. After successful delivery, the task remains awaiting settlement while the
+delivery filing travels back to that office; payment and release of the posted
+collateral take effect when the remittance reaches you.
+
 The Task ledger records accepted work. The Flight Plan controls where the ship
 will actually travel; changing a route does not rewrite an obligation.
 

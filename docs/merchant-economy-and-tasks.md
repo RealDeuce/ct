@@ -80,20 +80,24 @@ a manifest with class, head count, origin, destination, and embarkation time.
 Purchase orders, forward sales, and supply commitments consume only matching
 player-owned goods actually aboard. Partial terms pay the delivered fraction,
 and recurring supply performances reset only after that performance settles.
-Final settlement or default removes physical custody exactly once. A restart
-does not reconstruct manifests or infer delivery from location.
+Delivery removes physical custody exactly once and dispatches a settlement
+filing to the issuing office. The office then mails the payment and collateral
+release to the captain. The task remains awaiting settlement, and the credits
+remain reserved, until that remittance reaches the captain. A restart does not
+reconstruct manifests or infer delivery from location.
 
 An offer claimed at its issuing office is awarded or declined there. A claim
 filed anywhere else dispatches a sealed institutional message. Competing
 claims are awarded by physical arrival order at the issuing office, and the
 private award or decline reply must reach the captain before cargo or passenger
-custody can transfer. An award does not instantly alter remote copies of the
-offer: another captain may file against a still-open local copy and later
-receive a decline. The captain retains their own signed filing, so reaching
-the issuing office makes the claim available there no later than the ship's
-arrival; a separately carried copy may arrive first. This hand delivery does
-not depend on accepting an ordinary beacon mailbag. Institutional filings are
-not misclassified as mail addressed to every captain at their destination.
+custody can transfer. An award also dispatches a closure notice over the
+offer's original regional scope. Each remote copy remains actionable until
+that notice arrives, so another captain may file against a stale local copy and
+later receive a decline. The captain retains their own signed filing, so
+reaching the issuing office makes the claim available there no later than the
+ship's arrival; a separately carried copy may arrive first. This hand delivery
+does not depend on accepting an ordinary beacon mailbag. Institutional filings
+are not misclassified as mail addressed to every captain at their destination.
 
 The Task manager has revision-checked transactions to withdraw an unresolved
 claim, cancel before custody, return custody at the origin, declare default,
