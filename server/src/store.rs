@@ -11623,7 +11623,7 @@ impl Store {
             .iter(txn)?
             .map(|entry| {
                 let (_, value) = entry?;
-                Ok(decode_stored_task(value)?)
+                decode_stored_task(value)
             })
             .collect::<Result<Vec<_>, StoreError>>()?
             .into_iter()
@@ -11661,7 +11661,7 @@ impl Store {
             .iter(txn)?
             .map(|entry| {
                 let (_, value) = entry?;
-                Ok(decode_stored_task(value)?)
+                decode_stored_task(value)
             })
             .collect::<Result<Vec<_>, StoreError>>()?
             .into_iter()
