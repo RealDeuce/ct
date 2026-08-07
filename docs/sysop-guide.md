@@ -157,6 +157,38 @@ Passing the file itself ensures that OpenDoors reads the current drop file
 when a node directory also contains stale files from earlier sessions or other
 drop-file formats.
 
+### Synchronet installation
+
+The client package includes `install-xtrn.ini` for Synchronet. Complete the
+credential and game configuration above, then run Synchronet's installer with
+the extracted package directory:
+
+```console
+jsexec install-xtrn /srv/bbs/doors/cepheus-trader
+```
+
+From a Synchronet terminal logged in as a sysop, the equivalent command is:
+
+```text
+;exec ?install-xtrn /srv/bbs/doors/cepheus-trader
+```
+
+The installer registers a native, multi-user external program and uses the
+directory containing `install-xtrn.ini` as its working directory. It configures
+Synchronet to generate `CHAIN.TXT`, use Socket I/O with its protocol-neutral
+passthrough socket, translate the door's output for the caller's character set,
+and suppress a local display window. Its installed command line is:
+
+```text
+bin/cepheus-trader-door%. -D %f -SOCKET %h -SILENT
+```
+
+Synchronet expands `%.` to `.exe` on Windows and to an empty string on Unix,
+`%f` to the current `CHAIN.TXT` path, and `%h` to the inherited passthrough
+socket handle. The caller may be connected to Synchronet through Telnet, but
+the door-side passthrough socket is not a Telnet stream: Synchronet handles
+Telnet negotiation, IAC expansion, and output translation itself.
+
 ### Supported drop files
 
 The door supports the drop-file formats recognized by its vendored OpenDoors

@@ -697,6 +697,11 @@ install(
   RENAME "SYSOP-GUIDE.md"
   COMPONENT Client
 )
+install(
+  FILES "${CMAKE_CURRENT_SOURCE_DIR}/../install-xtrn.ini"
+  DESTINATION "."
+  COMPONENT Client
+)
 
 string(TOLOWER "${CMAKE_SYSTEM_NAME}" CT_PACKAGE_PLATFORM)
 set(

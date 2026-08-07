@@ -16,6 +16,7 @@ REQUIRED_BASENAMES = {
     "cepheus-trader-door",
     "cepheus-trader-sysop",
     "cepheus-trader.conf.example",
+    "install-xtrn.ini",
     "README.md",
     "SYSOP-GUIDE.md",
     "LICENSE.md",
