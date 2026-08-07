@@ -27,7 +27,7 @@ secondary_roles = ["boarding", "customs"]
 mission_tags = ["jump-2", "particle-barbette", "carried-boat", "patrol"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
 description_paragraphs = [
-  "This patrol conversion adds military electronics, three fully fitted hardpoints, naval accommodations, and a full hangar for an armed fast boat. Its particle-beam barbette gives it authority over ordinary merchants while the mixed and laser turrets cover routine warning and defensive fire.",
+  "The Nemo combines military electronics, three fully fitted hardpoints, naval accommodations, and a full hangar for an armed fast boat. Its particle-beam barbette gives it authority over ordinary merchants while the mixed and laser turrets cover routine warning and defensive fire.",
   "The ship is intended for customs inspections, local patrol, and boarding work rather than fleet battle. Carrying the boat and a nineteen-person crew consumes most commercial capacity, leaving only a modest hold for stores, seized goods, or mission cargo.",
 ]
 

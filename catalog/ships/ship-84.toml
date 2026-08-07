@@ -22,7 +22,7 @@ primary_role = "fleet-tanker"
 secondary_roles = []
 mission_tags = ["jump-2", "armed", "fleet-tanker"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 1000-ton fleet tanker preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+description_paragraphs = ["The Aquarius is a thousand-ton fleet tanker with Jump-2 range, two-gravity acceleration, fuel-transfer equipment, and a 607-ton hold for fuel and stores. A boarding launch lets its nine-person crew move personnel and service ships that cannot or should not dock directly.", "Laser, missile, and sandcaster turrets provide limited self-defense, but the tanker has no armor and is too valuable to expose without escort. Its purpose is to extend a fleet's operating radius, not to survive on the battle line."]
 [hull]
 id = "ship-1000"
 configuration = "distributed"

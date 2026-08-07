@@ -22,7 +22,7 @@ primary_role = "fast-passenger-launch"
 secondary_roles = []
 mission_tags = ["thrust-6", "passengers"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 10-ton fast passenger launch is a normalized CE small craft with sC maneuver and power machinery, 2 points of crystaliron protection, space for 6 passengers. It is fitted for thrust-6, passengers work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Charon is a fast ten-ton launch able to carry six passengers through atmosphere or space under a single pilot. Six-gravity acceleration and light crystaliron armor suit urgent transfers through uncertain conditions.", "Speed is its only active defense: the launch is unarmed, has negligible cargo space, and carries fuel for one week. It cannot jump and requires a parent ship or local base for sustained operations."]
 [hull]
 id = "small-10"
 configuration = "streamlined"

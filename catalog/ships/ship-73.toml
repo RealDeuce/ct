@@ -23,7 +23,7 @@ primary_role = "system-defense-cruiser"
 secondary_roles = []
 mission_tags = ["in-system", "armed", "system-defense-cruiser"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 300-ton system defense cruiser preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+description_paragraphs = ["The Aegis is a three-hundred-ton system-defense cruiser with heavy armor, reinforced structure, advanced electronics, and a meson-gun bay. Laser, missile, and sandcaster turrets plus three point-defense lasers protect it while the main weapon engages larger intruders.", "A fifteen-person crew, medical support, repair drones, fuel processing, and a 57.25-ton hold permit sustained patrols within its assigned system. It has no jump drive and must rely on local bases or a carrier for deployment elsewhere."]
 [hull]
 id = "ship-300"
 configuration = "streamlined"

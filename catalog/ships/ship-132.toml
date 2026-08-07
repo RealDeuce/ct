@@ -36,8 +36,8 @@ open_game_content_designations = [
   "The complete original catalog entry and adapted construction data are Open Game Content.",
 ]
 description_paragraphs = [
-  "This retrofit represents merchant hulls rebuilt to provide continuous onboard gravity. Under ordinary CE maneuver-drive rules that capability is intrinsic, leaving a large hold alongside rooms for eight middle passengers, radiation protection, medical support, a workshop, and fuel purification.",
-  "Two laser turrets and a mixed missile-and-sand turret make the ship unusually well armed for its acceleration, while a reserved fourth hardpoint permits later customization. Once its source-specific gravity and reaction systems are translated to CE machinery, this variant has the same usable bill of materials as the other normalized family members.",
+  "The Bellamy Plus is a four-hundred-ton merchant ship with Jump-2 range, one-gravity acceleration, rooms for eight middle passengers, and a large freight hold. Radiation protection, medical support, a workshop, and fuel processing equip it for independent service beyond the safest routes.",
+  "Two laser turrets and a mixed missile-and-sandcaster turret make the ship unusually well armed for its acceleration, while a reserved fourth hardpoint permits later customization. It is slow within a system but combines passenger revenue, freight capacity, and credible defense.",
 ]
 
 [hull]

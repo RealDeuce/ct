@@ -23,7 +23,7 @@ primary_role = "fleet-replenishment-ship"
 secondary_roles = []
 mission_tags = ["jump-2", "armed", "fleet-replenishment-ship"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 1000-ton fleet replenishment ship preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+description_paragraphs = ["The Fabius is a thousand-ton fleet-replenishment ship with Jump-2 range, two-gravity acceleration, advanced electronics, workshops, repair drones, and extensive fuel handling. Its 344.5-ton hold carries ammunition, spares, stores, and fuel needed to keep a task group operating away from base.", "Twelve beam lasers, nine missile racks, nine sandcasters, and ten point-defense lasers provide formidable defensive coverage, but the ship has only light armor. A forty-nine-person crew reflects its role as a working support vessel rather than a simple freighter."]
 [hull]
 id = "ship-1000"
 configuration = "standard"

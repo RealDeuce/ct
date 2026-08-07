@@ -23,7 +23,7 @@ primary_role = "staffed-modular-freighter"
 secondary_roles = []
 mission_tags = ["jump-2", "armed", "staffed-modular-freighter"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 800-ton staffed modular freighter preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+description_paragraphs = ["The Odysseus is an eight-hundred-ton modular freighter with Jump-2 range, two-gravity acceleration, twenty staterooms, twenty low berths, and a 373-ton hold. A sixteen-person complement and carried module boat support busy passenger, freight, and lighterage operations without relying on a minimal watch crew.", "Two mixed defensive turrets and fuel scoops provide basic security and route flexibility. The ship's strength is adaptable commercial capacity, while its lack of armor and modest acceleration discourage risky routes."]
 [hull]
 id = "ship-800"
 configuration = "standard"

@@ -22,7 +22,7 @@ primary_role = "armed-launch"
 secondary_roles = []
 mission_tags = ["thrust-6", "beam-laser"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 20-ton armed launch is a normalized CE small craft with sF maneuver and power machinery, 4 points of crystaliron protection, space for 10 passengers, and one beam laser. It is fitted for thrust-6, beam-laser work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Argus is an armed twenty-ton launch for moving ten passengers through contested local space. Six-gravity acceleration, four points of crystaliron armor, military fire-control software, and a beam laser let it escort transfers or discourage light interception.", "A single pilot must manage both flight and combat, and the weapon leaves little room for cargo. The launch has one week of endurance, cannot jump, and depends on a carrier or base for maintenance and strategic transport."]
 [hull]
 id = "small-20"
 configuration = "streamlined"

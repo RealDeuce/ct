@@ -22,7 +22,7 @@ primary_role = "fleet-tanker"
 secondary_roles = []
 mission_tags = ["jump-2", "fleet-tanker", "normalized"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 2000-ton fleet tanker is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+description_paragraphs = ["The Riga is a two-thousand-ton fleet tanker with Jump-2 range, two-gravity acceleration, fuel scoops, extensive processing equipment, and a 1,154-ton hold. An armed transport and workshop let its ten-person crew transfer fuel and stores or support detached ships away from a major base.", "Five mixed beam-laser, missile, and sandcaster turrets provide basic protection, but light armor and the tanker's strategic value demand escorts in hostile space. Its large capacity exists to extend a fleet's reach rather than to fight for itself."]
 [hull]
 id = "ship-2000"
 configuration = "standard"

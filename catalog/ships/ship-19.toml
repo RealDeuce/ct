@@ -22,7 +22,7 @@ primary_role = "boarding-transport"
 secondary_roles = []
 mission_tags = ["passengers", "boarding"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 30-ton boarding transport is a normalized CE small craft with sJ maneuver and power machinery, 2 points of crystaliron protection, space for 20 passengers, and one beam laser. It is fitted for passengers, boarding work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Medea is a thirty-ton boarding transport able to deliver twenty seated personnel under a two-person flight crew. Six-gravity acceleration, light armor, fuel processing, and a beam laser let it close with suspect or disabled vessels and cover the boarding party's approach.", "Packing in the boarding complement leaves only 2.45 tons for equipment and supplies. The craft has one week of endurance, cannot jump, and requires a parent ship or local base for sustained support."]
 [hull]
 id = "small-30"
 configuration = "streamlined"

@@ -23,7 +23,7 @@ primary_role = "fleet-escort-command"
 secondary_roles = []
 mission_tags = ["jump-2", "fleet-escort-command", "normalized"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 1000-ton fleet escort command is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+description_paragraphs = ["The Duncan II is a thousand-ton command escort with Jump-2 range, four-gravity acceleration, eight points of armor, protected systems, redundant computers, and hardened command facilities. Meson and particle-beam bays, particle turrets, lasers, sandcasters, and ten point-defense nodes let it coordinate a screen while contributing heavy fire.", "An armed transport, brig, armory, medical support, workshop, and an 81.5-ton hold sustain its sixty-person crew and embarked staff. The ship is intended to lead escorts and patrol groups rather than carry profitable commercial cargo."]
 [hull]
 id = "ship-1000"
 configuration = "standard"

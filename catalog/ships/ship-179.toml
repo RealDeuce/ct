@@ -22,7 +22,7 @@ primary_role = "marine-transport-boat"
 secondary_roles = []
 mission_tags = ["troop-transport", "beam-laser"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 30-ton marine transport boat is a normalized CE small craft with sJ maneuver and power machinery, 2 points of crystaliron protection, space for 25 passengers, and one beam laser. It is fitted for troop-transport, beam-laser work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Pollux is a thirty-ton marine transport boat built to deliver twenty-five troops under a two-person flight crew. Six-gravity acceleration, light armor, and a beam laser provide speed and covering fire during short-range assaults or boarding operations.", "The dense troop compartment leaves almost no cargo room, and the craft has only one week of endurance. It cannot jump and relies on a parent ship or local base for strategic movement, maintenance, and support."]
 [hull]
 id = "small-30"
 configuration = "streamlined"

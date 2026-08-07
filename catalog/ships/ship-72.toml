@@ -24,7 +24,7 @@ primary_role = "escort-raider"
 secondary_roles = []
 mission_tags = ["jump-2", "thrust", "armed"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 400-ton escort raider is reconstructed as a complete standard-CE design with a two-parsec jump radius, normalized maneuver and power machinery, 4 points of armor, and the source role's principal accommodations, support systems, and armament.", "The design is directly usable by the game construction engine. Its cargo hold is the exact remainder after every fitted component is evaluated, so published rounded or incompatible allocations do not become hidden displacement adjustments."]
+description_paragraphs = ["The Smollett is a four-hundred-ton escort raider with Jump-2 range, four-gravity acceleration, military electronics, and four points of armor. Two particle-beam barbettes and mixed laser, missile, and sandcaster turrets let it screen a convoy or attack commercial traffic.", "An armed transport, brig, armory, fuel processing, and a 48-ton hold support boarding and prize operations. Its twenty-eight-person complement makes it expensive for ordinary trade but well suited to organized escort, privateering, or patrol service."]
 [hull]
 id = "ship-400"
 configuration = "streamlined"

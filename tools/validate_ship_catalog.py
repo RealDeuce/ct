@@ -25,6 +25,13 @@ TAG = re.compile(r"ship-([1-9][0-9]*)\Z")
 FAMILY_TAG = re.compile(r"family-([1-9][0-9]*)\Z")
 UPGRADE_PATH_TAG = re.compile(r"upgrade-path-([1-9][0-9]*)\Z")
 PLACEHOLDER_NAME = re.compile(r"ship-[1-9][0-9]*\Z", re.IGNORECASE)
+PLAYER_DESCRIPTION_META_LANGUAGE = re.compile(
+    r"(?:\bCE\b|\bnormaliz(?:e|ed|ing)\b|\bstandard-CE\b|"
+    r"\bconstruction-rule\b|\bconstruction engine\b|"
+    r"\bsource (?:design|vessel|profile|role)\b|\bsource-specific\b|"
+    r"\bpost-conversion\b)",
+    re.IGNORECASE,
+)
 
 
 class CatalogValidationError(ValueError):
@@ -137,12 +144,19 @@ def _catalog_metadata(
         f"{path}.open_game_content_designations",
         minimum=1,
     )
-    _text_list(
+    description_paragraphs = _text_list(
         metadata.get("description_paragraphs"),
         f"{path}.description_paragraphs",
         minimum=2,
         maximum=3,
     )
+    description = " ".join(description_paragraphs)
+    meta_language = PLAYER_DESCRIPTION_META_LANGUAGE.search(description)
+    if meta_language is not None:
+        raise CatalogValidationError(
+            f"{path}.description_paragraphs contains player-facing "
+            f"construction commentary {meta_language.group(0)!r}"
+        )
 
     source_ids = set(
         _text_list(design.get("source_ids"), f"{path}.source_ids", minimum=1)

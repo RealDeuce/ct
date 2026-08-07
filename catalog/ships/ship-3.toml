@@ -22,7 +22,7 @@ primary_role = "passenger-launch"
 secondary_roles = []
 mission_tags = ["passengers", "transfer"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 10-ton passenger launch is a normalized CE small craft with sA maneuver and power machinery, space for 8 passengers. It is fitted for passengers, transfer work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Knossos is a ten-ton passenger launch with seats for eight travelers and a two-person flight crew. It provides basic transfers between ships and orbital facilities where comfort matters less than making a short connection.", "It carries no armor or weapons and has only one week of endurance. With no jump drive or meaningful freight capacity, it relies entirely on nearby facilities or a parent vessel."]
 [hull]
 id = "small-10"
 configuration = "distributed"

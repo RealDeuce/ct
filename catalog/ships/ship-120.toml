@@ -31,7 +31,7 @@ mission_tags = ["jump-2", "thrust-2", "carrier", "strike-fighters"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
 description_paragraphs = [
   "This 3,800-ton strike carrier fields fifty interceptors, fifteen two-seat strike fighters, two launches, and two utility boats. Dedicated launch and recovery decks, extensive hangar and workshop capacity, and accommodation for 413 personnel support a mixed combat air group.",
-  "Twenty-six turrets and thirty-three laser nodes protect the carrier, while its strike craft deliver the offensive weight. Standard CE drives limit the normalized ship to two gravities, making escort, scouting, and disciplined flight operations essential to its survival.",
+  "Twenty-six turrets and thirty-three laser nodes protect the carrier, while its strike craft deliver the offensive weight. Two-gravity acceleration makes escort, scouting, and disciplined flight operations essential to its survival.",
 ]
 
 [hull]

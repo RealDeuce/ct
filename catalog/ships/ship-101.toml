@@ -22,7 +22,7 @@ primary_role = "fleet-logistics-ship"
 secondary_roles = []
 mission_tags = ["jump-2", "fleet-logistics-ship", "normalized"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 2000-ton fleet logistics ship is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+description_paragraphs = ["The Novgorod is a two-thousand-ton fleet-logistics ship with Jump-2 range, two-gravity acceleration, fuel scoops, extensive processing equipment, a workshop, and a 1,142-ton hold. An armed transport helps its thirty-six-person crew move stores, spares, ammunition, and fuel among detached ships.", "Five mixed beam-laser, missile, and sandcaster turrets provide basic defense, but the ship carries only light armor and should operate behind escorts. Its capacity and support equipment make it a mobile supply base rather than a combatant."]
 [hull]
 id = "ship-2000"
 configuration = "standard"

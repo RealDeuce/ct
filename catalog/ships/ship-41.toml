@@ -22,7 +22,7 @@ primary_role = "customs-cutter"
 secondary_roles = []
 mission_tags = ["in-system", "thrust", "armed"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 100-ton customs cutter is reconstructed as a complete standard-CE design with no jump drive, normalized maneuver and power machinery, 4 points of armor, and the source role's principal accommodations, support systems, and armament.", "The design is directly usable by the game construction engine. Its cargo hold is the exact remainder after every fitted component is evaluated, so published rounded or incompatible allocations do not become hidden displacement adjustments."]
+description_paragraphs = ["The Warden is a hundred-ton customs cutter built for fast interception and inspection within a single system. Six-gravity acceleration, four points of armor, a triple beam-laser turret, and a protected launch let its eight-person crew stop traffic and put a boarding team aboard.", "A brig, low berths, fuel processing, and a 13-ton hold provide space for detainees, rescued personnel, evidence, and stores. The cutter has no jump drive and depends on local bases or a carrier for movement between systems."]
 [hull]
 id = "ship-100"
 configuration = "streamlined"

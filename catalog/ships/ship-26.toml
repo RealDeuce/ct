@@ -23,7 +23,7 @@ primary_role = "dispatch-courier"
 secondary_roles = []
 mission_tags = ["jump-2", "thrust", "armed"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 100-ton dispatch courier is reconstructed as a complete standard-CE design with a two-parsec jump radius, normalized maneuver and power machinery, 4 points of armor, and the source role's principal accommodations, support systems, and armament.", "The design is directly usable by the game construction engine. Its cargo hold is the exact remainder after every fitted component is evaluated, so published rounded or incompatible allocations do not become hidden displacement adjustments."]
+description_paragraphs = ["The Pym is a compact hundred-ton dispatch courier with Jump-2 range, two-gravity acceleration, four points of armor, and a four-person crew. Its mixed missile, sandcaster, and beam-laser turret gives it credible protection while carrying messages or priority freight.", "Two staterooms and a 33-ton hold favor official dispatches, mail, and valuable cargo over passenger service. The ship is capable and economical for its size, but it lacks fuel processing and must plan around serviced ports."]
 [hull]
 id = "ship-100"
 configuration = "streamlined"

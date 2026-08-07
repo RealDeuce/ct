@@ -23,7 +23,7 @@ primary_role = "colonial-transport"
 secondary_roles = []
 mission_tags = ["jump-2", "armed", "colonial-transport"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 800-ton colonial transport preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+description_paragraphs = ["The Scheria is an eight-hundred-ton colonial transport with Jump-2 range, twenty staterooms, twenty low berths, and an armed personnel boat. Its 179-ton hold carries settlers' equipment, supplies, and the machinery needed to establish or reinforce a distant community.", "Two mixed defensive turrets and fuel scoops give its ten-person crew basic protection and route flexibility. The ship has no armor and only two-gravity acceleration, so safe passage depends more on planning and escorts than combat power."]
 [hull]
 id = "ship-800"
 configuration = "standard"

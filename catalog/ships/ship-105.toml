@@ -24,7 +24,7 @@ primary_role = "parasite-attack-carrier"
 secondary_roles = []
 mission_tags = ["in-system", "parasite-attack-carrier", "normalized"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 1400-ton parasite attack carrier is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+description_paragraphs = ["The Ares is a fourteen-hundred-ton parasite carrier built to operate twelve Triton escort boats and a protected launch within a defended system. Advanced electronics, eighteen beam lasers, twelve missile racks, twelve sandcasters, and fourteen point-defense lasers protect the carrier while its attack craft disperse.", "Workshops, armories, medical support, fuel processing, and an 892.5-ton hold sustain its forty-one-person crew, embarked craft, ammunition, and stores. The carrier has no jump drive and depends on local bases or strategic transport for deployment beyond its home system."]
 [hull]
 id = "ship-1400"
 configuration = "standard"

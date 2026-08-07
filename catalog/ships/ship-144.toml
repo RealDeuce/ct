@@ -40,7 +40,7 @@ open_game_content_designations = [
 ]
 description_paragraphs = [
   "This two-hundred-ton system cutter combines six-gravity acceleration, military sensors, armored critical systems, redundant emergency power, a brig, and a fast boarding launch. It is intended to intercept suspect traffic, compel inspection, and deliver enforcement personnel rather than undertake interstellar patrols.",
-  "Plasma weapons, a mixed defensive turret, and two point-defense nodes let the cutter dominate most merchants and resist light raiders. Removing the source's skip-only drive under normal CE travel rules creates a useful evidence-and-supply hold, but the ship remains confined to its home system and depends on local bases for strategic movement.",
+  "Plasma weapons, a mixed defensive turret, and two point-defense nodes let the cutter dominate most merchants and resist light raiders. A useful evidence-and-supply hold supports extended patrols, but the Vidocq remains confined to its home system and depends on local bases for strategic movement.",
 ]
 
 [hull]

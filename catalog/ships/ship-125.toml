@@ -37,7 +37,7 @@ open_game_content_designations = [
 ]
 description_paragraphs = [
   "This streamlined ship's boat moves two operators, four seated passengers, and a substantial local cargo load between a parent ship, stations, and planetary surfaces. Three-gravity acceleration and radiation shielding make it useful for routine lighterage as well as emergency evacuation.",
-  "The standard CE maneuver drive eliminates the source craft's reaction-mass burden and turns the recovered volume into cargo capacity. It remains an unarmed, non-jump craft with only two weeks of endurance, so it depends on its carrier or nearby facilities for sustained operations.",
+  "The Nausicaa is an unarmed, non-jump craft with two weeks of endurance and generous cargo capacity for its size. It depends on its carrier or nearby facilities for protection, maintenance, and sustained operations.",
 ]
 
 [hull]

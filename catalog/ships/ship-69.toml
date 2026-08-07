@@ -22,7 +22,7 @@ primary_role = "armed-passenger-ship"
 secondary_roles = []
 mission_tags = ["jump-2", "thrust", "armed"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 400-ton armed passenger ship is reconstructed as a complete standard-CE design with a two-parsec jump radius, normalized maneuver and power machinery, 4 points of armor, and the source role's principal accommodations, support systems, and armament.", "The design is directly usable by the game construction engine. Its cargo hold is the exact remainder after every fitted component is evaluated, so published rounded or incompatible allocations do not become hidden displacement adjustments."]
+description_paragraphs = ["The Trelawney is a four-hundred-ton armed passenger ship with Jump-2 range, four-gravity acceleration, four points of armor, and eighteen staterooms. Six beam lasers, three missile racks, three sandcasters, and an armed transport give its seven-person crew unusually strong protection for a liner.", "Fuel processing and a 40-ton hold let it serve less-developed routes while carrying baggage, mail, and profitable freight. The heavy armament improves survivability but consumes space that a pure merchant would devote to cargo."]
 [hull]
 id = "ship-400"
 configuration = "streamlined"

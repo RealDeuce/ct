@@ -23,7 +23,7 @@ primary_role = "armed-freighter"
 secondary_roles = []
 mission_tags = ["jump-2", "armed", "armed-freighter"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 1000-ton armed freighter preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+description_paragraphs = ["The Caravan is a thousand-ton armed freighter with Jump-2 range, two-gravity acceleration, light armor, sixteen staterooms, twenty low berths, and a transfer launch. Eight beam lasers and three mixed missile-and-sandcaster turrets provide much stronger protection than an ordinary merchant carries.", "Fuel scoops and processing support frontier routes, while the 498-ton hold preserves substantial earning capacity. A seventeen-person crew and heavy defensive fit raise operating costs, but make the ship attractive for valuable cargo and dangerous passages."]
 [hull]
 id = "ship-1000"
 configuration = "standard"

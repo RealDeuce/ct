@@ -22,7 +22,7 @@ primary_role = "captains-gig"
 secondary_roles = []
 mission_tags = ["officer-transport", "passengers"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 20-ton captains gig is a normalized CE small craft with sF maneuver and power machinery, 2 points of crystaliron protection, space for 6 passengers. It is fitted for officer-transport, passengers work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Boreas is a twenty-ton captain's gig for moving a senior officer and up to six passengers between ships, stations, and planetary surfaces. Six-gravity acceleration, light armor, three compact staterooms, and fuel processing provide speed, protection, and privacy.", "A single pilot operates the unarmed craft for up to one week, with a 3.9-ton hold for baggage and official cargo. It cannot jump and depends on its parent ship for strategic movement and maintenance."]
 [hull]
 id = "small-20"
 configuration = "streamlined"

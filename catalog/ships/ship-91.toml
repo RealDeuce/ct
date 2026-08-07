@@ -23,7 +23,7 @@ primary_role = "patrol-frigate"
 secondary_roles = []
 mission_tags = ["jump-2", "armed", "patrol-frigate"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 600-ton patrol frigate preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+description_paragraphs = ["The Cook is a six-hundred-ton patrol frigate with Jump-2 range, five-gravity acceleration, advanced electronics, and two particle-beam barbettes. Six beam lasers, three missile racks, three sandcasters, and six point-defense lasers give it the firepower to pursue raiders and protect commercial traffic.", "An armed transport, brig, armory, medical support, repair drones, fuel processing, and a 135-ton hold equip its twenty-six-person crew for patrol, boarding, rescue, and prize operations. Four points of armor provide protection without making it a line warship."]
 [hull]
 id = "ship-600"
 configuration = "standard"

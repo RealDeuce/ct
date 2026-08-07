@@ -22,7 +22,7 @@ primary_role = "mining-module-boat"
 secondary_roles = []
 mission_tags = ["mining", "workshop"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 50-ton mining module boat is a normalized CE small craft with sK maneuver and power machinery, 2 points of crystaliron protection. It is fitted for mining, workshop work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Proteus Prospector is a fifty-ton mining boat equipped with mining drones, two workshops, light armor, and a 16.55-ton hold. A two-person crew can survey, extract, process, and carry small loads of ore while operating from a tender or belt installation.", "Six-gravity acceleration helps it move between workings, but the craft is unarmed, has one week of endurance, and cannot jump. It depends on nearby support for protection, maintenance, and transport between systems."]
 [hull]
 id = "small-50"
 configuration = "streamlined"

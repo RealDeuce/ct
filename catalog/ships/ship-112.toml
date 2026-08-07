@@ -25,7 +25,7 @@ primary_role = "fleet-battlecruiser"
 secondary_roles = []
 mission_tags = ["jump-2", "fleet-battlecruiser", "normalized"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 1200-ton fleet battlecruiser is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+description_paragraphs = ["The Jellicoe is a twelve-hundred-ton fleet battlecruiser with Jump-2 range, four-gravity acceleration, eight points of armor, protected systems, and redundant computers. Four meson-gun bays, four particle-beam bays, mixed defensive turrets, and twelve point-defense lasers concentrate capital-ship firepower in a compact hull.", "Armory, medical support, repair drones, a workshop, and a 51.8-ton hold sustain its thirty-one-person crew and ammunition. It is built for organized fleet action and has little capacity or economic purpose outside military service."]
 [hull]
 id = "ship-1200"
 configuration = "standard"

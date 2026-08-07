@@ -22,7 +22,7 @@ primary_role = "planetary-transport"
 secondary_roles = []
 mission_tags = ["in-system", "thrust", "armed"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 200-ton planetary transport is reconstructed as a complete standard-CE design with no jump drive, normalized maneuver and power machinery, 4 points of armor, and the source role's principal accommodations, support systems, and armament.", "The design is directly usable by the game construction engine. Its cargo hold is the exact remainder after every fitted component is evaluated, so published rounded or incompatible allocations do not become hidden displacement adjustments."]
+description_paragraphs = ["The Antaeus is a two-hundred-ton planetary transport for moving heavy loads between surfaces, orbit, and nearby installations. Its streamlined hull, four-gravity acceleration, four points of armor, and two sandcaster turrets give a five-person crew practical protection during local freight work.", "Three staterooms and a 113-ton hold make cargo its clear priority. With no jump drive, the ship must be carried between systems or remain attached to a single planetary economy."]
 [hull]
 id = "ship-200"
 configuration = "streamlined"

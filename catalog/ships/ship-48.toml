@@ -22,7 +22,7 @@ primary_role = "torpedo-escort-boat"
 secondary_roles = []
 mission_tags = ["escort", "missiles"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This ninety-five-ton escort boat replaces an incompatible multi-hardpoint torpedo fit with one CE missile rack, a sixty-round magazine, armor, and maximum six-gravity maneuver. Four operating crew share three compact staterooms and a substantial mission hold.", "It can serve as a long-range carrier picket, patrol boat, or missile truck, but it cannot jump and no longer carries the source design's impossible simultaneous weapon suite. Its large magazine rewards stand-off tactics."]
+description_paragraphs = ["The Triton is a ninety-five-ton escort boat with six-gravity acceleration, armor, military electronics, a missile rack, and a sixty-round magazine. Four operating crew share three compact staterooms and a substantial mission hold.", "It can serve as a carrier picket, patrol boat, or missile truck, and its large magazine rewards stand-off tactics. The boat cannot jump and depends on a carrier or base for strategic movement, maintenance, and rearming."]
 [hull]
 id = "small-95"
 configuration = "streamlined"

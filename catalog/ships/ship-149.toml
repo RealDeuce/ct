@@ -25,7 +25,7 @@ secondary_roles = ["liner", "charter"]
 mission_tags = ["jump-2", "thrust-3", "passengers", "merchant"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
 description_paragraphs = [
-  "This 300-ton passenger conversion carries forty-six passengers with a ten-person crew, full galley support, medical facilities, a vehicle bay, and a small residual hold. One mixed turret provides limited defense on established routes.",
+  "The Parkinson is a three-hundred-ton liner carrying forty-six passengers with a ten-person crew, full galley support, medical facilities, a vehicle bay, and a small residual hold. One mixed turret provides limited defense on established routes.",
   "Almost all modular capacity is committed to accommodation, so profitability depends on occupancy rather than speculative cargo. The ship works best as a scheduled liner or charter vessel and should avoid threats that its light armor and single turret cannot deter.",
 ]
 [hull]

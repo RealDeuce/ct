@@ -24,7 +24,7 @@ primary_role = "belt-assault-tender"
 secondary_roles = []
 mission_tags = ["jump-2", "armed", "belt-assault-tender"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 800-ton belt assault tender preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+description_paragraphs = ["The Skagway is an eight-hundred-ton belt-assault tender with Jump-2 range, military electronics, two cargo boats, and a transfer launch. Eight beam lasers, four missile racks, and four sandcasters provide covering fire while its twelve-person crew supports armed operations among widely separated belt targets.", "Armories, medical support, repair drones, fuel processing, and a 263-ton hold carry troops, equipment, stores, and captured material. The ship has only light armor and two-gravity acceleration, so it relies on planning, escorts, and its carried craft."]
 [hull]
 id = "ship-800"
 configuration = "distributed"

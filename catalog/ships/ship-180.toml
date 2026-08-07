@@ -25,7 +25,7 @@ primary_role = "dreadnought"
 secondary_roles = []
 mission_tags = ["jump-2", "dreadnought", "normalized"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 5000-ton dreadnought is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+description_paragraphs = ["The Trafalgar is a five-thousand-ton fleet dreadnought built to destroy capital ships at any practical engagement range. Six meson-gun bays and six particle-beam bays form its main battery, backed by torpedoes, plasma and railgun barbettes, laser batteries, missiles, and extensive point defense. Heavy armor, protected machinery, hardened command facilities, and emergency power allow it to remain effective after taking damage.", "A crew of 297 operates the ship, its embarked craft, medical facilities, workshops, and marine-support spaces. Its Jump-2 range and large stores hold permit independent deployments, but its crew, ammunition, maintenance, and operating costs place it firmly in the hands of a major naval organization rather than an ordinary commercial captain."]
 [hull]
 id = "ship-5000"
 configuration = "streamlined"

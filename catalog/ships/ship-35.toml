@@ -36,7 +36,7 @@ open_game_content_designations = [
 ]
 description_paragraphs = [
   "This large missile boat carries two fixed launchers and twelve tons of reloads for coordinated attacks on ships or installations. Four control positions, military electronics, three staterooms, escape pods, and two weeks of fuel support missions longer than a cockpit fighter can sustain.",
-  "The CE-compatible conversion removes the source's second weapon mount and replaces oversized drives with the minimum five-gravity installation. The recovered space becomes mission cargo, but the craft remains non-jump-capable and depends on a base or carrier for strategic movement.",
+  "Five-gravity acceleration and a ten-ton mission hold let the Congreve operate as a patrol boat, carrier picket, or missile truck. It remains non-jump-capable and depends on a base or carrier for strategic movement, maintenance, and rearming.",
 ]
 
 [hull]

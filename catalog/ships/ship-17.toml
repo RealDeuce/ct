@@ -22,7 +22,7 @@ primary_role = "armed-transport"
 secondary_roles = []
 mission_tags = ["passengers", "beam-laser"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 30-ton armed transport is a normalized CE small craft with sJ maneuver and power machinery, 2 points of crystaliron protection, space for 14 passengers, and one beam laser. It is fitted for passengers, beam-laser work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Jason is a thirty-ton armed transport that carries fourteen seated passengers under a two-person crew. Six-gravity acceleration, light crystaliron armor, fuel processing, and a beam laser support fast transfers through potentially hostile local space.", "Its 5.45-ton hold can carry baggage, equipment, or mission stores, but the craft has only one week of endurance and no jump drive. It depends on a parent ship or local base for interstellar movement and sustained support."]
 [hull]
 id = "small-30"
 configuration = "streamlined"

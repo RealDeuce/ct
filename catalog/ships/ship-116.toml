@@ -24,7 +24,7 @@ primary_role = "system-battlecruiser"
 secondary_roles = []
 mission_tags = ["in-system", "system-battlecruiser", "normalized"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 2500-ton system battlecruiser is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+description_paragraphs = ["The Citadel is a twenty-five-hundred-ton system battlecruiser with eight points of armor, protected systems, and a heavy battery of meson, particle-beam, and torpedo bays. Laser, missile, sandcaster, and point-defense batteries protect it while the main weapons engage capital ships entering the defended system.", "A cargo boat, protected launch, armories, brigs, medical support, repair facilities, fuel processing, and an 805-ton hold sustain its seventy-person crew on long local deployments. It has no jump drive and must be based or transported within the system it guards."]
 [hull]
 id = "ship-2500"
 configuration = "streamlined"

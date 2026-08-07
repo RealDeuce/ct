@@ -23,7 +23,7 @@ primary_role = "missile-arsenal-ship"
 secondary_roles = []
 mission_tags = ["jump-2", "armed", "missile-arsenal-ship"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 800-ton missile arsenal ship preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+description_paragraphs = ["The Cyclops is an eight-hundred-ton missile arsenal ship with Jump-2 range, three-gravity acceleration, advanced electronics, six missile banks, and deep magazines. Mixed defensive turrets and an armed personnel boat protect the thirty-person crew while the main battery delivers massed stand-off attacks.", "Twenty staterooms, ten low berths, and fuel scoops support deployment with a fleet, but weapons and ammunition leave only a 26-ton hold. The ship is a specialized combatant whose effectiveness depends on escorts, targeting support, and regular rearming."]
 [hull]
 id = "ship-800"
 configuration = "standard"

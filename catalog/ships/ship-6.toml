@@ -22,7 +22,7 @@ primary_role = "utility-launch"
 secondary_roles = []
 mission_tags = ["thrust-6", "passengers"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 20-ton utility launch is a normalized CE small craft with sF maneuver and power machinery, space for 12 passengers. It is fitted for thrust-6, passengers work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Aeolus is a streamlined twenty-ton utility launch for rapid surface-to-orbit and ship-to-ship transfers. One pilot can carry twelve seated passengers, process local fuel, and stow 4.4 tons of baggage or supplies.", "Six-gravity performance makes it quick and flexible, but it has no armor, weapons, or jump drive. Its one-week endurance confines it to operations near a ship, station, or planetary base."]
 [hull]
 id = "small-20"
 configuration = "streamlined"

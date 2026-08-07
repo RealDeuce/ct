@@ -35,7 +35,7 @@ open_game_content_designations = [
 ]
 description_paragraphs = [
   "This compact aerospace fighter couples six-gravity maneuver with military electronics and a fixed beam laser. It is intended for interception, carrier defense, and attacks coordinated by a parent ship or planetary control network.",
-  "Converting the source design to the standard CE small-craft rules removes its incompatible secondary weapon slots, excess acceleration, armor, and processor. The resulting craft is tightly packed, has only one week of endurance, and needs carrier or base support.",
+  "The Sigrun is tightly packed around a single pilot and has only one week of endurance. It carries no cargo or jump drive and needs a carrier or base for transport, maintenance, and sustained operations.",
 ]
 
 [hull]

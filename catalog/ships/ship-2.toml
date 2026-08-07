@@ -22,7 +22,7 @@ primary_role = "utility-tug"
 secondary_roles = []
 mission_tags = ["mining", "grappling-arm"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 10-ton utility tug is a normalized CE small craft with sA maneuver and power machinery. It is fitted for mining, grappling-arm work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Labyrinth is a ten-ton utility tug built around a grappling arm and a two-person cockpit. It handles close-range towing, positioning, salvage, and mining support while retaining a small cargo bay for tools or recovered material.", "The tug is unarmed and non-jump-capable, with only one week of endurance. It works best from a ship, station, or mining base able to provide transport, maintenance, and protection."]
 [hull]
 id = "small-10"
 configuration = "distributed"

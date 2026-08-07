@@ -23,7 +23,7 @@ primary_role = "merchant-freighter"
 secondary_roles = []
 mission_tags = ["jump-2", "thrust", "armed"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 400-ton merchant freighter is reconstructed as a complete standard-CE design with a two-parsec jump radius, normalized maneuver and power machinery, 4 points of armor, and the source role's principal accommodations, support systems, and armament.", "The design is directly usable by the game construction engine. Its cargo hold is the exact remainder after every fitted component is evaluated, so published rounded or incompatible allocations do not become hidden displacement adjustments."]
+description_paragraphs = ["The Argosy is a four-hundred-ton merchant freighter with Jump-2 range, two-gravity acceleration, four points of armor, and a streamlined hull. Seven staterooms, ten low berths, and a mixed defensive turret let it combine freight with modest passenger service.", "A 182-ton hold is the center of the design, while fuel processing supports less-developed routes. Its five-person crew can make a living in bulk cargo, but the ship's single turret is a deterrent rather than a warship's defense."]
 [hull]
 id = "ship-400"
 configuration = "streamlined"

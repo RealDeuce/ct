@@ -22,7 +22,7 @@ primary_role = "laser-interceptor"
 secondary_roles = []
 mission_tags = ["fighter", "beam-laser", "interceptor"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This ten-ton laser interceptor is the legal CE replacement for a published two-seat, over-armored missile fit that could not occupy its hull. A single pilot, six-gravity maneuver drive, and beam laser consume the complete normalized design.", "It provides ammunition-independent interception but has no armor, cargo, jump drive, or endurance beyond carrier operations. Survival depends on speed, numbers, and disciplined recovery rather than protection."]
+description_paragraphs = ["The Horatius is a ten-ton laser interceptor built around a single pilot, six-gravity acceleration, military electronics, and a beam laser. It provides ammunition-independent defense against hostile fighters and small craft.", "It has no armor, cargo, jump drive, or endurance beyond short carrier operations. Survival depends on speed, numbers, and disciplined recovery rather than protection."]
 [hull]
 id = "small-10"
 configuration = "streamlined"

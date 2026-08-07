@@ -40,7 +40,7 @@ open_game_content_designations = [
 ]
 description_paragraphs = [
   "This nineteen-hundred-ton distributed freighter is built around a very large hold, two-parsec jump range, and externally docked work craft. Eight defensive turrets, radiation shielding, self-sealing hull construction, repair drones, and emergency power give it the resilience expected of a long-haul commercial carrier.",
-  "Replacing the source vessel's reaction propulsion and spin-gravity machinery with standard CE systems releases more than five hundred additional tons for freight. The result earns best on high-volume routes and can support speculative cargo on a large scale, but one-gravity acceleration and a distributed hull make it unsuitable for surface operations or aggressive pursuit.",
+  "The Leviathan earns best on high-volume routes and can support speculative cargo on a large scale. One-gravity acceleration and a distributed hull make it unsuitable for surface operations or aggressive pursuit, so it relies on its work craft and planned port facilities.",
 ]
 
 [hull]

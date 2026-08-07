@@ -23,7 +23,7 @@ primary_role = "fast-courier"
 secondary_roles = []
 mission_tags = ["jump-2", "thrust", "point-defense", "armed"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 100-ton fast courier is reconstructed as a complete standard-CE design with a two-parsec jump radius, normalized maneuver and power machinery, 4 points of armor, and the source role's principal accommodations, support systems, and armament.", "The design is directly usable by the game construction engine. Its cargo hold is the exact remainder after every fitted component is evaluated, so published rounded or incompatible allocations do not become hidden displacement adjustments."]
+description_paragraphs = ["The Phileas is a hundred-ton fast courier with Jump-2 range, six-gravity acceleration, advanced electronics, four points of armor, and a streamlined hull. A mixed turret and point-defense laser give its four-person crew protection while carrying urgent dispatches through dangerous space.", "Three staterooms, fuel processing, an emergency berth, and a 14-ton hold support independent mail, intelligence, and priority-cargo work. It sacrifices bulk capacity for speed and survivability."]
 [hull]
 id = "ship-100"
 configuration = "streamlined"

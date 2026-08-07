@@ -36,8 +36,8 @@ open_game_content_designations = [
   "The complete original catalog entry and adapted construction data are Open Game Content.",
 ]
 description_paragraphs = [
-  "This mature update uses an ordinary one-gravity maneuver drive and turns the volume once committed to reaction propulsion into revenue space. It carries eight middle passengers, ample freight, and the workshops, medical support, recreation, shielding, and fuel processing needed for independent operation.",
-  "The ship is slow to reposition within a system but has credible turret defenses and a two-parsec jump radius. Normalizing the remaining legacy systems to CE construction rules recovers additional space, making this the source family’s clean conceptual endpoint even though all three converted catalog records now share its mechanical fit.",
+  "The Bellamy Grav is a four-hundred-ton merchant ship carrying eight middle passengers, ample freight, and the workshops, medical support, recreation, shielding, and fuel processing needed for independent operation.",
+  "Jump-2 range supports ordinary interstellar routes, while two laser turrets and a mixed missile-and-sandcaster turret provide credible defense. One-gravity acceleration makes the ship slow to reposition within a system, so schedules and route planning matter more than pursuit performance.",
 ]
 
 [hull]

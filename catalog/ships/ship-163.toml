@@ -26,7 +26,7 @@ secondary_roles = ["speculative-trade"]
 mission_tags = ["jump-2", "cargo", "merchant"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
 description_paragraphs = [
-  "This cargo conversion strips the passenger and low-berth spaces from the commercial hull to create two large freight holds. Eight crew staterooms, a medical bed, an office, and a small vehicle garage preserve the facilities needed for independent operation.",
+  "The Passepartout devotes its commercial deck to two large freight holds. Eight crew staterooms, a medical bed, an office, and a small vehicle garage preserve the facilities needed for independent operation.",
   "Its two-parsec range and two-gravity thrust are ordinary rather than fast, but the uncomplicated hold makes the ship efficient for bulk freight and speculative trade. A single mixed turret deters casual attack while two unused hardpoints allow an owner to tailor later defenses.",
 ]
 

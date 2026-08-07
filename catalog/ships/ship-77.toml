@@ -23,7 +23,7 @@ primary_role = "system-monitor"
 secondary_roles = []
 mission_tags = ["in-system", "armed", "system-monitor"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 300-ton system monitor preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+description_paragraphs = ["The Sentinel is a three-hundred-ton system monitor with heavy armor, advanced electronics, a particle-beam barbette, and a meson-gun bay. A mixed defensive turret supplements the heavy weapons, allowing a small crew to threaten ships far larger than the monitor itself.", "Fuel scoops, processing, repair drones, an emergency berth, and a 76.75-ton hold support prolonged local deployments. The ship cannot jump, so its strategic value depends on careful placement within the system it defends."]
 [hull]
 id = "ship-300"
 configuration = "standard"

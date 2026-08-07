@@ -22,7 +22,7 @@ primary_role = "utility-pinnace"
 secondary_roles = []
 mission_tags = ["passengers", "aerofins"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 40-ton utility pinnace is a normalized CE small craft with sK maneuver and power machinery, 4 points of crystaliron protection, space for 16 passengers. It is fitted for passengers, aerofins work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Albatross is a forty-ton utility pinnace with seats for sixteen passengers, aerofins for atmospheric handling, and four points of crystaliron armor. Six-gravity acceleration and a 13.8-ton hold suit fast surface-to-orbit transfers of personnel and equipment.", "A two-person crew operates the unarmed craft for up to one week. It has no jump drive and depends on a parent ship or local base for strategic movement, protection, and maintenance."]
 [hull]
 id = "small-40"
 configuration = "streamlined"

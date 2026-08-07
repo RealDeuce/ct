@@ -22,7 +22,7 @@ primary_role = "frontier-scout-trader"
 secondary_roles = []
 mission_tags = ["jump-2", "thrust"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 100-ton frontier scout trader is reconstructed as a complete standard-CE design with a two-parsec jump radius, normalized maneuver and power machinery, 4 points of armor, and the source role's principal accommodations, support systems, and armament.", "The design is directly usable by the game construction engine. Its cargo hold is the exact remainder after every fitted component is evaluated, so published rounded or incompatible allocations do not become hidden displacement adjustments."]
+description_paragraphs = ["This Mercator variant is a hundred-ton frontier scout trader with Jump-2 range, four-gravity acceleration, four points of armor, and four staterooms. Its streamlined hull and fuel processor allow a small crew to operate beyond fully serviced ports.", "The processor and emergency berth reduce the hold to 16 tons, leaving room for exploration stores, mail, or high-value cargo. The ship remains unarmed, so speed, route knowledge, and access to wilderness fuel are its principal safeguards."]
 [hull]
 id = "ship-100"
 configuration = "streamlined"

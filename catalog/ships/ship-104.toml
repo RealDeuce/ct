@@ -24,7 +24,7 @@ primary_role = "assault-carrier"
 secondary_roles = []
 mission_tags = ["jump-2", "assault-carrier", "normalized"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 1400-ton assault carrier is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+description_paragraphs = ["The Enyo is a fourteen-hundred-ton assault carrier with Jump-2 range, three-gravity acceleration, advanced electronics, protected command systems, and extensive troop-support spaces. Eighteen beam lasers, twelve missile racks, twelve sandcasters, and fourteen point-defense lasers cover its protected launch and assault operations.", "Armories, medical facilities, repair drones, five workshops, and a 499.5-ton hold let its forty-one-person crew carry personnel, vehicles, stores, and equipment. Light armor makes it dependent on escorts despite its heavy defensive battery."]
 [hull]
 id = "ship-1400"
 configuration = "standard"

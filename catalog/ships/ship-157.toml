@@ -28,7 +28,7 @@ mission_tags = ["jump-2", "thrust-3", "missile-banks", "magazine"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
 description_paragraphs = [
   "This 800-ton missile ship replaces almost the entire modular cargo capacity with six missile banks and a large magazine. Two mixed turrets provide close defense, while three-gravity maneuver and a docked utility boat support fleet deployment and local operations.",
-  "Its heavy salvo can threaten larger ships, but the unarmored hull, limited residual cargo, and ammunition expense make it dependent on escorts and naval logistics. Once its magazine is depleted, the conversion has little independent commercial value.",
+  "Its heavy salvo can threaten larger ships, but the unarmored hull, limited residual cargo, and ammunition expense make it dependent on escorts and naval logistics. Once its magazine is depleted, the Cyclops has little independent commercial value.",
 ]
 
 [hull]

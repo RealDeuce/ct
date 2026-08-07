@@ -28,7 +28,7 @@ mission_tags = ["fighter", "thrust-6", "missiles", "carrier-based"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
 description_paragraphs = [
   "This fifteen-ton two-seat strike fighter uses six-gravity acceleration, military sensors, light armor, and a missile rack to attack ships and defended targets. A pilot and weapons officer divide flight and engagement duties during coordinated carrier strikes.",
-  "The normalized design carries twelve standard missiles and one week of fuel in place of the source profile's incompatible external torpedo and separate small-craft and anti-personnel weapon slots. It is a focused attack craft with virtually no cargo and depends on a carrier for every sustained operation.",
+  "The fighter carries twelve standard missiles and one week of fuel. It has virtually no cargo, cannot jump, and depends on a carrier for transport, maintenance, rearming, and every sustained operation.",
 ]
 
 [hull]

@@ -28,7 +28,7 @@ secondary_roles = ["fleet-combat", "particle-attack"]
 mission_tags = ["jump-2", "thrust-5", "particle-bays", "point-defense"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
 description_paragraphs = [
-  "This 1,000-ton direct-fire destroyer uses the series' protected five-gravity hull, redundant command systems, extensive crew support, drones, and fast boat. Four particle-beam bays replace the source profile's removed heavy-railgun and higher-tech fusion systems.",
+  "This thousand-ton direct-fire destroyer uses a protected five-gravity hull, redundant command systems, extensive crew support, drones, and a fast boat. Four particle-beam bays form a powerful, uniform main battery for fleet engagements.",
   "Six turrets and ten laser point-defense nodes protect the ship while its uniform bay battery simplifies ammunition logistics. It remains a dense, crew-intensive fleet combatant with almost no earning capacity outside naval service.",
 ]
 [hull]

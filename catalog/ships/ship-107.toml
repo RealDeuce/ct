@@ -40,7 +40,7 @@ open_game_content_designations = [
 ]
 description_paragraphs = [
   "This distributed-hull destroyer is intended for organized naval service, with a two-parsec jump radius, three-gravity acceleration, armored bridge, radiation protection, emergency power, redundant computers, and a seventy-person crew. Its endurance and command facilities let it lead patrol groups or screen heavier combatants.",
-  "Six particle barbettes form the main battery, backed by railgun barbettes and laser, missile, and sandcaster turrets. Standard CE maneuver and gravity systems remove the source design's immense reaction-mass and spin-pod burden; the recovered hold makes the converted ship a capable military transport, replenishment escort, or prize carrier without reducing its combat fit.",
+  "Six particle barbettes form the main battery, backed by railgun barbettes and laser, missile, and sandcaster turrets. A large hold makes the Corbett useful as a military transport, replenishment escort, or prize carrier without reducing its combat fit.",
 ]
 
 [hull]

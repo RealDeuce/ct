@@ -23,7 +23,7 @@ primary_role = "armed-survey-courier"
 secondary_roles = []
 mission_tags = ["jump-2", "thrust", "armed"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 120-ton armed survey courier is reconstructed as a complete standard-CE design with a two-parsec jump radius, normalized maneuver and power machinery, 4 points of armor, and the source role's principal accommodations, support systems, and armament.", "The design is directly usable by the game construction engine. Its cargo hold is the exact remainder after every fitted component is evaluated, so published rounded or incompatible allocations do not become hidden displacement adjustments."]
+description_paragraphs = ["The Challenger is a hundred-and-twenty-ton survey courier with Jump-2 range, five-gravity acceleration, advanced electronics, four points of armor, and a streamlined hull. A beam laser and sandcaster provide modest protection while its four-person crew carries surveys or dispatches between frontier systems.", "Four staterooms, fuel processing, and an emergency berth support independent field work, but fitted systems leave only a two-ton hold. The ship is best used for reconnaissance, mail, and compact high-value cargo rather than ordinary freight."]
 [hull]
 id = "ship-120"
 configuration = "streamlined"

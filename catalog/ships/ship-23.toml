@@ -22,7 +22,7 @@ primary_role = "modular-passenger-boat"
 secondary_roles = []
 mission_tags = ["passengers", "modular"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 50-ton modular passenger boat is a normalized CE small craft with sK maneuver and power machinery, 2 points of crystaliron protection, space for 24 passengers. It is fitted for passengers, modular work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Pegasus is a streamlined fifty-ton passenger boat that carries twenty-four seated travelers under a two-person flight crew. Six-gravity acceleration, light armor, fuel processing, and a 22.05-ton hold make it useful for rapid transfers with substantial baggage or freight.", "The boat is unarmed, has only one week of endurance, and cannot jump. It relies on a parent ship or local facilities for maintenance, protection, and interstellar transport."]
 [hull]
 id = "small-50"
 configuration = "streamlined"

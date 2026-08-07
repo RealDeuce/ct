@@ -24,7 +24,7 @@ primary_role = "patrol-frigate"
 secondary_roles = []
 mission_tags = ["jump-2", "armed", "patrol-frigate"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 550-ton patrol frigate preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+description_paragraphs = ["The Hawkwood is a five-hundred-and-fifty-ton patrol frigate with Jump-2 range, four-gravity acceleration, eight points of armor, advanced electronics, and a particle-beam barbette. Six beam lasers, three missile racks, three sandcasters, and five point-defense lasers provide balanced fire against raiders and small combatants.", "A protected launch, armory, medical support, repair drones, fuel processing, and a 113.5-ton hold support the twenty-six-person crew during patrol, boarding, escort, and rescue missions. It is a versatile security ship rather than a fleet-line combatant."]
 [hull]
 id = "ship-550"
 configuration = "streamlined"

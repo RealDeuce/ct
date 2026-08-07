@@ -23,7 +23,7 @@ primary_role = "system-defense-carrier"
 secondary_roles = []
 mission_tags = ["in-system", "armed", "system-defense-carrier"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 300-ton system defense carrier preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+description_paragraphs = ["The Bastion is a three-hundred-ton system-defense carrier with eight points of armor, advanced electronics, a meson-gun bay, mixed defensive turrets, and three point-defense lasers. Its embarked transfer launch moves personnel and equipment beyond the carrier's immediate reach.", "A fifteen-person crew, armory, medical support, repair drones, fuel processing, and a 55.5-ton hold support local patrol and combat operations. With no jump drive, the ship is tied to its assigned system unless moved by a larger carrier."]
 [hull]
 id = "ship-300"
 configuration = "streamlined"

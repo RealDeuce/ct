@@ -24,7 +24,7 @@ primary_role = "assault-carrier"
 secondary_roles = []
 mission_tags = ["jump-2", "assault-carrier", "normalized"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 2500-ton assault carrier is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+description_paragraphs = ["The Hannibal is a twenty-five-hundred-ton assault carrier with Jump-2 range, four-gravity acceleration, four points of armor, protected command systems, and a complement of ten fighters, two assault transports, and an armed personnel boat. Two particle-beam bays and extensive laser, missile, sandcaster, and point-defense batteries cover flight and landing operations.", "Armories, brigs, medical facilities, repair drones, and workshops support its 149-person crew and embarked forces. Fitted craft and combat systems leave only a four-ton hold, making the ship wholly dependent on military logistics."]
 [hull]
 id = "ship-2500"
 configuration = "streamlined"

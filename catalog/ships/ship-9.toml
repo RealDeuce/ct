@@ -27,8 +27,8 @@ secondary_roles = ["space-superiority"]
 mission_tags = ["fighter", "thrust-6", "carrier-based"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
 description_paragraphs = [
-  "This ten-ton carrier fighter combines six-gravity acceleration, military sensors, light crystaliron armor, and a missile rack in the smallest practical CE combat hull. It is intended to intercept hostile craft and contest the immediate battlespace around a carrier or defended installation.",
-  "A single pilot, one-week endurance, and negligible stores leave no margin for independent operations. The design trades the source profile's incompatible secondary weapon slot for the one-hardpoint CE armament model and must rely on its carrier for transport, maintenance, and rearming.",
+  "This ten-ton carrier fighter combines six-gravity acceleration, military sensors, light crystaliron armor, and a missile rack in a tightly packed combat hull. It is intended to intercept hostile craft and contest the immediate battlespace around a carrier or defended installation.",
+  "A single pilot, twelve missiles, one-week endurance, and negligible stores leave no margin for independent operations. The Icarus relies on its carrier for transport, maintenance, rearming, and recovery after every sortie.",
 ]
 
 [hull]

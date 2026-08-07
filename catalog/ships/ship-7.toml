@@ -22,7 +22,7 @@ primary_role = "protected-launch"
 secondary_roles = []
 mission_tags = ["thrust-6", "passengers"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 20-ton protected launch is a normalized CE small craft with sF maneuver and power machinery, 4 points of crystaliron protection, space for 10 passengers. It is fitted for thrust-6, passengers work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Caduceus is a protected twenty-ton launch that carries ten seated passengers under a single pilot. Six-gravity acceleration and four points of crystaliron armor let it make exposed transfers more safely than an ordinary utility boat.", "The launch remains unarmed and non-jump-capable, with one week of endurance and a 4.9-ton hold. It depends on a parent ship or nearby base for strategic movement and sustained support."]
 [hull]
 id = "small-20"
 configuration = "streamlined"

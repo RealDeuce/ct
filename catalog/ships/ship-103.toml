@@ -23,7 +23,7 @@ primary_role = "assault-cruiser"
 secondary_roles = []
 mission_tags = ["jump-2", "assault-cruiser", "normalized"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 1200-ton assault cruiser is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+description_paragraphs = ["The Marathon is a twelve-hundred-ton assault cruiser with Jump-2 range, four-gravity acceleration, eight points of armor, protected systems, and four particle-beam barbettes. Twelve beam lasers, six missile racks, six sandcasters, and twelve point-defense lasers provide broad fire support and protection.", "A cargo boat, two armed transports, multiple armories, medical facilities, and a 193.9-ton hold let its thirty-six-person crew deliver personnel and equipment under fire. It combines transport capacity with serious combat power, at the cost of a large military operating budget."]
 [hull]
 id = "ship-1200"
 configuration = "standard"

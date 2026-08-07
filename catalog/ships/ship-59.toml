@@ -27,7 +27,7 @@ mission_tags = ["jump-2", "passengers", "merchant"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
 description_paragraphs = [
   "This passenger-oriented three-hundred-ton merchant carries six high-class and twenty-four middle-class travelers, plus fifteen low berths. Separate galleys and recreation spaces support the service staff and passenger sections while a vehicle garage handles surface transfers.",
-  "The conversion retains the two-parsec range, two-gravity thrust, armor, and mixed defensive turret of the commercial hull, but gives up most freight capacity. Profit depends on filling berths and maintaining a reliable schedule rather than chasing bulk cargo prices.",
+  "Two-parsec range, two-gravity thrust, armor, and a mixed defensive turret give the Aouda ordinary commercial mobility and protection, but passenger spaces consume most freight capacity. Profit depends on filling berths and maintaining a reliable schedule rather than chasing bulk cargo prices.",
 ]
 
 [hull]

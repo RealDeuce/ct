@@ -26,7 +26,7 @@ secondary_roles = ["fleet-combat", "escort"]
 mission_tags = ["jump-2", "missile-bank", "armed"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
 description_paragraphs = [
-  "This missile conversion replaces the patrol boat and particle weapon with a fifty-one-ton missile bank and a deep ordnance magazine. A laser turret and dual-sandcaster turret protect the hull while naval accommodations support a nineteen-person combat crew.",
+  "The Stahlstadt carries a fifty-one-ton missile bank and deep ordnance magazine in a compact commercial hull. A laser turret and dual-sandcaster turret provide close protection while naval accommodations support a nineteen-person combat crew.",
   "The design can deliver a serious missile salvo from a small commercial hull, but ammunition volume leaves almost no earning capacity and makes every prolonged action expensive. It depends on fleet support and should avoid close combat once its magazine is depleted.",
 ]
 

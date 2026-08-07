@@ -36,8 +36,8 @@ open_game_content_designations = [
   "The complete original catalog entry and adapted construction data are Open Game Content.",
 ]
 description_paragraphs = [
-  "This 1,500-ton destroyer combines a two-parsec jump radius, three-gravity maneuver, radiation protection, hardened holographic controls, redundant computers, medical support, repair drones, probe drones, and three carried utility craft. Its large post-conversion hold can carry patrol stores, relief supplies, prizes, or tender cargo.",
-  "Six particle-beam barbettes and two railgun barbettes form the main battery, backed by laser, missile, and sandcaster turrets. The ship remains a crew-intensive combatant, but replacing reaction propulsion with ordinary CE maneuver drive greatly improves endurance and logistical utility.",
+  "This fifteen-hundred-ton destroyer combines a two-parsec jump radius, three-gravity maneuver, radiation protection, hardened holographic controls, redundant computers, medical support, repair drones, probe drones, and three carried utility craft. Its large hold can carry patrol stores, relief supplies, prizes, or tender cargo.",
+  "Six particle-beam barbettes and two railgun barbettes form the main battery, backed by laser, missile, and sandcaster turrets. The Corbett remains a crew-intensive combatant whose endurance and cargo capacity also give it substantial logistical utility.",
 ]
 
 [hull]

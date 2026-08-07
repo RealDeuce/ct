@@ -24,7 +24,7 @@ primary_role = "belt-mining-tender"
 secondary_roles = []
 mission_tags = ["jump-2", "armed", "belt-mining-tender"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 800-ton belt mining tender preserves the source design's operational role while using ordinary CE Jump and maneuver drives, legal hardpoint counts, exact armor limits, and normalized craft support and ammunition.", "Every fitted component is evaluated from the active construction tables. The listed hold is the exact remainder, and incompatible source features such as excess armor, excess hardpoints, pop-up mounts, or nonstandard drive allocations are replaced explicitly."]
+description_paragraphs = ["The Bonanza is an eight-hundred-ton belt-mining tender with Jump-2 range, two-gravity acceleration, survey electronics, a laboratory, and a workshop. Two cargo boats and a transfer launch let its eleven-person crew work scattered claims and move personnel or equipment locally.", "Laser, missile, sandcaster, and pulse-laser turrets discourage raiders, while fuel processing and a 369-ton hold support long deployments and bulk ore carriage. It is a productive industrial base, but only lightly armored for its size."]
 [hull]
 id = "ship-800"
 configuration = "distributed"

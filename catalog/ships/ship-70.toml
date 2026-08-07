@@ -36,7 +36,7 @@ open_game_content_designations = [
   "The complete original catalog entry and adapted construction data are Open Game Content.",
 ]
 description_paragraphs = [
-  "This three-hundred-ton gunboat combines four-gravity maneuver, radiation shielding, hardened controls, redundant computers, repair drones, emergency berths, and complete escape capacity. Replacing reaction propulsion with ordinary CE maneuver drive produces useful stores and patrol-cargo volume without sacrificing acceleration.",
+  "This three-hundred-ton gunboat combines four-gravity maneuver, radiation shielding, hardened controls, redundant computers, repair drones, emergency berths, and complete escape capacity. A useful hold carries stores, relief supplies, evidence, or patrol cargo without sacrificing acceleration.",
   "A particle-beam bay and railgun barbette provide the main strike, with a mixed laser, missile, and sandcaster turret plus three point-defense nodes for close protection. It is a compact naval combatant with no jump capability and therefore depends on a carrier, tender, or permanent system base.",
 ]
 

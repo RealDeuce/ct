@@ -22,7 +22,7 @@ primary_role = "assault-transport"
 secondary_roles = []
 mission_tags = ["troop-transport", "beam-laser"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 90-ton assault transport is a normalized CE small craft with sP maneuver and power machinery, 8 points of crystaliron protection, space for 50 passengers, and one beam laser. It is fitted for troop-transport, beam-laser work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Goliath is a ninety-ton assault transport built to deliver fifty troops directly into a contested landing zone. Eight points of crystaliron armor, six-gravity acceleration, a beam laser, and a four-person control cabin protect the approach while two compact staterooms support the flight crew.", "A 17.6-ton hold carries weapons, vehicles, or mission stores for the embarked force. The craft has only one week of endurance and no jump drive, so it depends on a carrier or forward base for strategic movement and sustained support."]
 [hull]
 id = "small-90"
 configuration = "streamlined"

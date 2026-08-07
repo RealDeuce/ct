@@ -22,7 +22,7 @@ primary_role = "boarding-tug"
 secondary_roles = []
 mission_tags = ["boarding", "grappling-arm"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 10-ton boarding tug is a normalized CE small craft with sA maneuver and power machinery. It is fitted for boarding, grappling-arm work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Minotaur is a compact boarding tug whose grappling arm lets a two-person crew secure drifting, disabled, or resisting vessels. Its small hold carries boarding gear, tools, or recovered evidence.", "The tug has no armor, weapons, or jump drive and only a week of endurance. It is a specialized local craft that depends on a carrier or enforcement base to place it near its target and protect it afterward."]
 [hull]
 id = "small-10"
 configuration = "distributed"

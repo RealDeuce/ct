@@ -26,7 +26,7 @@ mission_tags = ["jump-2", "thrust-2", "cargo", "merchant"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
 description_paragraphs = [
   "This 300-ton light freighter carries six crew, a beam-laser turret, an emergency berth, an autodoc, a workshop, and a large podded cargo hold. Two-parsec jump range and two-gravity maneuver suit regular freight routes.",
-  "Ordinary power fuel replaces the source's prohibited long-duration cells, so the later-production model converges mechanically with its conventional predecessor. Its strength is cargo efficiency rather than combat endurance.",
+  "The Lübeck II is arranged for dependable commercial service and routine self-maintenance rather than combat. Its weapon can deter opportunists, but its real strength is cargo efficiency on regular routes.",
 ]
 [hull]
 id = "ship-300"

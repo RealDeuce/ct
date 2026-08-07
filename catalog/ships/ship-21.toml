@@ -22,7 +22,7 @@ primary_role = "modular-passenger-boat"
 secondary_roles = []
 mission_tags = ["passengers", "modular"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 50-ton modular passenger boat is a normalized CE small craft with sK maneuver and power machinery, 2 points of crystaliron protection, space for 24 passengers. It is fitted for passengers, modular work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Proteus Passenger is a streamlined fifty-ton boat for moving twenty-four seated travelers between ships, stations, and planetary surfaces. A two-person cockpit, six-gravity acceleration, light armor, and onboard fuel processing support rapid shuttle service.", "The 22.05-ton hold leaves room for baggage or accompanying freight, but the boat is unarmed and has only one week of endurance. It cannot jump and relies on a carrier or local facilities for sustained operations."]
 [hull]
 id = "small-50"
 configuration = "streamlined"

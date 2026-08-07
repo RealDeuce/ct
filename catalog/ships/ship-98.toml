@@ -22,7 +22,7 @@ primary_role = "bulk-freighter"
 secondary_roles = []
 mission_tags = ["jump-2", "bulk-freighter", "normalized"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 2000-ton bulk freighter is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+description_paragraphs = ["The Visby is a two-thousand-ton bulk freighter with Jump-2 range, two-gravity acceleration, twenty staterooms, ten low berths, and a 1,122-ton hold. Fuel scoops and processing, a workshop, and an armed transport support its ten-person crew on long-haul routes.", "Five mixed beam-laser, missile, and sandcaster turrets discourage opportunistic attack, but light armor and modest acceleration make escorts prudent for valuable loads. The ship earns through volume and route planning rather than speed."]
 [hull]
 id = "ship-2000"
 configuration = "standard"

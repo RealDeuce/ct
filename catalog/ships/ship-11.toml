@@ -28,7 +28,7 @@ mission_tags = ["fighter", "thrust-6", "carrier-based"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
 description_paragraphs = [
   "This ten-ton improved carrier fighter combines six-gravity acceleration, military sensors, two points of crystaliron armor, and a missile rack. It is optimized to intercept hostile small craft and maintain local space superiority around a carrier group.",
-  "The stronger weapon and armor consume almost every available liter, while one pilot and one week of fuel limit endurance. Its source profile's incompatible secondary weapon slot is omitted under CE's one-hardpoint rule, leaving the fighter wholly dependent on a carrier for transport, maintenance, and rearming.",
+  "The weapon, twelve-missile magazine, and armor consume almost every available liter, while one pilot and one week of fuel limit endurance. The fighter is wholly dependent on a carrier for transport, maintenance, rearming, and recovery.",
 ]
 
 [hull]

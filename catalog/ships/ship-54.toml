@@ -26,7 +26,7 @@ secondary_roles = ["casino-ship", "charter"]
 mission_tags = ["jump-2", "passengers", "armed-merchant"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
 description_paragraphs = [
-  "This armed passenger conversion devotes its commercial deck to high-class cabins, dining, lounges, and a casino while retaining fifteen low berths. A larger service crew supports the hotel spaces and the small remaining hold carries baggage, stores, and priority freight.",
+  "The Fogg devotes its commercial deck to high-class cabins, dining, lounges, and a casino while retaining fifteen low berths. A larger service crew supports the hotel spaces and the small remaining hold carries baggage, stores, and priority freight.",
   "Three triple turrets give the liner substantially more protection than the ordinary merchant, though it remains a revenue ship rather than a warship. Its economics depend on premium fares and charter work that justify the staff and recreation space.",
 ]
 

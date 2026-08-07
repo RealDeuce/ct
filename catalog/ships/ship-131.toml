@@ -37,7 +37,7 @@ open_game_content_designations = [
 ]
 description_paragraphs = [
   "This four-hundred-ton merchant carries eight middle passengers and a large freight load behind radiation shielding and a self-sealing hull. Its two-parsec jump radius, one-gravity maneuver drive, fuel processors, medical bed, workshop, and recreation facilities support long commercial circuits through thinly served systems.",
-  "Three turrets provide two pairs of beam lasers plus missile and sandcaster defenses, with a fourth hardpoint reserved for expansion. The original reaction-propelled design becomes a conventional CE ship here; removing reaction mass turns it into a substantially more capable freighter without changing its deliberate, low-acceleration character.",
+  "Three turrets provide two pairs of beam lasers plus missile and sandcaster defenses, with a fourth hardpoint reserved for expansion. The Bellamy is a capable but deliberate freighter whose one-gravity acceleration rewards careful schedules and early decisions rather than rapid pursuit.",
 ]
 
 [hull]

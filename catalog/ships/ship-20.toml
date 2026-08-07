@@ -22,7 +22,7 @@ primary_role = "modular-cargo-boat"
 secondary_roles = []
 mission_tags = ["cargo", "modular"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 50-ton modular cargo boat is a normalized CE small craft with sK maneuver and power machinery, 2 points of crystaliron protection. It is fitted for cargo, modular work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Proteus Cargo is a streamlined fifty-ton boat built to move modules, freight, and stores between a parent ship, stations, and planetary surfaces. A two-person cockpit, six-gravity acceleration, light armor, and a 34.55-ton hold make it an efficient heavy lighter.", "It is unarmed, has only one week of endurance, and cannot jump. The boat depends on its carrier or local facilities for maintenance, protection, and interstellar transport."]
 [hull]
 id = "small-50"
 configuration = "streamlined"

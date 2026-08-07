@@ -22,7 +22,7 @@ primary_role = "flag-barge"
 secondary_roles = []
 mission_tags = ["flag-transport", "passengers"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 20-ton flag barge is a normalized CE small craft with sF maneuver and power machinery, 2 points of crystaliron protection, space for 4 passengers. It is fitted for flag-transport, passengers work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Zephyrus is a twenty-ton flag barge with six-gravity acceleration, light armor, four compact staterooms, and fuel processing. It gives a single pilot private accommodation for four officers, dignitaries, or staff during transfers between ships and installations.", "The barge is unarmed, carries only 1.9 tons of baggage or official cargo, and has one week of endurance. It cannot jump and depends on its parent ship for protection, maintenance, and interstellar movement."]
 [hull]
 id = "small-20"
 configuration = "streamlined"

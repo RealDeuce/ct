@@ -39,7 +39,7 @@ open_game_content_designations = [
 ]
 description_paragraphs = [
   "This earlier thousand-ton hospital-ship fit supports one hundred general-care patients, ten isolation patients, four operating theaters, and an eighty-one-person operating and medical complement. Two medical cutters and a transfer launch extend treatment to damaged vessels and planetary disaster sites.",
-  "The ship has a two-parsec jump radius, three-gravity acceleration, six sandcaster turrets, ten point-defense lasers, and a large normalized stores hold. It is less capable in maneuver and endurance than the later fit but can carry substantially more relief supplies while retaining the same core clinical mission.",
+  "The ship has a two-parsec jump radius, three-gravity acceleration, six sandcaster turrets, ten point-defense lasers, and a 106.5-ton stores hold. It is less capable in maneuver and endurance than the later fit but can carry substantially more relief supplies while retaining the same core clinical mission.",
 ]
 
 [hull]

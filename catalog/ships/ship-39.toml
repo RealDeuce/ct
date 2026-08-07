@@ -36,8 +36,8 @@ open_game_content_designations = [
   "The complete original catalog entry and adapted construction data are Open Game Content.",
 ]
 description_paragraphs = [
-  "This conversion replaces the forward freight compartment with fifteen steerage places, separate sanitary facilities, and a self-service galley and common area. It keeps the base trader's two-parsec jump radius, three-gravity acceleration, surface access, and useful main cargo hold.",
-  "The mixed layout can earn from both low-cost passengers and freight without requiring a dedicated steward, but its dense accommodation leaves little margin for comfort or life-support abuse. Published suggestions that more passengers might be crowded aboard describe dangerous overloading, not fitted capacity.",
+  "The Niccolò Polo carries fifteen steerage passengers with separate sanitary facilities and a self-service galley and common area. It combines this dense accommodation with a two-parsec jump radius, three-gravity acceleration, surface access, and a useful main cargo hold.",
+  "The mixed layout can earn from both low-cost passengers and freight without requiring a dedicated steward, but it leaves little margin for comfort or life-support abuse. Fifteen steerage passengers are the fitted capacity; carrying more would be dangerous overloading.",
 ]
 
 [hull]

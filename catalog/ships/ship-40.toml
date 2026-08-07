@@ -36,8 +36,8 @@ open_game_content_designations = [
   "The complete original catalog entry and adapted construction data are Open Game Content.",
 ]
 description_paragraphs = [
-  "This mixed passenger trader installs four double-occupancy standard staterooms and a separate five-ton galley and common area. Eight passengers can travel in substantially greater comfort than the steerage conversion while the ship retains a useful freight hold and the base design's two-parsec reach.",
-  "A steward is needed to realize the passenger service, raising payroll and reducing operating flexibility when rooms are empty. The conversion suits scheduled links and charters between modest ports; it remains a commercial ship with only basic sensors and a single delivered defensive weapon.",
+  "The Maffeo Polo is a mixed passenger trader with four double-occupancy standard staterooms and a separate five-ton galley and common area. Eight passengers can travel in reasonable comfort while the ship retains a useful freight hold and two-parsec reach.",
+  "A steward is needed to provide passenger service, raising payroll and reducing operating flexibility when rooms are empty. The ship suits scheduled links and charters between modest ports; it remains a commercial vessel with only basic sensors and a single defensive weapon.",
 ]
 
 [hull]

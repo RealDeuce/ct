@@ -22,7 +22,7 @@ primary_role = "dispatch-courier"
 secondary_roles = []
 mission_tags = ["courier", "cargo"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 10-ton dispatch courier is a normalized CE small craft with sA maneuver and power machinery. It is fitted for courier, cargo work.", "The craft has no jump drive and depends on a parent ship or local base for interstellar movement and sustained support. The hold is the exact remainder after controls, fuel, accommodations, support equipment, armor, and armament."]
+description_paragraphs = ["The Hermes is a ten-ton dispatch launch for moving urgent messages and compact priority cargo between ships, stations, and nearby installations. A two-person cockpit and 4.9-ton hold make it a simple, useful local courier.", "It is unarmed, has only one week of endurance, and cannot jump. The Hermes therefore depends on a parent ship or local base for protection, maintenance, and interstellar transport."]
 [hull]
 id = "small-10"
 configuration = "distributed"

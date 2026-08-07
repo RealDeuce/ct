@@ -39,7 +39,7 @@ open_game_content_designations = [
 ]
 description_paragraphs = [
   "This 4,500-ton commercial carrier moves more than 2,600 tons of freight across a two-parsec jump while two utility boats handle passengers and cargo away from major docking facilities. A large crew, medical support, workshops, offices, repair drones, emergency power, and a capital computer support sustained high-volume operations.",
-  "Twenty beam-laser turrets and forty-five point-defense lasers provide substantial protection, with twenty-five hardpoints reserved for later fitting. Standard CE drives limit the immense hull to two-gravity maneuver, so it is a valuable logistical asset that depends on route planning and escorts rather than speed.",
+  "Twenty beam-laser turrets and forty-five point-defense lasers provide substantial protection, with twenty-five hardpoints reserved for later fitting. Two-gravity acceleration makes this immense logistical asset dependent on route planning and escorts rather than speed.",
 ]
 
 [hull]

@@ -25,7 +25,7 @@ primary_role = "commerce-raider"
 secondary_roles = []
 mission_tags = ["jump-2", "commerce-raider", "normalized"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This 800-ton commerce raider is a complete CE construction-rule design. Ordinary Jump and maneuver machinery, legal hardpoint and armor limits, explicit accommodations, craft, ammunition, and support systems replace incompatible or rounded source allocations.", "The entry preserves the source vessel's operational purpose without retaining setting-specific drives, instantaneous communications, removed heavy railguns, or above-tech weapons. Its cargo is the exact residual volume after the normalized bill of materials is evaluated."]
+description_paragraphs = ["The Moriarty is an eight-hundred-ton commerce raider with Jump-2 range, four-gravity acceleration, stealth treatment, advanced electronics, and four points of armor. Two particle-beam bays, two plasma barbettes, laser and missile turrets, and eight point-defense lasers let it ambush and overpower commercial traffic.", "Brigs, an armory, medical support, repair drones, a workshop, and a 143.2-ton hold support its forty-person crew, boarding parties, prisoners, and captured cargo. The ship can imitate a merchant's logistics, but its costs demand successful raiding or state sponsorship."]
 [hull]
 id = "ship-800"
 configuration = "streamlined"
