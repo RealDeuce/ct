@@ -203,6 +203,30 @@ impl DoorSession {
         }
     }
 
+    fn wait_until_quiet(&mut self) -> String {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut last_length = usize::MAX;
+        let mut quiet_since = Instant::now();
+        loop {
+            let output = self.output();
+            let semantic = strip_ecma48(&output);
+            let acknowledged_before = self.acknowledged_page_prompts;
+            self.acknowledge_page_prompts(&semantic);
+            if output.len() != last_length || self.acknowledged_page_prompts != acknowledged_before
+            {
+                last_length = output.len();
+                quiet_since = Instant::now();
+            } else if quiet_since.elapsed() >= Duration::from_millis(250) {
+                return output;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "door output did not settle; output: {output:?}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     fn finish(mut self) -> String {
         drop(self.input.take());
         let status = self.child.wait().unwrap();
@@ -1106,9 +1130,35 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         .output()
         .unwrap();
     let mut docked_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
-    docked_door.send(b"\rq\r");
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    docked_door.send(b"ji1\r\ra1\r\rqq");
+    docked_door.send(b"\r");
+    docked_door.wait_for("Arrival Packet -");
+    docked_door.send(b"q");
+    docked_door.wait_for("Arrival Communications Receipt");
+    docked_door.send(b"\r");
+    docked_door.wait_for("Docked Operations");
+    docked_door.wait_until_quiet();
+    docked_door.send(b"j");
+    docked_door.wait_for("Task Ledger");
+    docked_door.wait_until_quiet();
+    docked_door.send(b"i");
+    docked_door.wait_for("Offer (Q to cancel):");
+    docked_door.send(b"1\r");
+    docked_door.wait_for("Signed Offer Instrument");
+    docked_door.wait_until_quiet();
+    docked_door.send(b"\r");
+    docked_door.wait_for_occurrences("Task Ledger", 2);
+    docked_door.wait_until_quiet();
+    docked_door.send(b"a");
+    docked_door.wait_for_occurrences("Offer (Q to cancel):", 2);
+    docked_door.send(b"1\r");
+    docked_door.wait_for("entered in the task ledger.");
+    docked_door.send(b"\r");
+    docked_door.wait_for_occurrences("Task Ledger", 3);
+    docked_door.wait_until_quiet();
+    docked_door.send(b"q");
+    docked_door.wait_for_occurrences("Docked Operations", 2);
+    docked_door.wait_until_quiet();
+    docked_door.send(b"q");
     let docked_screen = docked_door.finish();
     for expected in [
         "Docked Operations",
@@ -1129,7 +1179,16 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         assert!(docked_screen.contains(expected), "{docked_screen:?}");
     }
     let mut reconnected_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
-    reconnected_door.send(b"\rjqq");
+    reconnected_door.send(b"\r");
+    reconnected_door.wait_for("Docked Operations");
+    reconnected_door.wait_until_quiet();
+    reconnected_door.send(b"j");
+    reconnected_door.wait_for("Task Ledger");
+    reconnected_door.wait_until_quiet();
+    reconnected_door.send(b"q");
+    reconnected_door.wait_for_occurrences("Docked Operations", 2);
+    reconnected_door.wait_until_quiet();
+    reconnected_door.send(b"q");
     let reconnect_screen = reconnected_door.finish();
     assert!(reconnect_screen.contains("Accepted obligations"));
     assert!(reconnect_screen.contains("No.1 "));
