@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 project(cepheus_trader_client VERSION 0.7.0 LANGUAGES C CXX)
 
+# The client core is shared on every platform and privately embeds static
+# fallback dependencies. Ensure in-tree Botan and Cap'n Proto builds are
+# suitable for that link even when this is an ordinary non-portable build.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 include(CTest)
 include(GNUInstallDirs)
 include(ProcessorCount)
@@ -180,13 +185,6 @@ option(
 if(CT_PORTABLE_CLIENT)
   set(CT_USE_SYSTEM_CAPNPROTO OFF CACHE BOOL "Use installed Cap'n Proto" FORCE)
   set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static dependencies" FORCE)
-  set(
-    CMAKE_POSITION_INDEPENDENT_CODE
-    ON
-    CACHE BOOL
-    "Build static dependencies for the shared client core"
-    FORCE
-  )
 endif()
 include(cmake/CapnProtoPinned.cmake)
 
