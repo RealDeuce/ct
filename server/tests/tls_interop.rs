@@ -359,6 +359,13 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
     let mut session = DoorSession::spawn(door, data, profile, columns);
     session.send(b"\r");
 
+    let packet_key: &[u8] = match profile {
+        "iso646" => b"\x1b[D",
+        "iso646-color" => b"\x1b[C",
+        "cp437-color" => b"\x1b[B",
+        other => panic!("arrival profile has no arrow-key case: {other}"),
+    };
+
     let mut page_number = 1;
     let mut claimed = false;
     while !claimed {
@@ -374,10 +381,9 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
             claimed = true;
             page_number += 1;
         } else {
-            // Filing a non-offer as actioned is an ordinary arrival-packet
-            // operation and advances without relying on terminal arrow-key
-            // encoding in the pipe-driven local harness.
-            session.send(b"a");
+            // Exercise all three arrival-packet arrow actions across the
+            // terminal profiles using the ANSI sequences a caller sends.
+            session.send(packet_key);
             page_number += 1;
         }
         assert!(
@@ -1497,6 +1503,17 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
             "Ship's Navigation Library",
         ] {
             assert!(semantic.contains(expected), "{profile}: {profile_screen:?}");
+        }
+        for duplicate_prompt in [
+            "(Enter) Continue\r\n\r\n(Enter) Previous menu",
+            "(Enter) Return\r\n\r\n(Enter) Previous menu",
+            "[Enter] Continue\r\n\r\n[Enter] Previous menu",
+            "[Enter] Return\r\n\r\n[Enter] Previous menu",
+        ] {
+            assert!(
+                !semantic.contains(duplicate_prompt),
+                "{profile}: duplicate prompt in {profile_screen:?}"
+            );
         }
         if profile == "iso646" {
             assert!(profile_screen.contains('\u{c}'));

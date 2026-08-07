@@ -95,7 +95,7 @@ std::string safe_field(std::string_view text);
 const char* travel_stage_name(ct::TravelStage stage);
 const char* ship_activity_name(ct::ShipActivityKind kind);
 const char* phase_name(ct::PlayerPhase phase);
-void wait_for_enter();
+void wait_for_enter(const char* destination = "Previous menu");
 
 ct::DoorPresentation& output()
 {
@@ -181,6 +181,14 @@ int door_get_live_key()
       }
       od_sleep(10);
    }
+}
+
+int door_get_translated_key()
+{
+   tODInputEvent event{};
+   while(!od_get_input(&event, OD_NO_TIMEOUT, GETIN_NORMAL)) {
+   }
+   return static_cast<unsigned char>(event.chKeyPress);
 }
 
 void door_clear_screen()
@@ -2907,8 +2915,7 @@ void show_task_offer_detail(const ct::TaskOffer& offer)
       door_number("%llu days\n\r", static_cast<unsigned long long>(offer.recurrence_seconds /
             (24 * 60 * 60)));
    }
-   door_prompt("\n\r[Enter] Return\n\r");
-   wait_for_enter();
+   wait_for_enter("Return");
 }
 
 void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epoch,
@@ -3453,8 +3460,7 @@ std::optional<ct::MessageActionKind> show_message_detail(const ct::MessageItem& 
              ? std::optional{ct::MessageActionKind::ReviewMapping}
              : std::nullopt;
    }
-   door_prompt("\n\r[Enter] Return\n\r");
-   wait_for_enter();
+   wait_for_enter("Return");
    return std::nullopt;
 }
 
@@ -3795,20 +3801,20 @@ void show_arrival_packet(
       door_label("Subject:  ");
       door_identifier("%s\n\r", safe_field(item.subject).c_str());
       door_prompt(
-         "\n\r[Left] Ignore  [Right] Mark for later  [Down] Next\n\r"
+         "\n\r[I/Left] Ignore  [M/Right] Mark for later  [N/Down] Next\n\r"
          "[Enter] Inspect  [A] File as actioned  [Q] Stop review\n\r");
-      const auto key = od_get_key(TRUE);
-      if(key == OD_KEY_LEFT) {
+      const auto key = door_get_translated_key();
+      if(key == OD_KEY_LEFT || key == 'i' || key == 'I') {
          change_message_classification(
             connection, session_epoch, random, request_id, item.message_id,
             ct::MessageClassification::Ignored);
          ++index;
-      } else if(key == OD_KEY_RIGHT) {
+      } else if(key == OD_KEY_RIGHT || key == 'm' || key == 'M') {
          change_message_classification(
             connection, session_epoch, random, request_id, item.message_id,
             ct::MessageClassification::ReviewLater);
          ++index;
-      } else if(key == OD_KEY_DOWN) {
+      } else if(key == OD_KEY_DOWN || key == 'n' || key == 'N') {
          ++index;
       } else if(key == '\r' || key == '\n') {
          if(const auto action = show_message_detail(item)) {
@@ -3864,8 +3870,7 @@ void show_arrival_packet(
                   "%llu\n\r",
                   static_cast<unsigned long long>(*status.dispatch_message_id));
             }
-            door_prompt("\n\r[Enter] Continue\n\r");
-            wait_for_enter();
+            wait_for_enter("Continue");
             break;
          }
       }
@@ -3894,8 +3899,7 @@ void show_arrival_packet(
    }
    door_label("New records:    ");
    door_number("%zu\n\r", unreviewed.size());
-   door_prompt("\n\r[Enter] Continue\n\r");
-   wait_for_enter();
+   wait_for_enter("Continue");
 }
 
 std::optional<const ct::KnownSystemSummary*> select_known_primary(
@@ -4309,8 +4313,6 @@ void show_known_universe_manager(
    }
 }
 
-void wait_for_enter();
-
 const char* career_mode_name(const ct::CombatCareerMode mode)
 {
    switch(mode) {
@@ -4674,9 +4676,9 @@ bool run_command_console(
    }
 }
 
-void wait_for_enter()
+void wait_for_enter(const char* destination)
 {
-   door_prompt("\n\r[Enter] Previous menu\n\r");
+   door_prompt("\n\r[Enter] %s\n\r", destination);
    while(true) {
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
