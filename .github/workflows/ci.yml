@@ -331,7 +331,8 @@ jobs:
           path: artifacts
       - name: Run packaged client
         run: |
-          python3 tools/verify_client_package.py artifacts/*.tar.xz \
+          python3 tools/verify_client_package.py \
+            artifacts/cepheus-trader-client-0.7.0-*.tar.xz \
             --version 0.7.0 --run --require-source-url
 
   client-macos:
