@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(cepheus_trader_client VERSION 0.7.0 LANGUAGES C CXX)
+project(cepheus_trader_client VERSION 0.7.1 LANGUAGES C CXX)
 
 # The client core is shared on every platform and privately embeds static
 # fallback dependencies. Ensure in-tree Botan and Cap'n Proto builds are
