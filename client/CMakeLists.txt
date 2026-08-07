@@ -589,6 +589,9 @@ if(CT_PORTABLE_CLIENT AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       ${CT_PORTABLE_TARGET}
       PRIVATE -static-libgcc -static-libstdc++
     )
+    if(WIN32)
+      target_link_options(${CT_PORTABLE_TARGET} PRIVATE -static)
+    endif()
   endforeach()
 endif()
 

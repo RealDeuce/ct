@@ -17,6 +17,27 @@ endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 find_program(CT_MAKE_EXECUTABLE NAMES gmake make REQUIRED)
 
+set(CT_BOTAN_PLATFORM_ARGUMENTS)
+if(WIN32)
+  execute_process(
+    COMMAND "${CMAKE_CXX_COMPILER}" -dumpmachine
+    OUTPUT_VARIABLE CT_BOTAN_COMPILER_TARGET
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    COMMAND_ERROR_IS_FATAL ANY
+  )
+  if(CT_BOTAN_COMPILER_TARGET MATCHES "^i[3-6]86-")
+    set(CT_BOTAN_CPU x86_32)
+  else()
+    set(CT_BOTAN_CPU x86_64)
+  endif()
+  list(
+    APPEND CT_BOTAN_PLATFORM_ARGUMENTS
+    --os=mingw
+    "--cpu=${CT_BOTAN_CPU}"
+    "--ar-command=${CMAKE_AR}"
+  )
+endif()
+
 ExternalProject_Add(
   botan
   URL "${CT_BOTAN_URL}"
@@ -27,6 +48,7 @@ ExternalProject_Add(
     "--prefix=${CT_INSTALL_PREFIX}"
     "--with-build-dir=<BINARY_DIR>"
     "--cc-bin=${CMAKE_CXX_COMPILER}"
+    ${CT_BOTAN_PLATFORM_ARGUMENTS}
     --build-targets=static
     --minimized-build
     --enable-modules=tls13,auto_rng,system_rng,sha2_32,hex

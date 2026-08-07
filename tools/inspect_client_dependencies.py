@@ -10,7 +10,14 @@ import sys
 from pathlib import Path
 
 
-FORBIDDEN = ("odoors", "capnp", "libkj", "botan", "libstdc++")
+FORBIDDEN = (
+    "odoors",
+    "capnp",
+    "libkj",
+    "botan",
+    "libstdc++",
+    "libwinpthread",
+)
 
 
 def inspect(path: Path) -> str:

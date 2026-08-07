@@ -6,23 +6,23 @@ version is `0.7.0`; project-owned wire, storage, record-codec, and generator
 compatibility counters independently begin at 1.
 
 The ordinary GitHub Actions workflow validates repository hygiene and
-licenses, runs the Python/catalog suite, Rust formatting/lint/tests, native
-CMake/CTest, the pinned Cap'n Proto and Botan build path, and a native
-portable-package audit. Field-alpha load and the full capacity fixture are
-manual benchmarks with retained reports.
+licenses, runs the Python/catalog suite, Rust formatting/lint/tests, and runs
+the native CMake/CTest suite on Ubuntu. Its client package matrix uses GitHub
+hosted runners to build only `cepheus-trader-door` and
+`cepheus-trader-sysop` for Linux amd64/arm64, macOS arm64/x86-64, and Windows
+x86-64/x86. Linux packages are built once per architecture on Ubuntu 22.04,
+then the same archives are exercised on Ubuntu 22.04, 24.04, and 26.04.
 
-Tag workflows use explicitly tagged self-hosted native runners. The release
-matrix covers Linux amd64/arm64, FreeBSD 14 amd64, macOS arm64/x86-64, and
-Windows x86-64/x86. Runner tag names in `.github/workflows/release.yml` are
-the desired contract and may be adjusted when the project's actual runner
-fleet is registered. A missing runner leaves only its platform job pending;
-it does not justify building an incompatible package on another operating
-system.
+Botan, Cap'n Proto/KJ, and OpenDoors each have an independent cache per
+platform ABI and toolchain. They are rebuilt only on a cold cache or when the
+corresponding pinned source/build recipe changes. Normal client jobs build
+the code owned by this repository and consume those cached static libraries.
 
-Release runners provide CMake, Ninja, Python 3, a C/C++ toolchain, and archive
-tools. MinGW runners additionally provide the selected cross compiler and
-make program plus host-native `capnp` and `capnpc-c++` schema generators.
-FreeBSD and benchmark runners use the labels recorded in their workflows.
+There is no FreeBSD CI coverage. Field-alpha load and the full capacity
+fixture are manual benchmarks with retained reports.
+
+Version tags run the same hosted matrix and publish its verified client
+artifacts to a GitHub release after all required CI jobs pass.
 
 For an alpha release:
 

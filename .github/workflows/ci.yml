@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -150,7 +151,15 @@ jobs:
           retention-days: 1
 
   client-pinned-dependencies:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            runner: ubuntu-22.04
+          - platform: linux-arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
       - name: Install build dependencies
@@ -213,7 +222,15 @@ jobs:
 
   client-package:
     needs: client-pinned-dependencies
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            runner: ubuntu-22.04
+          - platform: linux-arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
       - name: Install build dependencies
@@ -252,10 +269,12 @@ jobs:
             ccache-client-project-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
       - name: Build portable package
         env:
-          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}/archive/${{ github.sha }}.tar.gz
+          SOURCE_REF: ${{ github.ref_type == 'tag' && github.ref || github.sha }}
         run: |
+          SOURCE_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/archive/$SOURCE_REF.tar.gz"
           cmake -S client -B build/package -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DBUILD_TESTING=OFF \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCT_BOTAN_ROOT=${{ github.workspace }}/build/dependency-cache/botan \
@@ -268,18 +287,283 @@ jobs:
           grep -F "Using cached pinned Cap'n Proto 1.5.0" build/package-configure.log
           grep -F "Using cached OpenDoors static library" build/package-configure.log
           ccache --zero-stats
-          cmake --build build/package
-          ctest --test-dir build/package --output-on-failure
+          cmake --build build/package --target \
+            cepheus-trader-door cepheus-trader-sysop
           cpack --config build/package/CPackConfig.cmake -B artifacts
           python3 tools/verify_client_package.py artifacts/*.tar.xz \
             --version 0.7.0 --run --require-source-url
           python3 tools/inspect_client_dependencies.py \
             build/package/cepheus-trader-door build/package/cepheus-trader-sysop \
-            --report artifacts/DYNAMIC-DEPENDENCIES-linux-amd64.txt
-          python3 tools/collect_release_artifacts.py build/package artifacts --label linux-amd64
+            --report artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt
+          python3 tools/collect_release_artifacts.py build/package artifacts \
+            --label ${{ matrix.platform }}
           ccache --show-stats
       - uses: actions/upload-artifact@v7
         with:
-          name: cepheus-trader-client-0.7.0-linux-amd64
+          name: cepheus-trader-client-0.7.0-${{ matrix.platform }}
           path: artifacts/
           if-no-files-found: error
+
+  client-linux-runtime:
+    needs: client-package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            runner: ubuntu-22.04
+          - platform: linux-amd64
+            runner: ubuntu-24.04
+          - platform: linux-amd64
+            runner: ubuntu-26.04
+          - platform: linux-arm64
+            runner: ubuntu-22.04-arm
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+          - platform: linux-arm64
+            runner: ubuntu-26.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: cepheus-trader-client-0.7.0-${{ matrix.platform }}
+          path: artifacts
+      - name: Run packaged client
+        run: |
+          python3 tools/verify_client_package.py artifacts/*.tar.xz \
+            --version 0.7.0 --run --require-source-url
+
+  client-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-arm64
+            runner: macos-15
+          - platform: macos-x86_64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install build dependencies
+        run: brew install ccache ninja pkg-config xz
+      - name: Identify C/C++ toolchain
+        id: toolchain
+        run: |
+          echo "key=$(cc -dumpmachine)-$(cc --version | shasum -a 256 | cut -c1-16)" \
+            >> "$GITHUB_OUTPUT"
+          echo "ccache_dir=$(ccache --get-config cache_dir)" >> "$GITHUB_OUTPUT"
+      - name: Restore pinned Botan
+        id: botan-cache
+        uses: actions/cache@v6
+        with:
+          path: build/dependency-cache/botan
+          key: client-dependency-botan-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/BotanPinned.cmake', 'client/cmake/dependencies/botan/CMakeLists.txt') }}
+      - name: Restore pinned Cap'n Proto and KJ
+        id: capnproto-cache
+        uses: actions/cache@v6
+        with:
+          path: build/dependency-cache/capnproto
+          key: client-dependency-capnproto-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/CapnProtoPinned.cmake', 'client/cmake/dependencies/capnproto/CMakeLists.txt') }}
+      - name: Restore OpenDoors
+        id: opendoors-cache
+        uses: actions/cache@v6
+        with:
+          path: build/dependency-cache/opendoors
+          key: client-dependency-opendoors-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/OpenDoors.cmake', 'client/cmake/dependencies/opendoors/CMakeLists.txt', 'client/third_party/opendoors/**') }}
+      - name: Build pinned Botan
+        if: steps.botan-cache.outputs.cache-hit != 'true'
+        run: |
+          cmake -S client/cmake/dependencies/botan \
+            -B build/dependency-build/botan -G Ninja \
+            -DCT_INSTALL_PREFIX="$GITHUB_WORKSPACE/build/dependency-cache/botan"
+          cmake --build build/dependency-build/botan
+      - name: Build pinned Cap'n Proto and KJ
+        if: steps.capnproto-cache.outputs.cache-hit != 'true'
+        run: |
+          cmake -S client/cmake/dependencies/capnproto \
+            -B build/dependency-build/capnproto -G Ninja \
+            -DCT_INSTALL_PREFIX="$GITHUB_WORKSPACE/build/dependency-cache/capnproto"
+          cmake --build build/dependency-build/capnproto
+      - name: Build OpenDoors
+        if: steps.opendoors-cache.outputs.cache-hit != 'true'
+        run: |
+          cmake -S client/cmake/dependencies/opendoors \
+            -B build/dependency-build/opendoors -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/build/dependency-cache/opendoors" \
+            -DCT_OPENDOORS_SOURCE_DIR="$GITHUB_WORKSPACE/client/third_party/opendoors"
+          cmake --build build/dependency-build/opendoors
+          cmake --install build/dependency-build/opendoors
+      - name: Restore client compiler cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ steps.toolchain.outputs.ccache_dir }}
+          key: ccache-client-project-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/CMakeLists.txt', 'client/cmake/source-release.txt.in', 'client/include/**', 'client/src/**', 'protocol/**', 'OPEN_GAME_LICENSE.md') }}
+          restore-keys: |
+            ccache-client-project-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-
+      - name: Build portable package
+        env:
+          SOURCE_REF: ${{ github.ref_type == 'tag' && github.ref || github.sha }}
+        run: |
+          SOURCE_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/archive/$SOURCE_REF.tar.gz"
+          cmake -S client -B build/package -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCT_BOTAN_ROOT="$GITHUB_WORKSPACE/build/dependency-cache/botan" \
+            -DCT_CAPNPROTO_ROOT="$GITHUB_WORKSPACE/build/dependency-cache/capnproto" \
+            -DCT_OPENDOORS_ROOT="$GITHUB_WORKSPACE/build/dependency-cache/opendoors" \
+            -DCT_PORTABLE_CLIENT=ON \
+            -DCT_SOURCE_RELEASE_URL="$SOURCE_URL"
+          ccache --zero-stats
+          cmake --build build/package --target \
+            cepheus-trader-door cepheus-trader-sysop
+          cpack --config build/package/CPackConfig.cmake -B artifacts
+          python3 tools/verify_client_package.py artifacts/*.tar.xz \
+            --version 0.7.0 --run --require-source-url
+          python3 tools/inspect_client_dependencies.py \
+            build/package/cepheus-trader-door build/package/cepheus-trader-sysop \
+            --report artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt
+          python3 tools/collect_release_artifacts.py build/package artifacts \
+            --label ${{ matrix.platform }}
+          ccache --show-stats
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cepheus-trader-client-0.7.0-${{ matrix.platform }}
+          path: artifacts/
+          if-no-files-found: error
+
+  client-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x86_64
+            msystem: MINGW64
+            package_prefix: mingw-w64-x86_64
+          - platform: windows-x86
+            msystem: MINGW32
+            package_prefix: mingw-w64-i686
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            make
+            ${{ matrix.package_prefix }}-cmake
+            ${{ matrix.package_prefix }}-gcc
+            ${{ matrix.package_prefix }}-ninja
+            ${{ matrix.package_prefix }}-pkgconf
+            ${{ matrix.package_prefix }}-python
+      - name: Identify C/C++ toolchain
+        id: toolchain
+        run: >-
+          echo "key=$(gcc -dumpmachine)-$(gcc -dumpfullversion -dumpversion)"
+          >> "$GITHUB_OUTPUT"
+      - name: Restore pinned Botan
+        id: botan-cache
+        uses: actions/cache@v6
+        with:
+          path: build/dependency-cache/botan
+          key: client-dependency-botan-v1-${{ matrix.platform }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/BotanPinned.cmake', 'client/cmake/dependencies/botan/CMakeLists.txt') }}
+      - name: Restore pinned Cap'n Proto and KJ
+        id: capnproto-cache
+        uses: actions/cache@v6
+        with:
+          path: build/dependency-cache/capnproto
+          key: client-dependency-capnproto-v1-${{ matrix.platform }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/CapnProtoPinned.cmake', 'client/cmake/dependencies/capnproto/CMakeLists.txt') }}
+      - name: Restore OpenDoors
+        id: opendoors-cache
+        uses: actions/cache@v6
+        with:
+          path: build/dependency-cache/opendoors
+          key: client-dependency-opendoors-v1-${{ matrix.platform }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/OpenDoors.cmake', 'client/cmake/dependencies/opendoors/CMakeLists.txt', 'client/third_party/opendoors/**') }}
+      - name: Build pinned Botan
+        if: steps.botan-cache.outputs.cache-hit != 'true'
+        run: |
+          cmake -S client/cmake/dependencies/botan \
+            -B build/dependency-build/botan -G Ninja \
+            -DCT_INSTALL_PREFIX="$PWD/build/dependency-cache/botan"
+          cmake --build build/dependency-build/botan
+      - name: Build pinned Cap'n Proto and KJ
+        if: steps.capnproto-cache.outputs.cache-hit != 'true'
+        run: |
+          cmake -S client/cmake/dependencies/capnproto \
+            -B build/dependency-build/capnproto -G Ninja \
+            -DCT_INSTALL_PREFIX="$PWD/build/dependency-cache/capnproto"
+          cmake --build build/dependency-build/capnproto
+      - name: Build OpenDoors
+        if: steps.opendoors-cache.outputs.cache-hit != 'true'
+        run: |
+          cmake -S client/cmake/dependencies/opendoors \
+            -B build/dependency-build/opendoors -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_INSTALL_PREFIX="$PWD/build/dependency-cache/opendoors" \
+            -DCT_OPENDOORS_SOURCE_DIR="$PWD/client/third_party/opendoors"
+          cmake --build build/dependency-build/opendoors
+          cmake --install build/dependency-build/opendoors
+      - name: Build portable package
+        env:
+          SOURCE_REF: ${{ github.ref_type == 'tag' && github.ref || github.sha }}
+        run: |
+          SOURCE_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/archive/$SOURCE_REF.tar.gz"
+          cmake -S client -B build/package -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DBUILD_TESTING=OFF \
+            -DCT_BOTAN_ROOT="$PWD/build/dependency-cache/botan" \
+            -DCT_CAPNPROTO_ROOT="$PWD/build/dependency-cache/capnproto" \
+            -DCT_OPENDOORS_ROOT="$PWD/build/dependency-cache/opendoors" \
+            -DCT_PORTABLE_CLIENT=ON \
+            -DCT_SOURCE_RELEASE_URL="$SOURCE_URL"
+          cmake --build build/package --target \
+            cepheus-trader-door cepheus-trader-sysop
+          cpack --config build/package/CPackConfig.cmake -B artifacts
+          python3 tools/verify_client_package.py artifacts/*.zip \
+            --version 0.7.0 --run --require-source-url
+          python3 tools/inspect_client_dependencies.py \
+            build/package/cepheus-trader-door.exe \
+            build/package/cepheus-trader-sysop.exe \
+            --report artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt
+          python3 tools/collect_release_artifacts.py build/package artifacts \
+            --label ${{ matrix.platform }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cepheus-trader-client-0.7.0-${{ matrix.platform }}
+          path: artifacts/
+          if-no-files-found: error
+
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - repository
+      - rust
+      - client-linux-runtime
+      - client-macos
+      - client-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: cepheus-trader-client-0.7.0-*
+          path: release-assets
+          merge-multiple: true
+      - name: Create GitHub release and upload client artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
+            gh release create "$RELEASE_TAG" --generate-notes \
+              --title "Cepheus Trader $RELEASE_TAG"
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber

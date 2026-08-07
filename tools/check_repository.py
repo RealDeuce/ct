@@ -53,7 +53,6 @@ def main() -> int:
     for workflow in (
         ".github/workflows/ci.yml",
         ".github/workflows/benchmarks.yml",
-        ".github/workflows/release.yml",
     ):
         if not (ROOT / workflow).is_file():
             errors.append(f"missing GitHub Actions workflow: {workflow}")
@@ -94,10 +93,7 @@ def main() -> int:
         )
         if locked_package is None or locked_package["version"] != cargo_version:
             errors.append("server/Cargo.lock does not carry the Cargo package version")
-        workflow_versions = "\n".join(
-            read(workflow)
-            for workflow in (".github/workflows/ci.yml", ".github/workflows/release.yml")
-        )
+        workflow_versions = read(".github/workflows/ci.yml")
         if f"--version {cargo_version}" not in workflow_versions:
             errors.append("GitHub package checks do not use the common product version")
     except (KeyError, OSError, tomllib.TOMLDecodeError, ValueError) as error:
