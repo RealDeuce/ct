@@ -102,13 +102,13 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/dependency-cache/opendoors
-          key: client-dependency-opendoors-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/OpenDoors.cmake', 'client/cmake/dependencies/opendoors/CMakeLists.txt', 'client/third_party/opendoors/**') }}
+          key: client-dependency-opendoors-v2-release-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/OpenDoors.cmake', 'client/cmake/dependencies/opendoors/CMakeLists.txt', 'client/third_party/opendoors/**') }}
       - name: Build OpenDoors
         if: steps.opendoors-cache.outputs.cache-hit != 'true'
         run: |
           cmake -S client/cmake/dependencies/opendoors \
             -B build/dependency-build/opendoors -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/build/dependency-cache/opendoors" \
             -DCT_OPENDOORS_SOURCE_DIR="$GITHUB_WORKSPACE/client/third_party/opendoors"
           cmake --build build/dependency-build/opendoors
@@ -188,7 +188,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/dependency-cache/opendoors
-          key: client-dependency-opendoors-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/OpenDoors.cmake', 'client/cmake/dependencies/opendoors/CMakeLists.txt', 'client/third_party/opendoors/**') }}
+          key: client-dependency-opendoors-v2-release-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/OpenDoors.cmake', 'client/cmake/dependencies/opendoors/CMakeLists.txt', 'client/third_party/opendoors/**') }}
       - name: Build pinned Botan
         if: steps.botan-cache.outputs.cache-hit != 'true'
         run: |
@@ -208,7 +208,7 @@ jobs:
         run: |
           cmake -S client/cmake/dependencies/opendoors \
             -B build/dependency-build/opendoors -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/build/dependency-cache/opendoors" \
             -DCT_OPENDOORS_SOURCE_DIR="$GITHUB_WORKSPACE/client/third_party/opendoors"
           cmake --build build/dependency-build/opendoors
@@ -258,7 +258,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/dependency-cache/opendoors
-          key: client-dependency-opendoors-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/OpenDoors.cmake', 'client/cmake/dependencies/opendoors/CMakeLists.txt', 'client/third_party/opendoors/**') }}
+          key: client-dependency-opendoors-v2-release-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/OpenDoors.cmake', 'client/cmake/dependencies/opendoors/CMakeLists.txt', 'client/third_party/opendoors/**') }}
           fail-on-cache-miss: true
       - name: Restore client compiler cache
         uses: actions/cache@v6
@@ -273,7 +273,7 @@ jobs:
         run: |
           SOURCE_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/archive/$SOURCE_REF.tar.gz"
           cmake -S client -B build/package -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=OFF \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
@@ -295,8 +295,6 @@ jobs:
           python3 tools/inspect_client_dependencies.py \
             build/package/cepheus-trader-door build/package/cepheus-trader-sysop \
             --report artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt
-          python3 tools/collect_release_artifacts.py build/package artifacts \
-            --label ${{ matrix.platform }}
           ccache --show-stats
       - uses: actions/upload-artifact@v7
         with:
@@ -372,7 +370,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/dependency-cache/opendoors
-          key: client-dependency-opendoors-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/OpenDoors.cmake', 'client/cmake/dependencies/opendoors/CMakeLists.txt', 'client/third_party/opendoors/**') }}
+          key: client-dependency-opendoors-v2-release-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/OpenDoors.cmake', 'client/cmake/dependencies/opendoors/CMakeLists.txt', 'client/third_party/opendoors/**') }}
       - name: Build pinned Botan
         if: steps.botan-cache.outputs.cache-hit != 'true'
         run: |
@@ -392,7 +390,7 @@ jobs:
         run: |
           cmake -S client/cmake/dependencies/opendoors \
             -B build/dependency-build/opendoors -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$GITHUB_WORKSPACE/build/dependency-cache/opendoors" \
             -DCT_OPENDOORS_SOURCE_DIR="$GITHUB_WORKSPACE/client/third_party/opendoors"
           cmake --build build/dependency-build/opendoors
@@ -410,7 +408,7 @@ jobs:
         run: |
           SOURCE_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/archive/$SOURCE_REF.tar.gz"
           cmake -S client -B build/package -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=OFF \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
@@ -428,8 +426,6 @@ jobs:
           python3 tools/inspect_client_dependencies.py \
             build/package/cepheus-trader-door build/package/cepheus-trader-sysop \
             --report artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt
-          python3 tools/collect_release_artifacts.py build/package artifacts \
-            --label ${{ matrix.platform }}
           ccache --show-stats
       - uses: actions/upload-artifact@v7
         with:
@@ -489,7 +485,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/dependency-cache/opendoors
-          key: client-dependency-opendoors-v1-${{ matrix.platform }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/OpenDoors.cmake', 'client/cmake/dependencies/opendoors/CMakeLists.txt', 'client/third_party/opendoors/**') }}
+          key: client-dependency-opendoors-v2-release-${{ matrix.platform }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('client/cmake/OpenDoors.cmake', 'client/cmake/dependencies/opendoors/CMakeLists.txt', 'client/third_party/opendoors/**') }}
       - name: Build pinned Botan
         if: steps.botan-cache.outputs.cache-hit != 'true'
         run: |
@@ -509,7 +505,7 @@ jobs:
         run: |
           cmake -S client/cmake/dependencies/opendoors \
             -B build/dependency-build/opendoors -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$PWD/build/dependency-cache/opendoors" \
             -DCT_OPENDOORS_SOURCE_DIR="$PWD/client/third_party/opendoors"
           cmake --build build/dependency-build/opendoors
@@ -520,7 +516,7 @@ jobs:
         run: |
           SOURCE_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/archive/$SOURCE_REF.tar.gz"
           cmake -S client -B build/package -G Ninja \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=OFF \
             -DCT_BOTAN_ROOT="$PWD/build/dependency-cache/botan" \
             -DCT_CAPNPROTO_ROOT="$PWD/build/dependency-cache/capnproto" \
@@ -537,8 +533,6 @@ jobs:
             build/package/cepheus-trader-door.exe \
             build/package/cepheus-trader-sysop.exe \
             --report artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt
-          python3 tools/collect_release_artifacts.py build/package artifacts \
-            --label ${{ matrix.platform }}
       - uses: actions/upload-artifact@v7
         with:
           name: cepheus-trader-client-0.7.0-${{ matrix.platform }}
@@ -572,7 +566,10 @@ jobs:
             gh release create "$RELEASE_TAG" --generate-notes \
               --title "Cepheus Trader $RELEASE_TAG"
           mapfile -d '' assets < <(
-            find release-assets -maxdepth 1 -type f -print0
+            find release-assets -maxdepth 1 -type f \
+              \( -name 'cepheus-trader-client-0.7.0-*.tar.xz' \
+                 -o -name 'cepheus-trader-client-0.7.0-*.zip' \) \
+              -print0
           )
           if (( ${#assets[@]} == 0 )); then
             echo "No release assets were downloaded" >&2
