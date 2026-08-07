@@ -344,6 +344,15 @@ void DoorPresentation::suspend_paging() noexcept {
    paging_active_ = false;
 }
 
+void DoorPresentation::erase_prompt(const size_t visible_columns) {
+   flush();
+   emit("\r");
+   emit(std::string(visible_columns, ' '));
+   emit("\r");
+   column_ = 0;
+   flush();
+}
+
 void DoorPresentation::emit(const std::string_view bytes) {
    pending_.append(bytes);
 }
@@ -382,12 +391,12 @@ void DoorPresentation::pause_at_page_boundary(const DoorTextRole role) {
    paging_active_ = false;
    try {
       page_pause_();
-      clear();
    } catch(...) {
       handling_page_pause_ = false;
       paging_active_ = true;
       throw;
    }
+   row_ = 0;
    handling_page_pause_ = false;
    paging_active_ = true;
    if(profile_ != DoorProfile::Iso646) {

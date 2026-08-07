@@ -599,14 +599,16 @@ void initialize_presentation(const ct::BbsConfig& config)
       od_disp(
          bytes.data(), static_cast<INT>(bytes.size()), TRUE);
    });
-   presentation->configure_paging(4, [] {
-      door_prompt("[Enter/Space] Continue");
+   presentation->configure_paging(1, [] {
+      constexpr std::string_view prompt = "[Enter/Space] Continue";
+      door_prompt(prompt.data());
       while(true) {
          const auto key = od_get_key(TRUE);
          if(key == '\r' || key == '\n' || key == ' ') {
-            return;
+            break;
          }
       }
+      output().erase_prompt(prompt.size());
    });
 }
 

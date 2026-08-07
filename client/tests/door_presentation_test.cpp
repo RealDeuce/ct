@@ -193,14 +193,22 @@ int main() {
       40,
       24,
       [&paged](const std::string_view bytes) { paged.append(bytes); });
-   pager.configure_paging(4, [&pauses] { ++pauses; });
+   pager.configure_paging(1, [&pager, &pauses] {
+      ++pauses;
+      pager.write("[Enter/Space] Continue", ct::DoorTextRole::Prompt);
+      pager.erase_prompt(22);
+   });
    pager.resume_paging();
    pager.clear();
-   for(unsigned line = 0; line < 21; ++line) {
+   for(unsigned line = 0; line < 24; ++line) {
       pager.write("record\n\r", ct::DoorTextRole::Value);
    }
    check(pauses == 1);
-   check(std::count(paged.begin(), paged.end(), '\f') == 2);
+   check(std::count(paged.begin(), paged.end(), '\f') == 1);
+   check(
+      paged.find(
+         "(Enter/Space) Continue\r                      \rrecord") !=
+      std::string::npos);
    pager.suspend_paging();
    for(unsigned line = 0; line < 40; ++line) {
       pager.write("unpaged\n\r");
@@ -216,13 +224,12 @@ int main() {
       [&wrapped_page](const std::string_view bytes) {
          wrapped_page.append(bytes);
       });
-   wrapped_pager.configure_paging(
-      4, [&wrapped_pauses] { ++wrapped_pauses; });
+   wrapped_pager.configure_paging(1, [&wrapped_pauses] { ++wrapped_pauses; });
    wrapped_pager.resume_paging();
    wrapped_pager.clear();
-   wrapped_pager.write(std::string(40 * 21, 'x'));
+   wrapped_pager.write(std::string(40 * 24, 'x'));
    check(wrapped_pauses == 1);
-   check(std::count(wrapped_page.begin(), wrapped_page.end(), '\f') == 2);
+   check(std::count(wrapped_page.begin(), wrapped_page.end(), '\f') == 1);
 
    check(ct::parse_door_profile("plain") == ct::DoorProfile::Iso646);
    check(ct::parse_door_profile("color") == ct::DoorProfile::Iso646Color);

@@ -97,10 +97,12 @@ for any line reserved by the BBS or prompt. It must remain usable on an actual
 length.
 
 Record and menu screens pause automatically after the rendered content fills
-the available page, including rows introduced by narrow-terminal wrapping.
-Four rows remain reserved for the continuation or action prompt. Screens with
-their own page navigation, such as the license display and indexed rosters,
-retain their explicit paging controls.
+the rows above a transient continuation prompt, including rows introduced by
+narrow-terminal wrapping. No rows are reserved for the eventual action menu.
+After acknowledgement the door overwrites the prompt with spaces on the same
+line, does not clear the screen, and continues streaming output on that row.
+Screens with their own page navigation, such as the license display and
+indexed rosters, retain their explicit paging controls.
 
 ## OpenDoors boundary
 
