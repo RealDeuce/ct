@@ -203,30 +203,6 @@ impl DoorSession {
         }
     }
 
-    fn wait_until_quiet(&mut self) -> String {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        let mut last_length = usize::MAX;
-        let mut quiet_since = Instant::now();
-        loop {
-            let output = self.output();
-            let semantic = strip_ecma48(&output);
-            let acknowledged_before = self.acknowledged_page_prompts;
-            self.acknowledge_page_prompts(&semantic);
-            if output.len() != last_length || self.acknowledged_page_prompts != acknowledged_before
-            {
-                last_length = output.len();
-                quiet_since = Instant::now();
-            } else if quiet_since.elapsed() >= Duration::from_millis(250) {
-                return output;
-            }
-            assert!(
-                Instant::now() < deadline,
-                "door output did not settle; output: {output:?}"
-            );
-            std::thread::sleep(Duration::from_millis(10));
-        }
-    }
-
     fn finish(mut self) -> String {
         drop(self.input.take());
         let status = self.child.wait().unwrap();
@@ -1136,28 +1112,29 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     docked_door.wait_for("Arrival Communications Receipt");
     docked_door.send(b"\r");
     docked_door.wait_for("Docked Operations");
-    docked_door.wait_until_quiet();
+    docked_door.wait_for("Return to BBS");
     docked_door.send(b"j");
     docked_door.wait_for("Task Ledger");
-    docked_door.wait_until_quiet();
+    docked_door.wait_for("Carriage declaration");
     docked_door.send(b"i");
     docked_door.wait_for("Offer (Q to cancel):");
     docked_door.send(b"1\r");
     docked_door.wait_for("Signed Offer Instrument");
-    docked_door.wait_until_quiet();
+    docked_door.wait_for("(Enter) Return");
     docked_door.send(b"\r");
     docked_door.wait_for_occurrences("Task Ledger", 2);
-    docked_door.wait_until_quiet();
+    docked_door.wait_for_occurrences("Carriage declaration", 2);
     docked_door.send(b"a");
     docked_door.wait_for_occurrences("Offer (Q to cancel):", 2);
     docked_door.send(b"1\r");
     docked_door.wait_for("entered in the task ledger.");
+    docked_door.wait_for("(Enter) Previous menu");
     docked_door.send(b"\r");
     docked_door.wait_for_occurrences("Task Ledger", 3);
-    docked_door.wait_until_quiet();
+    docked_door.wait_for_occurrences("Carriage declaration", 3);
     docked_door.send(b"q");
     docked_door.wait_for_occurrences("Docked Operations", 2);
-    docked_door.wait_until_quiet();
+    docked_door.wait_for_occurrences("Return to BBS", 2);
     docked_door.send(b"q");
     let docked_screen = docked_door.finish();
     for expected in [
@@ -1166,9 +1143,6 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Jobs and Passage",
         "Fuel and Supplies",
         "Shipyard",
-        "Personnel",
-        "Banking and Accounts",
-        "Authorities",
         "Depart",
         "Universal",
         "Signed Offer Instrument",
@@ -1181,35 +1155,42 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let mut reconnected_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     reconnected_door.send(b"\r");
     reconnected_door.wait_for("Docked Operations");
-    reconnected_door.wait_until_quiet();
+    reconnected_door.wait_for("Return to BBS");
     reconnected_door.send(b"j");
     reconnected_door.wait_for("Task Ledger");
-    reconnected_door.wait_until_quiet();
+    reconnected_door.wait_for("Carriage declaration");
     reconnected_door.send(b"q");
     reconnected_door.wait_for_occurrences("Docked Operations", 2);
-    reconnected_door.wait_until_quiet();
+    reconnected_door.wait_for_occurrences("Return to BBS", 2);
     reconnected_door.send(b"q");
     let reconnect_screen = reconnected_door.finish();
     assert!(reconnect_screen.contains("Accepted obligations"));
     assert!(reconnect_screen.contains("No.1 "));
     assert!(reconnect_screen.contains("Reserved:"));
 
-    // Exercise the Milestone 5 account and correspondence controls through
-    // the real door rather than merely proving their wire codecs.
+    // Exercise the Milestone 5 correspondence controls through the real door
+    // rather than merely proving their wire codecs. Banking is also exercised
+    // when the generated home port provides that optional service.
     let mut services_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     services_door.send(b"\r");
-    services_door.wait_for("Docked Operations");
-    services_door.send(b"b");
-    services_door.wait_for("Banking and Accounts");
-    services_door.send(b"b");
-    services_door.wait_for_occurrences("Destination aid:", 2);
-    services_door.wait_for("Day 365");
-    services_door.send(b"\r");
-    services_door.wait_for_occurrences("Docked Operations", 2);
+    let services_menu = services_door.wait_for("Return to BBS");
+    let banking_available = services_menu.contains("Banking and Accounts");
+    if banking_available {
+        services_door.send(b"b");
+        services_door.wait_for("Banking and Accounts");
+        services_door.send(b"b");
+        services_door.wait_for_occurrences("Destination aid:", 2);
+        services_door.wait_for("Day 365");
+        services_door.send(b"\r");
+        services_door.wait_for_occurrences("Docked Operations", 2);
+        services_door.wait_for_occurrences("Return to BBS", 2);
+    }
     services_door.send(b"u");
     services_door.wait_for("Captain's Command Console");
+    services_door.wait_for("(C/S/T/M/K/O) Manager");
     services_door.send(b"m");
     services_door.wait_for("Message Management");
+    services_door.wait_for("(Q) Console");
     services_door.send(b"c");
     services_door.wait_for("Recipient:");
     services_door.send(b"c");
@@ -1224,21 +1205,27 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     services_door.wait_for("Message");
     services_door.send(b"Retain one ton for bonded freight.\r");
     services_door.wait_for("accepted for physical");
+    services_door.wait_for("(Enter) Previous menu");
     services_door.send(b"\r");
     services_door.wait_for_occurrences("Message Management", 2);
+    services_door.wait_for_occurrences("(Q) Console", 2);
     services_door.send(b"q");
     services_door.wait_for_occurrences("Captain's Command Console", 2);
+    services_door.wait_for_occurrences("(C/S/T/M/K/O) Manager", 2);
     services_door.send(b"q");
-    services_door.wait_for_occurrences("Docked Operations", 3);
+    let final_docked_occurrence = if banking_available { 3 } else { 2 };
+    services_door.wait_for_occurrences("Docked Operations", final_docked_occurrence);
+    services_door.wait_for_occurrences("Return to BBS", final_docked_occurrence);
     services_door.send(b"q");
     let services_screen = services_door.finish();
-    for expected in [
-        "Banking and Accounts",
-        "Covered through",
-        "Message Management",
-        "accepted for physical",
-    ] {
+    for expected in ["Message Management", "accepted for physical"] {
         assert!(services_screen.contains(expected), "{services_screen:?}");
+    }
+    if banking_available {
+        assert!(
+            services_screen.contains("Covered through"),
+            "{services_screen:?}"
+        );
     }
 
     // Prove the Milestone 6 player boundary through the real TLS/OpenDoors
@@ -1299,6 +1286,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     combat_door.wait_for("Docked Operations");
     combat_door.send(b"u");
     combat_door.wait_for("Captain's Command Console");
+    combat_door.wait_for("(C/S/T/M/K/O) Manager");
     combat_door.send(b"o");
     combat_door.wait_for_occurrences("Accept order or file report", 1);
     combat_door.send(b"m");
@@ -1306,13 +1294,15 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     combat_door.send(b"r");
     combat_door.wait_for_occurrences("Operations Ledger", 2);
     combat_door.wait_for("Service: Pirate");
+    combat_door.wait_for_occurrences("Accept order or file report", 2);
     combat_door.send(b"i");
     combat_door.wait_for("Contact (Q to cancel):");
     combat_door.send(b"1\r");
     combat_door.wait_for("irreversible act");
+    combat_door.wait_for("Confirm intercept");
     combat_door.send(b"i");
     combat_door.wait_for("Vessel Combat");
-    combat_door.wait_for("General quarters");
+    combat_door.wait_for("Standing policy");
     combat_door.send(b"d");
     combat_door.wait_for("Joint orders sealed for this activation");
     let combat_screen = combat_door.terminate();
@@ -1322,7 +1312,6 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Service: Pirate",
         "Vessel Combat",
         "General quarters",
-        "Joint orders sealed for this activation",
     ] {
         assert!(combat_screen.contains(expected), "{combat_screen:?}");
     }

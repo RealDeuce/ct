@@ -947,7 +947,11 @@ fn resolve_action(
         } => resolve_attack(state, order, mount_id, target_id, task_dm, events)?,
         CrewAction::Board { target_id } => {
             if state.range != RangeBand::Adjacent {
-                return Err("boarding requires adjacent range".into());
+                events.push(CombatEvent::Action {
+                    vessel_id: order.vessel_id,
+                    description: "boarding parties cannot engage after the range opens".into(),
+                });
+                return Ok(());
             }
             state.boarding.push(BoardingState {
                 attacker_id: order.vessel_id,
@@ -1616,6 +1620,52 @@ mod tests {
         let b = resolve_round(&state, &orders).unwrap();
         assert_eq!(a, b);
         assert_eq!(a.state.round_started_second, 1_100);
+    }
+
+    #[test]
+    fn opening_range_before_a_boarding_order_fails_the_action_not_the_round() {
+        let first = materialize_vessel(1, 1, "A", 72, 10).unwrap();
+        let second = materialize_vessel(2, 2, "B", 72, 8).unwrap();
+        let state = CombatState {
+            combat_id: 10,
+            revision: 4,
+            round: 1,
+            round_started_second: 100,
+            range: RangeBand::Adjacent,
+            vessels: vec![first, second],
+            missiles: vec![],
+            boarding: vec![],
+            complete: false,
+        };
+        let open_range = JointOrder {
+            vessel_id: 1,
+            view_revision: state.revision,
+            actions: vec![CrewAction::RangeCheckOpen],
+            action_dms: vec![100],
+            reactions: vec![],
+            reaction_dms: vec![],
+            automated: false,
+        };
+        let board = JointOrder {
+            vessel_id: 2,
+            view_revision: state.revision,
+            actions: vec![CrewAction::Board { target_id: 1 }],
+            action_dms: vec![0],
+            reactions: vec![],
+            reaction_dms: vec![],
+            automated: false,
+        };
+
+        let resolution = resolve_round(&state, &[open_range, board]).unwrap();
+
+        assert!(resolution.state.boarding.is_empty());
+        assert!(resolution.events.iter().any(|event| matches!(
+            event,
+            CombatEvent::Action {
+                vessel_id: 2,
+                description
+            } if description == "boarding parties cannot engage after the range opens"
+        )));
     }
 
     #[test]
