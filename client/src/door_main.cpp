@@ -596,8 +596,8 @@ void initialize_presentation(const ct::BbsConfig& config)
                         ? reported_rows
                         : opendoors_rows.value_or(config.terminal_rows),
    [](const std::string_view bytes) {
-      od_disp(
-         bytes.data(), static_cast<INT>(bytes.size()), TRUE);
+      const std::string terminated(bytes);
+      od_disp_emu(terminated.c_str(), TRUE);
    });
    presentation->configure_paging(1, [] {
       constexpr std::string_view prompt = "[Enter/Space] Continue";
