@@ -792,6 +792,9 @@ struct CoursePlot {
   jumpRating @2 :UInt8;
   fastest @3 :CoursePlan;
   cheapest @4 :CoursePlan;
+  currentGameSecond @5 :UInt64;
+  clockRateGameSeconds @6 :UInt64;
+  clockRateRealSeconds @7 :UInt64;
 }
 
 struct MarketOffer {

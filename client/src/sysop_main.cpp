@@ -92,6 +92,19 @@ uint64_t parse_revision(const std::string& text) {
    return value;
 }
 
+unsigned int parse_inactivity_timeout(const std::string& text) {
+   unsigned int value = 0;
+   const auto [end, error] =
+      std::from_chars(text.data(), text.data() + text.size(), value);
+   if(error != std::errc() || end != text.data() + text.size() ||
+      value > ct::MAX_INACTIVITY_TIMEOUT_SECONDS) {
+      throw std::invalid_argument(
+         "SECONDS must be in 0.." +
+         std::to_string(ct::MAX_INACTIVITY_TIMEOUT_SECONDS));
+   }
+   return value;
+}
+
 std::string parse_port(const std::string& text, const char* option) {
    uint32_t value = 0;
    const auto [end, error] =
@@ -416,6 +429,8 @@ void print_usage() {
          " [--game-port PORT] [--sysop-port PORT]\n"
          "       init-credential [CREDENTIAL_FILE]\n"
          "       cepheus-trader-sysop [--config FILE] get-config\n"
+         "       cepheus-trader-sysop [--config FILE]"
+         " set-inactivity-timeout SECONDS\n"
          "       cepheus-trader-sysop [--config FILE] set-config"
          " BBS_NAME POLITY_NAME TRADE_COMBAT CHAOS_ORDER\n"
          "       cepheus-trader-sysop [--config FILE] identity-list\n"
@@ -473,6 +488,18 @@ int main(int argc, char** argv) {
          throw std::invalid_argument(
             "--server, --game-port, and --sysop-port are valid only with "
             "init-credential");
+      }
+      const bool set_inactivity_timeout =
+         command_line.positional.size() == 2 &&
+         command_line.positional[0] == "set-inactivity-timeout" &&
+         !command_line.expected_revision.has_value() &&
+         !command_line.command_id.has_value();
+      if(set_inactivity_timeout) {
+         const auto seconds =
+            parse_inactivity_timeout(command_line.positional[1]);
+         ct::set_bbs_inactivity_timeout(command_line.config_path, seconds);
+         std::cout << "inactivity-timeout-seconds=" << seconds << '\n';
+         return 0;
       }
       const bool identity_command =
          !command_line.positional.empty() &&

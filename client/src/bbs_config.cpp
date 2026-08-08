@@ -1,9 +1,11 @@
 #include "ct/bbs_config.hpp"
 
 #include <charconv>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -90,6 +92,19 @@ unsigned int validate_dimension(const std::string& text,
       throw std::runtime_error(
          "BBS configuration '" + std::string(key) + "' must be 0 or in " +
          std::to_string(minimum) + "..255");
+   }
+   return value;
+}
+
+unsigned int validate_inactivity_timeout(const std::string& text) {
+   unsigned int value = 0;
+   const auto [end, error] =
+      std::from_chars(text.data(), text.data() + text.size(), value);
+   if(error != std::errc() || end != text.data() + text.size() ||
+      value > MAX_INACTIVITY_TIMEOUT_SECONDS) {
+      throw std::runtime_error(
+         "BBS configuration 'inactivity-timeout-seconds' must be in 0.." +
+         std::to_string(MAX_INACTIVITY_TIMEOUT_SECONDS));
    }
    return value;
 }
@@ -198,6 +213,40 @@ void create_exclusive_file(const std::string& path,
    }
 }
 
+void replace_file(const std::string& path, const std::string_view content) {
+   const auto path_wide = wide_path(path);
+   const auto suffix =
+      L".tmp-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+      std::to_wstring(
+         std::chrono::steady_clock::now().time_since_epoch().count());
+   const auto temporary = path_wide + suffix;
+   const auto file =
+      CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                  FILE_ATTRIBUTE_NORMAL, nullptr);
+   if(file == INVALID_HANDLE_VALUE) {
+      throw system_error("temporary BBS configuration file creation");
+   }
+   DWORD written = 0;
+   const bool success =
+      WriteFile(file, content.data(), static_cast<DWORD>(content.size()),
+                &written, nullptr) != 0 &&
+      written == content.size() && FlushFileBuffers(file) != 0;
+   const auto failure = success ? ERROR_SUCCESS : GetLastError();
+   CloseHandle(file);
+   if(!success) {
+      DeleteFileW(temporary.c_str());
+      SetLastError(failure);
+      throw system_error("BBS configuration file write");
+   }
+   if(ReplaceFileW(path_wide.c_str(), temporary.c_str(), nullptr,
+                   REPLACEFILE_WRITE_THROUGH, nullptr, nullptr) == 0) {
+      const auto move_failure = GetLastError();
+      DeleteFileW(temporary.c_str());
+      SetLastError(move_failure);
+      throw system_error("BBS configuration file replacement");
+   }
+}
+
 #else
 
 std::runtime_error system_error(const std::string& operation) {
@@ -253,6 +302,59 @@ void create_exclusive_file(const std::string& path,
    }
 }
 
+void replace_file(const std::string& path, const std::string_view content) {
+   struct stat existing {};
+   if(lstat(path.c_str(), &existing) != 0) {
+      throw system_error("BBS configuration file inspection");
+   }
+   if(!S_ISREG(existing.st_mode)) {
+      throw std::runtime_error("BBS configuration path is not a regular file");
+   }
+   const auto temporary =
+      path + ".tmp-" + std::to_string(getpid()) + "-" +
+      std::to_string(
+         std::chrono::steady_clock::now().time_since_epoch().count());
+   FileDescriptor file(open(temporary.c_str(),
+                            O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
+                            existing.st_mode & 0777));
+   if(file.get() < 0) {
+      throw system_error("temporary BBS configuration file creation");
+   }
+   if(fchmod(file.get(), existing.st_mode & 07777) != 0) {
+      const auto failure = errno;
+      unlink(temporary.c_str());
+      errno = failure;
+      throw system_error("temporary BBS configuration file permissions");
+   }
+   size_t offset = 0;
+   while(offset < content.size()) {
+      const auto count =
+         write(file.get(), content.data() + offset, content.size() - offset);
+      if(count < 0 && errno == EINTR) {
+         continue;
+      }
+      if(count <= 0) {
+         const auto failure = errno;
+         unlink(temporary.c_str());
+         errno = failure;
+         throw system_error("BBS configuration file write");
+      }
+      offset += static_cast<size_t>(count);
+   }
+   if(fsync(file.get()) != 0) {
+      const auto failure = errno;
+      unlink(temporary.c_str());
+      errno = failure;
+      throw system_error("BBS configuration file flush");
+   }
+   if(rename(temporary.c_str(), path.c_str()) != 0) {
+      const auto failure = errno;
+      unlink(temporary.c_str());
+      errno = failure;
+      throw system_error("BBS configuration file replacement");
+   }
+}
+
 #endif
 
 }  // namespace
@@ -272,6 +374,7 @@ BbsConfig read_bbs_config(const std::string& path) {
    std::optional<std::string> terminal_profile;
    std::optional<std::string> terminal_columns;
    std::optional<std::string> terminal_rows;
+   std::optional<std::string> inactivity_timeout_seconds;
    size_t line_number = 0;
    size_t total_bytes = 0;
    std::string line;
@@ -311,6 +414,8 @@ BbsConfig read_bbs_config(const std::string& path) {
          assign_once(terminal_columns, key, value, line_number);
       } else if(key == "terminal-rows") {
          assign_once(terminal_rows, key, value, line_number);
+      } else if(key == "inactivity-timeout-seconds") {
+         assign_once(inactivity_timeout_seconds, key, value, line_number);
       } else {
          throw std::runtime_error(
             "unknown configuration key '" + std::string(key) +
@@ -363,6 +468,10 @@ BbsConfig read_bbs_config(const std::string& path) {
          "terminal-columns", 40),
       .terminal_rows = validate_dimension(
          require_value(terminal_rows, "terminal-rows"), "terminal-rows", 24),
+      .inactivity_timeout_seconds =
+         inactivity_timeout_seconds.has_value()
+            ? validate_inactivity_timeout(*inactivity_timeout_seconds)
+            : DEFAULT_INACTIVITY_TIMEOUT_SECONDS,
    };
 }
 
@@ -381,6 +490,7 @@ BbsConfig default_bbs_config(const std::string& path) {
       .terminal_profile = "auto",
       .terminal_columns = 0,
       .terminal_rows = 0,
+      .inactivity_timeout_seconds = DEFAULT_INACTIVITY_TIMEOUT_SECONDS,
    };
 }
 
@@ -456,8 +566,70 @@ void create_bbs_config_file(const std::string& path,
       "identity-name=real-name\n"
       "terminal-profile=auto\n"
       "terminal-columns=0\n"
-      "terminal-rows=0\n";
+      "terminal-rows=0\n"
+      "inactivity-timeout-seconds=" +
+      std::to_string(DEFAULT_INACTIVITY_TIMEOUT_SECONDS) + "\n";
    create_exclusive_file(path, content);
+}
+
+void set_bbs_inactivity_timeout(const std::string& path,
+                                const unsigned int timeout_seconds) {
+   if(timeout_seconds > MAX_INACTIVITY_TIMEOUT_SECONDS) {
+      throw std::invalid_argument(
+         "inactivity timeout must be in 0.." +
+         std::to_string(MAX_INACTIVITY_TIMEOUT_SECONDS));
+   }
+   (void)read_bbs_config(path);
+
+   std::ifstream input(path, std::ios::binary);
+   if(!input) {
+      throw std::runtime_error("cannot open BBS configuration file: " + path);
+   }
+   const std::string original{
+      std::istreambuf_iterator<char>(input),
+      std::istreambuf_iterator<char>()};
+   if(input.bad()) {
+      throw std::runtime_error("error reading BBS configuration file: " + path);
+   }
+
+   const std::string replacement =
+      "inactivity-timeout-seconds=" + std::to_string(timeout_seconds);
+   std::string updated;
+   updated.reserve(original.size() + replacement.size() + 1);
+   bool replaced = false;
+   size_t offset = 0;
+   while(offset < original.size()) {
+      const auto newline = original.find('\n', offset);
+      const auto end = newline == std::string::npos ? original.size() : newline;
+      const auto length = end - offset;
+      std::string_view line(original.data() + offset, length);
+      const auto content = trim(line);
+      const auto separator = content.find('=');
+      if(separator != std::string_view::npos &&
+         trim(content.substr(0, separator)) == "inactivity-timeout-seconds") {
+         updated += replacement;
+         if(!line.empty() && line.back() == '\r') {
+            updated += '\r';
+         }
+         replaced = true;
+      } else {
+         updated.append(line);
+      }
+      if(newline != std::string::npos) {
+         updated += '\n';
+         offset = newline + 1;
+      } else {
+         offset = original.size();
+      }
+   }
+   if(!replaced) {
+      if(!updated.empty() && updated.back() != '\n') {
+         updated += '\n';
+      }
+      updated += replacement;
+      updated += '\n';
+   }
+   replace_file(path, updated);
 }
 
 }  // namespace ct

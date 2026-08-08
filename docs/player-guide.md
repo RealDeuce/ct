@@ -162,6 +162,10 @@ after the award is known and the performing ship is at the origin. Once aboard,
 freight, passengers, and mail remain assigned to that ship; changing command or
 owning another vessel does not teleport them. Review the task's destination,
 deadline, payment, failure terms, and required capacity before filing a claim.
+The local-offer list shows the pickup slack remaining after the fastest
+executable course to the issuing system. Green means more than six hours,
+yellow means 30 minutes through six hours, and red means less than 30 minutes,
+already late, or no executable course.
 
 After successful delivery, the task remains awaiting settlement while the
 delivery filing travels back to the issuing office. Payment and release of the
@@ -276,7 +280,9 @@ course also adds its required port purchases or frontier-fuel operations to
 the plan. A Flight Plan preview reports estimated time, fuel, and warnings
 before the plan is filed. Keep enough operating cash available: a purchase
 step that cannot be paid for or executed when reached holds the plan for the
-captain's attention.
+captain's attention. The preview marks a deadline warning in red when the
+planned route would deliver an accepted task late, or would run past its
+deadline without reaching its destination.
 
 Course knowledge and course execution are separate. A carried or purchased
 plot can still be risky, and warnings about a known bad plot require a

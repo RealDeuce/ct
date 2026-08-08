@@ -815,6 +815,7 @@ pub struct CoursePlot {
     pub jump_rating: u8,
     pub fastest: CoursePlan,
     pub cheapest: CoursePlan,
+    pub current_game_second: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4562,6 +4563,9 @@ fn set_course_plot(
     builder.set_origin_system_id(plot.origin_system_id);
     builder.set_destination_system_id(plot.destination_system_id);
     builder.set_jump_rating(plot.jump_rating);
+    builder.set_current_game_second(plot.current_game_second);
+    builder.set_clock_rate_game_seconds(crate::clock::GAME_SECONDS_PER_RATE_PERIOD);
+    builder.set_clock_rate_real_seconds(crate::clock::RATE_PERIOD.as_secs());
     set_course_plan(builder.reborrow().init_fastest(), &plot.fastest)?;
     set_course_plan(builder.init_cheapest(), &plot.cheapest)?;
     Ok(())

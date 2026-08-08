@@ -60,6 +60,7 @@ int main() {
    check(defaults.terminal_profile == "auto");
    check(defaults.terminal_columns == 0);
    check(defaults.terminal_rows == 0);
+   check(defaults.inactivity_timeout_seconds == 300);
 
    ct::create_default_bbs_config_file(path.string());
    const auto parsed = ct::read_bbs_config(path.string());
@@ -68,6 +69,7 @@ int main() {
    check(parsed.sysop_port == defaults.sysop_port);
    check(parsed.credential_path == defaults.credential_path);
    check(parsed.identity_registry_path == defaults.identity_registry_path);
+   check(parsed.inactivity_timeout_seconds == 300);
 
    std::ifstream input(path);
    const std::string original{
@@ -77,6 +79,40 @@ int main() {
          std::string::npos);
    check(original.find("identity-file=cepheus-trader.identities\n") !=
          std::string::npos);
+   check(original.find("inactivity-timeout-seconds=300\n") !=
+         std::string::npos);
+
+   ct::set_bbs_inactivity_timeout(path.string(), 600);
+   const auto adjusted = ct::read_bbs_config(path.string());
+   check(adjusted.inactivity_timeout_seconds == 600);
+   std::ifstream adjusted_input(path);
+   const std::string adjusted_text{
+      std::istreambuf_iterator<char>(adjusted_input),
+      std::istreambuf_iterator<char>()};
+   check(adjusted_text.find("inactivity-timeout-seconds=600\n") !=
+         std::string::npos);
+
+   const auto legacy_path = scratch.path / "legacy.conf";
+   auto legacy_text = original;
+   const std::string timeout_line = "inactivity-timeout-seconds=300\n";
+   legacy_text.erase(legacy_text.find(timeout_line), timeout_line.size());
+   {
+      std::ofstream legacy_output(legacy_path);
+      legacy_output << legacy_text;
+   }
+   check(ct::read_bbs_config(legacy_path.string()).inactivity_timeout_seconds ==
+         300);
+   ct::set_bbs_inactivity_timeout(legacy_path.string(), 0);
+   check(ct::read_bbs_config(legacy_path.string()).inactivity_timeout_seconds ==
+         0);
+
+   bool refused_invalid_timeout = false;
+   try {
+      ct::set_bbs_inactivity_timeout(path.string(), 32768);
+   } catch(const std::exception&) {
+      refused_invalid_timeout = true;
+   }
+   check(refused_invalid_timeout);
 
    bool refused_overwrite = false;
    try {
@@ -90,7 +126,7 @@ int main() {
    const std::string after_refusal{
       std::istreambuf_iterator<char>(reread),
       std::istreambuf_iterator<char>()};
-   check(after_refusal == original);
+   check(after_refusal == adjusted_text);
 
    const auto custom_config = scratch.path / "installation" / "custom.conf";
    const auto custom_credential =

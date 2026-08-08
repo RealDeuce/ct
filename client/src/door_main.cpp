@@ -33,6 +33,7 @@ extern "C" {
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -89,6 +90,7 @@ std::vector<std::string> pending_traffic_notices;
 uint64_t phase_event_generation = 0;
 uint64_t displayed_phase_event_generation = 0;
 std::string active_prompt;
+bool active_prompt_on_current_line = false;
 ct::DoorHelpTopic active_help_topic = ct::DoorHelpTopic::General;
 
 class HelpScope {
@@ -181,9 +183,17 @@ void flush_player_events()
    }
 
    const auto prompt = active_prompt;
+   const auto prompt_on_current_line = active_prompt_on_current_line;
+   if(prompt_on_current_line && !prompt.empty()) {
+      output().erase_prompt(prompt.size());
+      active_prompt.clear();
+      active_prompt_on_current_line = false;
+   }
    output().resume_paging();
+   const auto event_prefix = prompt_on_current_line ? "" : "\n\r";
    if(latest_traffic_snapshot.has_value()) {
-      door_write("\n\rTraffic control report: ", ct::DoorTextRole::Label);
+      door_write(event_prefix, ct::DoorTextRole::Normal);
+      door_write("Traffic control report: ", ct::DoorTextRole::Label);
       door_printf("%zu contact%s tracked in %s.\n\r",
                   latest_traffic_snapshot->contacts.size(),
                   latest_traffic_snapshot->contacts.size() == 1 ? "" : "s",
@@ -191,13 +201,15 @@ void flush_player_events()
       latest_traffic_snapshot.reset();
    }
    for(const auto& notice : pending_traffic_notices) {
-      door_write("\n\r[Traffic] ", ct::DoorTextRole::Heading);
+      door_write(event_prefix, ct::DoorTextRole::Normal);
+      door_write("[Traffic] ", ct::DoorTextRole::Heading);
       door_printf("%s\n\r", safe_field(notice).c_str());
    }
    pending_traffic_notices.clear();
    if(latest_phase_status.has_value() &&
          displayed_phase_event_generation != phase_event_generation) {
-      door_write("\n\r[Ship status] ", ct::DoorTextRole::Heading);
+      door_write(event_prefix, ct::DoorTextRole::Normal);
+      door_write("[Ship status] ", ct::DoorTextRole::Heading);
       door_printf("%s - %s (%s)\n\r",
                   phase_name(latest_phase_status->phase),
                   travel_stage_name(latest_phase_status->stage),
@@ -207,6 +219,7 @@ void flush_player_events()
    active_prompt = prompt;
    if(!active_prompt.empty()) {
       output().write(active_prompt, ct::DoorTextRole::Prompt);
+      active_prompt_on_current_line = prompt_on_current_line;
    }
    output().suspend_paging();
 }
@@ -218,6 +231,9 @@ int door_get_live_key()
       flush_player_events();
       const auto key = od_get_key(FALSE);
       if(key != 0) {
+         if(active_prompt_on_current_line && !active_prompt.empty()) {
+            output().erase_prompt(active_prompt.size());
+         }
          output().reset_paging();
          output().resume_paging();
       }
@@ -226,6 +242,8 @@ int door_get_live_key()
          continue;
       }
       if(key != 0) {
+         active_prompt.clear();
+         active_prompt_on_current_line = false;
          return key;
       }
       od_sleep(10);
@@ -252,6 +270,7 @@ int door_get_translated_key()
 void door_clear_screen()
 {
    active_prompt.clear();
+   active_prompt_on_current_line = false;
    output().clear();
    output().resume_paging();
 }
@@ -261,6 +280,7 @@ void door_write(const std::string_view text,
 {
    if(role != ct::DoorTextRole::Prompt) {
       active_prompt.clear();
+      active_prompt_on_current_line = false;
    }
    output().write(text, role);
 }
@@ -305,8 +325,41 @@ void door_prompt(const char* format, ...)
    const auto text = format_door_text(format, arguments);
    va_end(arguments);
    active_prompt += text;
+   active_prompt_on_current_line = false;
    output().write(text, ct::DoorTextRole::Prompt);
    output().suspend_paging();
+}
+
+void door_live_prompt(const char* format, ...)
+{
+   va_list arguments;
+   va_start(arguments, format);
+   const auto text = format_door_text(format, arguments);
+   va_end(arguments);
+   if(text.find_first_of("\r\n") != std::string::npos) {
+      throw std::logic_error("a live prompt must occupy one line");
+   }
+   if(text.size() >= output().columns()) {
+      throw std::logic_error("a live prompt must fit on one terminal row");
+   }
+   active_prompt = text;
+   active_prompt_on_current_line = true;
+   output().write(text, ct::DoorTextRole::Prompt);
+   output().suspend_paging();
+}
+
+void show_voyage_live_prompt()
+{
+   constexpr const char* wide_prompt =
+      "[F] Revise Flight Plan  [Enter] Command console  [?] Help";
+   constexpr const char* narrow_prompt =
+      "[F] Plan  [Enter] Console  [?] Help";
+   door_write("\n\r", ct::DoorTextRole::Normal);
+   door_live_prompt(
+      "%s",
+      output().columns() > std::strlen(wide_prompt)
+         ? wide_prompt
+         : narrow_prompt);
 }
 
 void door_option_prompt(
@@ -499,20 +552,18 @@ const char* phase_name(const ct::PlayerPhase phase)
    return "Unavailable";
 }
 
-std::string real_time_until(const ct::TravelStatus& status)
+std::string wall_duration(
+   const uint64_t game_seconds,
+   const uint64_t clock_rate_game_seconds,
+   const uint64_t clock_rate_real_seconds)
 {
-   if(status.clock_rate_game_seconds == 0 ||
-         status.clock_rate_real_seconds == 0) {
+   if(clock_rate_game_seconds == 0 || clock_rate_real_seconds == 0) {
       return "--:--:--";
    }
-   const auto game_seconds =
-      status.due_second > status.current_game_second
-      ? status.due_second - status.current_game_second
-      : uint64_t{0};
    const auto scaled_seconds = std::ceil(
                                   static_cast<long double>(game_seconds) *
-                                  static_cast<long double>(status.clock_rate_real_seconds) /
-                                  static_cast<long double>(status.clock_rate_game_seconds));
+                                  static_cast<long double>(clock_rate_real_seconds) /
+                                  static_cast<long double>(clock_rate_game_seconds));
    const auto total_seconds =
       scaled_seconds >= static_cast<long double>(UINT64_MAX)
       ? UINT64_MAX
@@ -529,6 +580,18 @@ std::string real_time_until(const ct::TravelStatus& status)
       static_cast<unsigned long long>(minutes),
       static_cast<unsigned long long>(seconds));
    return result.data();
+}
+
+std::string real_time_until(const ct::TravelStatus& status)
+{
+   const auto game_seconds =
+      status.due_second > status.current_game_second
+      ? status.due_second - status.current_game_second
+      : uint64_t{0};
+   return wall_duration(
+      game_seconds,
+      status.clock_rate_game_seconds,
+      status.clock_rate_real_seconds);
 }
 
 std::vector<std::string> wrap_text(const std::string_view text,
@@ -855,8 +918,10 @@ void print_wrapped_field(
 void show_context_help()
 {
    const auto saved_prompt = active_prompt;
+   const auto saved_prompt_on_current_line = active_prompt_on_current_line;
    const auto& help = ct::door_help(active_help_topic);
    active_prompt.clear();
+   active_prompt_on_current_line = false;
    output().resume_paging();
    door_write("\n\r\n\r", ct::DoorTextRole::Normal);
    door_heading("Help - %s\n\r", safe_field(help.title).c_str());
@@ -870,6 +935,7 @@ void show_context_help()
       }
    }
    active_prompt.clear();
+   active_prompt_on_current_line = false;
    door_prompt("\n\r[Enter] Resume\n\r");
    while(true) {
       const auto key = ::od_get_key(TRUE);
@@ -881,10 +947,12 @@ void show_context_help()
    }
    output().erase_prompt(std::string_view("[Enter] Resume").size());
    active_prompt.clear();
+   active_prompt_on_current_line = false;
    door_write("\n\r", ct::DoorTextRole::Normal);
    active_prompt = saved_prompt;
    if(!saved_prompt.empty()) {
       output().write(saved_prompt, ct::DoorTextRole::Prompt);
+      active_prompt_on_current_line = saved_prompt_on_current_line;
    }
    output().suspend_paging();
 }
@@ -3165,7 +3233,62 @@ void report_offer_claim(const ct::TaskLedger& ledger, const uint64_t offer_id)
    }
 }
 
-void show_task_offer_detail(const ct::TaskOffer& offer)
+struct PickupRouteEstimate {
+   bool available;
+   uint64_t current_second;
+   uint64_t elapsed_seconds;
+};
+
+struct PickupSlack {
+   bool available;
+   bool late;
+   uint64_t seconds;
+};
+
+PickupSlack pickup_slack(const ct::TaskOffer& offer,
+                         const PickupRouteEstimate& route)
+{
+   if(!route.available) {
+      return {.available = false, .late = true, .seconds = 0};
+   }
+   const auto arrival = route.current_second >
+                           std::numeric_limits<uint64_t>::max() -
+                              route.elapsed_seconds
+                        ? std::numeric_limits<uint64_t>::max()
+                        : route.current_second + route.elapsed_seconds;
+   return arrival <= offer.expires_second
+          ? PickupSlack{
+               .available = true,
+               .late = false,
+               .seconds = offer.expires_second - arrival,
+            }
+          : PickupSlack{
+               .available = true,
+               .late = true,
+               .seconds = arrival - offer.expires_second,
+            };
+}
+
+void print_pickup_slack(const PickupSlack& slack)
+{
+   if(!slack.available) {
+      door_error("no executable course");
+      return;
+   }
+   const auto text = course_duration(slack.seconds);
+   if(slack.late) {
+      door_error("late by %s", text.c_str());
+   } else if(slack.seconds < 30 * 60) {
+      door_error("%s", text.c_str());
+   } else if(slack.seconds > 6 * 60 * 60) {
+      door_success("%s", text.c_str());
+   } else {
+      door_warning("%s", text.c_str());
+   }
+}
+
+void show_task_offer_detail(const ct::TaskOffer& offer,
+                            const PickupSlack& slack)
 {
    const HelpScope help_scope(ct::DoorHelpTopic::Tasks);
    od_clr_scr();
@@ -3202,6 +3325,9 @@ void show_task_offer_detail(const ct::TaskOffer& offer)
    }
    door_label("Claim by:      ");
    door_number("%s\n\r", game_date(offer.expires_second).c_str());
+   door_label("Pickup slack:  ");
+   print_pickup_slack(slack);
+   od_printf("\n\r");
    door_label("Deliver by:    ");
    door_number("%s\n\r", game_date(offer.delivery_deadline_second).c_str());
    door_label("Standing:      ");
@@ -3229,6 +3355,52 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
          connection, session_epoch, random_command_id(random), request_id++);
       const auto fleet = ct::get_fleet(
          connection, session_epoch, random_command_id(random), request_id++);
+      std::unordered_map<uint64_t, PickupRouteEstimate> pickup_routes;
+      for(const auto& offer : ledger.local_offers) {
+         if(pickup_routes.contains(offer.origin_system_id)) {
+            continue;
+         }
+         if(offer.origin_system_id == charts.current_system_id) {
+            pickup_routes.emplace(
+               offer.origin_system_id,
+               PickupRouteEstimate{
+                  .available = true,
+                  .current_second = ledger.current_second,
+                  .elapsed_seconds = 0,
+               });
+            continue;
+         }
+         const auto origin_known = std::any_of(
+            charts.systems.begin(), charts.systems.end(),
+            [&offer](const auto& system) {
+               return system.system_id == offer.origin_system_id;
+            });
+         if(!origin_known) {
+            pickup_routes.emplace(
+               offer.origin_system_id,
+               PickupRouteEstimate{
+                  .available = false,
+                  .current_second = ledger.current_second,
+                  .elapsed_seconds = 0,
+               });
+            continue;
+         }
+         const auto plot = ct::plot_course(
+            connection,
+            session_epoch,
+            charts.current_system_id,
+            offer.origin_system_id,
+            true,
+            random_command_id(random),
+            request_id++);
+         pickup_routes.emplace(
+            offer.origin_system_id,
+            PickupRouteEstimate{
+               .available = plot.fastest.available,
+               .current_second = plot.current_game_second,
+               .elapsed_seconds = plot.fastest.elapsed_seconds,
+            });
+      }
       const auto destination_name = [&charts](const uint64_t system_id) {
          const auto found = std::find_if(
             charts.systems.begin(), charts.systems.end(),
@@ -3300,6 +3472,14 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
             door_number("%u passenger(s)", offer.passenger_count);
          }
          door_label("\n\r");
+         door_label("   Pickup ");
+         door_identifier(
+            "%s",
+            safe_field(destination_name(offer.origin_system_id)).c_str());
+         door_label(" slack: ");
+         print_pickup_slack(pickup_slack(
+            offer, pickup_routes.at(offer.origin_system_id)));
+         od_printf("\n\r");
       }
       door_option_prompt({
          "[I] Inspect offer",
@@ -3316,7 +3496,11 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
       if((key == 'i' || key == 'I') && !ledger.local_offers.empty()) {
          const auto selected = input_number("Offer", 1, static_cast<unsigned>(ledger.local_offers.size()));
          if(selected) {
-            show_task_offer_detail(ledger.local_offers[*selected - 1]);
+            const auto& offer = ledger.local_offers[*selected - 1];
+            show_task_offer_detail(
+               offer,
+               pickup_slack(
+                  offer, pickup_routes.at(offer.origin_system_id)));
          }
       } else if((key == 'a' || key == 'A') && !ledger.local_offers.empty()) {
          const auto selected = input_number("Offer", 1, static_cast<unsigned>(ledger.local_offers.size()));
@@ -4366,10 +4550,27 @@ void show_course_plot(const ct::CoursePlot& plot)
       door_heading("Course Plot - %s\n\r", fastest ? "Fastest" : "Cheapest");
       door_heading("=======================\n\r");
       door_label("Drive: ");
-      door_identifier("Jump-%u", plot.jump_rating);
+      door_identifier("Jump-%u\n\r", plot.jump_rating);
       if(plan.available) {
-         door_label("  Time: ");
-         door_number("%s\n\r", course_duration(plan.elapsed_seconds).c_str());
+         const auto eta_second =
+            plan.elapsed_seconds >
+               std::numeric_limits<uint64_t>::max() - plot.current_game_second
+            ? std::numeric_limits<uint64_t>::max()
+            : plot.current_game_second + plan.elapsed_seconds;
+         door_label("Current:   ");
+         door_number("%s\n\r", game_date(plot.current_game_second).c_str());
+         door_label("ETA:       ");
+         door_number("%s\n\r", game_date(eta_second).c_str());
+         door_label("Trip time: ");
+         door_number("%s", course_duration(plan.elapsed_seconds).c_str());
+         door_label(" (wall time ");
+         door_number(
+            "%s",
+            wall_duration(
+               plan.elapsed_seconds,
+               plot.clock_rate_game_seconds,
+               plot.clock_rate_real_seconds).c_str());
+         door_label(")\n\r");
          door_label("Fuel purchases: ");
          door_number("Cr%llu", static_cast<unsigned long long>(plan.fuel_cost_credits));
          door_label("  Distance: ");
@@ -6238,7 +6439,17 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
             door_label("Jump fuel:     ");
             door_number("%.1f t\n\r", preview.fuel_millitons / 1000.0);
             for(const auto& warning : preview.warnings) {
-               door_warning("Warning: %s\n\r", safe_field(warning.message).c_str());
+               if(warning.code == "TASK_DEADLINE_MISSED") {
+                  print_wrapped_field(
+                     "Deadline: ",
+                     warning.message,
+                     ct::DoorTextRole::Error);
+               } else {
+                  print_wrapped_field(
+                     "Warning: ",
+                     warning.message,
+                     ct::DoorTextRole::Warning);
+               }
             }
             door_prompt(
                "\n\r[F] File this plan  [Q/Enter] Revise  [?] Help\n\r");
@@ -6433,8 +6644,7 @@ void show_travel_screen(
    door_information(
       "\n\rCrew, ship, task, message, and Known Universe management remain "
       "available while the scheduled voyage continues.\n\r");
-   door_prompt(
-      "\n\r[F] Revise Flight Plan  [Enter] Command console  [?] Help\n\r");
+   show_voyage_live_prompt();
    while(true) {
       const auto generation = phase_event_generation;
       const auto key = door_get_live_key();
@@ -6449,8 +6659,7 @@ void show_travel_screen(
             door_information("The ship is now docked.\n\r");
             return;
          }
-         door_prompt(
-            "\n\r[F] Revise Flight Plan  [Enter] Command console  [?] Help\n\r");
+         show_voyage_live_prompt();
          continue;
       }
       if(key == 'F' || key == 'f') {
@@ -7184,6 +7393,8 @@ int main(int argc, char** argv)
    int result = 0;
    try {
       const auto config = ct::read_bbs_config(bbs_config_path);
+      od_control.od_inactivity =
+         static_cast<INT16>(config.inactivity_timeout_seconds);
       initialize_presentation(config);
       if(!await_startup_choice()) {
          od_exit(0, FALSE);

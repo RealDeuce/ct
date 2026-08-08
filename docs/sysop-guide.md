@@ -101,10 +101,13 @@ identity-name=real-name
 terminal-profile=auto
 terminal-columns=0
 terminal-rows=0
+inactivity-timeout-seconds=300
 ```
 
-Blank lines and lines beginning with `#` are allowed. Every key is required;
-unknown and duplicate keys are errors.
+Blank lines and lines beginning with `#` are allowed. Every key except
+`inactivity-timeout-seconds` is required; configurations created before this
+setting was introduced use the 300-second default. Unknown and duplicate keys
+are errors.
 
 `credential-file` and `identity-file` may be absolute or relative. The default
 relative names are resolved from the directory containing
@@ -119,6 +122,16 @@ Leave `terminal-profile=auto`, `terminal-columns=0`, and `terminal-rows=0` for
 normal BBS operation. The door then uses the ANSI capability and terminal
 dimensions OpenDoors reads from the drop file. If a drop-file format does not
 provide credible dimensions, the door uses 80x24.
+
+`inactivity-timeout-seconds` controls how long the door waits without keyboard
+input before disconnecting the caller. The default is 300 seconds (five
+minutes). Values from 1 through 32767 select a timeout in seconds; 0 disables
+the inactivity timeout. Edit the value directly or update it with the sysop
+utility:
+
+```console
+bin/cepheus-trader-sysop set-inactivity-timeout 600
+```
 
 ## Configure the BBS in the game
 

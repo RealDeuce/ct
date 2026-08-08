@@ -4528,6 +4528,30 @@ impl Store {
             }))
     }
 
+    fn projected_primary_approach_seconds_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        system_id: u64,
+        projected_second: u64,
+        thrust_g: u8,
+    ) -> Result<u64, StoreError> {
+        let system = self
+            .systems
+            .get(txn, &system_id)?
+            .map(decode_stellar_system)
+            .transpose()?
+            .ok_or(StoreError::Corrupt(
+                "flight-plan approach system is missing",
+            ))?;
+        let celestial = derive_celestial_system(&system)?;
+        let approach = primary_world_jump_safety(
+            &celestial,
+            projected_second as f64 / crate::simulation::SECONDS_PER_DAY as f64,
+            f64::from(thrust_g),
+        );
+        Ok((approach.travel_days * crate::simulation::SECONDS_PER_DAY as f64).ceil() as u64)
+    }
+
     fn preview_flight_plan_in(
         &self,
         txn: &heed::RoTxn<'_>,
@@ -4554,8 +4578,20 @@ impl Store {
         let mut fuel_millitons = 0_u64;
         let mut available_fuel_millitons = ship.current_fuel_millitons;
         let mut available_credits = player.credits;
-        let mut elapsed_seconds = 0_u64;
+        let mut elapsed_seconds = match ship.location {
+            ShipLocationRecord::InFlight(FlightLegRecord {
+                due_second,
+                purpose:
+                    FlightLegPurpose::DepartForJump { .. }
+                    | FlightLegPurpose::DepartForCoordinateJump { .. },
+                ..
+            }) => due_second.saturating_sub(game_second),
+            _ => 0,
+        };
+        let mut at_primary_port = matches!(ship.location, ShipLocationRecord::Docked { .. });
         let mut warnings = Vec::new();
+        let mut unattended_waypoints = Vec::new();
+        let mut docked_arrivals = HashMap::new();
         for (index, step) in proposal.steps.iter().enumerate() {
             if step.locus.system_id() != system_id {
                 return Ok(RuleResult::Rejected(format!(
@@ -4663,6 +4699,16 @@ impl Store {
                             spec.jump_rating
                         )));
                     }
+                    if at_primary_port {
+                        elapsed_seconds = elapsed_seconds.saturating_add(
+                            self.projected_primary_approach_seconds_in(
+                                txn,
+                                system_id,
+                                game_second.saturating_add(elapsed_seconds),
+                                spec.thrust_g,
+                            )?,
+                        );
+                    }
                     let leg_fuel = jump_fuel_for_distance(spec.displacement_millitons, distance);
                     if navigation == crate::wire::JumpNavigationMethod::CommercialTape {
                         warnings.push(FlightPlanWarning {
@@ -4697,9 +4743,9 @@ impl Store {
                     } else {
                         available_fuel_millitons -= leg_fuel;
                     }
-                    elapsed_seconds = elapsed_seconds
-                        .saturating_add(STANDARD_JUMP_SECONDS + crate::simulation::SECONDS_PER_DAY);
+                    elapsed_seconds = elapsed_seconds.saturating_add(STANDARD_JUMP_SECONDS);
                     system_id = destination_system_id;
+                    at_primary_port = false;
                 }
                 FlightPlanAction::JumpCoordinates {
                     destination,
@@ -4748,6 +4794,16 @@ impl Store {
                             spec.jump_rating
                         )));
                     }
+                    if at_primary_port {
+                        elapsed_seconds = elapsed_seconds.saturating_add(
+                            self.projected_primary_approach_seconds_in(
+                                txn,
+                                system_id,
+                                game_second.saturating_add(elapsed_seconds),
+                                spec.thrust_g,
+                            )?,
+                        );
+                    }
                     let leg_fuel = jump_fuel_for_distance(spec.displacement_millitons, distance);
                     if navigation == crate::wire::JumpNavigationMethod::CommercialTape {
                         warnings.push(FlightPlanWarning {
@@ -4782,9 +4838,9 @@ impl Store {
                     } else {
                         available_fuel_millitons -= leg_fuel;
                     }
-                    elapsed_seconds = elapsed_seconds
-                        .saturating_add(STANDARD_JUMP_SECONDS + crate::simulation::SECONDS_PER_DAY);
+                    elapsed_seconds = elapsed_seconds.saturating_add(STANDARD_JUMP_SECONDS);
                     system_id = 0;
+                    at_primary_port = false;
                 }
                 FlightPlanAction::Fuel {
                     operation,
@@ -4921,11 +4977,21 @@ impl Store {
                                     index + 1
                                 )));
                             };
+                            let collection_seconds = if operation == FuelOperation::GasGiant {
+                                mean_skimming_seconds(quantity_millitons)
+                            } else {
+                                0
+                            };
+                            let processing_seconds = milliton_service_seconds(
+                                quantity_millitons,
+                                spec.fuel_processing_millitons_per_day,
+                            );
                             elapsed_seconds = elapsed_seconds.saturating_add(
                                 (source.round_trip_days * crate::simulation::SECONDS_PER_DAY as f64)
                                     .ceil() as u64
-                                    + (quantity_millitons / 1_000).max(1) * 60,
+                                    + collection_seconds.max(processing_seconds),
                             );
+                            at_primary_port = true;
                         }
                     }
                     available_fuel_millitons += quantity_millitons;
@@ -4946,20 +5012,100 @@ impl Store {
                             index + 1
                         )));
                     }
-                    elapsed_seconds =
-                        elapsed_seconds.saturating_add(crate::simulation::SECONDS_PER_DAY / 2)
+                    if !at_primary_port {
+                        elapsed_seconds = elapsed_seconds.saturating_add(
+                            self.projected_primary_approach_seconds_in(
+                                txn,
+                                system_id,
+                                game_second.saturating_add(elapsed_seconds),
+                                spec.thrust_g,
+                            )?,
+                        );
+                    }
+                    at_primary_port = true;
+                    docked_arrivals
+                        .entry(system_id)
+                        .or_insert_with(|| game_second.saturating_add(elapsed_seconds));
                 }
                 FlightPlanAction::Hold => {}
             }
             if step.authority == WaypointAuthority::Through {
-                warnings.push(FlightPlanWarning { code: "UNATTENDED_CHECKPOINT".into(), message: format!("Waypoint {} may resolve contacts under standing orders while the captain is away.", index + 1) });
+                unattended_waypoints.push(index + 1);
             }
+        }
+        if !unattended_waypoints.is_empty() {
+            let waypoints = unattended_waypoints
+                .iter()
+                .map(usize::to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            warnings.push(FlightPlanWarning {
+                code: "UNATTENDED_CHECKPOINT".into(),
+                message: format!(
+                    "{} {waypoints} may resolve contacts under standing orders while the captain is away.",
+                    if unattended_waypoints.len() == 1 {
+                        "Waypoint"
+                    } else {
+                        "Waypoints"
+                    },
+                ),
+            });
         }
         if !ship.cargo.is_empty() && current.plan_id != 0 && proposal.steps != current.steps {
             warnings.push(FlightPlanWarning { code: "CARRIAGE_DIVERSION".into(), message: "Carried cargo remains aboard; changing the route does not alter delivery obligations or their dates.".into() });
         }
         if ship.mail_custody.is_some() && proposal.steps != current.steps {
             warnings.push(FlightPlanWarning { code: "SEALED_MAIL_CUSTODY".into(), message: "The sealed mailbag remains in custody and must be delivered on its committed hop.".into() });
+        }
+        let plan_end_second = game_second.saturating_add(elapsed_seconds);
+        for entry in self.tasks.iter(txn)? {
+            let (_, value) = entry?;
+            let stored = decode_stored_task(value)?;
+            if stored.identity != *identity
+                || stored.task.performing_ship_id != ship.ship_id
+                || stored.task.offer.destination_system_id == 0
+                || matches!(
+                    stored.task.state,
+                    crate::wire::TaskState::Completed
+                        | crate::wire::TaskState::Expired
+                        | crate::wire::TaskState::Cancelled
+                        | crate::wire::TaskState::Defaulted
+                )
+            {
+                continue;
+            }
+            let deadline = stored.task.offer.delivery_deadline_second;
+            let arrival = docked_arrivals
+                .get(&stored.task.offer.destination_system_id)
+                .copied();
+            let missed_by = match arrival {
+                Some(arrival_second) if arrival_second > deadline => {
+                    Some(arrival_second - deadline)
+                }
+                None if plan_end_second > deadline => Some(plan_end_second - deadline),
+                _ => None,
+            };
+            if let Some(late_seconds) = missed_by {
+                let message = if arrival.is_some() {
+                    format!(
+                        "Task #{} ({}) reaches its destination {} after its delivery deadline.",
+                        stored.task.task_id,
+                        stored.task.offer.title,
+                        format_game_duration(late_seconds),
+                    )
+                } else {
+                    format!(
+                        "Task #{} ({}) is still short of its destination when this plan ends {} after its delivery deadline.",
+                        stored.task.task_id,
+                        stored.task.offer.title,
+                        format_game_duration(late_seconds),
+                    )
+                };
+                warnings.push(FlightPlanWarning {
+                    code: "TASK_DEADLINE_MISSED".into(),
+                    message,
+                });
+            }
         }
         for (kind, name) in [
             (ShipSubsystemKind::LifeSupport, "life support"),
@@ -10842,6 +10988,7 @@ impl Store {
             jump_rating: spec.jump_rating,
             fastest,
             cheapest,
+            current_game_second: current_second,
         }))
     }
 
@@ -23037,6 +23184,14 @@ fn unavailable_course_plan() -> CoursePlan {
     }
 }
 
+fn format_game_duration(seconds: u64) -> String {
+    let days = seconds / crate::simulation::SECONDS_PER_DAY;
+    let hours = seconds / (60 * 60) % 24;
+    let minutes = seconds / 60 % 60;
+    let remainder = seconds % 60;
+    format!("{days} d {hours:02}:{minutes:02}:{remainder:02}")
+}
+
 fn course_cost_key(cost: CourseCost, preference: CoursePreference) -> (u64, u64, u64) {
     match preference {
         CoursePreference::Fastest => (
@@ -23181,7 +23336,7 @@ fn calculate_course_plan(
                 if node_index == origin {
                     node.approach_seconds
                 } else {
-                    0
+                    node.approach_seconds.saturating_mul(2)
                 },
                 0,
             ));
@@ -23223,12 +23378,11 @@ fn calculate_course_plan(
                     desired_loads,
                     CourseFuelSource::FrontierSkimming,
                     round_trip
-                        .saturating_add(processing)
-                        .saturating_add(skimming)
+                        .saturating_add(processing.max(skimming))
                         .saturating_add(if node_index == origin {
                             node.approach_seconds
                         } else {
-                            0
+                            node.approach_seconds.saturating_mul(2)
                         }),
                     0,
                 ));
@@ -26888,7 +27042,7 @@ fn decode_combat_snapshot_record(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(1);
+    bytes.push(2);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -27095,7 +27249,8 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
 
 fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
     let mut decoder = Decoder::new(bytes);
-    if decoder.u8()? != 1 {
+    let version = decoder.u8()?;
+    if version != 1 && version != 2 {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
     let command_id = decoder.array()?;
@@ -27141,7 +27296,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         12 => OutcomeKind::KnownDestinations(decode_known_destinations(&mut decoder)?),
         13 => OutcomeKind::Market(decode_market_snapshot(&mut decoder)?),
         14 => OutcomeKind::TravelStatus(decode_travel_status(&mut decoder)?),
-        15 => OutcomeKind::CoursePlot(decode_course_plot(&mut decoder)?),
+        15 => OutcomeKind::CoursePlot(decode_course_plot(&mut decoder, version >= 2)?),
         16 => OutcomeKind::ArrivalPacket(decode_arrival_packet(&mut decoder)?),
         17 => OutcomeKind::MessageManagement(decode_message_management(&mut decoder)?),
         18 => OutcomeKind::SystemMappingStatus(decode_system_mapping_status(&mut decoder)?),
@@ -30694,16 +30849,30 @@ fn encode_course_plot_into(bytes: &mut Vec<u8>, plot: &CoursePlot) -> Result<(),
     bytes.push(plot.jump_rating);
     encode_course_plan_into(bytes, &plot.fastest)?;
     encode_course_plan_into(bytes, &plot.cheapest)?;
+    bytes.extend_from_slice(&plot.current_game_second.to_be_bytes());
     Ok(())
 }
 
-fn decode_course_plot(decoder: &mut Decoder<'_>) -> Result<CoursePlot, StoreError> {
+fn decode_course_plot(
+    decoder: &mut Decoder<'_>,
+    has_current_game_second: bool,
+) -> Result<CoursePlot, StoreError> {
+    let origin_system_id = decoder.u64()?;
+    let destination_system_id = decoder.u64()?;
+    let jump_rating = decoder.u8()?;
+    let fastest = decode_course_plan(decoder)?;
+    let cheapest = decode_course_plan(decoder)?;
     Ok(CoursePlot {
-        origin_system_id: decoder.u64()?,
-        destination_system_id: decoder.u64()?,
-        jump_rating: decoder.u8()?,
-        fastest: decode_course_plan(decoder)?,
-        cheapest: decode_course_plan(decoder)?,
+        origin_system_id,
+        destination_system_id,
+        jump_rating,
+        fastest,
+        cheapest,
+        current_game_second: if has_current_game_second {
+            decoder.u64()?
+        } else {
+            0
+        },
     })
 }
 
@@ -31985,6 +32154,44 @@ mod tests {
     use super::*;
 
     #[test]
+    fn course_plot_outcome_encoding_preserves_clock_and_reads_version_one() {
+        let plan = CoursePlan {
+            available: true,
+            elapsed_seconds: 123,
+            fuel_cost_credits: 456,
+            total_milliparsecs: 789,
+            waypoints: Vec::new(),
+        };
+        let outcome = Outcome {
+            command_id: [7; COMMAND_ID_BYTES],
+            committed_sequence: 11,
+            revision: 12,
+            replayed: false,
+            phase: PlayerPhase::Docked,
+            kind: OutcomeKind::CoursePlot(CoursePlot {
+                origin_system_id: 1,
+                destination_system_id: 2,
+                jump_rating: 2,
+                fastest: plan.clone(),
+                cheapest: plan,
+                current_game_second: 1_901_700,
+            }),
+        };
+
+        let encoded = encode_outcome(&outcome).unwrap();
+        assert_eq!(decode_outcome(&encoded).unwrap(), outcome);
+
+        let mut version_one = encoded;
+        version_one[0] = 1;
+        version_one.truncate(version_one.len() - 8);
+        let decoded = decode_outcome(&version_one).unwrap();
+        let OutcomeKind::CoursePlot(plot) = decoded.kind else {
+            panic!("expected course plot");
+        };
+        assert_eq!(plot.current_game_second, 0);
+    }
+
+    #[test]
     fn course_plans_separate_fast_port_fuel_from_cheap_frontier_fuel() {
         let nodes = vec![
             CourseNode {
@@ -33104,6 +33311,114 @@ mod tests {
             RuleResult::Applied(_) => panic!("empty watch committed a jump plan"),
         }
         txn.abort();
+    }
+
+    #[test]
+    fn flight_plan_preview_warns_when_an_active_task_will_be_late() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap()
+            .1;
+        let known = store
+            .known_destinations_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let destination = known
+            .systems
+            .iter()
+            .find(|system| system.within_jump_rating && system.system_id != ship.system_id)
+            .unwrap()
+            .system_id;
+        let proposal = FlightPlanProposal {
+            expected_plan_revision: 0,
+            steps: vec![
+                FlightPlanStep {
+                    locus: FlightLocus::JumpLocus {
+                        system_id: ship.system_id,
+                    },
+                    authority: WaypointAuthority::Through,
+                    action: FlightPlanAction::Jump {
+                        destination_system_id: destination,
+                        navigation: crate::wire::JumpNavigationMethod::Onboard,
+                        proceed_on_known_bad_plot: false,
+                    },
+                },
+                FlightPlanStep {
+                    locus: FlightLocus::Port {
+                        system_id: destination,
+                        world_id: destination,
+                        facility_id: destination,
+                    },
+                    authority: WaypointAuthority::Terminal,
+                    action: FlightPlanAction::Dock {
+                        world_id: destination,
+                        facility_id: destination,
+                    },
+                },
+            ],
+            policy: EncounterPolicy::default(),
+        };
+        let task_id = 990_001;
+        let mut offer = test_task_offer(
+            990_000,
+            ship.system_id,
+            destination,
+            crate::wire::TaskKind::Freight,
+        );
+        offer.delivery_deadline_second = STANDARD_JUMP_SECONDS;
+        let mut stored = test_task(identity(), task_id, offer, 0);
+        stored.task.state = crate::wire::TaskState::Loading;
+        stored.task.known_result = true;
+        stored.task.performing_ship_id = ship.ship_id;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .tasks
+            .put(
+                &mut txn,
+                &task_id.to_be_bytes(),
+                &encode_stored_task(&stored).unwrap(),
+            )
+            .unwrap();
+        txn.commit().unwrap();
+
+        let preview = match store
+            .preview_flight_plan_in(&store.env.read_txn().unwrap(), &identity(), &proposal)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("preview rejected unexpectedly: {message}"),
+        };
+        let warning = preview
+            .warnings
+            .iter()
+            .find(|warning| warning.code == "TASK_DEADLINE_MISSED")
+            .expect("late active task should produce a deadline warning");
+        assert!(warning.message.contains("Task #990001"));
+        assert!(warning.message.contains("after its delivery deadline"));
+        let course = match store
+            .plot_course_in(
+                &store.env.read_txn().unwrap(),
+                &identity(),
+                ship.system_id,
+                destination,
+                true,
+            )
+            .unwrap()
+        {
+            RuleResult::Applied(course) => course,
+            RuleResult::Rejected(message) => panic!("course rejected unexpectedly: {message}"),
+        };
+        assert!(
+            preview
+                .elapsed_seconds
+                .abs_diff(course.fastest.elapsed_seconds)
+                <= 5 * 60,
+            "course and executable-plan estimates diverged: course={}, preview={}",
+            course.fastest.elapsed_seconds,
+            preview.elapsed_seconds,
+        );
     }
 
     #[test]

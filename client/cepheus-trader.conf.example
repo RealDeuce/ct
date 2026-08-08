@@ -9,3 +9,4 @@ identity-name=real-name
 terminal-profile=auto
 terminal-columns=0
 terminal-rows=0
+inactivity-timeout-seconds=300

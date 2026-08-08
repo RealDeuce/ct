@@ -603,6 +603,9 @@ struct CoursePlot {
    uint8_t jump_rating;
    CoursePlan fastest;
    CoursePlan cheapest;
+   uint64_t current_game_second;
+   uint64_t clock_rate_game_seconds;
+   uint64_t clock_rate_real_seconds;
    uint64_t committed_sequence;
    uint64_t revision;
    PlayerPhase phase;
