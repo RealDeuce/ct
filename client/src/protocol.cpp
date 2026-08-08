@@ -20,7 +20,7 @@ namespace ct
 namespace
 {
 
-constexpr uint16_t PROTOCOL_VERSION = 2;
+constexpr uint16_t PROTOCOL_VERSION = 3;
 constexpr size_t MAX_FRAME_BYTES = 1024 * 1024;
 
 void send_frame(TlsConnection& connection, const kj::ArrayPtr<const kj::byte> message)
@@ -50,7 +50,8 @@ std::vector<uint8_t> receive_frame_direct(TlsConnection& connection)
 
 ServerHello exchange_hello(TlsConnection& connection,
                            const PlayerIdentity& identity,
-                           const std::string& client_name)
+                           const std::string& client_name,
+                           const std::string& language_tag)
 {
    capnp::MallocMessageBuilder message;
    auto envelope = message.initRoot<rpc::Envelope>();
@@ -60,6 +61,7 @@ ServerHello exchange_hello(TlsConnection& connection,
    wire_identity.setBbsId(identity.bbs_id);
    wire_identity.setPlayerId(identity.player_id);
    hello.setClientName(client_name);
+   hello.setLanguageTag(language_tag);
    const auto words = capnp::messageToFlatArray(message);
    send_frame(connection, words.asBytes());
 
@@ -71,11 +73,23 @@ ServerHello exchange_hello(TlsConnection& connection,
    std::memcpy(response_words.asBytes().begin(), frame.data(), frame.size());
    capnp::FlatArrayMessageReader reader(response_words);
    const auto response = reader.getRoot<rpc::Envelope>();
-   if(response.getProtocolVersion() != PROTOCOL_VERSION) {
-      throw std::runtime_error("server selected an unsupported CT-RPC version");
-   }
    if(response.isClose()) {
-      throw std::runtime_error(response.getClose().getReason().cStr());
+      const auto close = response.getClose();
+      if(close.hasMessage() && close.getMessage().size() != 0) {
+         throw std::runtime_error(close.getMessage().cStr());
+      }
+      const auto legacy = reader.getRoot<rpc::LegacyV2Envelope>();
+      if(legacy.isClose()) {
+         throw std::runtime_error(legacy.getClose().getReason().cStr());
+      }
+      throw std::runtime_error("server closed the connection during language negotiation");
+   }
+   if(response.getProtocolVersion() != PROTOCOL_VERSION) {
+      const auto legacy = reader.getRoot<rpc::LegacyV2Envelope>();
+      if(legacy.isClose()) {
+         throw std::runtime_error(legacy.getClose().getReason().cStr());
+      }
+      throw std::runtime_error("server selected an unsupported CT-RPC version");
    }
    if(!response.isServerHello()) {
       throw std::runtime_error("expected a CT-RPC ServerHello");
@@ -113,7 +127,8 @@ ServerHello exchange_hello(TlsConnection& connection,
       default:
          return PlayerPhase::Other;
       }
-   }(),
+      }(),
+      .language_tag = server_hello.getLanguageTag().cStr(),
    };
    if(result.identity != identity) {
       throw std::runtime_error("server hello returned a different player identity");
@@ -121,6 +136,10 @@ ServerHello exchange_hello(TlsConnection& connection,
    if(result.assigned_epoch == 0 ||
          response.getSessionEpoch() != result.assigned_epoch) {
       throw std::runtime_error("server hello returned an invalid session epoch");
+   }
+   if(result.language_tag != language_tag &&
+         !(language_tag.starts_with(result.language_tag + "-"))) {
+      throw std::runtime_error("server selected an invalid language tag");
    }
    connection.start_dispatch();
    return result;
@@ -150,6 +169,9 @@ kj::Array<capnp::word> receive_response(
       if(envelope.isEvent()) {
          connection.defer_event_frame(std::move(frame));
          continue;
+      }
+      if(envelope.isClose()) {
+         throw std::runtime_error(envelope.getClose().getMessage().cStr());
       }
       if(envelope.getRequestId() != request_id || !envelope.isResponse()) {
          throw std::runtime_error("invalid CT-RPC response envelope");
@@ -635,6 +657,8 @@ CrewManagementSnapshot decode_crew_management(
          .available_second = member.getAvailableSecond(),
          .service_revision = member.getServiceRevision(),
          .shore_location = member.getShoreLocation().cStr(),
+         .role_kind = static_cast<CrewRoleKind>(member.getRoleKind()),
+         .location_kind = static_cast<CrewLocationKind>(member.getLocationKind()),
       };
       for(const auto slot_id : member.getAssignedSlotIds()) {
          decoded.assigned_slot_ids.push_back(slot_id);
@@ -646,6 +670,7 @@ CrewManagementSnapshot decode_crew_management(
          .slot_id = role.getSlotId(),
          .role = role.getRole().cStr(),
          .represented_positions = role.getRepresentedPositions(),
+         .role_kind = static_cast<CrewRoleKind>(role.getRoleKind()),
       });
    }
    return result;
@@ -932,6 +957,8 @@ KnownDestinations decode_known_destinations(const rpc::Response::Reader response
          .spinward_parsecs = system.getSpinwardParsecs(),
          .north_parsecs = system.getNorthParsecs(),
          .remote_candidate = system.getRemoteCandidate(),
+         .knowledge_source = static_cast<SystemKnowledgeSource>(
+            system.getKnowledgeSource()),
       });
    }
    return result;
@@ -1742,6 +1769,7 @@ StartingCrewPlan get_starting_crew_plan(
          .required = slot.getRequired(),
          .skill_pool = decode_pool(slot.getSkillPool()),
          .default_crew = decode_person(slot.getDefaultCrew()),
+         .role_kind = static_cast<CrewRoleKind>(slot.getRoleKind()),
       });
    }
    return result;
@@ -3017,7 +3045,17 @@ CombatSnapshot decode_combat(const rpc::Response::Reader response)
          .station = actor.getStation().cStr(),
          .available = actor.getAvailable(),
          .action_budget = actor.getActionBudget(),
+         .allowed_actions = {},
+         .allowed_reactions = {},
       });
+      for(const auto action : actor.getAllowedActions()) {
+         result.actors.back().allowed_actions.push_back(
+            static_cast<CombatActionKind>(action));
+      }
+      for(const auto reaction : actor.getAllowedReactions()) {
+         result.actors.back().allowed_reactions.push_back(
+            static_cast<CombatReaction>(reaction));
+      }
    }
    return result;
 }

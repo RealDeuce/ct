@@ -592,6 +592,7 @@ int main(int argc, char** argv) {
          config.sysop_port,
          std::to_string(credential.bbs_id),
          std::move(credential.psk));
+      ct::exchange_sysop_hello(connection, "en");
       if(get_access) {
          if(command_line.expected_revision || command_line.command_id) {
             throw std::invalid_argument(

@@ -45,6 +45,9 @@ struct BackupComplete {
    uint64_t game_second;
 };
 
+void exchange_admin_hello(TlsConnection& connection,
+                          const std::string& language_tag);
+
 BbsCredentials add_bbs(TlsConnection& connection,
                        const std::string& name,
                        const std::array<uint8_t, 16>& command_id,

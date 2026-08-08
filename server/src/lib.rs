@@ -39,6 +39,7 @@ pub mod cpu_time;
 pub mod creation;
 pub mod crypto;
 pub mod engine;
+pub mod i18n;
 pub mod jump;
 pub mod navigation;
 pub mod person_names;

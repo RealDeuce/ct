@@ -6783,12 +6783,16 @@ impl Store {
                 .transpose()?
                 .ok_or(StoreError::Corrupt("combat crewmember is missing"))?;
             let incapacitated = person_incapacitated(&person);
+            let role_kind = crate::wire::CrewRoleKind::from_slug(&service.role);
+            let captain = service.role == "captain";
             actors.push(crate::wire::CombatActor {
                 person_id: person.person_id,
                 name: person.person.name,
                 station: service.role,
                 available: !incapacitated && !service.assigned_slot_ids.is_empty(),
                 action_budget: u8::from(!incapacitated && !service.assigned_slot_ids.is_empty()),
+                role_kind,
+                captain,
             });
         }
         actors.sort_by_key(|actor| actor.person_id);
@@ -9948,7 +9952,7 @@ impl Store {
             let remote_candidate = mapping
                 .as_ref()
                 .is_some_and(|record| record.state == SystemMappingState::Unresolved);
-            let (observed_second, source) = match mapping.as_ref() {
+            let (observed_second, source, knowledge_source) = match mapping.as_ref() {
                 Some(record) => (
                     record.changed_second,
                     match record.state {
@@ -9961,10 +9965,31 @@ impl Store {
                         SystemMappingState::Withheld => "Captain's withheld chart",
                         SystemMappingState::Secret => "Captain's secret chart",
                     },
+                    match record.state {
+                        SystemMappingState::KnownPublic => {
+                            crate::wire::SystemKnowledgeSource::PublishedRecords
+                        }
+                        SystemMappingState::Unresolved => {
+                            crate::wire::SystemKnowledgeSource::PrivateObservation
+                        }
+                        SystemMappingState::PublicDispatched => {
+                            crate::wire::SystemKnowledgeSource::PublicDispatch
+                        }
+                        SystemMappingState::DirectDispatched => {
+                            crate::wire::SystemKnowledgeSource::DirectDispatch
+                        }
+                        SystemMappingState::Withheld => {
+                            crate::wire::SystemKnowledgeSource::Withheld
+                        }
+                        SystemMappingState::Secret => {
+                            crate::wire::SystemKnowledgeSource::SecretChart
+                        }
+                    },
                 ),
                 None => (
                     player.knowledge_observed_second,
                     "Carried navigation records",
+                    crate::wire::SystemKnowledgeSource::CarriedRecords,
                 ),
             };
             systems.push(KnownSystemSummary {
@@ -9980,6 +10005,7 @@ impl Store {
                 source: source.into(),
                 position: crate::wire::Coordinate3::from_parsecs(system.position_parsecs),
                 remote_candidate,
+                knowledge_source,
             });
         }
         systems.sort_by_key(|system| (system.distance_milliparsecs, system.system_id));
@@ -26827,12 +26853,19 @@ fn decode_combat_snapshot_record(
     let actor_count = d.u16()? as usize;
     let mut actors = Vec::with_capacity(actor_count);
     for _ in 0..actor_count {
+        let person_id = d.u64()?;
+        let name = d.text()?;
+        let station = d.text()?;
+        let available = d.u8()? != 0;
+        let action_budget = d.u8()?;
         actors.push(crate::wire::CombatActor {
-            person_id: d.u64()?,
-            name: d.text()?,
-            station: d.text()?,
-            available: d.u8()? != 0,
-            action_budget: d.u8()?,
+            person_id,
+            name,
+            role_kind: crate::wire::CrewRoleKind::from_slug(&station),
+            captain: station == "captain",
+            station,
+            available,
+            action_budget,
         });
     }
     Ok(crate::wire::CombatSnapshot {
@@ -30547,23 +30580,49 @@ fn decode_known_destinations(decoder: &mut Decoder<'_>) -> Result<KnownDestinati
     let count = decoder.u32()? as usize;
     let mut systems = Vec::with_capacity(count);
     for _ in 0..count {
+        let system_id = decoder.u64()?;
+        let system_name = decoder.text()?;
+        let world_name = decoder.text()?;
+        let distance_milliparsecs = decoder.u64()?;
+        let within_jump_rating = decoder.u8()? != 0;
+        let starport = decoder.text()?;
+        let population = decoder.u8()?;
+        let tech_level = decoder.u8()?;
+        let observed_second = decoder.u64()?;
+        let source = decoder.text()?;
+        let knowledge_source = match source.as_str() {
+            "Published navigation and mail records" => {
+                crate::wire::SystemKnowledgeSource::PublishedRecords
+            }
+            "Private carried observation" => crate::wire::SystemKnowledgeSource::PrivateObservation,
+            "Captain's public mapping dispatch" => {
+                crate::wire::SystemKnowledgeSource::PublicDispatch
+            }
+            "Captain's sealed Federation filing" => {
+                crate::wire::SystemKnowledgeSource::DirectDispatch
+            }
+            "Captain's withheld chart" => crate::wire::SystemKnowledgeSource::Withheld,
+            "Captain's secret chart" => crate::wire::SystemKnowledgeSource::SecretChart,
+            _ => crate::wire::SystemKnowledgeSource::CarriedRecords,
+        };
         systems.push(KnownSystemSummary {
-            system_id: decoder.u64()?,
-            system_name: decoder.text()?,
-            world_name: decoder.text()?,
-            distance_milliparsecs: decoder.u64()?,
-            within_jump_rating: decoder.u8()? != 0,
-            starport: decoder.text()?,
-            population: decoder.u8()?,
-            tech_level: decoder.u8()?,
-            observed_second: decoder.u64()?,
-            source: decoder.text()?,
+            system_id,
+            system_name,
+            world_name,
+            distance_milliparsecs,
+            within_jump_rating,
+            starport,
+            population,
+            tech_level,
+            observed_second,
+            source,
             position: crate::wire::Coordinate3 {
                 coreward_bits: decoder.u64()?,
                 spinward_bits: decoder.u64()?,
                 north_bits: decoder.u64()?,
             },
             remote_candidate: decoder.u8()? != 0,
+            knowledge_source,
         });
     }
     Ok(KnownDestinations {

@@ -9,7 +9,7 @@ namespace ct {
 namespace {
 
 struct RoleWords {
-   std::string_view role;
+   CrewRoleKind role;
    std::string_view role_name;
    std::string_view single_appointment;
    std::string_view group_appointment;
@@ -18,37 +18,37 @@ struct RoleWords {
 };
 
 constexpr std::array ROLE_WORDS{
-   RoleWords{"command", "Command staff", "Executive officer",
+   RoleWords{CrewRoleKind::Command, "Command staff", "Executive officer",
              "Executive officer", "command-staff position",
              "command-staff positions"},
-   RoleWords{"pilot", "Pilot", "Pilot", "Chief pilot", "pilot", "pilots"},
-   RoleWords{"navigator", "Navigator", "Navigator", "Chief navigator",
+   RoleWords{CrewRoleKind::Pilot, "Pilot", "Pilot", "Chief pilot", "pilot", "pilots"},
+   RoleWords{CrewRoleKind::Navigator, "Navigator", "Navigator", "Chief navigator",
              "navigator", "navigators"},
-   RoleWords{"engineer", "Engineer", "Ship's engineer", "Chief engineer",
+   RoleWords{CrewRoleKind::Engineer, "Engineer", "Ship's engineer", "Chief engineer",
              "engineer", "engineers"},
-   RoleWords{"sensors-operator", "Sensors operator", "Sensors operator",
+   RoleWords{CrewRoleKind::SensorsOperator, "Sensors operator", "Sensors operator",
              "Chief sensors operator", "sensors-operator position",
              "sensors-operator positions"},
-   RoleWords{"screen-operator", "Screen operator", "Screen operator",
+   RoleWords{CrewRoleKind::ScreenOperator, "Screen operator", "Screen operator",
              "Chief screen operator", "screen-operator position",
              "screen-operator positions"},
-   RoleWords{"turret-gunner", "Turret gunner", "Turret gunner",
+   RoleWords{CrewRoleKind::TurretGunner, "Turret gunner", "Turret gunner",
              "Gunnery officer", "turret-gunner position",
              "turret-gunner positions"},
-   RoleWords{"bay-gunner", "Bay gunner", "Bay gunner", "Senior bay gunner",
+   RoleWords{CrewRoleKind::BayGunner, "Bay gunner", "Bay gunner", "Senior bay gunner",
              "bay-gunner position", "bay-gunner positions"},
-   RoleWords{"gunner", "Gunner", "Gunner", "Gunnery officer", "gunner",
+   RoleWords{CrewRoleKind::Gunner, "Gunner", "Gunner", "Gunnery officer", "gunner",
              "gunners"},
-   RoleWords{"medic", "Medical", "Ship's medic", "Chief medical officer",
+   RoleWords{CrewRoleKind::Medic, "Medical", "Ship's medic", "Chief medical officer",
              "medical position", "medical positions"},
-   RoleWords{"marine", "Marine", "Marine",
+   RoleWords{CrewRoleKind::Marine, "Marine", "Marine",
              "Marine detachment leader", "marine", "marines"},
-   RoleWords{"flight-crew", "Flight crew", "Flight-crew member",
+   RoleWords{CrewRoleKind::FlightCrew, "Flight crew", "Flight-crew member",
              "Flight-deck chief", "flight-crew position",
              "flight-crew positions"},
-   RoleWords{"steward", "Steward", "Steward", "Chief steward", "steward",
+   RoleWords{CrewRoleKind::Steward, "Steward", "Steward", "Chief steward", "steward",
              "stewards"},
-   RoleWords{"other", "General crew", "Crew member", "Crew chief",
+   RoleWords{CrewRoleKind::Other, "General crew", "Crew member", "Crew chief",
              "general-crew position", "general-crew positions"},
 };
 
@@ -74,6 +74,7 @@ std::string title_role(const std::string_view role) {
 }  // namespace
 
 CrewNamingPresentation describe_crew_naming(
+   const CrewRoleKind role_kind,
    const std::string_view role,
    const uint16_t represented_positions) {
    if(represented_positions == 0) {
@@ -82,7 +83,7 @@ CrewNamingPresentation describe_crew_naming(
    }
    const RoleWords* words = nullptr;
    for(const auto& candidate : ROLE_WORDS) {
-      if(candidate.role == role) {
+      if(candidate.role == role_kind) {
          words = &candidate;
          break;
       }

@@ -9,9 +9,9 @@ use thiserror::Error;
 use crate::ct_admin_capnp::{ErrorCode, envelope, request};
 use crate::store::{BbsCredential, OperationalStatus};
 use crate::universe::UniverseInitialization;
-use crate::wire::{COMMAND_ID_BYTES, MAX_FRAME_BYTES};
+use crate::wire::{COMMAND_ID_BYTES, CloseCode, MAX_FRAME_BYTES};
 
-const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 
 pub const MAX_BBS_NAME_BYTES: usize = 128;
 
@@ -50,6 +50,39 @@ pub struct AdminRequest {
     pub request_id: u64,
     pub command_id: [u8; COMMAND_ID_BYTES],
     pub command: AdminCommand,
+}
+
+pub fn decode_protocol_version(bytes: &[u8]) -> Result<u16, AdminWireError> {
+    let message = serialize::read_message(&mut Cursor::new(bytes), ReaderOptions::new())?;
+    Ok(message
+        .get_root::<envelope::Reader>()?
+        .get_protocol_version())
+}
+
+pub fn decode_client_hello_with_version(bytes: &[u8]) -> Result<(u16, String), AdminWireError> {
+    if bytes.len() > MAX_FRAME_BYTES {
+        return Err(AdminWireError::FrameTooLarge);
+    }
+    let message = serialize::read_message(&mut Cursor::new(bytes), ReaderOptions::new())?;
+    let envelope = message.get_root::<envelope::Reader>()?;
+    let version = envelope.get_protocol_version();
+    let envelope::ClientHello(hello) = envelope.which()? else {
+        return Err(AdminWireError::Expected("administrator client hello"));
+    };
+    let language = hello?
+        .get_language_tag()?
+        .to_str()
+        .map_err(|_| AdminWireError::InvalidText)?
+        .to_owned();
+    Ok((version, language))
+}
+
+pub fn encode_server_hello(language_tag: &str) -> Result<Vec<u8>, AdminWireError> {
+    let mut message = Builder::new_default();
+    let mut envelope = message.init_root::<envelope::Builder>();
+    envelope.set_protocol_version(PROTOCOL_VERSION);
+    envelope.init_server_hello().set_language_tag(language_tag);
+    finish_message(&message)
 }
 
 pub fn decode_request(bytes: &[u8]) -> Result<AdminRequest, AdminWireError> {
@@ -213,10 +246,41 @@ pub fn encode_invalid_request(
     finish_message(&message)
 }
 
-pub fn encode_close(reason: &str) -> Result<Vec<u8>, AdminWireError> {
+pub fn encode_close(
+    code: CloseCode,
+    text: &str,
+    languages: &[&str],
+) -> Result<Vec<u8>, AdminWireError> {
     let mut message = Builder::new_default();
     let mut envelope = message.init_root::<envelope::Builder>();
     envelope.set_protocol_version(PROTOCOL_VERSION);
+    let mut close = envelope.init_close();
+    close.set_code(match code {
+        CloseCode::Unspecified => crate::ct_admin_capnp::CloseCode::Unspecified,
+        CloseCode::UnsupportedVersion => crate::ct_admin_capnp::CloseCode::UnsupportedVersion,
+        CloseCode::MalformedHello => crate::ct_admin_capnp::CloseCode::MalformedHello,
+        CloseCode::UnsupportedLanguage => crate::ct_admin_capnp::CloseCode::UnsupportedLanguage,
+        CloseCode::AccessDenied => crate::ct_admin_capnp::CloseCode::AccessDenied,
+        CloseCode::InvalidRequest => crate::ct_admin_capnp::CloseCode::InvalidRequest,
+        CloseCode::StaleSession => crate::ct_admin_capnp::CloseCode::StaleSession,
+        CloseCode::ServerStopping => crate::ct_admin_capnp::CloseCode::ServerStopping,
+        CloseCode::SessionReplaced => crate::ct_admin_capnp::CloseCode::SessionReplaced,
+        CloseCode::InternalFailure => crate::ct_admin_capnp::CloseCode::InternalFailure,
+    });
+    close.set_message(text);
+    let mut supported = close
+        .reborrow()
+        .init_supported_language_tags(languages.len() as u32);
+    for (index, language) in languages.iter().enumerate() {
+        supported.set(index as u32, language);
+    }
+    finish_message(&message)
+}
+
+pub fn encode_legacy_close(protocol_version: u16, reason: &str) -> Result<Vec<u8>, AdminWireError> {
+    let mut message = Builder::new_default();
+    let mut envelope = message.init_root::<crate::ct_admin_capnp::legacy_v1_envelope::Builder>();
+    envelope.set_protocol_version(protocol_version);
     envelope.init_close().set_reason(reason);
     finish_message(&message)
 }
@@ -254,6 +318,19 @@ pub fn encode_request(request: &AdminRequest) -> Result<Vec<u8>, AdminWireError>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn administrator_hello_carries_language_and_version() {
+        let mut message = Builder::new_default();
+        let mut envelope = message.init_root::<envelope::Builder>();
+        envelope.set_protocol_version(PROTOCOL_VERSION);
+        envelope.init_client_hello().set_language_tag("en-US");
+        let frame = finish_message(&message).unwrap();
+        assert_eq!(
+            decode_client_hello_with_version(&frame).unwrap(),
+            (PROTOCOL_VERSION, "en-US".into())
+        );
+    }
 
     #[test]
     fn administrator_commands_round_trip() {

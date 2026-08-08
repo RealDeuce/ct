@@ -97,9 +97,9 @@ def main() -> int:
         errors.append(str(error))
 
     compatibility_checks = [
-        ("server/src/wire.rs", r"pub const PROTOCOL_VERSION: u16 = 2;", "CT-RPC version 2"),
-        ("server/src/admin_wire.rs", r"const PROTOCOL_VERSION: u16 = 1;", "admin protocol version 1"),
-        ("server/src/sysop_wire.rs", r"const PROTOCOL_VERSION: u16 = 1;", "sysop protocol version 1"),
+        ("server/src/wire.rs", r"pub const PROTOCOL_VERSION: u16 = 3;", "CT-RPC version 3"),
+        ("server/src/admin_wire.rs", r"pub const PROTOCOL_VERSION: u16 = 2;", "admin protocol version 2"),
+        ("server/src/sysop_wire.rs", r"pub const PROTOCOL_VERSION: u16 = 2;", "sysop protocol version 2"),
         ("server/src/store.rs", r"pub const STORAGE_FORMAT_VERSION: u64 = 1;", "storage format version 1"),
         ("server/src/store.rs", r"const SHIP_RECORD_CODEC_VERSION: u8 = 1;", "ship record codec version 1"),
         ("server/src/store.rs", r"const CNS5_COVERAGE_DISTRIBUTION_VERSION: u16 = 1;", "CNS5 coverage distribution version 1"),
@@ -112,15 +112,29 @@ def main() -> int:
         ("server/src/bbs_polity.rs", r"pub const BBS_POLITY_GENERATION_VERSION: u16 = 1;", "BBS polity generation version 1"),
         ("server/src/bbs_polity.rs", r"pub const BBS_COVERAGE_SAMPLER_VERSION: u16 = 1;", "BBS coverage sampler version 1"),
         ("server/src/creation.rs", r"pub const SETUP_REVISION: u64 = 1;", "setup revision 1"),
-        ("client/src/protocol.cpp", r"constexpr uint16_t PROTOCOL_VERSION = 2;", "CT-RPC version 2"),
-        ("client/src/admin_protocol.cpp", r"constexpr uint16_t PROTOCOL_VERSION = 1;", "admin protocol version 1"),
-        ("client/src/sysop_protocol.cpp", r"constexpr uint16_t PROTOCOL_VERSION = 1;", "sysop protocol version 1"),
+        ("client/src/protocol.cpp", r"constexpr uint16_t PROTOCOL_VERSION = 3;", "CT-RPC version 3"),
+        ("client/src/admin_protocol.cpp", r"constexpr uint16_t PROTOCOL_VERSION = 2;", "admin protocol version 2"),
+        ("client/src/sysop_protocol.cpp", r"constexpr uint16_t PROTOCOL_VERSION = 2;", "sysop protocol version 2"),
     ]
     for relative, pattern, description in compatibility_checks:
         try:
             require(pattern, relative, description)
         except (OSError, ValueError) as error:
             errors.append(str(error))
+
+    semantic_text_patterns = (
+        r"\.role\s*==\s*\"pilot\"",
+        r"\.shore_location\s*[!=]=\s*\"Aboard ship\"",
+        r"\.source\.find\(",
+        r"\.station\.find\(",
+        r"\.station\s*==\s*\"captain\"",
+    )
+    door_source = read("client/src/door_main.cpp")
+    for pattern in semantic_text_patterns:
+        if re.search(pattern, door_source):
+            errors.append(
+                "client/src/door_main.cpp: server display text is used as a semantic discriminator"
+            )
 
     cmake_text = read("client/CMakeLists.txt")
     forbidden_build_references = ("../../../odoors", "/synchronet", "src/xpdev")

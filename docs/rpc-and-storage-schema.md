@@ -1,6 +1,6 @@
 # RPC and Storage Schema
 
-*Current implementation: player CT-RPC 2, storage format 1, and record codecs 1.*
+*Current implementation: player CT-RPC 3, sysop/admin protocols 2, storage format 1, and record codecs 1.*
 
 ## Authority boundary
 
@@ -21,11 +21,29 @@ explain state, but it is never the machine-readable discriminator.
 
 ## Current protocol
 
-CT-RPC 2 is the only accepted player protocol. Both builds generate bindings
-from `protocol/ct_rpc.capnp`; there is no compatibility reader for older wire
-shapes. `InitialCrewDraft` contains only the authoritative slot ID, name, and
+CT-RPC 3 is the only accepted player protocol. The sysop and administrator
+protocols likewise accept only version 2. Each TLS connection begins with a
+hello carrying one BCP 47 language tag. The server validates it with RFC 4647
+lookup and returns the selected supported tag; the current clients request
+`en`, and English is the only installed server language.
+
+Unsupported versions receive a reason-only close encoded in the obsolete
+protocol's wire format. This compatibility path exists only to report the
+required upgrade and cannot establish a session. Current protocols use typed
+close codes, localized detail, and a supported-language list for negotiation
+failure. Established connections never interpret legacy envelopes.
+
+Both builds generate bindings from `protocol/ct_rpc.capnp`.
+`InitialCrewDraft` contains only the authoritative slot ID, name, and
 training skill. Captain options contain the current point-buy and skill-pool
 model without retired fields.
+
+Crew roles and locations, system-knowledge sources, and combat-actor
+eligibility have closed typed fields. Their accompanying labels remain display
+text and must not be parsed by clients. Server connection and protocol-control
+messages use the embedded Fluent English bundle. Persisted articles and
+simulation narrative remain English until they can be stored as semantic
+message identifiers and typed arguments, then rendered for each connection.
 
 An Offer `MessageItem` carries the rendered signed instrument, its offer
 identifier, and whether the finite instrument remains claimable. That

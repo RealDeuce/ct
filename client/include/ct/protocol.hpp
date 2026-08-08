@@ -126,6 +126,7 @@ struct ServerHello {
    uint64_t assigned_epoch;
    uint64_t committed_sequence;
    PlayerPhase phase;
+   std::string language_tag;
 };
 
 struct PlayerCreation {
@@ -233,6 +234,11 @@ struct StartingShipOptions {
    std::vector<RefitGroup> refit_groups;
 };
 
+enum class CrewRoleKind : uint8_t {
+   Command, Pilot, Navigator, Engineer, SensorsOperator, ScreenOperator,
+   TurretGunner, BayGunner, Gunner, Medic, Marine, FlightCrew, Steward, Other,
+};
+
 struct StartingCrewSlot {
    uint16_t slot_id;
    std::string role;
@@ -240,6 +246,7 @@ struct StartingCrewSlot {
    bool required;
    SkillPool skill_pool;
    PersonDraft default_crew;
+   CrewRoleKind role_kind;
 };
 
 struct StartingCrewPlan {
@@ -268,6 +275,7 @@ enum class CrewAvailability {
    Detached,
    AwaitingRecall,
 };
+enum class CrewLocationKind { AboardShip, ShoreFacility };
 enum class PersonnelActionKind {
    Dismiss,
    Transfer,
@@ -303,12 +311,15 @@ struct CrewManagementMember {
    uint64_t available_second;
    uint64_t service_revision;
    std::string shore_location;
+   CrewRoleKind role_kind;
+   CrewLocationKind location_kind;
 };
 
 struct CrewRole {
    uint16_t slot_id;
    std::string role;
    uint16_t represented_positions;
+   CrewRoleKind role_kind;
 };
 
 struct CrewManagementSnapshot {
@@ -530,6 +541,11 @@ struct DockedSnapshot {
    PlayerPhase phase;
 };
 
+enum class SystemKnowledgeSource : uint8_t {
+   PublishedRecords, CarriedRecords, PrivateObservation, PublicDispatch,
+   DirectDispatch, Withheld, SecretChart,
+};
+
 struct KnownSystemSummary {
    uint64_t system_id;
    std::string system_name;
@@ -545,6 +561,7 @@ struct KnownSystemSummary {
    double spinward_parsecs;
    double north_parsecs;
    bool remote_candidate;
+   SystemKnowledgeSource knowledge_source;
 };
 
 struct KnownDestinations {
@@ -1305,6 +1322,8 @@ struct CombatActor {
    std::string station;
    bool available;
    uint8_t action_budget;
+   std::vector<CombatActionKind> allowed_actions;
+   std::vector<CombatReaction> allowed_reactions;
 };
 struct CombatSnapshot {
    uint64_t combat_id;
@@ -1652,7 +1671,8 @@ std::optional<PlayerEvent> poll_event(TlsConnection& connection,
 
 ServerHello exchange_hello(TlsConnection& connection,
                            const PlayerIdentity& identity,
-                           const std::string& client_name);
+                           const std::string& client_name,
+                           const std::string& language_tag);
 
 PlayerCreated create_player(TlsConnection& connection,
                             uint64_t session_epoch,

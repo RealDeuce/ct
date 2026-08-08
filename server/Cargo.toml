@@ -12,8 +12,10 @@ path = "src/bin/universe_tour.rs"
 
 [dependencies]
 capnp = "0.26.2"
+fluent-bundle = "0.16.0"
 getrandom = "0.4"
 heed = "0.22.1"
+language-tags = "0.3.2"
 socket2 = "0.6"
 thiserror = "2.0"
 tokio = { version = "1.49", features = [
@@ -25,6 +27,7 @@ tokio = { version = "1.49", features = [
     "sync",
     "time",
 ] }
+unic-langid = { version = "0.9.6", features = ["macros"] }
 
 [build-dependencies]
 capnpc = "0.26.0"

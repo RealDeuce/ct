@@ -1,0 +1,10 @@
+unsupported-version = { $protocol } version { $clientVersion } is no longer supported; upgrade your Cepheus Trader client (this server requires version { $serverVersion })
+malformed-hello = The client hello is malformed: { $error }
+unsupported-language = This server does not support the requested language "{ $languageTag }".
+access-denied = Access denied: { $reason }
+invalid-request = Invalid request: { $error }
+wrong-session-epoch = The request used the wrong session epoch.
+server-stopping = The Cepheus Trader server is stopping.
+universe-reset = The game universe was reinitialized; reconnect to continue.
+session-replaced = This session was replaced by a newer connection.
+internal-failure = The server could not complete the request.

@@ -1074,7 +1074,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let hello_line = lines.next().expect("client omitted ServerHello output");
     assert!(
         hello_line.starts_with("HELLO bbs=1 player=1 epoch=4 committed=")
-            && hello_line.ends_with(" phase=new-user tls=TLS1.3"),
+            && hello_line.ends_with(" phase=new-user language=en tls=TLS1.3"),
         "{hello_line}"
     );
     let hello_committed = hello_line
@@ -1820,7 +1820,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let reconnect_line = reconnect_output.trim();
     assert!(
         reconnect_line.starts_with("HELLO bbs=1 player=1 epoch=5 committed=")
-            && reconnect_line.ends_with(" phase=docked tls=TLS1.3"),
+            && reconnect_line.ends_with(" phase=docked language=en tls=TLS1.3"),
         "{reconnect_line}"
     );
     let reconnect_committed = reconnect_line
@@ -1872,7 +1872,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let post_reset_hello = post_reset_hello.trim();
     assert!(
         post_reset_hello.starts_with("HELLO bbs=1 player=1 epoch=")
-            && post_reset_hello.ends_with(" phase=new-user tls=TLS1.3"),
+            && post_reset_hello.ends_with(" phase=new-user language=en tls=TLS1.3"),
         "{post_reset_hello}"
     );
     let post_reset_committed = post_reset_hello

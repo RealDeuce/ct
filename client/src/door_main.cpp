@@ -1538,7 +1538,7 @@ void render_crew_roster(
    for(size_t index = first; index < last; ++index) {
       const auto& slot = plan.slots[index];
       const auto naming =
-         ct::describe_crew_naming(slot.role, slot.represented_positions);
+         ct::describe_crew_naming(slot.role_kind, slot.role, slot.represented_positions);
       door_number("%c", crew_menu_key(index));
       door_label(". ");
       if(compact) {
@@ -1578,7 +1578,7 @@ void edit_crew_member(
 {
    const HelpScope help_scope(ct::DoorHelpTopic::Crew);
    const auto naming =
-      ct::describe_crew_naming(slot.role, slot.represented_positions);
+      ct::describe_crew_naming(slot.role_kind, slot.role, slot.represented_positions);
    while(true) {
       auto person = slot.default_crew;
       reset_training_target(person, draft.training_skill);
@@ -1888,7 +1888,7 @@ std::string crew_role_name(const ct::CrewRole& role)
       return "Captain";
    }
    return ct::describe_crew_naming(
-             role.role, role.represented_positions)
+             role.role_kind, role.role, role.represented_positions)
           .appointment;
 }
 
@@ -2053,7 +2053,7 @@ std::optional<std::vector<uint16_t>> edit_duty_assignments(
                                      snapshot.members.end(),
          [&role, &member](const auto & candidate) {
             return candidate.person_id != member.person_id &&
-                   role.role == "pilot" &&
+                   role.role_kind == ct::CrewRoleKind::Pilot &&
                    std::find(
                       candidate.assigned_slot_ids.begin(),
                       candidate.assigned_slot_ids.end(),
@@ -2131,7 +2131,7 @@ std::optional<std::vector<uint16_t>> edit_duty_assignments(
                                         snapshot.members.end(),
             [&role, &member](const auto & candidate) {
                return candidate.person_id != member.person_id &&
-                      role.role == "pilot" &&
+                      role.role_kind == ct::CrewRoleKind::Pilot &&
                       std::find(
                          candidate.assigned_slot_ids.begin(),
                          candidate.assigned_slot_ids.end(),
@@ -2175,7 +2175,7 @@ void show_crew_member(
             member.captain
             ? std::string("Captain")
             : ct::describe_crew_naming(
-               member.role, member.represented_positions)
+               member.role_kind, member.role, member.represented_positions)
             .appointment)
          .c_str());
       door_label("On watch: ");
@@ -2199,7 +2199,7 @@ void show_crew_member(
       door_number("%u\n\r", member.current_endurance);
       door_label("Availability: ");
       door_identifier("%s\n\r", crew_availability_name(member.availability));
-      if(member.shore_location != "Aboard ship") {
+      if(member.location_kind != ct::CrewLocationKind::AboardShip) {
          door_label("Present at: ");
          door_identifier("%s\n\r", safe_field(member.shore_location).c_str());
          if(member.availability != ct::CrewAvailability::AwaitingRecall) {
@@ -4517,7 +4517,8 @@ void show_known_universe_manager(
       door_information(
          "\n\rNavigation, port, population, and technical reports may have "
          "changed since this chart was received.\n\r");
-      const bool secret = system.source.find("secret chart") != std::string::npos;
+      const bool secret = system.knowledge_source ==
+         ct::SystemKnowledgeSource::SecretChart;
       door_prompt(secret
                   ? "\n\r[S] Remove from Secret Systems  [Enter] Return  [?] Help\n\r"
                   : "\n\r[S] Add to Secret Systems  [Enter] Return  [?] Help\n\r");
@@ -6370,45 +6371,6 @@ const char* combat_range_name(const ct::CombatRange range)
    return "unknown";
 }
 
-bool combat_station_matches(std::string station, const ct::CombatActionKind kind)
-{
-   std::transform(station.begin(), station.end(), station.begin(),
-      [](const unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-   switch(kind) {
-   case ct::CombatActionKind::Coordinate:
-   case ct::CombatActionKind::IncreaseInitiative:
-   case ct::CombatActionKind::OfferSurrender:
-   case ct::CombatActionKind::AcceptSurrender:
-   case ct::CombatActionKind::LaunchEscapeCraft:
-      return station.find("captain") != std::string::npos;
-   case ct::CombatActionKind::EvasiveManeuvers:
-   case ct::CombatActionKind::LineUpShot:
-   case ct::CombatActionKind::BreakPursuit:
-      return station.find("pilot") != std::string::npos;
-   case ct::CombatActionKind::RangeCheckClose:
-   case ct::CombatActionKind::RangeCheckOpen:
-   case ct::CombatActionKind::PrepareJump:
-      return station.find("navigator") != std::string::npos
-         || station.find("astrogator") != std::string::npos;
-   case ct::CombatActionKind::SensorTargeting:
-   case ct::CombatActionKind::ElectronicWarfare:
-   case ct::CombatActionKind::InspectContact:
-      return station.find("sensor") != std::string::npos
-         || station.find("comm") != std::string::npos;
-   case ct::CombatActionKind::DamageControl:
-      return station.find("damage") != std::string::npos
-         || station.find("engineer") != std::string::npos;
-   case ct::CombatActionKind::Attack:
-      return station.find("gunner") != std::string::npos;
-   case ct::CombatActionKind::Board:
-      return station.find("marine") != std::string::npos
-         || station.find("security") != std::string::npos;
-   case ct::CombatActionKind::Hold:
-      return true;
-   }
-   return false;
-}
-
 std::optional<uint64_t> select_combat_actor(
    const ct::CombatSnapshot& combat,
    const ct::CombatActionKind kind,
@@ -6419,7 +6381,8 @@ std::optional<uint64_t> select_combat_actor(
       if(!actor.available || assigned.find(actor.person_id) != assigned.end()) {
          continue;
       }
-      if(combat_station_matches(actor.station, kind) || actor.station == "captain") {
+      if(std::find(actor.allowed_actions.begin(), actor.allowed_actions.end(), kind) !=
+            actor.allowed_actions.end()) {
          eligible.push_back(&actor);
       }
    }
@@ -6430,6 +6393,40 @@ std::optional<uint64_t> select_combat_actor(
    }
    od_clr_scr();
    door_heading("Assign Combat Action\n\r====================\n\r\n\r");
+   for(size_t index = 0; index < eligible.size(); ++index) {
+      door_number("%zu", index + 1);
+      door_label(". ");
+      door_identifier("%s", safe_field(eligible[index]->name).c_str());
+      door_label(" — ");
+      door_value("%s\n\r", safe_field(eligible[index]->station).c_str());
+   }
+   const auto selected = input_number(
+      "Watchstander", 1, static_cast<unsigned>(eligible.size()));
+   if(!selected) {
+      return std::nullopt;
+   }
+   return eligible[*selected - 1]->person_id;
+}
+
+std::optional<uint64_t> select_combat_reaction_actor(
+   const ct::CombatSnapshot& combat,
+   const ct::CombatReaction kind)
+{
+   std::vector<const ct::CombatActor*> eligible;
+   for(const auto& actor : combat.actors) {
+      if(actor.available &&
+         std::find(actor.allowed_reactions.begin(), actor.allowed_reactions.end(), kind) !=
+            actor.allowed_reactions.end()) {
+         eligible.push_back(&actor);
+      }
+   }
+   if(eligible.empty()) {
+      door_error("No qualified watchstander is available for that reaction.\n\r");
+      wait_for_enter();
+      return std::nullopt;
+   }
+   od_clr_scr();
+   door_heading("Assign Combat Reaction\n\r======================\n\r\n\r");
    for(size_t index = 0; index < eligible.size(); ++index) {
       door_number("%zu", index + 1);
       door_label(". ");
@@ -6549,10 +6546,7 @@ std::optional<ct::CombatOrderSet> edit_combat_order(const ct::CombatSnapshot& co
                break;
             }
             const auto kind = static_cast<ct::CombatReaction>(*choice - 1);
-            const auto actor_kind = kind == ct::CombatReaction::Dodge
-                                    ? ct::CombatActionKind::EvasiveManeuvers
-                                    : ct::CombatActionKind::Attack;
-            const auto actor = select_combat_actor(combat, actor_kind, {});
+            const auto actor = select_combat_reaction_actor(combat, kind);
             if(actor) {
                order.reactions.push_back({kind, *actor});
             }
@@ -6764,55 +6758,12 @@ ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello&
    ct::CombatOrderSet order = combat.default_order;
    std::unordered_set<uint64_t> assigned_actors;
    const auto actor_for = [&](const ct::CombatActionKind kind) -> uint64_t {
-      const auto matches = [kind](std::string station) {
-         std::transform(station.begin(), station.end(), station.begin(),
-            [](const unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-         switch(kind) {
-         case ct::CombatActionKind::Coordinate:
-         case ct::CombatActionKind::IncreaseInitiative:
-         case ct::CombatActionKind::OfferSurrender:
-         case ct::CombatActionKind::AcceptSurrender:
-         case ct::CombatActionKind::LaunchEscapeCraft:
-            return station.find("captain") != std::string::npos;
-         case ct::CombatActionKind::EvasiveManeuvers:
-         case ct::CombatActionKind::LineUpShot:
-         case ct::CombatActionKind::BreakPursuit:
-            return station.find("pilot") != std::string::npos;
-         case ct::CombatActionKind::RangeCheckClose:
-         case ct::CombatActionKind::RangeCheckOpen:
-         case ct::CombatActionKind::PrepareJump:
-            return station.find("navigator") != std::string::npos
-               || station.find("astrogator") != std::string::npos;
-         case ct::CombatActionKind::SensorTargeting:
-         case ct::CombatActionKind::ElectronicWarfare:
-         case ct::CombatActionKind::InspectContact:
-            return station.find("sensor") != std::string::npos
-               || station.find("comm") != std::string::npos;
-         case ct::CombatActionKind::DamageControl:
-            return station.find("damage") != std::string::npos
-               || station.find("engineer") != std::string::npos;
-         case ct::CombatActionKind::Attack:
-            return station.find("gunner") != std::string::npos;
-         case ct::CombatActionKind::Board:
-            return station.find("marine") != std::string::npos
-               || station.find("security") != std::string::npos;
-         case ct::CombatActionKind::Hold:
-            return true;
-         }
-         return false;
-      };
       auto selected = std::find_if(combat.actors.begin(), combat.actors.end(),
          [&](const auto& actor) {
             return actor.available && assigned_actors.find(actor.person_id) == assigned_actors.end()
-               && matches(actor.station);
+               && std::find(actor.allowed_actions.begin(), actor.allowed_actions.end(), kind) !=
+                  actor.allowed_actions.end();
          });
-      if(selected == combat.actors.end()) {
-         selected = std::find_if(combat.actors.begin(), combat.actors.end(),
-            [&](const auto& actor) {
-               return actor.available && assigned_actors.find(actor.person_id) == assigned_actors.end()
-                  && actor.station == "captain";
-            });
-      }
       if(selected == combat.actors.end()) {
          return 0;
       }
@@ -7108,7 +7059,8 @@ int main(int argc, char** argv)
       auto hello = ct::exchange_hello(
          connection,
          identity,
-         "cepheus-trader-door/" CT_PRODUCT_VERSION);
+         "cepheus-trader-door/" CT_PRODUCT_VERSION,
+         "en");
       event_connection = &connection;
       event_session_epoch = hello.assigned_epoch;
       render_hello(hello, connection);

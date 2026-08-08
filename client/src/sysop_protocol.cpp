@@ -18,7 +18,7 @@
 namespace ct {
 namespace {
 
-constexpr uint16_t PROTOCOL_VERSION = 1;
+constexpr uint16_t PROTOCOL_VERSION = 2;
 constexpr size_t MAX_FRAME_BYTES = 1024 * 1024;
 constexpr size_t MAX_NAME_BYTES = 128;
 
@@ -208,6 +208,47 @@ DirectiveIssued parse_directive_response(
 }
 
 }  // namespace
+
+void exchange_sysop_hello(TlsConnection& connection,
+                          const std::string& language_tag) {
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<sysop::Envelope>();
+   envelope.setProtocolVersion(PROTOCOL_VERSION);
+   envelope.initClientHello().setLanguageTag(language_tag);
+   const auto words = capnp::messageToFlatArray(message);
+   send_frame(connection, words.asBytes());
+
+   const auto frame = receive_frame(connection);
+   const auto word_count =
+      (frame.size() + sizeof(capnp::word) - 1) / sizeof(capnp::word);
+   auto response_words = kj::heapArray<capnp::word>(word_count);
+   std::memset(response_words.begin(), 0, response_words.asBytes().size());
+   std::memcpy(response_words.asBytes().begin(), frame.data(), frame.size());
+   capnp::FlatArrayMessageReader reader(response_words);
+   const auto response = reader.getRoot<sysop::Envelope>();
+   if(response.isClose()) {
+      const auto close = response.getClose();
+      if(close.hasMessage() && close.getMessage().size() != 0) {
+         throw std::runtime_error(close.getMessage().cStr());
+      }
+      const auto legacy = reader.getRoot<sysop::LegacyV1Envelope>();
+      if(legacy.isClose()) {
+         throw std::runtime_error(legacy.getClose().getReason().cStr());
+      }
+      throw std::runtime_error("sysop connection closed during negotiation");
+   }
+   if(response.getProtocolVersion() != PROTOCOL_VERSION) {
+      const auto legacy = reader.getRoot<sysop::LegacyV1Envelope>();
+      if(legacy.isClose()) {
+         throw std::runtime_error(legacy.getClose().getReason().cStr());
+      }
+      throw std::runtime_error("server selected an unsupported sysop protocol version");
+   }
+   if(!response.isServerHello() ||
+      response.getServerHello().getLanguageTag() != "en") {
+      throw std::runtime_error("expected a valid sysop ServerHello");
+   }
+}
 
 StaleConfiguration::StaleConfiguration(const uint64_t current_revision) :
       std::runtime_error(

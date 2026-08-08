@@ -12,8 +12,24 @@ struct Envelope {
     request @2 :Request;
     response @3 :Response;
     close @4 :Close;
+    clientHello @5 :ClientHello;
+    serverHello @6 :ServerHello;
   }
 }
+
+struct ClientHello { languageTag @0 :Text; }
+struct ServerHello { languageTag @0 :Text; }
+
+struct LegacyV1Envelope {
+  protocolVersion @0 :UInt16;
+  requestId @1 :UInt64;
+  union {
+    request @2 :Void;
+    response @3 :Void;
+    close @4 :LegacyClose;
+  }
+}
+struct LegacyClose { reason @0 :Text; }
 
 struct Request {
   # Stable across retries. Exactly 16 bytes.
@@ -92,6 +108,21 @@ struct Error {
   message @1 :Text;
 }
 
+enum CloseCode {
+  unspecified @0;
+  unsupportedVersion @1;
+  malformedHello @2;
+  unsupportedLanguage @3;
+  accessDenied @4;
+  invalidRequest @5;
+  staleSession @6;
+  serverStopping @7;
+  sessionReplaced @8;
+  internalFailure @9;
+}
+
 struct Close {
-  reason @0 :Text;
+  code @0 :CloseCode;
+  message @1 :Text;
+  supportedLanguageTags @2 :List(Text);
 }

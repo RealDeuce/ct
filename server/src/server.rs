@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use fluent_bundle::FluentArgs;
 use socket2::{Domain, Protocol, Socket, Type};
 use thiserror::Error;
 #[cfg(test)]
@@ -18,6 +19,10 @@ use tokio::task::JoinHandle;
 
 use crate::engine::BbsRegistry;
 use crate::engine::{Engine, EngineError};
+use crate::i18n::{
+    LanguageNegotiationError, LocalizationError, NegotiatedLanguage, SUPPORTED_LANGUAGE_TAGS,
+    default_language, negotiate_language,
+};
 use crate::store::{
     BbsConfiguration, BbsCredential, BbsSettings, ConfigureBbsResult, Delivery, OperationalStatus,
     PlayerAccessRecord, PlayerAccessState, PlayerTravelTransition, SetPlayerAccessResult,
@@ -27,9 +32,10 @@ use crate::tls::{PskCredential, TlsServer};
 use crate::traffic::{TrafficContact, TrafficSnapshot};
 use crate::universe::UniverseInitialization;
 use crate::wire::{
-    MAX_FRAME_BYTES, PROTOCOL_VERSION, PlayerIdentity, WireError, decode_client_hello_with_version,
-    decode_close, decode_request, encode_checkpoint_ready, encode_close, encode_close_for_version,
-    encode_encounter_ready, encode_phase_changed, encode_response, encode_server_hello,
+    CloseCode, MAX_FRAME_BYTES, PROTOCOL_VERSION, PlayerIdentity, WireError,
+    decode_client_hello_with_version, decode_close, decode_protocol_version, decode_request,
+    encode_checkpoint_ready, encode_close_with_code, encode_encounter_ready,
+    encode_legacy_close_for_version, encode_phase_changed, encode_response, encode_server_hello,
     encode_server_stopping, encode_session_replaced, encode_traffic_movement,
     encode_traffic_snapshot,
 };
@@ -44,6 +50,29 @@ const MAX_PENDING_GAME_AUTHENTICATIONS: usize = 64;
 const MAX_ACTIVE_GAME_SESSIONS: usize = 256;
 const MAX_ACTIVE_GAME_SESSIONS_PER_BBS: usize = 64;
 
+fn localized_version_rejection(
+    protocol: &str,
+    client_version: u16,
+    server_version: u16,
+) -> Result<String, LocalizationError> {
+    let mut arguments = FluentArgs::new();
+    arguments.set("protocol", protocol);
+    arguments.set("clientVersion", i64::from(client_version));
+    arguments.set("serverVersion", i64::from(server_version));
+    default_language().format("unsupported-version", Some(&arguments))
+}
+
+fn localized_error(
+    language: &NegotiatedLanguage,
+    key: &str,
+    argument_name: &str,
+    argument: &str,
+) -> Result<String, LocalizationError> {
+    let mut arguments = FluentArgs::new();
+    arguments.set(argument_name, argument);
+    language.format(key, Some(&arguments))
+}
+
 #[derive(Debug, Error)]
 pub enum ServerError {
     #[error("network I/O error: {0}")]
@@ -54,6 +83,8 @@ pub enum ServerError {
     AdminWire(#[from] admin_wire::AdminWireError),
     #[error(transparent)]
     SysopWire(#[from] sysop_wire::SysopWireError),
+    #[error(transparent)]
+    Localization(#[from] LocalizationError),
     #[error("authoritative engine stopped")]
     EngineStopped,
     #[error("authoritative engine failure: {0}")]
@@ -896,6 +927,7 @@ struct ActiveSession {
     outbound: mpsc::Sender<Vec<u8>>,
     replaced: watch::Sender<bool>,
     socket: Option<Arc<StdTcpStream>>,
+    language: NegotiatedLanguage,
 }
 
 #[derive(Default)]
@@ -1124,7 +1156,11 @@ impl Sessions {
         } else {
             format!("player access {state}: {}", access.reason)
         };
-        if let Ok(frame) = encode_close(session.epoch, &reason) {
+        let reason = localized_error(&session.language, "access-denied", "reason", &reason)
+            .unwrap_or(reason);
+        if let Ok(frame) =
+            encode_close_with_code(session.epoch, CloseCode::AccessDenied, &reason, &[])
+        {
             let _ = session.outbound.try_send(frame);
         }
         let _ = session.replaced.send(true);
@@ -1530,19 +1566,71 @@ async fn handle_connection(
     });
 
     let hello_frame = read_tls_frame_async(Arc::clone(&tls)).await?;
-    let (client_version, hello) = decode_client_hello_with_version(&hello_frame)?;
+    let client_version = decode_protocol_version(&hello_frame)?;
     if client_version != PROTOCOL_VERSION {
-        let reason = format!(
-            "CT-RPC version {client_version} is no longer supported; upgrade your Cepheus Trader client (this server requires version {PROTOCOL_VERSION})"
-        );
+        let reason = localized_version_rejection("CT-RPC", client_version, PROTOCOL_VERSION)?;
         let _ = outbound
-            .send(encode_close_for_version(client_version, 0, &reason)?)
+            .send(encode_legacy_close_for_version(client_version, 0, &reason)?)
             .await;
         drop(outbound);
         let _ = writer_task.await;
         let _ = socket.shutdown(Shutdown::Both);
         return Ok(());
     }
+    let (_, hello) = match decode_client_hello_with_version(&hello_frame) {
+        Ok(hello) => hello,
+        Err(error) => {
+            let reason = localized_error(
+                &default_language(),
+                "malformed-hello",
+                "error",
+                &error.to_string(),
+            )?;
+            let _ = outbound
+                .send(encode_close_with_code(
+                    0,
+                    CloseCode::MalformedHello,
+                    &reason,
+                    &[],
+                )?)
+                .await;
+            drop(outbound);
+            let _ = writer_task.await;
+            let _ = socket.shutdown(Shutdown::Both);
+            return Ok(());
+        }
+    };
+    let language = match negotiate_language(&hello.language_tag) {
+        Ok(language) => language,
+        Err(error) => {
+            let (code, key) = match error {
+                LanguageNegotiationError::Malformed => {
+                    (CloseCode::MalformedHello, "malformed-hello")
+                }
+                LanguageNegotiationError::Unsupported => {
+                    (CloseCode::UnsupportedLanguage, "unsupported-language")
+                }
+            };
+            let (argument_name, argument) = if error == LanguageNegotiationError::Malformed {
+                ("error", "invalid BCP 47 language tag")
+            } else {
+                ("languageTag", hello.language_tag.as_str())
+            };
+            let reason = localized_error(&default_language(), key, argument_name, argument)?;
+            let _ = outbound
+                .send(encode_close_with_code(
+                    0,
+                    code,
+                    &reason,
+                    SUPPORTED_LANGUAGE_TAGS,
+                )?)
+                .await;
+            drop(outbound);
+            let _ = writer_task.await;
+            let _ = socket.shutdown(Shutdown::Both);
+            return Ok(());
+        }
+    };
     if tls
         .identity()
         .map_err(|error| ServerError::Tls(error.to_string()))?
@@ -1556,7 +1644,15 @@ async fn handle_connection(
             let reason = message
                 .strip_prefix("player access denied: ")
                 .unwrap_or(&message);
-            let _ = outbound.send(encode_close(0, reason)?).await;
+            let reason = localized_error(&language, "access-denied", "reason", reason)?;
+            let _ = outbound
+                .send(encode_close_with_code(
+                    0,
+                    CloseCode::AccessDenied,
+                    &reason,
+                    &[],
+                )?)
+                .await;
             drop(outbound);
             let _ = writer_task.await;
             let _ = socket.shutdown(Shutdown::Both);
@@ -1571,6 +1667,7 @@ async fn handle_connection(
         outbound: outbound.clone(),
         replaced: replaced_sender,
         socket: Some(Arc::clone(&socket)),
+        language: language.clone(),
     };
     if let Some(previous) = sessions
         .replace_limited(hello.identity.clone(), active)
@@ -1590,6 +1687,7 @@ async fn handle_connection(
             epoch,
             opening.committed_sequence,
             opening.phase,
+            language.tag(),
         )?)
         .await
         .map_err(|_| {
@@ -1679,13 +1777,28 @@ async fn handle_connection(
             }
             Ok(_) => {
                 let _ = outbound
-                    .send(encode_close(epoch, "request used the wrong session epoch")?)
+                    .send(encode_close_with_code(
+                        epoch,
+                        CloseCode::StaleSession,
+                        &language.text("wrong-session-epoch")?,
+                        &[],
+                    )?)
                     .await;
                 break Ok(());
             }
             Err(error) => {
                 let _ = outbound
-                    .send(encode_close(epoch, &format!("malformed request: {error}"))?)
+                    .send(encode_close_with_code(
+                        epoch,
+                        CloseCode::InvalidRequest,
+                        &localized_error(
+                            &language,
+                            "invalid-request",
+                            "error",
+                            &error.to_string(),
+                        )?,
+                        &[],
+                    )?)
                     .await;
                 break Ok(());
             }
@@ -1723,6 +1836,61 @@ async fn handle_admin_connection(
     socket.set_write_timeout(None)?;
     let tls = Arc::new(tls);
 
+    let hello_frame = read_tls_frame_async(Arc::clone(&tls)).await?;
+    let client_version = admin_wire::decode_protocol_version(&hello_frame)?;
+    if client_version != admin_wire::PROTOCOL_VERSION {
+        let reason =
+            localized_version_rejection("CT-Admin", client_version, admin_wire::PROTOCOL_VERSION)?;
+        let close = admin_wire::encode_legacy_close(client_version, &reason)?;
+        let writer = Arc::clone(&tls);
+        let _ = tokio::task::spawn_blocking(move || write_tls_frame(&writer, &close)).await;
+        return Ok(());
+    }
+    let (_, requested_language) = match admin_wire::decode_client_hello_with_version(&hello_frame) {
+        Ok(hello) => hello,
+        Err(error) => {
+            let reason = localized_error(
+                &default_language(),
+                "malformed-hello",
+                "error",
+                &error.to_string(),
+            )?;
+            let close = admin_wire::encode_close(CloseCode::MalformedHello, &reason, &[])?;
+            let writer = Arc::clone(&tls);
+            let _ = tokio::task::spawn_blocking(move || write_tls_frame(&writer, &close)).await;
+            return Ok(());
+        }
+    };
+    let language = match negotiate_language(&requested_language) {
+        Ok(language) => language,
+        Err(error) => {
+            let (code, key, argument_name, argument) = match error {
+                LanguageNegotiationError::Malformed => (
+                    CloseCode::MalformedHello,
+                    "malformed-hello",
+                    "error",
+                    "invalid BCP 47 language tag",
+                ),
+                LanguageNegotiationError::Unsupported => (
+                    CloseCode::UnsupportedLanguage,
+                    "unsupported-language",
+                    "languageTag",
+                    requested_language.as_str(),
+                ),
+            };
+            let reason = localized_error(&default_language(), key, argument_name, argument)?;
+            let close = admin_wire::encode_close(code, &reason, SUPPORTED_LANGUAGE_TAGS)?;
+            let writer = Arc::clone(&tls);
+            let _ = tokio::task::spawn_blocking(move || write_tls_frame(&writer, &close)).await;
+            return Ok(());
+        }
+    };
+    let server_hello = admin_wire::encode_server_hello(language.tag())?;
+    let hello_writer = Arc::clone(&tls);
+    tokio::task::spawn_blocking(move || write_tls_frame(&hello_writer, &server_hello))
+        .await
+        .map_err(|_| ServerError::TlsWorkerStopped)??;
+
     loop {
         let frame = match read_tls_frame_async(Arc::clone(&tls)).await {
             Ok(frame) => frame,
@@ -1732,7 +1900,9 @@ async fn handle_admin_connection(
         let request = match admin_wire::decode_request(&frame) {
             Ok(request) => request,
             Err(error) => {
-                let close = admin_wire::encode_close(&format!("invalid request: {error}"))?;
+                let reason =
+                    localized_error(&language, "invalid-request", "error", &error.to_string())?;
+                let close = admin_wire::encode_close(CloseCode::InvalidRequest, &reason, &[])?;
                 let writer = Arc::clone(&tls);
                 let _ = tokio::task::spawn_blocking(move || write_tls_frame(&writer, &close)).await;
                 return Ok(());
@@ -1821,6 +1991,61 @@ async fn handle_sysop_connection(
     }
     let tls = Arc::new(tls);
 
+    let hello_frame = read_tls_frame_async(Arc::clone(&tls)).await?;
+    let client_version = sysop_wire::decode_protocol_version(&hello_frame)?;
+    if client_version != sysop_wire::PROTOCOL_VERSION {
+        let reason =
+            localized_version_rejection("CT-Sysop", client_version, sysop_wire::PROTOCOL_VERSION)?;
+        let close = sysop_wire::encode_legacy_close(client_version, &reason)?;
+        let writer = Arc::clone(&tls);
+        let _ = tokio::task::spawn_blocking(move || write_tls_frame(&writer, &close)).await;
+        return Ok(());
+    }
+    let (_, requested_language) = match sysop_wire::decode_client_hello_with_version(&hello_frame) {
+        Ok(hello) => hello,
+        Err(error) => {
+            let reason = localized_error(
+                &default_language(),
+                "malformed-hello",
+                "error",
+                &error.to_string(),
+            )?;
+            let close = sysop_wire::encode_close(CloseCode::MalformedHello, &reason, &[])?;
+            let writer = Arc::clone(&tls);
+            let _ = tokio::task::spawn_blocking(move || write_tls_frame(&writer, &close)).await;
+            return Ok(());
+        }
+    };
+    let language = match negotiate_language(&requested_language) {
+        Ok(language) => language,
+        Err(error) => {
+            let (code, key, argument_name, argument) = match error {
+                LanguageNegotiationError::Malformed => (
+                    CloseCode::MalformedHello,
+                    "malformed-hello",
+                    "error",
+                    "invalid BCP 47 language tag",
+                ),
+                LanguageNegotiationError::Unsupported => (
+                    CloseCode::UnsupportedLanguage,
+                    "unsupported-language",
+                    "languageTag",
+                    requested_language.as_str(),
+                ),
+            };
+            let reason = localized_error(&default_language(), key, argument_name, argument)?;
+            let close = sysop_wire::encode_close(code, &reason, SUPPORTED_LANGUAGE_TAGS)?;
+            let writer = Arc::clone(&tls);
+            let _ = tokio::task::spawn_blocking(move || write_tls_frame(&writer, &close)).await;
+            return Ok(());
+        }
+    };
+    let server_hello = sysop_wire::encode_server_hello(language.tag())?;
+    let hello_writer = Arc::clone(&tls);
+    tokio::task::spawn_blocking(move || write_tls_frame(&hello_writer, &server_hello))
+        .await
+        .map_err(|_| ServerError::TlsWorkerStopped)??;
+
     loop {
         let frame = match read_tls_frame_async(Arc::clone(&tls)).await {
             Ok(frame) => frame,
@@ -1830,7 +2055,9 @@ async fn handle_sysop_connection(
         let request = match sysop_wire::decode_request(&frame) {
             Ok(request) => request,
             Err(error) => {
-                let close = sysop_wire::encode_close(&format!("invalid request: {error}"))?;
+                let reason =
+                    localized_error(&language, "invalid-request", "error", &error.to_string())?;
+                let close = sysop_wire::encode_close(CloseCode::InvalidRequest, &reason, &[])?;
                 let writer = Arc::clone(&tls);
                 let _ = tokio::task::spawn_blocking(move || write_tls_frame(&writer, &close)).await;
                 return Ok(());
@@ -2087,6 +2314,7 @@ mod tests {
                         outbound: old_outbound,
                         replaced: old_replaced,
                         socket: None,
+                        language: default_language(),
                     },
                 )
                 .await
@@ -2103,6 +2331,7 @@ mod tests {
                     outbound: new_outbound,
                     replaced: new_replaced,
                     socket: None,
+                    language: default_language(),
                 },
             )
             .await
@@ -2136,6 +2365,7 @@ mod tests {
                             outbound,
                             replaced,
                             socket: None,
+                            language: default_language(),
                         },
                     )
                     .await

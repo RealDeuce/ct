@@ -94,29 +94,29 @@ int main() {
    check(ct::maximum_affordable_cargo(25'024, 25'000, 2000) == 1000);
    check(ct::maximum_affordable_cargo(25'025, 25'000, 2000) == 1001);
 
-   const auto marines = ct::describe_crew_naming("marine", 4);
+   const auto marines = ct::describe_crew_naming(ct::CrewRoleKind::Marine, "marine", 4);
    check(marines.role_name == "Marine");
    check(marines.appointment == "Marine detachment leader");
    check(marines.assignment == "4 marines");
    check(marines.explanation.find("other 3 positions") != std::string::npos);
    check(marines.prompt == "Marine detachment leader name");
 
-   const auto engineer = ct::describe_crew_naming("engineer", 1);
+   const auto engineer = ct::describe_crew_naming(ct::CrewRoleKind::Engineer, "engineer", 1);
    check(engineer.appointment == "Ship's engineer");
    check(engineer.assignment == "1 engineer");
 
-   const auto engineering = ct::describe_crew_naming("engineer", 4);
+   const auto engineering = ct::describe_crew_naming(ct::CrewRoleKind::Engineer, "engineer", 4);
    check(engineering.appointment == "Chief engineer");
    check(engineering.assignment == "4 engineers");
 
-   const auto specialist = ct::describe_crew_naming("survey-specialist", 2);
-   check(specialist.role_name == "Survey Specialist");
-   check(specialist.appointment == "Lead Survey Specialist");
-   check(specialist.assignment == "2 Survey Specialist positions");
+   const auto specialist = ct::describe_crew_naming(ct::CrewRoleKind::Other, "survey-specialist", 2);
+   check(specialist.role_name == "General crew");
+   check(specialist.appointment == "Crew chief");
+   check(specialist.assignment == "2 general-crew positions");
 
    bool rejected_zero = false;
    try {
-      static_cast<void>(ct::describe_crew_naming("marine", 0));
+      static_cast<void>(ct::describe_crew_naming(ct::CrewRoleKind::Marine, "marine", 0));
    } catch(const std::invalid_argument&) {
       rejected_zero = true;
    }

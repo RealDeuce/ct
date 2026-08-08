@@ -9,6 +9,9 @@ namespace ct {
 
 class TlsConnection;
 
+void exchange_sysop_hello(TlsConnection& connection,
+                          const std::string& language_tag);
+
 struct SysopSettings {
    std::string bbs_name;
    std::string polity_name;

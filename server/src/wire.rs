@@ -11,7 +11,7 @@ use crate::ct_rpc_capnp::{
     person_draft, player_creation, request,
 };
 
-pub const PROTOCOL_VERSION: u16 = 2;
+pub const PROTOCOL_VERSION: u16 = 3;
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 pub const COMMAND_ID_BYTES: usize = 16;
 pub const MAX_NAME_BYTES: usize = 128;
@@ -49,6 +49,37 @@ pub struct PlayerIdentity {
 pub struct ClientHello {
     pub identity: PlayerIdentity,
     pub client_name: String,
+    pub language_tag: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CloseCode {
+    Unspecified,
+    UnsupportedVersion,
+    MalformedHello,
+    UnsupportedLanguage,
+    AccessDenied,
+    InvalidRequest,
+    StaleSession,
+    ServerStopping,
+    SessionReplaced,
+    InternalFailure,
+}
+
+fn schema_close_code(code: CloseCode) -> crate::ct_rpc_capnp::CloseCode {
+    use crate::ct_rpc_capnp::CloseCode as Schema;
+    match code {
+        CloseCode::Unspecified => Schema::Unspecified,
+        CloseCode::UnsupportedVersion => Schema::UnsupportedVersion,
+        CloseCode::MalformedHello => Schema::MalformedHello,
+        CloseCode::UnsupportedLanguage => Schema::UnsupportedLanguage,
+        CloseCode::AccessDenied => Schema::AccessDenied,
+        CloseCode::InvalidRequest => Schema::InvalidRequest,
+        CloseCode::StaleSession => Schema::StaleSession,
+        CloseCode::ServerStopping => Schema::ServerStopping,
+        CloseCode::SessionReplaced => Schema::SessionReplaced,
+        CloseCode::InternalFailure => Schema::InternalFailure,
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -360,6 +391,45 @@ pub struct StartingCrewPlan {
     pub setup_revision: u64,
     pub starting_offer_id: u32,
     pub slots: Vec<StartingCrewSlot>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CrewRoleKind {
+    Command,
+    Pilot,
+    Navigator,
+    Engineer,
+    SensorsOperator,
+    ScreenOperator,
+    TurretGunner,
+    BayGunner,
+    Gunner,
+    Medic,
+    Marine,
+    FlightCrew,
+    Steward,
+    Other,
+}
+
+impl CrewRoleKind {
+    pub fn from_slug(role: &str) -> Self {
+        match role {
+            "captain" | "command" => Self::Command,
+            "pilot" => Self::Pilot,
+            "navigator" | "astrogator" => Self::Navigator,
+            "engineer" | "damage-control" => Self::Engineer,
+            "sensors-operator" | "communications-operator" => Self::SensorsOperator,
+            "screen-operator" => Self::ScreenOperator,
+            "turret-gunner" => Self::TurretGunner,
+            "bay-gunner" => Self::BayGunner,
+            "gunner" => Self::Gunner,
+            "medic" => Self::Medic,
+            "marine" | "security" => Self::Marine,
+            "flight-crew" => Self::FlightCrew,
+            "steward" => Self::Steward,
+            _ => Self::Other,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -690,6 +760,18 @@ pub struct KnownSystemSummary {
     pub source: String,
     pub position: Coordinate3,
     pub remote_candidate: bool,
+    pub knowledge_source: SystemKnowledgeSource,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SystemKnowledgeSource {
+    PublishedRecords,
+    CarriedRecords,
+    PrivateObservation,
+    PublicDispatch,
+    DirectDispatch,
+    Withheld,
+    SecretChart,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1593,6 +1675,8 @@ pub struct CombatActor {
     pub station: String,
     pub available: bool,
     pub action_budget: u8,
+    pub role_kind: CrewRoleKind,
+    pub captain: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2299,6 +2383,13 @@ pub fn decode_client_hello(bytes: &[u8]) -> Result<ClientHello, WireError> {
     Ok(hello)
 }
 
+pub fn decode_protocol_version(bytes: &[u8]) -> Result<u16, WireError> {
+    let message = message_reader(bytes)?;
+    Ok(message
+        .get_root::<envelope::Reader>()?
+        .get_protocol_version())
+}
+
 pub fn decode_client_hello_with_version(bytes: &[u8]) -> Result<(u16, ClientHello), WireError> {
     let message = message_reader(bytes)?;
     let envelope = message.get_root::<envelope::Reader>()?;
@@ -2315,11 +2406,17 @@ pub fn decode_client_hello_with_version(bytes: &[u8]) -> Result<(u16, ClientHell
         .to_str()
         .map_err(|_| WireError::InvalidText)?
         .to_owned();
+    let language_tag = hello
+        .get_language_tag()?
+        .to_str()
+        .map_err(|_| WireError::InvalidText)?
+        .to_owned();
     Ok((
         version,
         ClientHello {
             identity: PlayerIdentity { bbs_id, player_id },
             client_name,
+            language_tag,
         },
     ))
 }
@@ -2879,7 +2976,7 @@ pub fn decode_close(bytes: &[u8]) -> Result<Option<String>, WireError> {
     };
     Ok(Some(
         close?
-            .get_reason()?
+            .get_message()?
             .to_str()
             .map_err(|_| WireError::InvalidText)?
             .to_owned(),
@@ -2900,6 +2997,7 @@ pub fn encode_server_hello(
     epoch: u64,
     committed_sequence: u64,
     phase: PlayerPhase,
+    language_tag: &str,
 ) -> Result<Vec<u8>, WireError> {
     let mut message = Builder::new_default();
     let mut envelope = message.init_root::<envelope::Builder>();
@@ -2912,6 +3010,7 @@ pub fn encode_server_hello(
     hello.set_assigned_epoch(epoch);
     hello.set_committed_sequence(committed_sequence);
     hello.set_phase(schema_phase(phase));
+    hello.set_language_tag(language_tag);
     finish_message(&message)
 }
 
@@ -3144,17 +3243,39 @@ pub fn encode_traffic_movement(
     finish_message(&message)
 }
 
-pub fn encode_close(epoch: u64, reason: &str) -> Result<Vec<u8>, WireError> {
-    encode_close_for_version(PROTOCOL_VERSION, epoch, reason)
+pub fn encode_close(epoch: u64, message: &str) -> Result<Vec<u8>, WireError> {
+    encode_close_with_code(epoch, CloseCode::Unspecified, message, &[])
 }
 
-pub fn encode_close_for_version(
+pub fn encode_close_with_code(
+    epoch: u64,
+    code: CloseCode,
+    message: &str,
+    supported_language_tags: &[&str],
+) -> Result<Vec<u8>, WireError> {
+    let mut capnp_message = Builder::new_default();
+    let mut envelope = capnp_message.init_root::<envelope::Builder>();
+    envelope.set_protocol_version(PROTOCOL_VERSION);
+    envelope.set_session_epoch(epoch);
+    let mut close = envelope.init_close();
+    close.set_code(schema_close_code(code));
+    close.set_message(message);
+    let count = u32::try_from(supported_language_tags.len())
+        .map_err(|_| WireError::Expected("fewer supported language tags"))?;
+    let mut tags = close.init_supported_language_tags(count);
+    for (index, tag) in supported_language_tags.iter().enumerate() {
+        tags.set(index as u32, tag);
+    }
+    finish_message(&capnp_message)
+}
+
+pub fn encode_legacy_close_for_version(
     protocol_version: u16,
     epoch: u64,
     reason: &str,
 ) -> Result<Vec<u8>, WireError> {
     let mut message = Builder::new_default();
-    let mut envelope = message.init_root::<envelope::Builder>();
+    let mut envelope = message.init_root::<crate::ct_rpc_capnp::legacy_v2_envelope::Builder>();
     envelope.set_protocol_version(protocol_version);
     envelope.set_session_epoch(epoch);
     envelope.init_close().set_reason(reason);
@@ -3179,6 +3300,7 @@ fn encode_client_hello_for_version(
     hello_identity.set_bbs_id(identity.bbs_id);
     hello_identity.set_player_id(identity.player_id);
     hello.set_client_name("test");
+    hello.set_language_tag("en");
     finish_message(&message)
 }
 
@@ -4005,6 +4127,26 @@ fn set_starting_ship_options(
     Ok(())
 }
 
+fn schema_crew_role_kind(role: &str) -> crate::ct_rpc_capnp::CrewRoleKind {
+    use crate::ct_rpc_capnp::CrewRoleKind as Kind;
+    match CrewRoleKind::from_slug(role) {
+        CrewRoleKind::Command => Kind::Command,
+        CrewRoleKind::Pilot => Kind::Pilot,
+        CrewRoleKind::Navigator => Kind::Navigator,
+        CrewRoleKind::Engineer => Kind::Engineer,
+        CrewRoleKind::SensorsOperator => Kind::SensorsOperator,
+        CrewRoleKind::ScreenOperator => Kind::ScreenOperator,
+        CrewRoleKind::TurretGunner => Kind::TurretGunner,
+        CrewRoleKind::BayGunner => Kind::BayGunner,
+        CrewRoleKind::Gunner => Kind::Gunner,
+        CrewRoleKind::Medic => Kind::Medic,
+        CrewRoleKind::Marine => Kind::Marine,
+        CrewRoleKind::FlightCrew => Kind::FlightCrew,
+        CrewRoleKind::Steward => Kind::Steward,
+        CrewRoleKind::Other => Kind::Other,
+    }
+}
+
 fn set_starting_crew_plan(
     mut builder: crate::ct_rpc_capnp::starting_crew_plan::Builder<'_>,
     plan: &StartingCrewPlan,
@@ -4018,6 +4160,7 @@ fn set_starting_crew_plan(
         let mut item = slots.reborrow().get(index as u32);
         item.set_slot_id(slot.slot_id);
         item.set_role(&slot.role);
+        item.set_role_kind(schema_crew_role_kind(&slot.role));
         item.set_represented_positions(slot.represented_positions);
         item.set_required(slot.required);
         set_skill_pool(item.reborrow().init_skill_pool(), slot.skill_pool);
@@ -4040,6 +4183,7 @@ fn set_crew_management(
         item.set_person_id(member.person_id);
         item.set_slot_id(member.slot_id);
         item.set_role(&member.role);
+        item.set_role_kind(schema_crew_role_kind(&member.role));
         item.set_represented_positions(member.represented_positions);
         item.set_captain(member.captain);
         item.set_condition(match member.condition {
@@ -4079,6 +4223,11 @@ fn set_crew_management(
         item.set_available_second(member.available_second);
         item.set_service_revision(member.service_revision);
         item.set_shore_location(&member.shore_location);
+        item.set_location_kind(if member.availability == CrewAvailability::Active {
+            crate::ct_rpc_capnp::CrewLocationKind::AboardShip
+        } else {
+            crate::ct_rpc_capnp::CrewLocationKind::ShoreFacility
+        });
         let assignment_count = u32::try_from(member.assigned_slot_ids.len())
             .map_err(|_| WireError::Expected("fewer crew assignments"))?;
         let mut assignments = item.reborrow().init_assigned_slot_ids(assignment_count);
@@ -4094,6 +4243,7 @@ fn set_crew_management(
         let mut item = roles.reborrow().get(index as u32);
         item.set_slot_id(role.slot_id);
         item.set_role(&role.role);
+        item.set_role_kind(schema_crew_role_kind(&role.role));
         item.set_represented_positions(role.represented_positions);
     }
     Ok(())
@@ -4350,6 +4500,27 @@ fn set_known_destinations(
         item.set_spinward_parsecs(spinward);
         item.set_north_parsecs(north);
         item.set_remote_candidate(system.remote_candidate);
+        item.set_knowledge_source(match system.knowledge_source {
+            SystemKnowledgeSource::PublishedRecords => {
+                crate::ct_rpc_capnp::SystemKnowledgeSource::PublishedRecords
+            }
+            SystemKnowledgeSource::CarriedRecords => {
+                crate::ct_rpc_capnp::SystemKnowledgeSource::CarriedRecords
+            }
+            SystemKnowledgeSource::PrivateObservation => {
+                crate::ct_rpc_capnp::SystemKnowledgeSource::PrivateObservation
+            }
+            SystemKnowledgeSource::PublicDispatch => {
+                crate::ct_rpc_capnp::SystemKnowledgeSource::PublicDispatch
+            }
+            SystemKnowledgeSource::DirectDispatch => {
+                crate::ct_rpc_capnp::SystemKnowledgeSource::DirectDispatch
+            }
+            SystemKnowledgeSource::Withheld => crate::ct_rpc_capnp::SystemKnowledgeSource::Withheld,
+            SystemKnowledgeSource::SecretChart => {
+                crate::ct_rpc_capnp::SystemKnowledgeSource::SecretChart
+            }
+        });
     }
     Ok(())
 }
@@ -5368,6 +5539,50 @@ fn set_combat_policy(
     builder.set_permit_abandon_ship(policy.permit_abandon_ship);
 }
 
+fn combat_role_allows_action(actor: &CombatActor, kind: CombatActionKind) -> bool {
+    if actor.captain {
+        return true;
+    }
+    let role = actor.role_kind;
+    match kind {
+        CombatActionKind::Hold => true,
+        CombatActionKind::Coordinate
+        | CombatActionKind::IncreaseInitiative
+        | CombatActionKind::OfferSurrender
+        | CombatActionKind::AcceptSurrender
+        | CombatActionKind::LaunchEscapeCraft => false,
+        CombatActionKind::EvasiveManeuvers
+        | CombatActionKind::LineUpShot
+        | CombatActionKind::BreakPursuit => role == CrewRoleKind::Pilot,
+        CombatActionKind::RangeCheckClose
+        | CombatActionKind::RangeCheckOpen
+        | CombatActionKind::PrepareJump => role == CrewRoleKind::Navigator,
+        CombatActionKind::SensorTargeting
+        | CombatActionKind::ElectronicWarfare
+        | CombatActionKind::InspectContact => role == CrewRoleKind::SensorsOperator,
+        CombatActionKind::DamageControl => role == CrewRoleKind::Engineer,
+        CombatActionKind::Attack => matches!(
+            role,
+            CrewRoleKind::Gunner | CrewRoleKind::TurretGunner | CrewRoleKind::BayGunner
+        ),
+        CombatActionKind::Board => role == CrewRoleKind::Marine,
+    }
+}
+
+fn combat_role_allows_reaction(actor: &CombatActor, kind: CombatReaction) -> bool {
+    if actor.captain {
+        return true;
+    }
+    let role = actor.role_kind;
+    match kind {
+        CombatReaction::Dodge => role == CrewRoleKind::Pilot,
+        _ => matches!(
+            role,
+            CrewRoleKind::Gunner | CrewRoleKind::TurretGunner | CrewRoleKind::BayGunner
+        ),
+    }
+}
+
 fn set_combat_snapshot(
     mut builder: crate::ct_rpc_capnp::combat_snapshot::Builder<'_>,
     snapshot: &CombatSnapshot,
@@ -5469,6 +5684,53 @@ fn set_combat_snapshot(
         item.set_station(&actor.station);
         item.set_available(actor.available);
         item.set_action_budget(actor.action_budget);
+        const ACTIONS: [CombatActionKind; 18] = [
+            CombatActionKind::Hold,
+            CombatActionKind::Coordinate,
+            CombatActionKind::IncreaseInitiative,
+            CombatActionKind::EvasiveManeuvers,
+            CombatActionKind::LineUpShot,
+            CombatActionKind::RangeCheckClose,
+            CombatActionKind::RangeCheckOpen,
+            CombatActionKind::BreakPursuit,
+            CombatActionKind::SensorTargeting,
+            CombatActionKind::ElectronicWarfare,
+            CombatActionKind::DamageControl,
+            CombatActionKind::Attack,
+            CombatActionKind::Board,
+            CombatActionKind::PrepareJump,
+            CombatActionKind::LaunchEscapeCraft,
+            CombatActionKind::OfferSurrender,
+            CombatActionKind::AcceptSurrender,
+            CombatActionKind::InspectContact,
+        ];
+        let allowed_actions = ACTIONS
+            .iter()
+            .copied()
+            .filter(|kind| combat_role_allows_action(actor, *kind))
+            .collect::<Vec<_>>();
+        let mut actions = item
+            .reborrow()
+            .init_allowed_actions(allowed_actions.len() as u32);
+        for (action_index, action) in allowed_actions.iter().enumerate() {
+            actions.set(action_index as u32, encode_combat_action_kind(*action));
+        }
+        const REACTIONS: [CombatReaction; 5] = [
+            CombatReaction::Dodge,
+            CombatReaction::PointDefense,
+            CombatReaction::FireSand,
+            CombatReaction::TriggerNuclearDamper,
+            CombatReaction::TriggerMesonScreen,
+        ];
+        let allowed_reactions = REACTIONS
+            .iter()
+            .copied()
+            .filter(|kind| combat_role_allows_reaction(actor, *kind))
+            .collect::<Vec<_>>();
+        let mut reactions = item.init_allowed_reactions(allowed_reactions.len() as u32);
+        for (reaction_index, reaction) in allowed_reactions.iter().enumerate() {
+            reactions.set(reaction_index as u32, encode_combat_reaction(*reaction));
+        }
     }
     Ok(())
 }
@@ -5926,6 +6188,7 @@ mod tests {
         let decoded = decode_client_hello(&frame).unwrap();
         assert_eq!(decoded.identity, identity);
         assert_eq!(decoded.client_name, "test");
+        assert_eq!(decoded.language_tag, "en");
     }
 
     #[test]
@@ -5948,18 +6211,78 @@ mod tests {
     #[test]
     fn compatibility_close_uses_the_clients_protocol_version() {
         let reason = "upgrade your Cepheus Trader client";
-        let frame = encode_close_for_version(1, 0, reason).unwrap();
+        let frame = encode_legacy_close_for_version(1, 0, reason).unwrap();
         let message = message_reader(&frame).unwrap();
-        let envelope = message.get_root::<envelope::Reader>().unwrap();
+        let envelope = message
+            .get_root::<crate::ct_rpc_capnp::legacy_v2_envelope::Reader>()
+            .unwrap();
 
         assert_eq!(envelope.get_protocol_version(), 1);
-        let envelope::Close(close) = envelope.which().unwrap() else {
+        let crate::ct_rpc_capnp::legacy_v2_envelope::Close(close) = envelope.which().unwrap()
+        else {
             panic!("expected close envelope");
         };
         assert_eq!(
             close.unwrap().get_reason().unwrap().to_str().unwrap(),
             reason
         );
+    }
+
+    #[test]
+    fn structured_close_carries_code_message_and_languages() {
+        let frame =
+            encode_close_with_code(0, CloseCode::UnsupportedLanguage, "unsupported", &["en"])
+                .unwrap();
+        let message = message_reader(&frame).unwrap();
+        let envelope = message.get_root::<envelope::Reader>().unwrap();
+        let envelope::Close(close) = envelope.which().unwrap() else {
+            panic!("expected close envelope");
+        };
+        let close = close.unwrap();
+        assert_eq!(
+            close.get_code().unwrap(),
+            crate::ct_rpc_capnp::CloseCode::UnsupportedLanguage
+        );
+        assert_eq!(
+            close.get_message().unwrap().to_str().unwrap(),
+            "unsupported"
+        );
+        let tags = close.get_supported_language_tags().unwrap();
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags.get(0).unwrap().to_str().unwrap(), "en");
+    }
+
+    #[test]
+    fn combat_eligibility_does_not_depend_on_display_station() {
+        let pilot = CombatActor {
+            person_id: 1,
+            name: "Pilot".into(),
+            station: "Pilote de chasse".into(),
+            available: true,
+            action_budget: 1,
+            role_kind: CrewRoleKind::Pilot,
+            captain: false,
+        };
+        assert!(combat_role_allows_action(
+            &pilot,
+            CombatActionKind::EvasiveManeuvers
+        ));
+        assert!(!combat_role_allows_action(&pilot, CombatActionKind::Attack));
+
+        let captain = CombatActor {
+            role_kind: CrewRoleKind::Other,
+            captain: true,
+            station: "Commandant".into(),
+            ..pilot
+        };
+        assert!(combat_role_allows_action(
+            &captain,
+            CombatActionKind::Attack
+        ));
+        assert!(combat_role_allows_reaction(
+            &captain,
+            CombatReaction::PointDefense
+        ));
     }
 
     #[test]

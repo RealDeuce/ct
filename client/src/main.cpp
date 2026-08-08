@@ -57,7 +57,8 @@ int main(int argc, char** argv) {
       const auto hello = ct::exchange_hello(
          connection,
          identity,
-         "cepheus-trader-client/" CT_PRODUCT_VERSION);
+         "cepheus-trader-client/" CT_PRODUCT_VERSION,
+         "en");
       const auto phase = [&hello] {
          switch(hello.phase) {
             case ct::PlayerPhase::Disconnected:
@@ -86,6 +87,7 @@ int main(int argc, char** argv) {
                 << " epoch=" << hello.assigned_epoch
                 << " committed=" << hello.committed_sequence
                 << " phase=" << phase
+                << " language=" << hello.language_tag
                 << " tls=" << connection.protocol_version() << '\n';
       if(argc > 5) {
          if(hello.phase != ct::PlayerPhase::NewUser) {

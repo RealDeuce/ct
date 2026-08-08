@@ -35,6 +35,7 @@ struct Envelope {
 struct ClientHello {
   identity @0 :PlayerIdentity;
   clientName @1 :Text;
+  languageTag @2 :Text;
 }
 
 struct ServerHello {
@@ -42,7 +43,27 @@ struct ServerHello {
   assignedEpoch @1 :UInt64;
   committedSequence @2 :UInt64;
   phase @3 :Phase;
+  languageTag @4 :Text;
 }
+
+# Used only to send and receive an actionable rejection during CT-RPC 2
+# negotiation. Established sessions always use Envelope above.
+struct LegacyV2Envelope {
+  protocolVersion @0 :UInt16;
+  requestId @1 :UInt64;
+  sessionEpoch @2 :UInt64;
+  union {
+    clientHello @3 :Void;
+    serverHello @4 :Void;
+    request @5 :Void;
+    response @6 :Void;
+    event @7 :Void;
+    cancel @8 :Void;
+    close @9 :LegacyClose;
+  }
+}
+
+struct LegacyClose { reason @0 :Text; }
 
 struct PlayerIdentity {
   # The server-assigned BBS ID is encoded as canonical unsigned decimal text
@@ -366,6 +387,7 @@ struct StartingCrewSlot {
   required @3 :Bool;
   skillPool @4 :SkillPool;
   defaultCrew @5 :PersonDraft;
+  roleKind @6 :CrewRoleKind;
 }
 
 struct StartingCrewPlan {
@@ -406,6 +428,24 @@ struct CrewRole {
   slotId @0 :UInt16;
   role @1 :Text;
   representedPositions @2 :UInt16;
+  roleKind @3 :CrewRoleKind;
+}
+
+enum CrewRoleKind {
+  command @0;
+  pilot @1;
+  navigator @2;
+  engineer @3;
+  sensorsOperator @4;
+  screenOperator @5;
+  turretGunner @6;
+  bayGunner @7;
+  gunner @8;
+  medic @9;
+  marine @10;
+  flightCrew @11;
+  steward @12;
+  other @13;
 }
 
 struct CrewManagementMember {
@@ -434,7 +474,11 @@ struct CrewManagementMember {
   availableSecond @22 :UInt64;
   serviceRevision @23 :UInt64;
   shoreLocation @24 :Text;
+  roleKind @25 :CrewRoleKind;
+  locationKind @26 :CrewLocationKind;
 }
+
+enum CrewLocationKind { aboardShip @0; shoreFacility @1; }
 
 enum CrewServiceKind { ownerCaptain @0; salaried @1; prizeShare @2; institutional @3; }
 enum CrewAvailability { active @0; shoreLeave @1; medicalCare @2; detached @3; awaitingRecall @4; }
@@ -691,6 +735,17 @@ struct KnownSystemSummary {
   spinwardParsecs @11 :Float64;
   northParsecs @12 :Float64;
   remoteCandidate @13 :Bool;
+  knowledgeSource @14 :SystemKnowledgeSource;
+}
+
+enum SystemKnowledgeSource {
+  publishedRecords @0;
+  carriedRecords @1;
+  privateObservation @2;
+  publicDispatch @3;
+  directDispatch @4;
+  withheld @5;
+  secretChart @6;
 }
 
 struct KnownDestinations {
@@ -1550,6 +1605,8 @@ struct CombatActor {
   station @2 :Text;
   available @3 :Bool;
   actionBudget @4 :UInt8;
+  allowedActions @5 :List(CombatActionKind);
+  allowedReactions @6 :List(CombatReaction);
 }
 
 struct CombatSnapshot {
@@ -1821,6 +1878,21 @@ struct Cancel {
   requestId @0 :UInt64;
 }
 
+enum CloseCode {
+  unspecified @0;
+  unsupportedVersion @1;
+  malformedHello @2;
+  unsupportedLanguage @3;
+  accessDenied @4;
+  invalidRequest @5;
+  staleSession @6;
+  serverStopping @7;
+  sessionReplaced @8;
+  internalFailure @9;
+}
+
 struct Close {
-  reason @0 :Text;
+  code @0 :CloseCode;
+  message @1 :Text;
+  supportedLanguageTags @2 :List(Text);
 }
