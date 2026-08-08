@@ -17,6 +17,7 @@ enum class DoorHelpTopic : size_t {
    Ship,
    Tasks,
    Messages,
+   Radio,
    KnownUniverse,
    Operations,
    Docked,

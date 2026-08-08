@@ -242,6 +242,28 @@ Information and private correspondence travel through the universe. A report
 may be old when it reaches you, and a message cannot reveal facts that have not
 yet arrived at the ship.
 
+### System Common radio
+
+System Common is a single public radio channel for player broadcasts within
+the current system. Open it with **R** from Universal Managers. Radio waves
+travel at light speed: a ship at the port, gas giant, or Jump locus may receive
+a transmission later than a ship near its source. The channel is unavailable
+in Jump space and depends on functioning ship communications.
+
+The inbox shows unread reception metadata. Opening a reception displays its
+body once and then removes the receiving ship's copy, so save anything you
+want to retain outside the game. Unread receptions expire after 196 game days
+and stay with the receiving ship if that vessel changes hands. Player
+broadcasts may contain up to 500 printable ASCII characters and are limited to
+one every 15 real seconds. You may persistently mute another captain's normal
+broadcasts.
+
+Customs inspections, naval boarding instructions, and hostile surrender
+demands also arrive as structured System Common hails. They cannot be muted.
+Nearby ships may overhear them, but an encounter action belongs only to the
+ship being hailed. The door reports newly arrived unread radio at safe input
+boundaries instead of interrupting another screen with message bodies.
+
 ### Known Universe
 
 Known Universe is the current ship's carried navigation and intelligence
@@ -341,7 +363,7 @@ recovery screen explains the available continuation or succession action.
 - Check the ship's actual fuel and provisions, not only whether a route exists.
 - Treat charts, prices, reports, warrants, and news as dated information.
 - Use the universal managers before and after a voyage to catch changed crew,
-  ship, task, message, and career state.
+  ship, task, message, radio, and career state.
 - Conservative defaults are valid, but they cannot make an impossible route,
   neglected ship, or unsuitable obligation safe.
 - Returning to the BBS leaves the persistent universe running. File only the

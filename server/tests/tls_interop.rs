@@ -1320,7 +1320,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Captain's Command Console",
         "Captain's Command Console",
     );
-    services_door.wait_for("(C/S/T/M/K/O) Manager");
+    services_door.wait_for("(C/S/T/M/R/K/O) Manager");
     services_door.send(b"m");
     services_door.wait_for("Message Management");
     services_door.wait_for("(Q) Console");
@@ -1347,7 +1347,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Captain's Command Console",
         "Captain's Command Console",
     );
-    services_door.wait_for_occurrences("(C/S/T/M/K/O) Manager", 2);
+    services_door.wait_for_occurrences("(C/S/T/M/R/K/O) Manager", 2);
     services_door.send(b"\r");
     let final_docked_occurrence = if banking_available { 3 } else { 2 };
     services_door.wait_for_occurrences("Docked Operations", final_docked_occurrence);
@@ -1423,7 +1423,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
             "Captain's Command Console",
             "Captain's Command Console",
         );
-        combat_door.wait_for("(C/S/T/M/K/O) Manager");
+        combat_door.wait_for("(C/S/T/M/R/K/O) Manager");
         combat_door.send(b"o");
         combat_door.wait_for_occurrences("Accept order or file report", 1);
         combat_door.send(b"m");
@@ -1525,12 +1525,8 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Flight Plan\r\n===========",
         "Flight Plan\r\n===========",
     );
-    voyage_door.send_through_page_prompt(
-        b"a",
-        "Destination (Q to cancel",
-        "Destination (Q to cancel",
-    );
-    voyage_door.send(b"1\r");
+    voyage_door.send_through_page_prompt(b"a", "Add Charted Leg", "Add Charted Leg");
+    voyage_door.send(b"1");
     voyage_door.wait_for("Buy fresh course tape");
     voyage_door.send(b"o");
     voyage_door.wait_for("identifies a bad plot");

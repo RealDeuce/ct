@@ -87,6 +87,9 @@ std::optional<ct::TrafficSnapshot> latest_traffic_snapshot;
 std::optional<ct::CheckpointSnapshot> latest_checkpoint;
 std::optional<ct::EncounterSnapshot> latest_encounter;
 std::vector<std::string> pending_traffic_notices;
+uint64_t pending_radio_unread = 0;
+uint64_t observed_radio_ship_id = 0;
+uint64_t observed_radio_unread = 0;
 uint64_t phase_event_generation = 0;
 uint64_t displayed_phase_event_generation = 0;
 std::string active_prompt;
@@ -167,6 +170,16 @@ void collect_player_events()
       case ct::PlayerEventKind::EncounterReady:
          latest_encounter = event->encounter;
          break;
+      case ct::PlayerEventKind::RadioUnread:
+         if(event->ship_id != observed_radio_ship_id) {
+            observed_radio_ship_id = event->ship_id;
+            observed_radio_unread = 0;
+         }
+         if(event->unread_count > observed_radio_unread) {
+            pending_radio_unread = event->unread_count;
+         }
+         observed_radio_unread = event->unread_count;
+         break;
       }
    }
 }
@@ -178,7 +191,9 @@ void flush_player_events()
    const bool has_phase_notice =
       latest_phase_status.has_value() &&
       displayed_phase_event_generation != phase_event_generation;
-   if(!has_traffic_snapshot && !has_traffic_notices && !has_phase_notice) {
+   const bool has_radio_notice = pending_radio_unread != 0;
+   if(!has_traffic_snapshot && !has_traffic_notices && !has_phase_notice &&
+      !has_radio_notice) {
       return;
    }
 
@@ -206,6 +221,14 @@ void flush_player_events()
       door_printf("%s\n\r", safe_field(notice).c_str());
    }
    pending_traffic_notices.clear();
+   if(pending_radio_unread != 0) {
+      door_write(event_prefix, ct::DoorTextRole::Normal);
+      door_write("[System Common] ", ct::DoorTextRole::Heading);
+      door_printf("%llu unread reception%s.\n\r",
+                  static_cast<unsigned long long>(pending_radio_unread),
+                  pending_radio_unread == 1 ? "" : "s");
+      pending_radio_unread = 0;
+   }
    if(latest_phase_status.has_value() &&
          displayed_phase_event_generation != phase_event_generation) {
       door_write(event_prefix, ct::DoorTextRole::Normal);
@@ -5354,6 +5377,170 @@ std::optional<ct::PlayerPhase> show_combat_operations(
    }
 }
 
+const char* radio_kind_name(const ct::RadioTransmissionKind kind)
+{
+   switch(kind) {
+   case ct::RadioTransmissionKind::PlayerBroadcast:
+      return "broadcast";
+   case ct::RadioTransmissionKind::InspectionOrder:
+      return "inspection order";
+   case ct::RadioTransmissionKind::BoardingOrder:
+      return "boarding order";
+   case ct::RadioTransmissionKind::SurrenderDemand:
+      return "surrender demand";
+   }
+   return "radio";
+}
+
+void show_system_radio(
+   ct::TlsConnection& connection,
+   const uint64_t epoch,
+   ct::CommandIdGenerator& random,
+   uint64_t& request_id)
+{
+   const HelpScope help_scope(ct::DoorHelpTopic::Radio);
+   size_t page = 0;
+   constexpr size_t page_size = 7;
+   for(;;) {
+      auto snapshot = ct::get_system_radio(
+         connection, epoch, random_command_id(random), request_id++);
+      const auto page_count = std::max<size_t>(
+         1, (snapshot.entries.size() + page_size - 1) / page_size);
+      page = std::min(page, page_count - 1);
+      const auto first = page * page_size;
+      const auto last = std::min(first + page_size, snapshot.entries.size());
+      od_clr_scr();
+      door_heading("System Common Radio\n\r");
+      door_heading("===================\n\r\n\r");
+      door_label("Receiving ship: ");
+      door_identifier("CT-%016llX", static_cast<unsigned long long>(snapshot.ship_id));
+      door_label("  Unread: ");
+      door_number("%zu\n\r", snapshot.entries.size());
+      if(!snapshot.can_transmit) {
+         door_warning("%s\n\r", safe_field(snapshot.unavailable_reason).c_str());
+      }
+      door_information(
+         "Opening a reception displays it once and removes this ship's unread copy.\n\r\n\r");
+      if(snapshot.entries.empty()) {
+         door_information("No unread System Common receptions.\n\r");
+      }
+      for(size_t index = first; index < last; ++index) {
+         const auto& entry = snapshot.entries[index];
+         door_number("%zu", index - first + 1);
+         door_label(". ");
+         door_identifier("%s", safe_field(entry.sender_ship_name).c_str());
+         door_label(" [");
+         door_value("%s", safe_field(entry.sender_transponder).c_str());
+         door_label("]  ");
+         door_value("%s\n\r", radio_kind_name(entry.kind));
+         door_label("   Received: ");
+         door_value("%s", game_date(entry.received_second).c_str());
+         if(entry.kind == ct::RadioTransmissionKind::PlayerBroadcast) {
+            door_label("  Sender ");
+            door_number("%u:%u", entry.sender.bbs_id, entry.sender.player_id);
+         }
+         if(entry.actionable) {
+            door_warning("  Action required");
+         }
+         od_printf("\n\r");
+      }
+      door_label("\n\rPage ");
+      door_number("%zu/%zu", page + 1, page_count);
+      door_option_prompt({
+         "[1-7] Open once",
+         "[N/P] Page",
+         "[B] Broadcast",
+         "[M] Mute sender",
+         "[U] Unmute",
+         "[Enter] Console",
+         "[?] Help",
+      });
+      const auto key = static_cast<char>(
+         std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
+      if(key == '\r' || key == '\n' || key == 'Q') {
+         return;
+      }
+      try {
+         if(key >= '1' && key <= '7') {
+            const auto index = first + static_cast<size_t>(key - '1');
+            if(index >= last) {
+               continue;
+            }
+            const auto entry = snapshot.entries[index];
+            const auto content = ct::peek_radio_reception(
+               connection, epoch, entry.reception_id,
+               random_command_id(random), request_id++);
+            od_clr_scr();
+            door_heading("System Common Reception\n\r=======================\n\r\n\r");
+            door_label("From: ");
+            door_identifier("%s", safe_field(entry.sender_ship_name).c_str());
+            door_label(" [");
+            door_value("%s", safe_field(entry.sender_transponder).c_str());
+            door_label("]\n\r");
+            door_label("Emitted: ");
+            door_value("%s", game_date(entry.emitted_second).c_str());
+            door_label("  Received: ");
+            door_value("%s\n\r\n\r", game_date(entry.received_second).c_str());
+            door_information("%s\n\r", safe_field(content.body).c_str());
+            wait_for_enter("Consume reception");
+            (void)ct::acknowledge_radio_reception(
+               connection, epoch, entry.reception_id,
+               random_command_id(random), request_id++);
+         } else if(key == 'N' && page + 1 < page_count) {
+            ++page;
+         } else if(key == 'P' && page > 0) {
+            --page;
+         } else if(key == 'B') {
+            if(!snapshot.can_transmit) {
+               door_error("%s\n\r", safe_field(snapshot.unavailable_reason).c_str());
+               wait_for_enter("System Radio");
+               continue;
+            }
+            if(const auto body = input_text("Broadcast", "", 500)) {
+               (void)ct::transmit_system_radio(
+                  connection, epoch, *body,
+                  random_command_id(random), request_id++);
+               door_success("Transmission launched on System Common.\n\r");
+               wait_for_enter("System Radio");
+            }
+         } else if(key == 'M' && first < last) {
+            const auto selected = input_number(
+               "Entry", 1, static_cast<unsigned>(last - first));
+            if(selected) {
+               const auto& entry = snapshot.entries[first + *selected - 1];
+               if(entry.kind != ct::RadioTransmissionKind::PlayerBroadcast) {
+                  door_warning("Structured encounter hails cannot be muted.\n\r");
+                  wait_for_enter("System Radio");
+                  continue;
+               }
+               const auto& sender = entry.sender;
+               (void)ct::set_radio_mute(
+                  connection, epoch, sender, true,
+                  random_command_id(random), request_id++);
+            }
+         } else if(key == 'U' && !snapshot.mutes.empty()) {
+            od_printf("\n\r");
+            for(size_t index = 0; index < snapshot.mutes.size(); ++index) {
+               door_number("%zu", index + 1);
+               door_label(". Sender ");
+               door_value("%u:%u\n\r", snapshot.mutes[index].bbs_id,
+                          snapshot.mutes[index].player_id);
+            }
+            const auto selected = input_number(
+               "Mute", 1, static_cast<unsigned>(snapshot.mutes.size()));
+            if(selected) {
+               (void)ct::set_radio_mute(
+                  connection, epoch, snapshot.mutes[*selected - 1], false,
+                  random_command_id(random), request_id++);
+            }
+         }
+      } catch(const std::exception& error) {
+         door_error("%s\n\r", safe_field(error.what()).c_str());
+         wait_for_enter("System Radio");
+      }
+   }
+}
+
 void render_command_console(const ct::ServerHello& hello)
 {
    od_clr_scr();
@@ -5362,7 +5549,7 @@ void render_command_console(const ct::ServerHello& hello)
    door_label("Ship status: ");
    door_identifier("%s\n\r", phase_name(hello.phase));
    door_information(
-      "These six managers are available throughout every operational "
+      "These seven managers are available throughout every operational "
       "situation. Available actions depend on the ship's present status.\n\r\n\r");
    door_number("C");
    door_label(". ");
@@ -5376,6 +5563,9 @@ void render_command_console(const ct::ServerHello& hello)
    door_number("M");
    door_label(". ");
    door_identifier("Message Management\n\r");
+   door_number("R");
+   door_label(". ");
+   door_identifier("System Common Radio\n\r");
    door_number("K");
    door_label(". ");
    door_identifier("Known Universe\n\r");
@@ -5383,7 +5573,7 @@ void render_command_console(const ct::ServerHello& hello)
    door_label(". ");
    door_identifier("Operations Ledger\n\r");
    door_option_prompt({
-      "[C/S/T/M/K/O] Manager",
+      "[C/S/T/M/R/K/O] Manager",
       "[Enter] Previous",
       "[Q] Return to BBS",
       "[?] Help",
@@ -5423,6 +5613,13 @@ bool run_command_console(
          render_command_console(hello);
       } else if(key == 'm' || key == 'M') {
          show_message_manager(
+            connection,
+            hello.assigned_epoch,
+            random,
+            request_id);
+         render_command_console(hello);
+      } else if(key == 'r' || key == 'R') {
+         show_system_radio(
             connection,
             hello.assigned_epoch,
             random,

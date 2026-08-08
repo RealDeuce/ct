@@ -30,9 +30,10 @@ use crate::coverage::{
 use crate::creation;
 use crate::crypto::{CryptoError, SeedStream};
 use crate::navigation::{
-    BBS_CORE_MAXIMUM_JUMP_APPROACH_DAYS, bbs_core_jump_guard_days, gas_giant_fuel_source,
-    gas_giant_fuel_sources, nearest_gas_giant_fuel_source, nearest_wilderness_water_source,
-    primary_world_jump_safety, wilderness_water_source, wilderness_water_sources,
+    BBS_CORE_MAXIMUM_JUMP_APPROACH_DAYS, bbs_core_jump_guard_days, body_position_au,
+    gas_giant_fuel_source, gas_giant_fuel_sources, nearest_gas_giant_fuel_source,
+    nearest_wilderness_water_source, primary_world_jump_safety, wilderness_water_source,
+    wilderness_water_sources,
 };
 use crate::place_names::{
     FEDERATION_NAMING_PROFILE_ID, PlaceNameError, naming_stream, polity_profile,
@@ -90,6 +91,8 @@ const META_NEXT_INSURANCE_CLAIM_ID: &str = "next-insurance-claim-id";
 const META_NEXT_FLIGHT_PLAN_ID: &str = "next-flight-plan-id";
 const META_NEXT_CHECKPOINT_ID: &str = "next-checkpoint-id";
 const META_NEXT_ENCOUNTER_ID: &str = "next-encounter-id";
+const META_NEXT_RADIO_TRANSMISSION_ID: &str = "next-radio-transmission-id";
+const META_NEXT_RADIO_RECEPTION_ID: &str = "next-radio-reception-id";
 const META_GAME_SECOND: &str = "game-second";
 const META_CLOCK_FORMAT_VERSION: &str = "clock-format-version";
 const META_CLOCK_RATE_GAME_SECONDS: &str = "clock-rate-game-seconds";
@@ -109,6 +112,10 @@ const UNREFINED_FUEL_PRICE_PER_TON: u64 = 100;
 const UNIQUE_APPLE_PIE_ID: u64 = 1;
 const UNIQUE_APPLE_PIE_OFFER_ID: u64 = u64::MAX - 41;
 const FEDERATION_DISCOVERY_AWARD_CREDITS: u64 = 218_000;
+const RADIO_UNREAD_LIFETIME_SECONDS: u64 = 196 * crate::simulation::SECONDS_PER_DAY;
+const RADIO_SEND_INTERVAL_SECONDS: u64 = 420;
+const RADIO_MAX_BODY_BYTES: usize = 500;
+const LIGHT_SECONDS_PER_AU: f64 = 499.004_783_836;
 
 fn jump_number_for_distance(distance_parsecs: f64) -> u8 {
     distance_parsecs.ceil().clamp(1.0, f64::from(u8::MAX)) as u8
@@ -1052,6 +1059,35 @@ struct PrivateMessageRecipientRecord {
     recipient: PlayerIdentity,
     encryption_key_id: u64,
     revoked: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RadioTransmissionRecord {
+    transmission_id: u64,
+    system_id: u64,
+    sender_ship_id: u64,
+    sender_ship_name: String,
+    sender_transponder: String,
+    sender: PlayerIdentity,
+    emitted_second: u64,
+    source_position_bits: [u64; 3],
+    wave_expires_second: u64,
+    wave_active: bool,
+    kind: crate::wire::RadioTransmissionKind,
+    action_ship_id: u64,
+    action_reference_id: u64,
+    body: String,
+    reference_count: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RadioReceptionRecord {
+    reception_id: u64,
+    transmission_id: u64,
+    receiving_ship_id: u64,
+    received_second: u64,
+    expires_second: u64,
+    consumed: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2578,6 +2614,10 @@ pub struct Store {
     market_leads: Database<Bytes, Bytes>,
     market_events: Database<Bytes, Bytes>,
     private_message_recipients: Database<Bytes, Bytes>,
+    radio_transmissions: UniverseDatabase,
+    radio_receptions: Database<Bytes, Bytes>,
+    radio_mutes: Database<Bytes, Bytes>,
+    radio_cooldowns: Database<Bytes, Bytes>,
     insurance_policies: Database<Bytes, Bytes>,
     unique_cargo: UniverseDatabase,
     market_claims: Database<Bytes, Bytes>,
@@ -2670,6 +2710,10 @@ impl Store {
         let market_events = env.create_database(&mut txn, Some("market-events"))?;
         let private_message_recipients =
             env.create_database(&mut txn, Some("private-message-recipients"))?;
+        let radio_transmissions = env.create_database(&mut txn, Some("radio-transmissions"))?;
+        let radio_receptions = env.create_database(&mut txn, Some("radio-receptions"))?;
+        let radio_mutes = env.create_database(&mut txn, Some("radio-mutes"))?;
+        let radio_cooldowns = env.create_database(&mut txn, Some("radio-cooldowns"))?;
         let insurance_policies = env.create_database(&mut txn, Some("insurance-policies"))?;
         let unique_cargo = env.create_database(&mut txn, Some("unique-cargo"))?;
         let market_claims = env.create_database(&mut txn, Some("market-claims"))?;
@@ -2756,6 +2800,10 @@ impl Store {
             market_leads,
             market_events,
             private_message_recipients,
+            radio_transmissions,
+            radio_receptions,
+            radio_mutes,
+            radio_cooldowns,
             insurance_policies,
             unique_cargo,
             market_claims,
@@ -3052,6 +3100,8 @@ impl Store {
 
         let durable_replay =
             queued.request.command.persistence() == CommandPersistence::Transaction;
+        let transient_delivery =
+            matches!(&queued.request.command, Command::PeekRadioReception { .. });
         let previous = if durable_replay {
             self.results.get(&txn, &result_key)?
         } else {
@@ -3103,8 +3153,10 @@ impl Store {
             &sequence,
             &encode_journal(&queued, &delivery, durable_replay)?,
         )?;
-        self.outbox
-            .put(&mut txn, &sequence, &encode_delivery(&delivery)?)?;
+        if !transient_delivery {
+            self.outbox
+                .put(&mut txn, &sequence, &encode_delivery(&delivery)?)?;
+        }
         self.queue.delete(&mut txn, &sequence)?;
         put_meta_u64(self.meta, &mut txn, META_COMMITTED_SEQUENCE, sequence)?;
         put_meta_u64(self.meta, &mut txn, META_REVISION, revision)?;
@@ -4391,6 +4443,45 @@ impl Store {
             Command::PurchaseInsurance { kind, enabled } => {
                 match self.purchase_insurance_in(txn, &queued.identity, kind, enabled)? {
                     RuleResult::Applied(v) => OutcomeKind::Finance(v),
+                    RuleResult::Rejected(message) => OutcomeKind::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message,
+                    },
+                }
+            }
+            Command::GetSystemRadio => {
+                OutcomeKind::SystemRadio(self.system_radio_in(txn, &queued.identity)?)
+            }
+            Command::TransmitSystemRadio { ref body } => {
+                match self.transmit_system_radio_in(txn, &queued.identity, body)? {
+                    RuleResult::Applied(value) => OutcomeKind::SystemRadio(value),
+                    RuleResult::Rejected(message) => OutcomeKind::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message,
+                    },
+                }
+            }
+            Command::PeekRadioReception { reception_id } => {
+                match self.peek_radio_reception_in(txn, &queued.identity, reception_id)? {
+                    RuleResult::Applied(value) => OutcomeKind::RadioContent(value),
+                    RuleResult::Rejected(message) => OutcomeKind::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message,
+                    },
+                }
+            }
+            Command::AcknowledgeRadioReception { reception_id } => {
+                match self.acknowledge_radio_reception_in(txn, &queued.identity, reception_id)? {
+                    RuleResult::Applied(value) => OutcomeKind::SystemRadio(value),
+                    RuleResult::Rejected(message) => OutcomeKind::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message,
+                    },
+                }
+            }
+            Command::SetRadioMute { ref sender, muted } => {
+                match self.set_radio_mute_in(txn, &queued.identity, sender, muted)? {
+                    RuleResult::Applied(value) => OutcomeKind::SystemRadio(value),
                     RuleResult::Rejected(message) => OutcomeKind::Error {
                         code: ErrorCode::InvalidCommand,
                         message,
@@ -6219,7 +6310,7 @@ impl Store {
                 txn,
                 &key,
                 &encode_encounter_record(&EncounterRecord {
-                    snapshot,
+                    snapshot: snapshot.clone(),
                     opponent_catalog_id: projected.map_or(72, |contact| contact.catalog_id),
                     posture: None,
                     fallbacks: Vec::new(),
@@ -6230,6 +6321,16 @@ impl Store {
                     combat_log: Vec::new(),
                     pending_interventions: Vec::new(),
                 })?,
+            )?;
+            self.emit_encounter_radio_in(
+                txn,
+                &ship,
+                &snapshot.contact,
+                snapshot.kind,
+                encounter_id,
+                checkpoint.ready_second,
+                true,
+                &snapshot.summary,
             )?;
             if let Some(mut plan) = self
                 .flight_plans
@@ -6352,6 +6453,16 @@ impl Store {
             };
             self.encounters
                 .put(txn, &key, &encode_encounter_record(&record)?)?;
+            self.emit_encounter_radio_in(
+                txn,
+                &ship,
+                &record.snapshot.contact,
+                record.snapshot.kind,
+                encounter_id,
+                checkpoint.ready_second,
+                true,
+                &record.snapshot.summary,
+            )?;
             if let Some(mut plan) = self
                 .flight_plans
                 .get(txn, &key)?
@@ -9844,6 +9955,16 @@ impl Store {
                 "A contact intersects the ship's local traffic solution.".into()
             },
         };
+        self.emit_encounter_radio_in(
+            txn,
+            &ship,
+            &snapshot.contact,
+            snapshot.kind,
+            encounter_id,
+            due_second,
+            !through_authorized,
+            &snapshot.summary,
+        )?;
         if !hostile && through_authorized {
             snapshot.state = EncounterState::Resolved;
             snapshot.summary = match kind {
@@ -12459,6 +12580,690 @@ impl Store {
             self.tasks.put(txn, &key, &encode_stored_task(&stored)?)?;
         }
         Ok(())
+    }
+
+    fn ship_radio_available(ship: &ShipRecord) -> bool {
+        ship.system_id != 0
+            && !matches!(
+                ship.location,
+                ShipLocationRecord::InFlight(FlightLegRecord {
+                    purpose: FlightLegPurpose::Jump { .. },
+                    ..
+                })
+            )
+            && ship.subsystems.iter().any(|subsystem| {
+                subsystem.kind == ShipSubsystemKind::Sensors
+                    && subsystem
+                        .sustained_hits
+                        .saturating_sub(subsystem.battlefield_repair_hits)
+                        < subsystem.maximum_hits
+            })
+    }
+
+    fn radio_locus_position_au_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        ship: &ShipRecord,
+        locus: ShipLocusRecord,
+        second: u64,
+    ) -> Result<Option<[f64; 3]>, StoreError> {
+        let system_id = locus.system_id();
+        if system_id == 0 {
+            return Ok(None);
+        }
+        let system = self
+            .systems
+            .get(txn, &system_id)?
+            .map(decode_stellar_system)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("radio locus system is missing"))?;
+        let celestial = derive_celestial_system(&system)?;
+        let days = second as f64 / crate::simulation::SECONDS_PER_DAY as f64;
+        Ok(match locus {
+            ShipLocusRecord::Port { .. } => {
+                body_position_au(&celestial, days, celestial.primary_world_body().local_id)
+            }
+            ShipLocusRecord::Body { body_id, .. } => body_position_au(&celestial, days, body_id),
+            ShipLocusRecord::JumpLocus { .. } => {
+                let thrust = creation::ship_status_spec(ship.catalog_id)
+                    .ok_or(StoreError::Corrupt("radio ship catalog is missing"))?
+                    .thrust_g;
+                Some(primary_world_jump_safety(&celestial, days, f64::from(thrust)).locus_au)
+            }
+            ShipLocusRecord::DeepSpace { .. } => None,
+        })
+    }
+
+    fn radio_position_au_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        ship: &ShipRecord,
+        second: u64,
+    ) -> Result<Option<[f64; 3]>, StoreError> {
+        if !Self::ship_radio_available(ship) {
+            return Ok(None);
+        }
+        match ship.location {
+            ShipLocationRecord::Docked {
+                world_id,
+                facility_id,
+                ..
+            } => self.radio_locus_position_au_in(
+                txn,
+                ship,
+                ShipLocusRecord::Port {
+                    system_id: ship.system_id,
+                    world_id,
+                    facility_id,
+                },
+                second,
+            ),
+            ShipLocationRecord::Holding { locus, .. } => {
+                self.radio_locus_position_au_in(txn, ship, locus, second)
+            }
+            ShipLocationRecord::InFlight(leg) => {
+                if matches!(leg.purpose, FlightLegPurpose::Jump { .. }) {
+                    return Ok(None);
+                }
+                let origin =
+                    self.radio_locus_position_au_in(txn, ship, leg.origin, leg.started_second)?;
+                let destination =
+                    self.radio_locus_position_au_in(txn, ship, leg.destination, leg.due_second)?;
+                let (Some(origin), Some(destination)) = (origin, destination) else {
+                    return Ok(None);
+                };
+                let duration = leg.due_second.saturating_sub(leg.started_second).max(1);
+                let fraction = second.saturating_sub(leg.started_second).min(duration) as f64
+                    / duration as f64;
+                let progress = if fraction <= 0.5 {
+                    2.0 * fraction * fraction
+                } else {
+                    1.0 - 2.0 * (1.0 - fraction) * (1.0 - fraction)
+                };
+                Ok(Some(std::array::from_fn(|index| {
+                    origin[index] + (destination[index] - origin[index]) * progress
+                })))
+            }
+        }
+    }
+
+    fn radio_is_muted_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        owner: &PlayerIdentity,
+        sender: &PlayerIdentity,
+    ) -> Result<bool, StoreError> {
+        Ok(self
+            .radio_mutes
+            .get(txn, &radio_mute_key(owner, sender))?
+            .is_some())
+    }
+
+    fn radio_reception_for_transmission_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        ship_id: u64,
+        transmission_id: u64,
+    ) -> Result<Option<RadioReceptionRecord>, StoreError> {
+        for entry in self
+            .radio_receptions
+            .prefix_iter(txn, &ship_id.to_be_bytes())?
+        {
+            let (_, value) = entry?;
+            let reception = decode_radio_reception(value)?;
+            if reception.transmission_id == transmission_id {
+                return Ok(Some(reception));
+            }
+        }
+        Ok(None)
+    }
+
+    fn reconcile_radio_transmission_for_ship_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        transmission: &mut RadioTransmissionRecord,
+        ship: &ShipRecord,
+        current: u64,
+    ) -> Result<bool, StoreError> {
+        let existing = self.radio_reception_for_transmission_in(
+            txn,
+            ship.ship_id,
+            transmission.transmission_id,
+        )?;
+        if existing
+            .is_some_and(|reception| reception.consumed || reception.received_second <= current)
+        {
+            return Ok(false);
+        }
+        let mut changed = false;
+        if let Some(reception) = existing {
+            self.radio_receptions.delete(
+                txn,
+                &radio_reception_key(ship.ship_id, reception.reception_id),
+            )?;
+            transmission.reference_count = transmission.reference_count.saturating_sub(1);
+            changed = true;
+        }
+        if !transmission.wave_active
+            || current > transmission.wave_expires_second
+            || ship.ship_id == transmission.sender_ship_id
+            || ship.system_id != transmission.system_id
+            || !Self::ship_radio_available(ship)
+            || transmission.kind == crate::wire::RadioTransmissionKind::PlayerBroadcast
+                && self.radio_is_muted_in(txn, &ship.command, &transmission.sender)?
+        {
+            return Ok(changed);
+        }
+        let source = transmission.source_position_bits.map(f64::from_bits);
+        let Some(now_position) = self.radio_position_au_in(txn, ship, current)? else {
+            return Ok(false);
+        };
+        let distance = |left: [f64; 3], right: [f64; 3]| {
+            left.into_iter()
+                .zip(right)
+                .map(|(a, b)| (a - b).powi(2))
+                .sum::<f64>()
+                .sqrt()
+        };
+        let wave_radius =
+            current.saturating_sub(transmission.emitted_second) as f64 / LIGHT_SECONDS_PER_AU;
+        if wave_radius > distance(source, now_position) + 1.0e-9 {
+            return Ok(changed);
+        }
+        let mut received = current.max(transmission.emitted_second);
+        for _ in 0..8 {
+            let Some(position) = self.radio_position_au_in(txn, ship, received)? else {
+                return Ok(changed);
+            };
+            received = transmission
+                .emitted_second
+                .saturating_add((distance(source, position) * LIGHT_SECONDS_PER_AU).ceil() as u64);
+        }
+        if received < current || received > transmission.wave_expires_second {
+            return Ok(changed);
+        }
+        let reception_id = take_next_id(self.meta, txn, META_NEXT_RADIO_RECEPTION_ID)?;
+        let reception = RadioReceptionRecord {
+            reception_id,
+            transmission_id: transmission.transmission_id,
+            receiving_ship_id: ship.ship_id,
+            received_second: received,
+            expires_second: received.saturating_add(RADIO_UNREAD_LIFETIME_SECONDS),
+            consumed: false,
+        };
+        self.radio_receptions.put(
+            txn,
+            &radio_reception_key(ship.ship_id, reception_id),
+            &encode_radio_reception(reception),
+        )?;
+        transmission.reference_count = transmission.reference_count.saturating_add(1);
+        Ok(true)
+    }
+
+    fn reconcile_radio_for_ship_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        ship: &ShipRecord,
+        current: u64,
+    ) -> Result<(), StoreError> {
+        let transmissions = self
+            .radio_transmissions
+            .iter(txn)?
+            .map(|entry| {
+                let (_, value) = entry?;
+                decode_radio_transmission(value)
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for mut transmission in transmissions {
+            if self.reconcile_radio_transmission_for_ship_in(
+                txn,
+                &mut transmission,
+                ship,
+                current,
+            )? {
+                self.radio_transmissions.put(
+                    txn,
+                    &transmission.transmission_id,
+                    &encode_radio_transmission(&transmission)?,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    fn emit_encounter_radio_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        target: &ShipRecord,
+        contact: &EncounterContact,
+        kind: EncounterKind,
+        encounter_id: u64,
+        emitted_second: u64,
+        actionable: bool,
+        body: &str,
+    ) -> Result<(), StoreError> {
+        let radio_kind = match kind {
+            EncounterKind::Hostile => crate::wire::RadioTransmissionKind::SurrenderDemand,
+            EncounterKind::Inspection => crate::wire::RadioTransmissionKind::InspectionOrder,
+            EncounterKind::Military => crate::wire::RadioTransmissionKind::BoardingOrder,
+            _ => return Ok(()),
+        };
+        let Some(source) = self.radio_position_au_in(txn, target, emitted_second)? else {
+            return Ok(());
+        };
+        let stellar = self
+            .systems
+            .get(txn, &target.system_id)?
+            .map(decode_stellar_system)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("encounter radio system is missing"))?;
+        let celestial = derive_celestial_system(&stellar)?;
+        let system_radius = celestial
+            .stars
+            .iter()
+            .map(|star| star.zones.outer_limit_au)
+            .fold(0.0_f64, f64::max)
+            .max(source.into_iter().map(f64::abs).fold(0.0, f64::max));
+        let source_radius = source
+            .into_iter()
+            .map(|value| value * value)
+            .sum::<f64>()
+            .sqrt();
+        let transmission_id = take_next_id(self.meta, txn, META_NEXT_RADIO_TRANSMISSION_ID)?;
+        let sender_ship_id = contact.contact_id | (1_u64 << 63);
+        let mut transmission = RadioTransmissionRecord {
+            transmission_id,
+            system_id: target.system_id,
+            sender_ship_id,
+            sender_ship_name: contact.ship_name.clone(),
+            sender_transponder: contact.transponder.clone(),
+            sender: PlayerIdentity {
+                bbs_id: 0,
+                player_id: contact.contact_id as u32,
+            },
+            emitted_second,
+            source_position_bits: source.map(f64::to_bits),
+            wave_expires_second: emitted_second.saturating_add(
+                ((system_radius + source_radius) * LIGHT_SECONDS_PER_AU).ceil() as u64 + 1,
+            ),
+            wave_active: true,
+            kind: radio_kind,
+            action_ship_id: if actionable { target.ship_id } else { 0 },
+            action_reference_id: if actionable { encounter_id } else { 0 },
+            body: body.to_owned(),
+            reference_count: 1,
+        };
+        let ships = self
+            .ships
+            .iter(txn)?
+            .map(|entry| {
+                let (_, value) = entry?;
+                decode_ship_record(value)
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for receiver in &ships {
+            self.reconcile_radio_transmission_for_ship_in(
+                txn,
+                &mut transmission,
+                receiver,
+                emitted_second,
+            )?;
+        }
+        self.radio_transmissions.put(
+            txn,
+            &transmission_id,
+            &encode_radio_transmission(&transmission)?,
+        )?;
+        Ok(())
+    }
+
+    fn cleanup_radio_in(&self, txn: &mut heed::RwTxn<'_>, current: u64) -> Result<(), StoreError> {
+        let expired = self
+            .radio_receptions
+            .iter(txn)?
+            .map(|entry| {
+                let (key, value) = entry?;
+                Ok((key.to_vec(), decode_radio_reception(value)?))
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?
+            .into_iter()
+            .filter(|(_, reception)| reception.expires_second <= current)
+            .collect::<Vec<_>>();
+        let mut released = std::collections::HashMap::<u64, u64>::new();
+        for (key, reception) in expired {
+            self.radio_receptions.delete(txn, &key)?;
+            if !reception.consumed {
+                *released.entry(reception.transmission_id).or_default() += 1;
+            }
+        }
+        let transmissions = self
+            .radio_transmissions
+            .iter(txn)?
+            .map(|entry| {
+                let (_, value) = entry?;
+                decode_radio_transmission(value)
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for mut transmission in transmissions {
+            let mut decrement = released.remove(&transmission.transmission_id).unwrap_or(0);
+            if transmission.wave_active && transmission.wave_expires_second <= current {
+                transmission.wave_active = false;
+                decrement = decrement.saturating_add(1);
+            }
+            transmission.reference_count = transmission.reference_count.saturating_sub(decrement);
+            if transmission.reference_count == 0 {
+                self.radio_transmissions
+                    .delete(txn, &transmission.transmission_id)?;
+            } else if decrement != 0 {
+                self.radio_transmissions.put(
+                    txn,
+                    &transmission.transmission_id,
+                    &encode_radio_transmission(&transmission)?,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    fn system_radio_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+    ) -> Result<crate::wire::SystemRadioSnapshot, StoreError> {
+        let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        self.cleanup_radio_in(txn, current)?;
+        let (_, ship) = self.player_and_ship_in(txn, identity)?;
+        self.reconcile_radio_for_ship_in(txn, &ship, current)?;
+        let mut entries = Vec::new();
+        for entry in self
+            .radio_receptions
+            .prefix_iter(txn, &ship.ship_id.to_be_bytes())?
+        {
+            let (_, value) = entry?;
+            let reception = decode_radio_reception(value)?;
+            if reception.consumed || reception.received_second > current {
+                continue;
+            }
+            let Some(transmission) = self
+                .radio_transmissions
+                .get(txn, &reception.transmission_id)?
+                .map(decode_radio_transmission)
+                .transpose()?
+            else {
+                continue;
+            };
+            entries.push(crate::wire::RadioInboxEntry {
+                reception_id: reception.reception_id,
+                transmission_id: transmission.transmission_id,
+                receiving_ship_id: reception.receiving_ship_id,
+                sender_ship_id: transmission.sender_ship_id,
+                sender_ship_name: transmission.sender_ship_name,
+                sender_transponder: transmission.sender_transponder,
+                sender: transmission.sender,
+                emitted_second: transmission.emitted_second,
+                received_second: reception.received_second,
+                expires_second: reception.expires_second,
+                kind: transmission.kind,
+                actionable: transmission.action_reference_id != 0
+                    && transmission.action_ship_id == ship.ship_id,
+                action_reference_id: transmission.action_reference_id,
+            });
+        }
+        entries.sort_by_key(|entry| (entry.received_second, entry.reception_id));
+        let prefix = encode_identity(identity);
+        let mut mutes = Vec::new();
+        for entry in self.radio_mutes.prefix_iter(txn, &prefix)? {
+            let (key, _) = entry?;
+            if key.len() == 16 {
+                let mut decoder = Decoder::new(&key[8..]);
+                mutes.push(decode_identity(&mut decoder)?);
+            }
+        }
+        let can_transmit = Self::ship_radio_available(&ship);
+        Ok(crate::wire::SystemRadioSnapshot {
+            ship_id: ship.ship_id,
+            system_id: ship.system_id,
+            current_second: current,
+            can_transmit,
+            unavailable_reason: if can_transmit {
+                String::new()
+            } else if ship.system_id == 0
+                || matches!(
+                    ship.location,
+                    ShipLocationRecord::InFlight(FlightLegRecord {
+                        purpose: FlightLegPurpose::Jump { .. },
+                        ..
+                    })
+                )
+            {
+                "System Common is unavailable in Jump or interstellar space".into()
+            } else {
+                "The ship has no functioning communications installation".into()
+            },
+            entries,
+            mutes,
+        })
+    }
+
+    fn transmit_system_radio_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        body: &str,
+    ) -> Result<RuleResult<crate::wire::SystemRadioSnapshot>, StoreError> {
+        if body.is_empty()
+            || body.len() > RADIO_MAX_BODY_BYTES
+            || !body.bytes().all(|byte| (0x20..=0x7e).contains(&byte))
+        {
+            return Ok(RuleResult::Rejected(
+                "System Common transmissions require 1-500 printable ASCII characters".into(),
+            ));
+        }
+        let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        self.cleanup_radio_in(txn, current)?;
+        let (_, ship) = self.player_and_ship_in(txn, identity)?;
+        if !Self::ship_radio_available(&ship) {
+            return Ok(RuleResult::Rejected(
+                "System Common is unavailable at the ship's present location or condition".into(),
+            ));
+        }
+        let cooldown_key = encode_identity(identity);
+        let next_allowed = self
+            .radio_cooldowns
+            .get(txn, &cooldown_key)?
+            .map(decode_u64)
+            .transpose()?
+            .unwrap_or(0);
+        if current < next_allowed {
+            return Ok(RuleResult::Rejected(format!(
+                "System Common transmitter cooling down for {} game seconds",
+                next_allowed - current
+            )));
+        }
+        let source = self
+            .radio_position_au_in(txn, &ship, current)?
+            .ok_or(StoreError::Corrupt(
+                "radio transmitter has no in-system position",
+            ))?;
+        let stellar = self
+            .systems
+            .get(txn, &ship.system_id)?
+            .map(decode_stellar_system)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("radio transmitter system is missing"))?;
+        let celestial = derive_celestial_system(&stellar)?;
+        let system_radius = celestial
+            .stars
+            .iter()
+            .map(|star| star.zones.outer_limit_au)
+            .fold(0.0_f64, f64::max)
+            .max(source.into_iter().map(f64::abs).fold(0.0, f64::max));
+        let source_radius = source
+            .into_iter()
+            .map(|value| value * value)
+            .sum::<f64>()
+            .sqrt();
+        let transmission_id = take_next_id(self.meta, txn, META_NEXT_RADIO_TRANSMISSION_ID)?;
+        let mut transmission = RadioTransmissionRecord {
+            transmission_id,
+            system_id: ship.system_id,
+            sender_ship_id: ship.ship_id,
+            sender_ship_name: ship.name.clone(),
+            sender_transponder: format!("CT-{:016X}", ship.ship_id),
+            sender: identity.clone(),
+            emitted_second: current,
+            source_position_bits: source.map(f64::to_bits),
+            wave_expires_second: current.saturating_add(
+                ((system_radius + source_radius) * LIGHT_SECONDS_PER_AU).ceil() as u64 + 1,
+            ),
+            wave_active: true,
+            kind: crate::wire::RadioTransmissionKind::PlayerBroadcast,
+            action_ship_id: 0,
+            action_reference_id: 0,
+            body: body.to_owned(),
+            reference_count: 1,
+        };
+        let ships = self
+            .ships
+            .iter(txn)?
+            .map(|entry| {
+                let (_, value) = entry?;
+                decode_ship_record(value)
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for receiver in &ships {
+            self.reconcile_radio_transmission_for_ship_in(
+                txn,
+                &mut transmission,
+                receiver,
+                current,
+            )?;
+        }
+        self.radio_transmissions.put(
+            txn,
+            &transmission_id,
+            &encode_radio_transmission(&transmission)?,
+        )?;
+        self.radio_cooldowns.put(
+            txn,
+            &cooldown_key,
+            &current
+                .saturating_add(RADIO_SEND_INTERVAL_SECONDS)
+                .to_be_bytes(),
+        )?;
+        Ok(RuleResult::Applied(self.system_radio_in(txn, identity)?))
+    }
+
+    fn peek_radio_reception_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        reception_id: u64,
+    ) -> Result<RuleResult<crate::wire::RadioContent>, StoreError> {
+        let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        self.cleanup_radio_in(txn, current)?;
+        let (_, ship) = self.player_and_ship_in(txn, identity)?;
+        let Some(reception) = self
+            .radio_receptions
+            .get(txn, &radio_reception_key(ship.ship_id, reception_id))?
+            .map(decode_radio_reception)
+            .transpose()?
+        else {
+            return Ok(RuleResult::Rejected(
+                "that unread radio reception is unavailable".into(),
+            ));
+        };
+        if reception.consumed {
+            return Ok(RuleResult::Rejected(
+                "that radio reception was already consumed".into(),
+            ));
+        }
+        if reception.received_second > current {
+            return Ok(RuleResult::Rejected(
+                "that radio wave has not reached the ship".into(),
+            ));
+        }
+        let transmission = self
+            .radio_transmissions
+            .get(txn, &reception.transmission_id)?
+            .map(decode_radio_transmission)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("radio reception content is missing"))?;
+        Ok(RuleResult::Applied(crate::wire::RadioContent {
+            reception_id,
+            transmission_id: reception.transmission_id,
+            body: transmission.body,
+        }))
+    }
+
+    fn acknowledge_radio_reception_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        reception_id: u64,
+    ) -> Result<RuleResult<crate::wire::SystemRadioSnapshot>, StoreError> {
+        let (_, ship) = self.player_and_ship_in(txn, identity)?;
+        let key = radio_reception_key(ship.ship_id, reception_id);
+        let Some(mut reception) = self
+            .radio_receptions
+            .get(txn, &key)?
+            .map(decode_radio_reception)
+            .transpose()?
+        else {
+            return Ok(RuleResult::Rejected(
+                "that radio reception was already consumed".into(),
+            ));
+        };
+        if reception.consumed {
+            return Ok(RuleResult::Rejected(
+                "that radio reception was already consumed".into(),
+            ));
+        }
+        let Some(mut transmission) = self
+            .radio_transmissions
+            .get(txn, &reception.transmission_id)?
+            .map(decode_radio_transmission)
+            .transpose()?
+        else {
+            return Err(StoreError::Corrupt("radio reception content is missing"));
+        };
+        transmission.reference_count = transmission.reference_count.saturating_sub(1);
+        reception.consumed = true;
+        reception.expires_second = transmission.wave_expires_second;
+        self.radio_receptions
+            .put(txn, &key, &encode_radio_reception(reception))?;
+        if transmission.reference_count == 0 {
+            self.radio_transmissions
+                .delete(txn, &transmission.transmission_id)?;
+        } else {
+            self.radio_transmissions.put(
+                txn,
+                &transmission.transmission_id,
+                &encode_radio_transmission(&transmission)?,
+            )?;
+        }
+        Ok(RuleResult::Applied(self.system_radio_in(txn, identity)?))
+    }
+
+    fn set_radio_mute_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        sender: &PlayerIdentity,
+        muted: bool,
+    ) -> Result<RuleResult<crate::wire::SystemRadioSnapshot>, StoreError> {
+        if sender == identity {
+            return Ok(RuleResult::Rejected(
+                "a captain cannot mute their own identity".into(),
+            ));
+        }
+        let key = radio_mute_key(identity, sender);
+        if muted {
+            self.radio_mutes.put(txn, &key, &[1])?;
+        } else {
+            self.radio_mutes.delete(txn, &key)?;
+        }
+        Ok(RuleResult::Applied(self.system_radio_in(txn, identity)?))
     }
 
     fn send_private_message_in(
@@ -18286,6 +19091,10 @@ impl Store {
         self.market_leads.clear(&mut txn)?;
         self.market_events.clear(&mut txn)?;
         self.private_message_recipients.clear(&mut txn)?;
+        self.radio_transmissions.clear(&mut txn)?;
+        self.radio_receptions.clear(&mut txn)?;
+        self.radio_mutes.clear(&mut txn)?;
+        self.radio_cooldowns.clear(&mut txn)?;
         self.insurance_policies.clear(&mut txn)?;
         self.unique_cargo.clear(&mut txn)?;
         self.market_claims.clear(&mut txn)?;
@@ -18394,6 +19203,8 @@ impl Store {
         put_meta_u64(self.meta, &mut txn, META_NEXT_FLIGHT_PLAN_ID, 1)?;
         put_meta_u64(self.meta, &mut txn, META_NEXT_CHECKPOINT_ID, 1)?;
         put_meta_u64(self.meta, &mut txn, META_NEXT_ENCOUNTER_ID, 1)?;
+        put_meta_u64(self.meta, &mut txn, META_NEXT_RADIO_TRANSMISSION_ID, 1)?;
+        put_meta_u64(self.meta, &mut txn, META_NEXT_RADIO_RECEPTION_ID, 1)?;
         put_meta_u64(self.meta, &mut txn, META_GAME_SECOND, 0)?;
         let pie = UniqueCargoRecord {
             object_id: 1,
@@ -22427,6 +23238,7 @@ impl Store {
                 ));
             }
         };
+        self.reconcile_radio_for_ship_in(txn, &ship, due_second)?;
         self.ships
             .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
         if let Some((checkpoint_id, policy)) = automatic_checkpoint {
@@ -22677,6 +23489,14 @@ impl Store {
             after_second.saturating_add(1),
             through_second,
         )?)
+    }
+
+    pub fn radio_unread_count(&self, identity: &PlayerIdentity) -> Result<(u64, u64), StoreError> {
+        let mut txn = self.env.write_txn()?;
+        let snapshot = self.system_radio_in(&mut txn, identity)?;
+        let value = (snapshot.ship_id, snapshot.entries.len() as u64);
+        txn.commit()?;
+        Ok(value)
     }
 
     pub fn recent_carrier_legs(&self, limit: usize) -> Result<Vec<CarrierLeg>, StoreError> {
@@ -25934,6 +26754,24 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
             bytes.push(70);
             encode_text(&mut bytes, successor_name)?;
         }
+        Command::GetSystemRadio => bytes.push(72),
+        Command::TransmitSystemRadio { ref body } => {
+            bytes.push(73);
+            encode_text(&mut bytes, body)?;
+        }
+        Command::PeekRadioReception { reception_id } => {
+            bytes.push(74);
+            bytes.extend_from_slice(&reception_id.to_be_bytes());
+        }
+        Command::AcknowledgeRadioReception { reception_id } => {
+            bytes.push(75);
+            bytes.extend_from_slice(&reception_id.to_be_bytes());
+        }
+        Command::SetRadioMute { ref sender, muted } => {
+            bytes.push(76);
+            bytes.extend_from_slice(&encode_identity(sender));
+            bytes.push(u8::from(muted));
+        }
     }
     Ok(bytes)
 }
@@ -26308,6 +27146,20 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
         },
         70 => Command::DeclareBankruptcy {
             successor_name: decoder.text()?,
+        },
+        72 => Command::GetSystemRadio,
+        73 => Command::TransmitSystemRadio {
+            body: decoder.text()?,
+        },
+        74 => Command::PeekRadioReception {
+            reception_id: decoder.u64()?,
+        },
+        75 => Command::AcknowledgeRadioReception {
+            reception_id: decoder.u64()?,
+        },
+        76 => Command::SetRadioMute {
+            sender: decode_identity(&mut decoder)?,
+            muted: decoder.u8()? != 0,
         },
         71 => Command::ApplyPersonnelAction {
             person_id: decoder.u64()?,
@@ -26713,6 +27565,108 @@ fn encode_fleet_into(
         }
     }
     Ok(())
+}
+
+fn encode_system_radio_into(
+    bytes: &mut Vec<u8>,
+    value: &crate::wire::SystemRadioSnapshot,
+) -> Result<(), StoreError> {
+    bytes.extend_from_slice(&value.ship_id.to_be_bytes());
+    bytes.extend_from_slice(&value.system_id.to_be_bytes());
+    bytes.extend_from_slice(&value.current_second.to_be_bytes());
+    bytes.push(u8::from(value.can_transmit));
+    encode_text(bytes, &value.unavailable_reason)?;
+    bytes.extend_from_slice(
+        &u32::try_from(value.entries.len())
+            .map_err(|_| StoreError::Corrupt("too many radio inbox entries"))?
+            .to_be_bytes(),
+    );
+    for entry in &value.entries {
+        for number in [
+            entry.reception_id,
+            entry.transmission_id,
+            entry.receiving_ship_id,
+            entry.sender_ship_id,
+        ] {
+            bytes.extend_from_slice(&number.to_be_bytes());
+        }
+        encode_text(bytes, &entry.sender_ship_name)?;
+        encode_text(bytes, &entry.sender_transponder)?;
+        bytes.extend_from_slice(&encode_identity(&entry.sender));
+        for number in [
+            entry.emitted_second,
+            entry.received_second,
+            entry.expires_second,
+        ] {
+            bytes.extend_from_slice(&number.to_be_bytes());
+        }
+        bytes.push(match entry.kind {
+            crate::wire::RadioTransmissionKind::PlayerBroadcast => 0,
+            crate::wire::RadioTransmissionKind::InspectionOrder => 1,
+            crate::wire::RadioTransmissionKind::BoardingOrder => 2,
+            crate::wire::RadioTransmissionKind::SurrenderDemand => 3,
+        });
+        bytes.push(u8::from(entry.actionable));
+        bytes.extend_from_slice(&entry.action_reference_id.to_be_bytes());
+    }
+    bytes.extend_from_slice(
+        &u32::try_from(value.mutes.len())
+            .map_err(|_| StoreError::Corrupt("too many radio mutes"))?
+            .to_be_bytes(),
+    );
+    for mute in &value.mutes {
+        bytes.extend_from_slice(&encode_identity(mute));
+    }
+    Ok(())
+}
+
+fn decode_system_radio(
+    decoder: &mut Decoder<'_>,
+) -> Result<crate::wire::SystemRadioSnapshot, StoreError> {
+    let ship_id = decoder.u64()?;
+    let system_id = decoder.u64()?;
+    let current_second = decoder.u64()?;
+    let can_transmit = decoder.u8()? != 0;
+    let unavailable_reason = decoder.text()?;
+    let count = decoder.u32()? as usize;
+    let mut entries = Vec::with_capacity(count);
+    for _ in 0..count {
+        entries.push(crate::wire::RadioInboxEntry {
+            reception_id: decoder.u64()?,
+            transmission_id: decoder.u64()?,
+            receiving_ship_id: decoder.u64()?,
+            sender_ship_id: decoder.u64()?,
+            sender_ship_name: decoder.text()?,
+            sender_transponder: decoder.text()?,
+            sender: decode_identity(decoder)?,
+            emitted_second: decoder.u64()?,
+            received_second: decoder.u64()?,
+            expires_second: decoder.u64()?,
+            kind: match decoder.u8()? {
+                0 => crate::wire::RadioTransmissionKind::PlayerBroadcast,
+                1 => crate::wire::RadioTransmissionKind::InspectionOrder,
+                2 => crate::wire::RadioTransmissionKind::BoardingOrder,
+                3 => crate::wire::RadioTransmissionKind::SurrenderDemand,
+                _ => return Err(StoreError::Corrupt("unknown radio inbox kind")),
+            },
+            actionable: decoder.u8()? != 0,
+            action_reference_id: decoder.u64()?,
+        });
+    }
+    let count = decoder.u32()? as usize;
+    let mut mutes = Vec::with_capacity(count);
+    for _ in 0..count {
+        mutes.push(decode_identity(decoder)?);
+    }
+    Ok(crate::wire::SystemRadioSnapshot {
+        ship_id,
+        system_id,
+        current_second,
+        can_transmit,
+        unavailable_reason,
+        entries,
+        mutes,
+    })
 }
 
 fn decode_ship_title(value: u8) -> Result<crate::wire::ShipTitleKind, StoreError> {
@@ -27519,6 +28473,16 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
             bytes.push(32);
             encode_fleet_into(&mut bytes, value)?;
         }
+        OutcomeKind::SystemRadio(value) => {
+            bytes.push(33);
+            encode_system_radio_into(&mut bytes, value)?;
+        }
+        OutcomeKind::RadioContent(value) => {
+            bytes.push(34);
+            bytes.extend_from_slice(&value.reception_id.to_be_bytes());
+            bytes.extend_from_slice(&value.transmission_id.to_be_bytes());
+            encode_text(&mut bytes, &value.body)?;
+        }
         OutcomeKind::Error { code, message } => {
             bytes.push(3);
             bytes.push(match code {
@@ -27666,6 +28630,12 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         }
         31 => OutcomeKind::DockedServices(decode_docked_services(&mut decoder)?),
         32 => OutcomeKind::Fleet(decode_fleet(&mut decoder)?),
+        33 => OutcomeKind::SystemRadio(decode_system_radio(&mut decoder)?),
+        34 => OutcomeKind::RadioContent(crate::wire::RadioContent {
+            reception_id: decoder.u64()?,
+            transmission_id: decoder.u64()?,
+            body: decoder.text()?,
+        }),
         _ => return Err(StoreError::Corrupt("unknown outcome kind")),
     };
     decoder.finish()?;
@@ -28316,6 +29286,121 @@ fn decode_private_message_recipient(
         revoked: d.u8()? != 0,
     };
     d.finish()?;
+    Ok(record)
+}
+
+fn radio_reception_key(ship_id: u64, reception_id: u64) -> [u8; 16] {
+    let mut key = [0; 16];
+    key[..8].copy_from_slice(&ship_id.to_be_bytes());
+    key[8..].copy_from_slice(&reception_id.to_be_bytes());
+    key
+}
+
+fn radio_mute_key(owner: &PlayerIdentity, sender: &PlayerIdentity) -> [u8; 16] {
+    let mut key = [0; 16];
+    key[..8].copy_from_slice(&encode_identity(owner));
+    key[8..].copy_from_slice(&encode_identity(sender));
+    key
+}
+
+fn encode_radio_transmission(record: &RadioTransmissionRecord) -> Result<Vec<u8>, StoreError> {
+    let mut bytes = vec![1];
+    bytes.extend_from_slice(&record.transmission_id.to_be_bytes());
+    bytes.extend_from_slice(&record.system_id.to_be_bytes());
+    bytes.extend_from_slice(&record.sender_ship_id.to_be_bytes());
+    encode_text(&mut bytes, &record.sender_ship_name)?;
+    encode_text(&mut bytes, &record.sender_transponder)?;
+    bytes.extend_from_slice(&encode_identity(&record.sender));
+    bytes.extend_from_slice(&record.emitted_second.to_be_bytes());
+    for value in record.source_position_bits {
+        bytes.extend_from_slice(&value.to_be_bytes());
+    }
+    bytes.extend_from_slice(&record.wave_expires_second.to_be_bytes());
+    bytes.push(u8::from(record.wave_active));
+    bytes.push(match record.kind {
+        crate::wire::RadioTransmissionKind::PlayerBroadcast => 0,
+        crate::wire::RadioTransmissionKind::InspectionOrder => 1,
+        crate::wire::RadioTransmissionKind::BoardingOrder => 2,
+        crate::wire::RadioTransmissionKind::SurrenderDemand => 3,
+    });
+    bytes.extend_from_slice(&record.action_ship_id.to_be_bytes());
+    bytes.extend_from_slice(&record.action_reference_id.to_be_bytes());
+    encode_text(&mut bytes, &record.body)?;
+    bytes.extend_from_slice(&record.reference_count.to_be_bytes());
+    Ok(bytes)
+}
+
+fn decode_radio_transmission(bytes: &[u8]) -> Result<RadioTransmissionRecord, StoreError> {
+    let mut decoder = Decoder::new(bytes);
+    if decoder.u8()? != 1 {
+        return Err(StoreError::Corrupt("unsupported radio-transmission record"));
+    }
+    let transmission_id = decoder.u64()?;
+    let system_id = decoder.u64()?;
+    let sender_ship_id = decoder.u64()?;
+    let sender_ship_name = decoder.text()?;
+    let sender_transponder = decoder.text()?;
+    let sender = decode_identity(&mut decoder)?;
+    let emitted_second = decoder.u64()?;
+    let source_position_bits = [decoder.u64()?, decoder.u64()?, decoder.u64()?];
+    let wave_expires_second = decoder.u64()?;
+    let wave_active = decoder.u8()? != 0;
+    let kind = match decoder.u8()? {
+        0 => crate::wire::RadioTransmissionKind::PlayerBroadcast,
+        1 => crate::wire::RadioTransmissionKind::InspectionOrder,
+        2 => crate::wire::RadioTransmissionKind::BoardingOrder,
+        3 => crate::wire::RadioTransmissionKind::SurrenderDemand,
+        _ => return Err(StoreError::Corrupt("unknown radio-transmission kind")),
+    };
+    let action_ship_id = decoder.u64()?;
+    let action_reference_id = decoder.u64()?;
+    let body = decoder.text()?;
+    let reference_count = decoder.u64()?;
+    decoder.finish()?;
+    Ok(RadioTransmissionRecord {
+        transmission_id,
+        system_id,
+        sender_ship_id,
+        sender_ship_name,
+        sender_transponder,
+        sender,
+        emitted_second,
+        source_position_bits,
+        wave_expires_second,
+        wave_active,
+        kind,
+        action_ship_id,
+        action_reference_id,
+        body,
+        reference_count,
+    })
+}
+
+fn encode_radio_reception(record: RadioReceptionRecord) -> Vec<u8> {
+    let mut bytes = vec![1];
+    bytes.extend_from_slice(&record.reception_id.to_be_bytes());
+    bytes.extend_from_slice(&record.transmission_id.to_be_bytes());
+    bytes.extend_from_slice(&record.receiving_ship_id.to_be_bytes());
+    bytes.extend_from_slice(&record.received_second.to_be_bytes());
+    bytes.extend_from_slice(&record.expires_second.to_be_bytes());
+    bytes.push(u8::from(record.consumed));
+    bytes
+}
+
+fn decode_radio_reception(bytes: &[u8]) -> Result<RadioReceptionRecord, StoreError> {
+    let mut decoder = Decoder::new(bytes);
+    if decoder.u8()? != 1 {
+        return Err(StoreError::Corrupt("unsupported radio-reception record"));
+    }
+    let record = RadioReceptionRecord {
+        reception_id: decoder.u64()?,
+        transmission_id: decoder.u64()?,
+        receiving_ship_id: decoder.u64()?,
+        received_second: decoder.u64()?,
+        expires_second: decoder.u64()?,
+        consumed: decoder.u8()? != 0,
+    };
+    decoder.finish()?;
     Ok(record)
 }
 
@@ -31758,7 +32843,11 @@ fn encode_journal(
     delivery: &Delivery,
     retain_delivery: bool,
 ) -> Result<Vec<u8>, StoreError> {
-    let queued = encode_queued(queued)?;
+    let mut journal_command = queued.clone();
+    if let Command::TransmitSystemRadio { body } = &mut journal_command.request.command {
+        body.clear();
+    }
+    let queued = encode_queued(&journal_command)?;
     let queued_len =
         u32::try_from(queued.len()).map_err(|_| StoreError::Corrupt("queue record too long"))?;
     let delivery = retain_delivery
@@ -33141,6 +34230,327 @@ mod tests {
             OutcomeKind::PlayerCreated(_)
         ));
         epoch
+    }
+
+    fn establish_colocated_player(store: &Store, identity: &PlayerIdentity, template: &ShipRecord) {
+        establish_player(store, identity);
+        let mut txn = store.env.write_txn().unwrap();
+        let player = store
+            .players
+            .get(&txn, &encode_identity(identity))
+            .unwrap()
+            .map(decode_player_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        let mut ship = store
+            .ships
+            .get(&txn, &player.ship_id)
+            .unwrap()
+            .map(decode_ship_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        ship.system_id = template.system_id;
+        ship.location = template.location;
+        ship.name = format!("Test Ship {}", identity.player_id);
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        txn.commit().unwrap();
+    }
+
+    #[test]
+    fn system_radio_stores_one_body_until_wave_and_receptions_release_it() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let sender = identity();
+        let target = PlayerIdentity {
+            bbs_id: sender.bbs_id,
+            player_id: sender.player_id + 1,
+        };
+        let template = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &sender)
+            .unwrap()
+            .1;
+        establish_colocated_player(&store, &target, &template);
+
+        let mut txn = store.env.write_txn().unwrap();
+        assert!(matches!(
+            store
+                .transmit_system_radio_in(&mut txn, &sender, "Rendezvous at the gas giant.")
+                .unwrap(),
+            RuleResult::Applied(_)
+        ));
+        let inbox = store.system_radio_in(&mut txn, &target).unwrap();
+        assert_eq!(inbox.entries.len(), 1);
+        let reception_id = inbox.entries[0].reception_id;
+        let transmission_id = inbox.entries[0].transmission_id;
+        let transmission = store
+            .radio_transmissions
+            .get(&txn, &transmission_id)
+            .unwrap()
+            .map(decode_radio_transmission)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert_eq!(transmission.body, "Rendezvous at the gas giant.");
+        assert_eq!(transmission.reference_count, 2);
+        let content = match store
+            .peek_radio_reception_in(&mut txn, &target, reception_id)
+            .unwrap()
+        {
+            RuleResult::Applied(content) => content,
+            RuleResult::Rejected(reason) => panic!("radio reception was rejected: {reason}"),
+        };
+        assert_eq!(content.reception_id, reception_id);
+        assert_eq!(content.transmission_id, transmission_id);
+        assert_eq!(content.body, "Rendezvous at the gas giant.");
+        assert!(matches!(
+            store
+                .acknowledge_radio_reception_in(&mut txn, &target, reception_id)
+                .unwrap(),
+            RuleResult::Applied(_)
+        ));
+        let transmission = store
+            .radio_transmissions
+            .get(&txn, &transmission_id)
+            .unwrap()
+            .map(decode_radio_transmission)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert_eq!(transmission.reference_count, 1);
+        store
+            .cleanup_radio_in(&mut txn, transmission.wave_expires_second)
+            .unwrap();
+        assert!(
+            store
+                .radio_transmissions
+                .get(&txn, &transmission_id)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn radio_mutes_only_player_broadcasts_and_structured_hails_target_one_ship() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let sender = identity();
+        let target = PlayerIdentity {
+            bbs_id: sender.bbs_id,
+            player_id: sender.player_id + 1,
+        };
+        let template = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &sender)
+            .unwrap()
+            .1;
+        establish_colocated_player(&store, &target, &template);
+
+        let mut txn = store.env.write_txn().unwrap();
+        assert!(matches!(
+            store
+                .set_radio_mute_in(&mut txn, &target, &sender, true)
+                .unwrap(),
+            RuleResult::Applied(_)
+        ));
+        assert!(matches!(
+            store
+                .transmit_system_radio_in(&mut txn, &sender, "Ordinary traffic call")
+                .unwrap(),
+            RuleResult::Applied(_)
+        ));
+        assert!(
+            store
+                .system_radio_in(&mut txn, &target)
+                .unwrap()
+                .entries
+                .is_empty()
+        );
+        assert!(matches!(
+            store
+                .transmit_system_radio_in(&mut txn, &sender, "Too soon")
+                .unwrap(),
+            RuleResult::Rejected(_)
+        ));
+
+        let target_ship = store.player_and_ship_in(&txn, &target).unwrap().1;
+        let contact = EncounterContact {
+            contact_id: 77,
+            ship_name: "Customs Cutter".into(),
+            class_name: "inspection launch".into(),
+            transponder: "CUSTOMS-77".into(),
+            role: "customs inspection".into(),
+            range: "local traffic range".into(),
+            confidence_percent: 100,
+        };
+        store
+            .emit_encounter_radio_in(
+                &mut txn,
+                &target_ship,
+                &contact,
+                EncounterKind::Inspection,
+                9001,
+                0,
+                true,
+                "Customs requests the cargo manifest.",
+            )
+            .unwrap();
+        let target_inbox = store.system_radio_in(&mut txn, &target).unwrap();
+        assert_eq!(target_inbox.entries.len(), 1);
+        assert_eq!(
+            target_inbox.entries[0].kind,
+            crate::wire::RadioTransmissionKind::InspectionOrder
+        );
+        assert!(target_inbox.entries[0].actionable);
+        assert_eq!(target_inbox.entries[0].action_reference_id, 9001);
+        let overheard = store.system_radio_in(&mut txn, &sender).unwrap();
+        assert_eq!(overheard.entries.len(), 1);
+        assert!(!overheard.entries[0].actionable);
+        assert_eq!(overheard.entries[0].action_reference_id, 9001);
+    }
+
+    #[test]
+    fn pending_radio_reception_is_cancelled_when_the_ship_enters_jump() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let sender = identity();
+        let target = PlayerIdentity {
+            bbs_id: sender.bbs_id,
+            player_id: sender.player_id + 1,
+        };
+        let template = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &sender)
+            .unwrap()
+            .1;
+        establish_colocated_player(&store, &target, &template);
+        let mut txn = store.env.write_txn().unwrap();
+        let (_, mut target_ship) = store.player_and_ship_in(&txn, &target).unwrap();
+        let jump_locus = ShipLocusRecord::JumpLocus {
+            system_id: target_ship.system_id,
+        };
+        target_ship.location = ShipLocationRecord::Holding {
+            locus: jump_locus,
+            arrived_second: 0,
+        };
+        store
+            .ships
+            .put(
+                &mut txn,
+                &target_ship.ship_id,
+                &encode_ship_record(&target_ship).unwrap(),
+            )
+            .unwrap();
+        assert!(matches!(
+            store
+                .transmit_system_radio_in(&mut txn, &sender, "Port departure notice")
+                .unwrap(),
+            RuleResult::Applied(_)
+        ));
+        let pending = store
+            .radio_receptions
+            .prefix_iter(&txn, &target_ship.ship_id.to_be_bytes())
+            .unwrap()
+            .map(|entry| decode_radio_reception(entry.unwrap().1).unwrap())
+            .next()
+            .unwrap();
+        assert!(pending.received_second > 0);
+        let transmission_id = pending.transmission_id;
+
+        target_ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: 1,
+            plan_revision: 1,
+            leg_index: 0,
+            origin: jump_locus,
+            destination: jump_locus,
+            started_second: 0,
+            due_second: crate::simulation::SECONDS_PER_DAY,
+            purpose: FlightLegPurpose::Jump {
+                inaccurate_extra_days: 0,
+                critical_transition: false,
+            },
+        });
+        store
+            .reconcile_radio_for_ship_in(&mut txn, &target_ship, 0)
+            .unwrap();
+        assert!(
+            store
+                .radio_receptions
+                .prefix_iter(&txn, &target_ship.ship_id.to_be_bytes())
+                .unwrap()
+                .next()
+                .is_none()
+        );
+        let transmission = store
+            .radio_transmissions
+            .get(&txn, &transmission_id)
+            .unwrap()
+            .map(decode_radio_transmission)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert_eq!(transmission.reference_count, 1);
+    }
+
+    #[test]
+    fn radio_body_peek_is_not_retained_in_journal_results_or_outbox() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let sender = identity();
+        let target = PlayerIdentity {
+            bbs_id: sender.bbs_id,
+            player_id: sender.player_id + 1,
+        };
+        let template = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &sender)
+            .unwrap()
+            .1;
+        establish_colocated_player(&store, &target, &template);
+        let mut txn = store.env.write_txn().unwrap();
+        store.outbox.clear(&mut txn).unwrap();
+        assert!(matches!(
+            store
+                .transmit_system_radio_in(&mut txn, &sender, "Transient body")
+                .unwrap(),
+            RuleResult::Applied(_)
+        ));
+        let reception_id =
+            store.system_radio_in(&mut txn, &target).unwrap().entries[0].reception_id;
+        txn.commit().unwrap();
+
+        let (epoch, _, _) = store.issue_session_epoch(&target).unwrap();
+        store
+            .enqueue(&QueuedCommand {
+                identity: target.clone(),
+                request: request(epoch, 211, Command::PeekRadioReception { reception_id }),
+            })
+            .unwrap();
+        let delivery = store.process_next().unwrap().unwrap();
+        assert!(matches!(
+            delivery.outcome.kind,
+            OutcomeKind::RadioContent(crate::wire::RadioContent { ref body, .. })
+                if body == "Transient body"
+        ));
+        assert!(store.pending_outbox().unwrap().is_empty());
+        let txn = store.env.read_txn().unwrap();
+        let result_key = command_result_key(&target, &[211; COMMAND_ID_BYTES]).unwrap();
+        assert!(store.results.get(&txn, &result_key).unwrap().is_none());
+        let journal = store
+            .journal
+            .get(&txn, &delivery.outbox_sequence)
+            .unwrap()
+            .unwrap();
+        assert!(
+            !journal
+                .windows("Transient body".len())
+                .any(|window| window == b"Transient body")
+        );
     }
 
     #[test]

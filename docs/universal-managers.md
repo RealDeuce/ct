@@ -2,7 +2,7 @@
 
 ## Status
 
-The OpenDoors client has a common command-console shell with six managers.
+The OpenDoors client has a common command-console shell with seven managers.
 Crew Management has an authoritative snapshot plus training, watch, service,
 location, treatment, pay, and morale mutations. Ship Management has an
 authoritative condition and dock-service surface. Message Management reads the
@@ -12,7 +12,8 @@ Universe has its carried system set, mail-driven provenance, course plotting,
 and mapping-disclosure state. Task Management has an authoritative ledger,
 offer acceptance, physical custody, settlement, default, and dispute actions.
 Operations Ledger exposes the implemented naval, privateer, pirate, prize,
-warrant, and traffic-interception state.
+warrant, and traffic-interception state. System Common Radio carries transient
+in-system broadcasts and structured encounter hails at light speed.
 
 ## Availability and Authority
 
@@ -25,6 +26,7 @@ operational phase:
 4. Message Management
 5. Known Universe
 6. Operations Ledger
+7. System Common Radio
 
 “Available everywhere” means that the player may always inspect the manager
 using the knowledge and state available to the current frame of reference. It
@@ -199,6 +201,30 @@ identifier. The door may open Claim Offer, Task, Finance, Mapping, or
 Operations from the article, but it never reconstructs or mutates rule state
 from article prose.
 
+## System Common Radio
+
+System Common is the public, shared-medium radio channel within the current
+star system. It is separate from interstellar mail. A transmission expands
+from its emitter at light speed, so ships at different local landmarks receive
+the same broadcast at different game times. It is unavailable in Jump space,
+and a ship with no functioning communications installation cannot receive or
+transmit.
+
+Player broadcasts are limited to 500 printable ASCII characters and one
+transmission every 15 seconds of real time (420 game seconds). Captains may
+persistently mute another captain's ordinary broadcasts. Inspection orders,
+boarding instructions, and surrender demands are structured safety-critical
+hails and cannot be muted. They use the same observable medium: another ship
+within the wave may overhear a hail, but only its intended ship receives the
+associated encounter action.
+
+Radio is deliberately transient. The manager lists unread receptions without
+injecting their bodies into unrelated screens. Opening one displays it once
+and consumes that ship's copy; retaining it outside the game is the captain's
+responsibility. Unread receptions expire after 196 game days. They belong to
+the receiving ship rather than the login, and therefore remain with that ship
+if command or ownership changes.
+
 ## Known Universe
 
 Known Universe is the current ship's sourced, potentially stale operational
@@ -249,6 +275,7 @@ The common command console uses:
 - `S` — Ship Management
 - `T` — Task Management
 - `M` — Message Management
+- `R` — System Common Radio
 - `K` — Known Universe
 - `O` — Operations Ledger
 - `L` — license and copyright notices
@@ -256,4 +283,4 @@ The common command console uses:
 
 The shell is shared by the ISO 646, ISO 646 plus ECMA-48 colour, and CP437 plus
 ECMA-48 profiles and remains usable at 40×24. Location- and phase-specific
-menus will add their own commands without replacing these six managers.
+menus will add their own commands without replacing these seven managers.

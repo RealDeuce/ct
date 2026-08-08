@@ -71,10 +71,11 @@ constexpr std::array<DoorHelp, static_cast<size_t>(DoorHelpTopic::Count)> HELP{{
    },
    {
       "Captain's Command Console",
-      "This is the help index and the universal entrance to six managers. Crew covers people and "
+      "This is the help index and the universal entrance to seven managers. Crew covers people and "
       "training; Ship covers condition, stores, and fleet custody; Tasks covers offers and accepted "
       "obligations; Messages covers physical correspondence; Known Universe covers charts and route "
-      "planning; Operations covers service, traffic, and combat activity.\n\n"
+      "planning; Operations covers service, traffic, and combat activity; System Common carries "
+      "transient in-system radio.\n\n"
       "The managers are available while docked and during scheduled travel, although particular "
       "actions depend on location, facilities, authority, and current ship state.\n\n"
       "Press the manager's letter, Enter to return to the operational screen, or Q to request leaving "
@@ -111,6 +112,19 @@ constexpr std::array<DoorHelp, static_cast<size_t>(DoorHelpTopic::Count)> HELP{{
       "settlements have explicit origins, destinations, custody, and delivery records. The captain "
       "will hand-deliver personally carried instruments on arrival even without an ordinary mailbag.\n\n"
       "Ignoring a message changes its presentation, not the underlying obligation or event.",
+   },
+   {
+      "System Common radio",
+      "System Common is the single public in-system radio channel. Player broadcasts and real "
+      "inspection, boarding, or surrender hails propagate at light speed from the transmitting "
+      "ship. There are no private frequencies or ambient computer chatter. Jump space cannot "
+      "send or receive system radio.\n\n"
+      "The inbox belongs to the receiving ship and continues working while its captain is offline. "
+      "Opening a reception displays it once and removes that ship's unread copy; save anything you "
+      "want to keep outside the game. Unread receptions expire after 196 game days.\n\n"
+      "Broadcasts identify their ship and transponder, accept up to 500 printable ASCII characters, "
+      "and are limited to one every 15 real seconds. Muting a captain suppresses that captain's "
+      "ordinary future broadcasts, but cannot suppress authoritative gameplay hails.",
    },
    {
       "Known Universe and charts",

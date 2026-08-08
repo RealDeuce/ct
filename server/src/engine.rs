@@ -159,6 +159,10 @@ impl Engine {
         Ok(self.store.pending_encounter(identity)?)
     }
 
+    pub fn radio_unread_count(&self, identity: &PlayerIdentity) -> Result<(u64, u64), EngineError> {
+        Ok(self.store.radio_unread_count(identity)?)
+    }
+
     pub fn acknowledge_outbox(&self, sequence: u64) -> Result<bool, EngineError> {
         Ok(self.store.acknowledge_outbox(sequence)?)
     }

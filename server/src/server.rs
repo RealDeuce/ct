@@ -35,8 +35,8 @@ use crate::wire::{
     CloseCode, MAX_FRAME_BYTES, PROTOCOL_VERSION, PlayerIdentity, WireError,
     decode_client_hello_with_version, decode_close, decode_protocol_version, decode_request,
     encode_checkpoint_ready, encode_close_with_code, encode_encounter_ready,
-    encode_legacy_close_for_version, encode_phase_changed, encode_response, encode_server_hello,
-    encode_server_stopping, encode_session_replaced, encode_traffic_movement,
+    encode_legacy_close_for_version, encode_phase_changed, encode_radio_unread, encode_response,
+    encode_server_hello, encode_server_stopping, encode_session_replaced, encode_traffic_movement,
     encode_traffic_snapshot,
 };
 use crate::{admin_wire, sysop_wire, wire};
@@ -209,6 +209,12 @@ enum EngineEvent {
         observed_second: u64,
         contact: Box<TrafficContact>,
     },
+    RadioUnread {
+        identity: PlayerIdentity,
+        committed_sequence: u64,
+        ship_id: u64,
+        unread_count: u64,
+    },
     UniverseReset,
     PlayerAccessChanged(Box<PlayerAccessRecord>),
     Fatal(String),
@@ -221,12 +227,15 @@ struct SessionOpening {
     traffic_snapshot: Option<TrafficSnapshot>,
     checkpoint: Option<wire::CheckpointSnapshot>,
     encounter: Option<wire::EncounterSnapshot>,
+    radio_ship_id: u64,
+    radio_unread_count: u64,
 }
 
 struct Observer {
     epoch: u64,
     system_id: Option<u64>,
     last_second: u64,
+    radio_unread_count: u64,
 }
 
 fn emit_best_effort(sender: &mpsc::Sender<EngineEvent>, event: EngineEvent) -> bool {
@@ -279,6 +288,39 @@ fn emit_observer_movements(
         }
     }
     observer.last_second = through_second;
+    Ok(true)
+}
+
+fn emit_radio_unread_updates(
+    engine: &Engine,
+    sender: &mpsc::Sender<EngineEvent>,
+    observers: &mut HashMap<PlayerIdentity, Observer>,
+) -> Result<bool, EngineError> {
+    let identities = observers.keys().cloned().collect::<Vec<_>>();
+    let sequence = engine.committed_sequence()?;
+    for identity in identities {
+        let Ok((ship_id, unread_count)) = engine.radio_unread_count(&identity) else {
+            continue;
+        };
+        let Some(observer) = observers.get_mut(&identity) else {
+            continue;
+        };
+        if unread_count == observer.radio_unread_count {
+            continue;
+        }
+        observer.radio_unread_count = unread_count;
+        if !emit_best_effort(
+            sender,
+            EngineEvent::RadioUnread {
+                identity,
+                committed_sequence: sequence,
+                ship_id,
+                unread_count,
+            },
+        ) {
+            return Ok(false);
+        }
+    }
     Ok(true)
 }
 
@@ -373,7 +415,7 @@ fn emit_advance(
             return Ok(false);
         }
     }
-    Ok(true)
+    emit_radio_unread_updates(engine, sender, observers)
 }
 
 #[derive(Clone)]
@@ -650,6 +692,9 @@ fn spawn_engine(
                                 Ok((epoch, committed_sequence, phase)) => {
                                     let traffic_snapshot = engine.traffic_snapshot(&identity)?;
                                     let current_second = engine.game_second()?;
+                                    let (radio_ship_id, radio_unread_count) = engine
+                                        .radio_unread_count(&identity)
+                                        .unwrap_or((0, 0));
                                     observers.insert(
                                         identity.clone(),
                                         Observer {
@@ -658,6 +703,7 @@ fn spawn_engine(
                                                 .as_ref()
                                                 .map(|snapshot| snapshot.system_id),
                                             last_second: current_second,
+                                            radio_unread_count,
                                         },
                                     );
                                     let _ = reply.send(Ok(SessionOpening {
@@ -667,6 +713,8 @@ fn spawn_engine(
                                         traffic_snapshot,
                                         checkpoint: engine.pending_checkpoint(&identity)?,
                                         encounter: engine.pending_encounter(&identity)?,
+                                        radio_ship_id,
+                                        radio_unread_count,
                                     }));
                                 }
                                 Err(error @ EngineError::PlayerAccessDenied(_)) => {
@@ -725,6 +773,13 @@ fn spawn_engine(
                                         return Ok(());
                                     }
                                 }
+                            }
+                            if !emit_radio_unread_updates(
+                                &engine,
+                                &event_sender,
+                                &mut observers,
+                            )? {
+                                return Ok(());
                             }
                         }
                         EngineMessage::AcknowledgeOutbox(sequence) => {
@@ -1109,6 +1164,27 @@ impl Sessions {
         }
     }
 
+    async fn radio_unread(
+        &self,
+        identity: &PlayerIdentity,
+        committed_sequence: u64,
+        ship_id: u64,
+        unread_count: u64,
+    ) {
+        let session = {
+            let players = self.players.lock().await;
+            players.get(identity).cloned()
+        };
+        let Some(session) = session else {
+            return;
+        };
+        if let Ok(frame) =
+            encode_radio_unread(session.epoch, committed_sequence, ship_id, unread_count)
+        {
+            let _ = session.outbound.try_send(frame);
+        }
+    }
+
     async fn close_all_for_universe_reset(&self) {
         let sessions = {
             let mut players = self.players.lock().await;
@@ -1391,6 +1467,16 @@ pub async fn run_on_addresses(
                             observed_second,
                             &contact,
                         )
+                        .await;
+                }
+                EngineEvent::RadioUnread {
+                    identity,
+                    committed_sequence,
+                    ship_id,
+                    unread_count,
+                } => {
+                    dispatcher_sessions
+                        .radio_unread(&identity, committed_sequence, ship_id, unread_count)
                         .await;
                 }
                 EngineEvent::UniverseReset => {
@@ -1702,6 +1788,22 @@ async fn handle_connection(
                 epoch,
                 opening.committed_sequence,
                 &snapshot,
+            )?)
+            .await
+            .map_err(|_| {
+                ServerError::Io(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "connection writer stopped",
+                ))
+            })?;
+    }
+    if opening.radio_unread_count != 0 {
+        outbound
+            .send(encode_radio_unread(
+                epoch,
+                opening.committed_sequence,
+                opening.radio_ship_id,
+                opening.radio_unread_count,
             )?)
             .await
             .map_err(|_| {

@@ -145,6 +145,11 @@ struct Request {
     recoverCommand @62 :RecoverCommandRequest;
     declareBankruptcy @63 :RecoverCommandRequest;
     applyPersonnelAction @64 :PersonnelActionRequest;
+    getSystemRadio @65 :Void;
+    transmitSystemRadio @66 :TransmitSystemRadioRequest;
+    peekRadioReception @67 :RadioReceptionRequest;
+    acknowledgeRadioReception @68 :RadioReceptionRequest;
+    setRadioMute @69 :SetRadioMuteRequest;
   }
 }
 
@@ -187,6 +192,8 @@ struct Response {
     combatCareer @33 :CombatCareerSnapshot;
     dockedServices @34 :DockedServices;
     fleet @35 :FleetSnapshot;
+    systemRadio @36 :SystemRadioSnapshot;
+    radioContent @37 :RadioContent;
   }
 }
 
@@ -1783,6 +1790,53 @@ struct SendPrivateMessageRequest {
   body @6 :Text;
 }
 
+enum RadioTransmissionKind {
+  playerBroadcast @0;
+  inspectionOrder @1;
+  boardingOrder @2;
+  surrenderDemand @3;
+}
+
+struct RadioInboxEntry {
+  receptionId @0 :UInt64;
+  transmissionId @1 :UInt64;
+  receivingShipId @2 :UInt64;
+  senderShipId @3 :UInt64;
+  senderShipName @4 :Text;
+  senderTransponder @5 :Text;
+  sender @6 :PlayerIdentity;
+  emittedSecond @7 :UInt64;
+  receivedSecond @8 :UInt64;
+  expiresSecond @9 :UInt64;
+  kind @10 :RadioTransmissionKind;
+  actionable @11 :Bool;
+  actionReferenceId @12 :UInt64;
+}
+
+struct RadioMute {
+  sender @0 :PlayerIdentity;
+}
+
+struct SystemRadioSnapshot {
+  shipId @0 :UInt64;
+  systemId @1 :UInt64;
+  currentSecond @2 :UInt64;
+  canTransmit @3 :Bool;
+  unavailableReason @4 :Text;
+  entries @5 :List(RadioInboxEntry);
+  mutes @6 :List(RadioMute);
+}
+
+struct RadioContent {
+  receptionId @0 :UInt64;
+  transmissionId @1 :UInt64;
+  body @2 :Text;
+}
+
+struct TransmitSystemRadioRequest { body @0 :Text; }
+struct RadioReceptionRequest { receptionId @0 :UInt64; }
+struct SetRadioMuteRequest { sender @0 :PlayerIdentity; muted @1 :Bool; }
+
 enum InsuranceKind { destinationAssistance @0; }
 struct PurchaseInsuranceRequest { kind @0 :InsuranceKind; enabled @1 :Bool; }
 
@@ -1837,7 +1891,13 @@ struct Event {
     trafficMovement @5 :TrafficMovement;
     checkpointReady @6 :CheckpointSnapshot;
     encounterReady @7 :EncounterSnapshot;
+    radioUnread @8 :RadioUnread;
   }
+}
+
+struct RadioUnread {
+  shipId @0 :UInt64;
+  unreadCount @1 :UInt64;
 }
 
 enum TrafficMovementKind {

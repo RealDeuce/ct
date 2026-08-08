@@ -1517,6 +1517,51 @@ struct PrivateMessageRequest {
    std::string body;
 };
 
+enum class RadioTransmissionKind {
+   PlayerBroadcast,
+   InspectionOrder,
+   BoardingOrder,
+   SurrenderDemand,
+};
+
+struct RadioInboxEntry {
+   uint64_t reception_id;
+   uint64_t transmission_id;
+   uint64_t receiving_ship_id;
+   uint64_t sender_ship_id;
+   std::string sender_ship_name;
+   std::string sender_transponder;
+   PlayerIdentity sender;
+   uint64_t emitted_second;
+   uint64_t received_second;
+   uint64_t expires_second;
+   RadioTransmissionKind kind;
+   bool actionable;
+   uint64_t action_reference_id;
+};
+
+struct SystemRadioSnapshot {
+   uint64_t ship_id;
+   uint64_t system_id;
+   uint64_t current_second;
+   bool can_transmit;
+   std::string unavailable_reason;
+   std::vector<RadioInboxEntry> entries;
+   std::vector<PlayerIdentity> mutes;
+   uint64_t committed_sequence;
+   uint64_t revision;
+   PlayerPhase phase;
+};
+
+struct RadioContent {
+   uint64_t reception_id;
+   uint64_t transmission_id;
+   std::string body;
+   uint64_t committed_sequence;
+   uint64_t revision;
+   PlayerPhase phase;
+};
+
 enum class InsuranceKind {
    DestinationAssistance,
 };
@@ -1665,6 +1710,7 @@ enum class PlayerEventKind {
    TrafficMovement,
    CheckpointReady,
    EncounterReady,
+   RadioUnread,
 };
 
 struct PlayerEvent {
@@ -1677,6 +1723,8 @@ struct PlayerEvent {
    std::optional<EncounterSnapshot> encounter;
    uint64_t observed_second = 0;
    uint64_t system_id = 0;
+   uint64_t ship_id = 0;
+   uint64_t unread_count = 0;
 };
 
 std::optional<PlayerEvent> poll_event(TlsConnection& connection,
@@ -1864,6 +1912,17 @@ MessageManagement send_private_message(
    const PrivateMessageRequest& request,
    const std::array<uint8_t, 16>& command_id,
    uint64_t request_id);
+SystemRadioSnapshot get_system_radio(
+   TlsConnection&, uint64_t, const std::array<uint8_t, 16>&, uint64_t);
+SystemRadioSnapshot transmit_system_radio(
+   TlsConnection&, uint64_t, const std::string&, const std::array<uint8_t, 16>&, uint64_t);
+RadioContent peek_radio_reception(
+   TlsConnection&, uint64_t, uint64_t, const std::array<uint8_t, 16>&, uint64_t);
+SystemRadioSnapshot acknowledge_radio_reception(
+   TlsConnection&, uint64_t, uint64_t, const std::array<uint8_t, 16>&, uint64_t);
+SystemRadioSnapshot set_radio_mute(
+   TlsConnection&, uint64_t, const PlayerIdentity&, bool,
+   const std::array<uint8_t, 16>&, uint64_t);
 FinanceSnapshot purchase_insurance(
    TlsConnection&,
    uint64_t session_epoch,

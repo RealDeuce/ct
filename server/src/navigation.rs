@@ -382,6 +382,21 @@ fn body_positions(
         .collect()
 }
 
+/// Resolve a generated body's barycentric position for physical observations
+/// such as in-system radio propagation.
+pub fn body_position_au(
+    system: &CelestialSystem,
+    game_days: f64,
+    body_local_id: u32,
+) -> Option<[f64; 3]> {
+    let stars = star_positions(system, game_days);
+    system
+        .bodies
+        .iter()
+        .zip(body_positions(system, game_days, &stars))
+        .find_map(|(body, position)| (body.local_id == body_local_id).then_some(position))
+}
+
 fn push_direction(directions: &mut Vec<[f64; 3]>, direction: [f64; 3]) {
     let length = magnitude(direction);
     if length > 1e-12 {

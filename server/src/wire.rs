@@ -11,7 +11,7 @@ use crate::ct_rpc_capnp::{
     person_draft, player_creation, request,
 };
 
-pub const PROTOCOL_VERSION: u16 = 4;
+pub const PROTOCOL_VERSION: u16 = 5;
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 pub const COMMAND_ID_BYTES: usize = 16;
 pub const MAX_NAME_BYTES: usize = 128;
@@ -1837,6 +1837,49 @@ pub struct PrivateMessageRequest {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RadioTransmissionKind {
+    PlayerBroadcast,
+    InspectionOrder,
+    BoardingOrder,
+    SurrenderDemand,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RadioInboxEntry {
+    pub reception_id: u64,
+    pub transmission_id: u64,
+    pub receiving_ship_id: u64,
+    pub sender_ship_id: u64,
+    pub sender_ship_name: String,
+    pub sender_transponder: String,
+    pub sender: PlayerIdentity,
+    pub emitted_second: u64,
+    pub received_second: u64,
+    pub expires_second: u64,
+    pub kind: RadioTransmissionKind,
+    pub actionable: bool,
+    pub action_reference_id: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SystemRadioSnapshot {
+    pub ship_id: u64,
+    pub system_id: u64,
+    pub current_second: u64,
+    pub can_transmit: bool,
+    pub unavailable_reason: String,
+    pub entries: Vec<RadioInboxEntry>,
+    pub mutes: Vec<PlayerIdentity>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RadioContent {
+    pub reception_id: u64,
+    pub transmission_id: u64,
+    pub body: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InsuranceKind {
     DestinationAssistance,
 }
@@ -2044,6 +2087,20 @@ pub enum Command {
         item_id: String,
         quantity: u64,
     },
+    GetSystemRadio,
+    TransmitSystemRadio {
+        body: String,
+    },
+    PeekRadioReception {
+        reception_id: u64,
+    },
+    AcknowledgeRadioReception {
+        reception_id: u64,
+    },
+    SetRadioMute {
+        sender: PlayerIdentity,
+        muted: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2083,7 +2140,9 @@ impl Command {
             | Self::GetShipMarket
             | Self::GetCrewMarket => CommandPersistence::Observation,
             Self::GetFleet => CommandPersistence::Observation,
-            Self::GetDockedServices => CommandPersistence::Observation,
+            Self::GetDockedServices | Self::GetSystemRadio | Self::PeekRadioReception { .. } => {
+                CommandPersistence::Observation
+            }
             Self::CreatePlayer(_)
             | Self::SetCrewTrainingTarget { .. }
             | Self::SetCrewAssignments { .. }
@@ -2123,7 +2182,10 @@ impl Command {
             | Self::PurchaseInsurance { .. } => CommandPersistence::Transaction,
             Self::SetActiveShip { .. }
             | Self::AssignShipCaptain { .. }
-            | Self::TransferShipStores { .. } => CommandPersistence::Transaction,
+            | Self::TransferShipStores { .. }
+            | Self::TransmitSystemRadio { .. }
+            | Self::AcknowledgeRadioReception { .. }
+            | Self::SetRadioMute { .. } => CommandPersistence::Transaction,
         }
     }
 }
@@ -2177,6 +2239,8 @@ pub enum OutcomeKind {
     CrewMarket(CrewMarket),
     DockedServices(DockedServices),
     Fleet(FleetSnapshot),
+    SystemRadio(SystemRadioSnapshot),
+    RadioContent(RadioContent),
     Error { code: ErrorCode, message: String },
 }
 
@@ -2961,6 +3025,31 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
                 quantity: value.get_quantity(),
             }
         }
+        request::GetSystemRadio(()) => Command::GetSystemRadio,
+        request::TransmitSystemRadio(value) => Command::TransmitSystemRadio {
+            body: value?
+                .get_body()?
+                .to_str()
+                .map_err(|_| WireError::InvalidText)?
+                .to_owned(),
+        },
+        request::PeekRadioReception(value) => Command::PeekRadioReception {
+            reception_id: value?.get_reception_id(),
+        },
+        request::AcknowledgeRadioReception(value) => Command::AcknowledgeRadioReception {
+            reception_id: value?.get_reception_id(),
+        },
+        request::SetRadioMute(value) => {
+            let value = value?;
+            let sender = value.get_sender()?;
+            Command::SetRadioMute {
+                sender: PlayerIdentity {
+                    bbs_id: sender.get_bbs_id(),
+                    player_id: sender.get_player_id(),
+                },
+                muted: value.get_muted(),
+            }
+        }
     };
     Ok(CommandRequest {
         request_id,
@@ -3122,6 +3211,15 @@ pub fn encode_response(
         OutcomeKind::Fleet(snapshot) => {
             set_fleet(response.reborrow().init_fleet(), snapshot)?;
         }
+        OutcomeKind::SystemRadio(snapshot) => {
+            set_system_radio(response.reborrow().init_system_radio(), snapshot)?;
+        }
+        OutcomeKind::RadioContent(content) => {
+            let mut result = response.reborrow().init_radio_content();
+            result.set_reception_id(content.reception_id);
+            result.set_transmission_id(content.transmission_id);
+            result.set_body(&content.body);
+        }
         OutcomeKind::Error { code, message } => {
             let mut error = response.reborrow().init_error();
             error.set_code(match code {
@@ -3243,6 +3341,24 @@ pub fn encode_traffic_movement(
     movement.set_system_id(system_id);
     movement.set_observed_second(observed_second);
     set_traffic_contact(movement.init_contact(), contact);
+    finish_message(&message)
+}
+
+pub fn encode_radio_unread(
+    epoch: u64,
+    committed_sequence: u64,
+    ship_id: u64,
+    unread_count: u64,
+) -> Result<Vec<u8>, WireError> {
+    let mut message = Builder::new_default();
+    let mut envelope = message.init_root::<envelope::Builder>();
+    envelope.set_protocol_version(PROTOCOL_VERSION);
+    envelope.set_session_epoch(epoch);
+    let mut event = envelope.init_event();
+    event.set_committed_sequence(committed_sequence);
+    let mut unread = event.init_radio_unread();
+    unread.set_ship_id(ship_id);
+    unread.set_unread_count(unread_count);
     finish_message(&message)
 }
 
@@ -3792,6 +3908,27 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
             value.set_cargo_lot_id(cargo_lot_id);
             value.set_item_id(item_id);
             value.set_quantity(quantity);
+        }
+        Command::GetSystemRadio => builder.set_get_system_radio(()),
+        Command::TransmitSystemRadio { ref body } => {
+            builder.init_transmit_system_radio().set_body(body);
+        }
+        Command::PeekRadioReception { reception_id } => {
+            builder
+                .init_peek_radio_reception()
+                .set_reception_id(reception_id);
+        }
+        Command::AcknowledgeRadioReception { reception_id } => {
+            builder
+                .init_acknowledge_radio_reception()
+                .set_reception_id(reception_id);
+        }
+        Command::SetRadioMute { ref sender, muted } => {
+            let mut value = builder.init_set_radio_mute();
+            let mut target = value.reborrow().init_sender();
+            target.set_bbs_id(sender.bbs_id);
+            target.set_player_id(sender.player_id);
+            value.set_muted(muted);
         }
     }
     finish_message(&message)
@@ -6131,6 +6268,62 @@ fn set_message_management(
     Ok(())
 }
 
+fn schema_radio_kind(kind: RadioTransmissionKind) -> crate::ct_rpc_capnp::RadioTransmissionKind {
+    match kind {
+        RadioTransmissionKind::PlayerBroadcast => {
+            crate::ct_rpc_capnp::RadioTransmissionKind::PlayerBroadcast
+        }
+        RadioTransmissionKind::InspectionOrder => {
+            crate::ct_rpc_capnp::RadioTransmissionKind::InspectionOrder
+        }
+        RadioTransmissionKind::BoardingOrder => {
+            crate::ct_rpc_capnp::RadioTransmissionKind::BoardingOrder
+        }
+        RadioTransmissionKind::SurrenderDemand => {
+            crate::ct_rpc_capnp::RadioTransmissionKind::SurrenderDemand
+        }
+    }
+}
+
+fn set_system_radio(
+    mut builder: crate::ct_rpc_capnp::system_radio_snapshot::Builder<'_>,
+    snapshot: &SystemRadioSnapshot,
+) -> Result<(), WireError> {
+    builder.set_ship_id(snapshot.ship_id);
+    builder.set_system_id(snapshot.system_id);
+    builder.set_current_second(snapshot.current_second);
+    builder.set_can_transmit(snapshot.can_transmit);
+    builder.set_unavailable_reason(&snapshot.unavailable_reason);
+    let mut entries = builder
+        .reborrow()
+        .init_entries(snapshot.entries.len() as u32);
+    for (index, entry) in snapshot.entries.iter().enumerate() {
+        let mut target = entries.reborrow().get(index as u32);
+        target.set_reception_id(entry.reception_id);
+        target.set_transmission_id(entry.transmission_id);
+        target.set_receiving_ship_id(entry.receiving_ship_id);
+        target.set_sender_ship_id(entry.sender_ship_id);
+        target.set_sender_ship_name(&entry.sender_ship_name);
+        target.set_sender_transponder(&entry.sender_transponder);
+        let mut sender = target.reborrow().init_sender();
+        sender.set_bbs_id(entry.sender.bbs_id);
+        sender.set_player_id(entry.sender.player_id);
+        target.set_emitted_second(entry.emitted_second);
+        target.set_received_second(entry.received_second);
+        target.set_expires_second(entry.expires_second);
+        target.set_kind(schema_radio_kind(entry.kind));
+        target.set_actionable(entry.actionable);
+        target.set_action_reference_id(entry.action_reference_id);
+    }
+    let mut mutes = builder.reborrow().init_mutes(snapshot.mutes.len() as u32);
+    for (index, mute) in snapshot.mutes.iter().enumerate() {
+        let mut sender = mutes.reborrow().get(index as u32).init_sender();
+        sender.set_bbs_id(mute.bbs_id);
+        sender.set_player_id(mute.player_id);
+    }
+    Ok(())
+}
+
 fn set_traffic_contact(
     mut builder: crate::ct_rpc_capnp::traffic_contact::Builder<'_>,
     contact: &crate::traffic::TrafficContact,
@@ -6405,6 +6598,44 @@ mod tests {
                         quantity_millitons: 20_000,
                     },
                 }),
+            },
+            CommandRequest {
+                request_id: 28,
+                session_epoch: 23,
+                command_id: [0xb0; COMMAND_ID_BYTES],
+                command: Command::GetSystemRadio,
+            },
+            CommandRequest {
+                request_id: 29,
+                session_epoch: 23,
+                command_id: [0xb1; COMMAND_ID_BYTES],
+                command: Command::TransmitSystemRadio {
+                    body: "Traffic advisory".into(),
+                },
+            },
+            CommandRequest {
+                request_id: 30,
+                session_epoch: 23,
+                command_id: [0xb2; COMMAND_ID_BYTES],
+                command: Command::PeekRadioReception { reception_id: 81 },
+            },
+            CommandRequest {
+                request_id: 31,
+                session_epoch: 23,
+                command_id: [0xb3; COMMAND_ID_BYTES],
+                command: Command::AcknowledgeRadioReception { reception_id: 81 },
+            },
+            CommandRequest {
+                request_id: 32,
+                session_epoch: 23,
+                command_id: [0xb4; COMMAND_ID_BYTES],
+                command: Command::SetRadioMute {
+                    sender: PlayerIdentity {
+                        bbs_id: 4,
+                        player_id: 9,
+                    },
+                    muted: true,
+                },
             },
         ] {
             let frame = encode_request(&expected).unwrap();

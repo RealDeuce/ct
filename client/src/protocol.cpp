@@ -20,7 +20,7 @@ namespace ct
 namespace
 {
 
-constexpr uint16_t PROTOCOL_VERSION = 4;
+constexpr uint16_t PROTOCOL_VERSION = 5;
 constexpr size_t MAX_FRAME_BYTES = 1024 * 1024;
 
 void send_frame(TlsConnection& connection, const kj::ArrayPtr<const kj::byte> message)
@@ -1259,6 +1259,70 @@ MessageManagement decode_message_management(
          .message_class = decode_message_class(filter.getClass()),
          .minimum_importance =
          decode_message_importance(filter.getMinimumImportance()),
+      });
+   }
+   return result;
+}
+
+RadioTransmissionKind decode_radio_kind(const rpc::RadioTransmissionKind kind)
+{
+   switch(kind) {
+   case rpc::RadioTransmissionKind::PLAYER_BROADCAST:
+      return RadioTransmissionKind::PlayerBroadcast;
+   case rpc::RadioTransmissionKind::INSPECTION_ORDER:
+      return RadioTransmissionKind::InspectionOrder;
+   case rpc::RadioTransmissionKind::BOARDING_ORDER:
+      return RadioTransmissionKind::BoardingOrder;
+   case rpc::RadioTransmissionKind::SURRENDER_DEMAND:
+      return RadioTransmissionKind::SurrenderDemand;
+   }
+   throw std::runtime_error("unknown radio transmission kind");
+}
+
+SystemRadioSnapshot decode_system_radio(const rpc::Response::Reader response)
+{
+   if(!response.isSystemRadio()) {
+      throw std::runtime_error("expected SystemRadioSnapshot");
+   }
+   const auto source = response.getSystemRadio();
+   SystemRadioSnapshot result{
+      .ship_id = source.getShipId(),
+      .system_id = source.getSystemId(),
+      .current_second = source.getCurrentSecond(),
+      .can_transmit = source.getCanTransmit(),
+      .unavailable_reason = source.getUnavailableReason().cStr(),
+      .entries = {},
+      .mutes = {},
+      .committed_sequence = response.getCommittedSequence(),
+      .revision = response.getRevision(),
+      .phase = decode_response_phase(response.getPhase()),
+   };
+   for(const auto entry : source.getEntries()) {
+      const auto sender = entry.getSender();
+      result.entries.push_back(RadioInboxEntry{
+         .reception_id = entry.getReceptionId(),
+         .transmission_id = entry.getTransmissionId(),
+         .receiving_ship_id = entry.getReceivingShipId(),
+         .sender_ship_id = entry.getSenderShipId(),
+         .sender_ship_name = entry.getSenderShipName().cStr(),
+         .sender_transponder = entry.getSenderTransponder().cStr(),
+         .sender = {
+            .bbs_id = sender.getBbsId(),
+            .player_id = sender.getPlayerId(),
+         },
+         .emitted_second = entry.getEmittedSecond(),
+         .received_second = entry.getReceivedSecond(),
+         .expires_second = entry.getExpiresSecond(),
+         .kind = decode_radio_kind(entry.getKind()),
+         .actionable = entry.getActionable(),
+         .action_reference_id = entry.getActionReferenceId(),
+      });
+   }
+   for(const auto mute : source.getMutes()) {
+      const auto sender = mute.getSender();
+      result.mutes.push_back(PlayerIdentity{
+         .bbs_id = sender.getBbsId(),
+         .player_id = sender.getPlayerId(),
       });
    }
    return result;
@@ -3498,6 +3562,97 @@ MessageManagement send_private_message(
              checked_response(reader.getRoot<rpc::Envelope>(), command_id));
 }
 
+SystemRadioSnapshot get_system_radio(
+   TlsConnection& connection, const uint64_t epoch,
+   const std::array<uint8_t, 16>& id, const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   request.setGetSystemRadio();
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_system_radio(checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+
+SystemRadioSnapshot transmit_system_radio(
+   TlsConnection& connection, const uint64_t epoch, const std::string& body,
+   const std::array<uint8_t, 16>& id, const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   request.initTransmitSystemRadio().setBody(body);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_system_radio(checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+
+RadioContent peek_radio_reception(
+   TlsConnection& connection, const uint64_t epoch, const uint64_t reception_id,
+   const std::array<uint8_t, 16>& id, const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   request.initPeekRadioReception().setReceptionId(reception_id);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   const auto response = checked_response(reader.getRoot<rpc::Envelope>(), id);
+   if(!response.isRadioContent()) {
+      throw std::runtime_error("expected RadioContent");
+   }
+   const auto content = response.getRadioContent();
+   return {
+      .reception_id = content.getReceptionId(),
+      .transmission_id = content.getTransmissionId(),
+      .body = content.getBody().cStr(),
+      .committed_sequence = response.getCommittedSequence(),
+      .revision = response.getRevision(),
+      .phase = decode_response_phase(response.getPhase()),
+   };
+}
+
+SystemRadioSnapshot acknowledge_radio_reception(
+   TlsConnection& connection, const uint64_t epoch, const uint64_t reception_id,
+   const std::array<uint8_t, 16>& id, const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   request.initAcknowledgeRadioReception().setReceptionId(reception_id);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_system_radio(checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+
+SystemRadioSnapshot set_radio_mute(
+   TlsConnection& connection, const uint64_t epoch, const PlayerIdentity& sender,
+   const bool muted, const std::array<uint8_t, 16>& id, const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   auto change = request.initSetRadioMute();
+   auto target = change.initSender();
+   target.setBbsId(sender.bbs_id);
+   target.setPlayerId(sender.player_id);
+   change.setMuted(muted);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_system_radio(checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+
 SystemMappingStatus set_system_mapping_disclosure(
    TlsConnection& connection,
    const uint64_t session_epoch,
@@ -3645,6 +3800,11 @@ std::optional<PlayerEvent> poll_event(TlsConnection& connection,
          .summary = s.getSummary().cStr(),
          .phase = PlayerPhase::Encounter,
       };
+   } else if(event.isRadioUnread()) {
+      result.kind = PlayerEventKind::RadioUnread;
+      const auto unread = event.getRadioUnread();
+      result.ship_id = unread.getShipId();
+      result.unread_count = unread.getUnreadCount();
    } else {
       throw std::runtime_error("unknown unsolicited CT-RPC event");
    }

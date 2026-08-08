@@ -283,6 +283,31 @@ belt, station, base, cache, survey target, rendezvous, or current event.
 
 ## Contact, intercept, and encounter
 
+### System Common radio
+
+System Common is the one public player radio channel within a star system. A
+transmission has a fixed emission position and time, and its spherical
+wavefront expands at light speed. Reception is computed from the receiving
+ship's physical trajectory rather than delivered system-wide at emission.
+Jump space is outside the channel. There are no ambient AI conversations and
+no separate player channels; NPC radio is limited to structured encounter
+hails such as inspection orders, boarding instructions, and surrender demands.
+
+Content is stored once per transmission. The active wave and each unread
+receiving-ship row hold references to that content. The wave reference is
+released after the sphere has passed every modeled location in the system;
+the content then survives only while unread reception references remain.
+Opening a reception removes its ship's reference, and unopened receptions
+expire after 196 game days. This makes radio history transient without making
+multiple stored copies of a broadcast. Reception rows belong to ships, not
+captain identities.
+
+Captains may mute ordinary broadcasts from another captain. Structured hails
+bypass mutes, remain observable to other ships reached by the wave, and carry
+an actionable encounter reference only for the target vessel. Public radio is
+not encrypted; encrypted channels remain deferred until the game has real
+public-key support.
+
 Detection does not imply an actionable encounter:
 
 ```text
