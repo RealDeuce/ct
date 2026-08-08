@@ -623,15 +623,15 @@ fn complete_arrival_and_trade(
         .and_then(|(_, cargo)| cargo.split_once("Port research"))
         .map(|(cargo, _)| cargo)
         .expect("cargo exchange omitted its cargo section");
-    let cargo_selection = cargo_section
-        .lines()
-        .find_map(|line| {
-            let (number, description) = line.trim().split_once(". ")?;
-            description
-                .contains(&cargo_name)
-                .then(|| number.parse::<usize>().ok())
-                .flatten()
-        })
+    // Page prompts are erased with bare carriage returns, so a captured row
+    // can share a logical line with the erased prompt.  Parse the normalized
+    // display stream and take the numbered item immediately before the name.
+    let normalized_cargo = normalized_display_text(cargo_section);
+    let cargo_selection = normalized_cargo
+        .split_once(&cargo_name)
+        .and_then(|(before_name, _)| before_name.split_whitespace().next_back())
+        .and_then(|number| number.strip_suffix('.'))
+        .and_then(|number| number.parse::<usize>().ok())
         .unwrap_or_else(|| panic!("cargo menu omitted {cargo_name:?}: {cargo_section:?}"));
     session.send(b"s");
     session.wait_for("Cargo lot (Q to cancel");
