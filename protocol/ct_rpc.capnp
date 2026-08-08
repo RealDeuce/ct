@@ -736,6 +736,7 @@ struct KnownSystemSummary {
   northParsecs @12 :Float64;
   remoteCandidate @13 :Bool;
   knowledgeSource @14 :SystemKnowledgeSource;
+  gasGiantCount @15 :UInt8;
 }
 
 enum SystemKnowledgeSource {
@@ -1673,6 +1674,7 @@ struct CombatCareerSnapshot {
   warrants @10 :List(WarrantRecord); cruise @11 :PirateCruise; localEnforcementSummary @12 :Text;
   localContacts @13 :List(TrafficContact);
   crewPressure @14 :UInt16;
+  systemContacts @15 :List(TrafficContact);
 }
 struct CareerOpportunityRequest { opportunityId @0 :UInt64; expectedRevision @1 :UInt64; }
 struct EngageTrafficContactRequest { contactId @0 :UInt64; expectedCareerRevision @1 :UInt64; }
@@ -1843,6 +1845,12 @@ enum TrafficMovementKind {
   departure @1;
 }
 
+enum TrafficContactResolution {
+  transponderOnly @0;
+  approximate @1;
+  identified @2;
+}
+
 struct TrafficContact {
   contactId @0 :UInt64;
   catalogId @1 :UInt32;
@@ -1856,6 +1864,8 @@ struct TrafficContact {
   destinationSystemId @9 :UInt64;
   movement @10 :TrafficMovementKind;
   edgeSecond @11 :UInt64;
+  resolution @12 :TrafficContactResolution;
+  confidencePercent @13 :UInt8;
 }
 
 struct TrafficSnapshot {

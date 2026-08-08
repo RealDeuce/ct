@@ -20,7 +20,7 @@ namespace ct
 namespace
 {
 
-constexpr uint16_t PROTOCOL_VERSION = 3;
+constexpr uint16_t PROTOCOL_VERSION = 4;
 constexpr size_t MAX_FRAME_BYTES = 1024 * 1024;
 
 void send_frame(TlsConnection& connection, const kj::ArrayPtr<const kj::byte> message)
@@ -959,6 +959,7 @@ KnownDestinations decode_known_destinations(const rpc::Response::Reader response
          .remote_candidate = system.getRemoteCandidate(),
          .knowledge_source = static_cast<SystemKnowledgeSource>(
             system.getKnowledgeSource()),
+         .gas_giant_count = system.getGasGiantCount(),
       });
    }
    return result;
@@ -1500,6 +1501,8 @@ TrafficContact decode_traffic_contact(const rpc::TrafficContact::Reader source)
       ? TrafficMovementKind::Arrival
       : TrafficMovementKind::Departure,
       .edge_second = source.getEdgeSecond(),
+      .resolution = static_cast<TrafficContactResolution>(source.getResolution()),
+      .confidence_percent = source.getConfidencePercent(),
    };
 }
 
@@ -3138,6 +3141,7 @@ CombatCareerSnapshot decode_combat_career(const rpc::Response::Reader response)
       .warrants = {},
       .cruise = {},
       .local_enforcement_summary = source.getLocalEnforcementSummary().cStr(),
+      .system_contacts = {},
       .local_contacts = {},
       .phase = decode_response_phase(response.getPhase()),
    };
@@ -3207,6 +3211,9 @@ CombatCareerSnapshot decode_combat_career(const rpc::Response::Reader response)
       .ship_fund_percent = cruise.getShipFundPercent(),
       .prohibited_targets = cruise.getProhibitedTargets().cStr(),
    };
+   for(const auto contact : source.getSystemContacts()) {
+      result.system_contacts.push_back(decode_traffic_contact(contact));
+   }
    for(const auto contact : source.getLocalContacts()) {
       result.local_contacts.push_back(decode_traffic_contact(contact));
    }

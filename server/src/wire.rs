@@ -11,7 +11,7 @@ use crate::ct_rpc_capnp::{
     person_draft, player_creation, request,
 };
 
-pub const PROTOCOL_VERSION: u16 = 3;
+pub const PROTOCOL_VERSION: u16 = 4;
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 pub const COMMAND_ID_BYTES: usize = 16;
 pub const MAX_NAME_BYTES: usize = 128;
@@ -761,6 +761,7 @@ pub struct KnownSystemSummary {
     pub position: Coordinate3,
     pub remote_candidate: bool,
     pub knowledge_source: SystemKnowledgeSource,
+    pub gas_giant_count: u8,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1704,6 +1705,7 @@ pub struct CombatCareerSnapshot {
     pub rank: String,
     pub monthly_salary_credits: u64,
     pub local_enforcement_summary: String,
+    pub system_contacts: Vec<crate::traffic::TrafficContact>,
     pub local_contacts: Vec<crate::traffic::TrafficContact>,
 }
 
@@ -4522,6 +4524,7 @@ fn set_known_destinations(
                 crate::ct_rpc_capnp::SystemKnowledgeSource::SecretChart
             }
         });
+        item.set_gas_giant_count(system.gas_giant_count);
     }
     Ok(())
 }
@@ -5763,6 +5766,13 @@ fn set_combat_career_snapshot(
     builder.set_underworld_standing(state.underworld_standing);
     builder.set_crew_pressure(state.crew_pressure);
     builder.set_local_enforcement_summary(&snapshot.local_enforcement_summary);
+    let mut system_contacts = builder.reborrow().init_system_contacts(
+        u32::try_from(snapshot.system_contacts.len())
+            .map_err(|_| WireError::Expected("fewer system traffic contacts"))?,
+    );
+    for (index, contact) in snapshot.system_contacts.iter().enumerate() {
+        set_traffic_contact(system_contacts.reborrow().get(index as u32), contact);
+    }
     let mut contacts = builder.reborrow().init_local_contacts(
         u32::try_from(snapshot.local_contacts.len())
             .map_err(|_| WireError::Expected("fewer local traffic contacts"))?,
@@ -6144,6 +6154,18 @@ fn set_traffic_contact(
         }
     });
     builder.set_edge_second(contact.edge_second);
+    builder.set_resolution(match contact.resolution {
+        crate::traffic::TrafficContactResolution::TransponderOnly => {
+            crate::ct_rpc_capnp::TrafficContactResolution::TransponderOnly
+        }
+        crate::traffic::TrafficContactResolution::Approximate => {
+            crate::ct_rpc_capnp::TrafficContactResolution::Approximate
+        }
+        crate::traffic::TrafficContactResolution::Identified => {
+            crate::ct_rpc_capnp::TrafficContactResolution::Identified
+        }
+    });
+    builder.set_confidence_percent(contact.confidence_percent);
 }
 
 fn encode_ship_subsystem_kind(kind: ShipSubsystemKind) -> SchemaShipSubsystemKind {

@@ -229,10 +229,16 @@ synchronize to distant player-owned ships.
 
 Operations Ledger owns the combat-career view: naval grade, service points,
 pay and available orders; privateer commissions and prize-court claims; pirate
-leads, cruises, underworld standing and crew pressure; local real-traffic
-interception opportunities; and physically delivered warrants and local
-settlement choices. It does not create targets or instant legal knowledge.
-Traffic entries refer to simulated ships already present, prize claims move by
+leads, cruises, underworld standing and crew pressure; system traffic-control
+reports; local real-contact interception opportunities; and physically
+delivered warrants and local settlement choices. It does not create targets or
+instant legal knowledge.
+Local contacts are restricted to the ship's current port, Jump locus, or body;
+ordinary interplanetary transit and Jump space return no local target list.
+Civilian registry information comes from transponders, while hull class and
+tonnage remain sensor observations with equipment- and damage-dependent
+confidence. The system-wide traffic-control feed is a separate transponder
+picture and does not make a remote vessel interceptable. Prize claims move by
 ordinary mail, and a warrant has no local effect before its message arrives.
 
 ## Door Navigation

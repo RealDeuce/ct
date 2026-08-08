@@ -7183,13 +7183,35 @@ impl Store {
             offer.state != crate::careers::OpportunityState::Offered
                 || current < offer.expires_second
         });
-        let system = self
-            .simulation
-            .systems(txn)?
-            .into_iter()
-            .find(|system| system.system_id == ship.system_id)
-            .ok_or(StoreError::MissingTrafficSimulationSystem(ship.system_id))?;
-        let local_contacts = crate::traffic::snapshot(&system, current)?;
+        let system_contacts = if ship.system_id == 0
+            || matches!(
+                ship.location,
+                ShipLocationRecord::InFlight(FlightLegRecord {
+                    purpose: FlightLegPurpose::Jump { .. },
+                    ..
+                })
+            ) {
+            Vec::new()
+        } else {
+            let system = self
+                .simulation
+                .systems(txn)?
+                .into_iter()
+                .find(|system| system.system_id == ship.system_id)
+                .ok_or(StoreError::MissingTrafficSimulationSystem(ship.system_id))?;
+            crate::traffic::snapshot(&system, current)?
+                .into_iter()
+                .map(|mut contact| {
+                    contact.catalog_id = 0;
+                    contact.class_name.clear();
+                    contact.displacement_millitons = 0;
+                    contact.resolution = crate::traffic::TrafficContactResolution::TransponderOnly;
+                    contact.confidence_percent = 100;
+                    contact
+                })
+                .collect()
+        };
+        let local_contacts = self.observed_local_traffic_in(txn, identity, &ship, current)?;
         let delivered = self
             .simulation
             .available_messages(txn, ship.system_id, current, false)?
@@ -7246,8 +7268,193 @@ impl Store {
                     "Local enforcement has received {active} active warrant(s) concerning this command."
                 )
             },
+            system_contacts,
             local_contacts,
         })
+    }
+
+    fn local_traffic_locus_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+        ship: &ShipRecord,
+    ) -> Result<Option<ShipLocusRecord>, StoreError> {
+        if let Some(checkpoint) = self
+            .checkpoints
+            .get(txn, &encode_identity(identity))?
+            .map(decode_checkpoint_snapshot)
+            .transpose()?
+            .filter(|checkpoint| !checkpoint.acknowledged)
+        {
+            return Ok(match checkpoint.locus {
+                FlightLocus::Port {
+                    system_id,
+                    world_id,
+                    facility_id,
+                } => Some(ShipLocusRecord::Port {
+                    system_id,
+                    world_id,
+                    facility_id,
+                }),
+                FlightLocus::JumpLocus { system_id } => {
+                    Some(ShipLocusRecord::JumpLocus { system_id })
+                }
+                FlightLocus::Body { system_id, body_id } => {
+                    Some(ShipLocusRecord::Body { system_id, body_id })
+                }
+                FlightLocus::DeepSpace { .. } => None,
+            });
+        }
+        Ok(match ship.location {
+            ShipLocationRecord::Docked {
+                world_id,
+                facility_id,
+                ..
+            } => Some(ShipLocusRecord::Port {
+                system_id: ship.system_id,
+                world_id,
+                facility_id,
+            }),
+            ShipLocationRecord::Holding { locus, .. } => match locus {
+                ShipLocusRecord::DeepSpace { .. } => None,
+                _ => Some(locus),
+            },
+            ShipLocationRecord::InFlight(FlightLegRecord {
+                origin: locus @ ShipLocusRecord::Body { .. },
+                destination,
+                purpose: FlightLegPurpose::ProcessFrontierFuel { .. },
+                ..
+            }) if locus == destination => Some(locus),
+            _ => None,
+        })
+    }
+
+    fn local_traffic_contacts_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+        ship: &ShipRecord,
+        current: u64,
+    ) -> Result<Vec<crate::traffic::TrafficContact>, StoreError> {
+        let Some(locus) = self.local_traffic_locus_in(txn, identity, ship)? else {
+            return Ok(Vec::new());
+        };
+        if ship.system_id == 0 || locus.system_id() != ship.system_id {
+            return Ok(Vec::new());
+        }
+        let system = self
+            .simulation
+            .systems(txn)?
+            .into_iter()
+            .find(|system| system.system_id == ship.system_id)
+            .ok_or(StoreError::MissingTrafficSimulationSystem(ship.system_id))?;
+        let stellar = self
+            .systems
+            .get(txn, &ship.system_id)?
+            .map(decode_stellar_system)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("local-traffic system is missing"))?;
+        let celestial = derive_celestial_system(&stellar)?;
+        let secondary_bodies = celestial
+            .bodies
+            .iter()
+            .filter(|body| !body.is_primary_world)
+            .map(|body| body.local_id)
+            .collect::<Vec<_>>();
+        let mut contacts = crate::traffic::snapshot(&system, current)?;
+        contacts.retain(|contact| {
+            let present = match contact.movement {
+                crate::traffic::TrafficMovementKind::Arrival => contact.edge_second <= current,
+                crate::traffic::TrafficMovementKind::Departure => contact.edge_second >= current,
+            };
+            if !present {
+                return false;
+            }
+            let allocation =
+                crate::ship_condition::mix64(contact.contact_id ^ system.system_id.rotate_left(23));
+            let bucket = allocation % 100;
+            match locus {
+                ShipLocusRecord::Port { .. } => bucket < 55,
+                ShipLocusRecord::JumpLocus { .. } => (55..85).contains(&bucket),
+                ShipLocusRecord::Body { body_id, .. } => {
+                    bucket >= 85
+                        && !secondary_bodies.is_empty()
+                        && secondary_bodies
+                            [allocation.rotate_left(19) as usize % secondary_bodies.len()]
+                            == body_id
+                }
+                ShipLocusRecord::DeepSpace { .. } => false,
+            }
+        });
+        Ok(contacts)
+    }
+
+    fn observed_local_traffic_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+        ship: &ShipRecord,
+        current: u64,
+    ) -> Result<Vec<crate::traffic::TrafficContact>, StoreError> {
+        let electronics_dm = creation::ship_electronics_dm(ship.catalog_id).ok_or(
+            StoreError::Corrupt("ship electronics catalog data is missing"),
+        )?;
+        let sensor_damage = ship
+            .subsystems
+            .iter()
+            .find(|subsystem| subsystem.kind == ShipSubsystemKind::Sensors)
+            .map(|subsystem| {
+                subsystem
+                    .sustained_hits
+                    .saturating_sub(subsystem.battlefield_repair_hits)
+            })
+            .ok_or(StoreError::Corrupt("ship sensor subsystem is missing"))?;
+        self.local_traffic_contacts_in(txn, identity, ship, current)?
+            .into_iter()
+            .map(|mut contact| {
+                let entropy =
+                    crate::ship_condition::mix64(contact.contact_id ^ ship.ship_id.rotate_left(29));
+                let roll = i16::try_from(2 + entropy % 6 + entropy.rotate_left(11) % 6)
+                    .expect("two dice fit in i16");
+                let size_dm = match contact.displacement_millitons {
+                    0..=99_999 => -1,
+                    100_000..=999_999 => 0,
+                    1_000_000..=4_999_999 => 1,
+                    _ => 2,
+                };
+                let total = roll + i16::from(electronics_dm) + size_dm
+                    - 2 * i16::try_from(sensor_damage).unwrap_or(i16::MAX / 2);
+                if total >= 10 {
+                    contact.resolution = crate::traffic::TrafficContactResolution::Identified;
+                    contact.confidence_percent =
+                        u8::try_from(80 + (total - 10) * 5).unwrap_or(100).min(100);
+                } else if total >= 6 {
+                    contact.resolution = crate::traffic::TrafficContactResolution::Approximate;
+                    contact.confidence_percent =
+                        u8::try_from(45 + (total - 6) * 10).unwrap_or(75).min(75);
+                    contact.catalog_id = 0;
+                    contact.class_name = match contact.displacement_millitons {
+                        0..=99_999 => "small craft",
+                        100_000..=499_999 => "small ship",
+                        500_000..=1_999_999 => "medium ship",
+                        _ => "large ship",
+                    }
+                    .into();
+                    let tons = contact.displacement_millitons.div_ceil(1_000);
+                    contact.displacement_millitons = tons
+                        .saturating_add(50)
+                        .div_euclid(100)
+                        .saturating_mul(100_000);
+                } else {
+                    contact.resolution = crate::traffic::TrafficContactResolution::TransponderOnly;
+                    contact.confidence_percent = 25;
+                    contact.catalog_id = 0;
+                    contact.class_name.clear();
+                    contact.displacement_millitons = 0;
+                }
+                Ok(contact)
+            })
+            .collect()
     }
 
     fn accept_career_opportunity_in(
@@ -7312,13 +7519,8 @@ impl Store {
                             "the ship is already committed to another timed operation".into(),
                         ));
                     }
-                    let system = self
-                        .simulation
-                        .systems(txn)?
-                        .into_iter()
-                        .find(|system| system.system_id == ship.system_id)
-                        .ok_or(StoreError::MissingTrafficSimulationSystem(ship.system_id))?;
-                    if !crate::traffic::snapshot(&system, current)?
+                    if !self
+                        .local_traffic_contacts_in(txn, identity, &ship, current)?
                         .iter()
                         .any(|contact| contact.contact_id == offer.target_contact_id)
                     {
@@ -7452,13 +7654,8 @@ impl Store {
             ));
         }
         let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
-        let system = self
-            .simulation
-            .systems(txn)?
-            .into_iter()
-            .find(|system| system.system_id == ship.system_id)
-            .ok_or(StoreError::MissingTrafficSimulationSystem(ship.system_id))?;
-        let Some(contact) = crate::traffic::snapshot(&system, current)?
+        let Some(contact) = self
+            .local_traffic_contacts_in(txn, identity, &ship, current)?
             .into_iter()
             .find(|contact| contact.contact_id == contact_id)
         else {
@@ -7466,6 +7663,12 @@ impl Store {
                 "the named traffic contact is no longer at this locus".into(),
             ));
         };
+        let system = self
+            .simulation
+            .systems(txn)?
+            .into_iter()
+            .find(|system| system.system_id == ship.system_id)
+            .ok_or(StoreError::MissingTrafficSimulationSystem(ship.system_id))?;
         let authorized = career.opportunities.iter().any(|offer| {
             offer.state == crate::careers::OpportunityState::Accepted
                 && offer.target_contact_id == contact_id
@@ -10152,6 +10355,7 @@ impl Store {
                 position: crate::wire::Coordinate3::from_parsecs(system.position_parsecs),
                 remote_candidate,
                 knowledge_source,
+                gas_giant_count: world.gas_giants,
             });
         }
         systems.sort_by_key(|system| (system.distance_milliparsecs, system.system_id));
@@ -27040,9 +27244,101 @@ fn decode_combat_snapshot_record(
     })
 }
 
+fn encode_traffic_contact_record(
+    bytes: &mut Vec<u8>,
+    contact: &crate::traffic::TrafficContact,
+    include_observation: bool,
+) -> Result<(), StoreError> {
+    bytes.extend_from_slice(&contact.contact_id.to_be_bytes());
+    bytes.extend_from_slice(&contact.catalog_id.to_be_bytes());
+    encode_text(bytes, &contact.class_name)?;
+    encode_text(bytes, &contact.ship_name)?;
+    encode_text(bytes, &contact.transponder)?;
+    encode_text(bytes, &contact.operator_name)?;
+    encode_text(bytes, &contact.role)?;
+    bytes.extend_from_slice(&contact.displacement_millitons.to_be_bytes());
+    bytes.extend_from_slice(&contact.origin_system_id.to_be_bytes());
+    bytes.extend_from_slice(&contact.destination_system_id.to_be_bytes());
+    bytes.push(match contact.movement {
+        crate::traffic::TrafficMovementKind::Arrival => 0,
+        crate::traffic::TrafficMovementKind::Departure => 1,
+    });
+    bytes.extend_from_slice(&contact.edge_second.to_be_bytes());
+    if include_observation {
+        bytes.push(match contact.resolution {
+            crate::traffic::TrafficContactResolution::TransponderOnly => 0,
+            crate::traffic::TrafficContactResolution::Approximate => 1,
+            crate::traffic::TrafficContactResolution::Identified => 2,
+        });
+        bytes.push(contact.confidence_percent);
+    }
+    Ok(())
+}
+
+fn decode_traffic_contact_record(
+    decoder: &mut Decoder<'_>,
+    has_observation: bool,
+) -> Result<crate::traffic::TrafficContact, StoreError> {
+    let contact_id = decoder.u64()?;
+    let catalog_id = decoder.u32()?;
+    let class_name = decoder.text()?;
+    let ship_name = decoder.text()?;
+    let transponder = decoder.text()?;
+    let operator_name = decoder.text()?;
+    let role = decoder.text()?;
+    let displacement_millitons = decoder.u64()?;
+    let origin_system_id = decoder.u64()?;
+    let destination_system_id = decoder.u64()?;
+    let movement = match decoder.u8()? {
+        0 => crate::traffic::TrafficMovementKind::Arrival,
+        1 => crate::traffic::TrafficMovementKind::Departure,
+        _ => return Err(StoreError::Corrupt("unknown traffic movement")),
+    };
+    let edge_second = decoder.u64()?;
+    let resolution = if has_observation {
+        match decoder.u8()? {
+            0 => crate::traffic::TrafficContactResolution::TransponderOnly,
+            1 => crate::traffic::TrafficContactResolution::Approximate,
+            2 => crate::traffic::TrafficContactResolution::Identified,
+            _ => return Err(StoreError::Corrupt("unknown traffic contact resolution")),
+        }
+    } else if catalog_id != 0 {
+        crate::traffic::TrafficContactResolution::Identified
+    } else if displacement_millitons != 0 || !class_name.is_empty() {
+        crate::traffic::TrafficContactResolution::Approximate
+    } else {
+        crate::traffic::TrafficContactResolution::TransponderOnly
+    };
+    let confidence_percent = if has_observation {
+        decoder.u8()?
+    } else {
+        match resolution {
+            crate::traffic::TrafficContactResolution::TransponderOnly => 25,
+            crate::traffic::TrafficContactResolution::Approximate => 60,
+            crate::traffic::TrafficContactResolution::Identified => 100,
+        }
+    };
+    Ok(crate::traffic::TrafficContact {
+        contact_id,
+        catalog_id,
+        class_name,
+        ship_name,
+        transponder,
+        operator_name,
+        role,
+        displacement_millitons,
+        origin_system_id,
+        destination_system_id,
+        movement,
+        edge_second,
+        resolution,
+        confidence_percent,
+    })
+}
+
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(2);
+    bytes.push(3);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -27204,21 +27500,15 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
                     .to_be_bytes(),
             );
             for contact in &value.local_contacts {
-                bytes.extend_from_slice(&contact.contact_id.to_be_bytes());
-                bytes.extend_from_slice(&contact.catalog_id.to_be_bytes());
-                encode_text(&mut bytes, &contact.class_name)?;
-                encode_text(&mut bytes, &contact.ship_name)?;
-                encode_text(&mut bytes, &contact.transponder)?;
-                encode_text(&mut bytes, &contact.operator_name)?;
-                encode_text(&mut bytes, &contact.role)?;
-                bytes.extend_from_slice(&contact.displacement_millitons.to_be_bytes());
-                bytes.extend_from_slice(&contact.origin_system_id.to_be_bytes());
-                bytes.extend_from_slice(&contact.destination_system_id.to_be_bytes());
-                bytes.push(match contact.movement {
-                    crate::traffic::TrafficMovementKind::Arrival => 0,
-                    crate::traffic::TrafficMovementKind::Departure => 1,
-                });
-                bytes.extend_from_slice(&contact.edge_second.to_be_bytes());
+                encode_traffic_contact_record(&mut bytes, contact, true)?;
+            }
+            bytes.extend_from_slice(
+                &u16::try_from(value.system_contacts.len())
+                    .map_err(|_| StoreError::Corrupt("too many system traffic contacts"))?
+                    .to_be_bytes(),
+            );
+            for contact in &value.system_contacts {
+                encode_traffic_contact_record(&mut bytes, contact, true)?;
             }
         }
         OutcomeKind::DockedServices(value) => {
@@ -27250,7 +27540,7 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
 fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
     let mut decoder = Decoder::new(bytes);
     let version = decoder.u8()?;
-    if version != 1 && version != 2 {
+    if version != 1 && version != 2 && version != 3 {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
     let command_id = decoder.array()?;
@@ -27293,7 +27583,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         9 => OutcomeKind::CrewManagement(decode_crew_management(&mut decoder)?),
         10 => OutcomeKind::ShipStatus(decode_ship_status(&mut decoder)?),
         11 => OutcomeKind::DockedSnapshot(decode_docked_snapshot(&mut decoder)?),
-        12 => OutcomeKind::KnownDestinations(decode_known_destinations(&mut decoder)?),
+        12 => OutcomeKind::KnownDestinations(decode_known_destinations(&mut decoder, version)?),
         13 => OutcomeKind::Market(decode_market_snapshot(&mut decoder)?),
         14 => OutcomeKind::TravelStatus(decode_travel_status(&mut decoder)?),
         15 => OutcomeKind::CoursePlot(decode_course_plot(&mut decoder, version >= 2)?),
@@ -27355,30 +27645,22 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
             let count = decoder.u16()? as usize;
             let mut local_contacts = Vec::with_capacity(count);
             for _ in 0..count {
-                local_contacts.push(crate::traffic::TrafficContact {
-                    contact_id: decoder.u64()?,
-                    catalog_id: decoder.u32()?,
-                    class_name: decoder.text()?,
-                    ship_name: decoder.text()?,
-                    transponder: decoder.text()?,
-                    operator_name: decoder.text()?,
-                    role: decoder.text()?,
-                    displacement_millitons: decoder.u64()?,
-                    origin_system_id: decoder.u64()?,
-                    destination_system_id: decoder.u64()?,
-                    movement: match decoder.u8()? {
-                        0 => crate::traffic::TrafficMovementKind::Arrival,
-                        1 => crate::traffic::TrafficMovementKind::Departure,
-                        _ => return Err(StoreError::Corrupt("unknown traffic movement")),
-                    },
-                    edge_second: decoder.u64()?,
-                });
+                local_contacts.push(decode_traffic_contact_record(&mut decoder, version >= 3)?);
+            }
+            let mut system_contacts = Vec::new();
+            if version >= 3 {
+                let count = decoder.u16()? as usize;
+                system_contacts.reserve(count);
+                for _ in 0..count {
+                    system_contacts.push(decode_traffic_contact_record(&mut decoder, true)?);
+                }
             }
             OutcomeKind::CombatCareer(crate::wire::CombatCareerSnapshot {
                 state,
                 rank,
                 monthly_salary_credits,
                 local_enforcement_summary,
+                system_contacts,
                 local_contacts,
             })
         }
@@ -30725,11 +31007,15 @@ fn encode_known_destinations_into(
         bytes.extend_from_slice(&system.position.spinward_bits.to_be_bytes());
         bytes.extend_from_slice(&system.position.north_bits.to_be_bytes());
         bytes.push(u8::from(system.remote_candidate));
+        bytes.push(system.gas_giant_count);
     }
     Ok(())
 }
 
-fn decode_known_destinations(decoder: &mut Decoder<'_>) -> Result<KnownDestinations, StoreError> {
+fn decode_known_destinations(
+    decoder: &mut Decoder<'_>,
+    outcome_version: u8,
+) -> Result<KnownDestinations, StoreError> {
     let current_system_id = decoder.u64()?;
     let jump_rating = decoder.u8()?;
     let count = decoder.u32()? as usize;
@@ -30760,6 +31046,17 @@ fn decode_known_destinations(decoder: &mut Decoder<'_>) -> Result<KnownDestinati
             "Captain's secret chart" => crate::wire::SystemKnowledgeSource::SecretChart,
             _ => crate::wire::SystemKnowledgeSource::CarriedRecords,
         };
+        let position = crate::wire::Coordinate3 {
+            coreward_bits: decoder.u64()?,
+            spinward_bits: decoder.u64()?,
+            north_bits: decoder.u64()?,
+        };
+        let remote_candidate = decoder.u8()? != 0;
+        let gas_giant_count = if outcome_version >= 3 {
+            decoder.u8()?
+        } else {
+            0
+        };
         systems.push(KnownSystemSummary {
             system_id,
             system_name,
@@ -30771,13 +31068,10 @@ fn decode_known_destinations(decoder: &mut Decoder<'_>) -> Result<KnownDestinati
             tech_level,
             observed_second,
             source,
-            position: crate::wire::Coordinate3 {
-                coreward_bits: decoder.u64()?,
-                spinward_bits: decoder.u64()?,
-                north_bits: decoder.u64()?,
-            },
-            remote_candidate: decoder.u8()? != 0,
+            position,
+            remote_candidate,
             knowledge_source,
+            gas_giant_count,
         });
     }
     Ok(KnownDestinations {
@@ -32189,6 +32483,49 @@ mod tests {
             panic!("expected course plot");
         };
         assert_eq!(plot.current_game_second, 0);
+    }
+
+    #[test]
+    fn known_destination_encoding_preserves_gas_giants_and_reads_version_two() {
+        let outcome = Outcome {
+            command_id: [8; COMMAND_ID_BYTES],
+            committed_sequence: 13,
+            revision: 14,
+            replayed: false,
+            phase: PlayerPhase::Docked,
+            kind: OutcomeKind::KnownDestinations(KnownDestinations {
+                current_system_id: 1,
+                jump_rating: 2,
+                systems: vec![KnownSystemSummary {
+                    system_id: 2,
+                    system_name: "Relay".into(),
+                    world_name: "Relay Prime".into(),
+                    distance_milliparsecs: 1_750,
+                    within_jump_rating: true,
+                    starport: "B".into(),
+                    population: 7,
+                    tech_level: 11,
+                    observed_second: 123,
+                    source: "Carried navigation records".into(),
+                    position: crate::wire::Coordinate3::from_parsecs([1.75, 0.0, 0.0]),
+                    remote_candidate: false,
+                    knowledge_source: crate::wire::SystemKnowledgeSource::CarriedRecords,
+                    gas_giant_count: 3,
+                }],
+            }),
+        };
+
+        let encoded = encode_outcome(&outcome).unwrap();
+        assert_eq!(decode_outcome(&encoded).unwrap(), outcome);
+
+        let mut version_two = encoded;
+        version_two[0] = 2;
+        assert_eq!(version_two.pop(), Some(3));
+        let decoded = decode_outcome(&version_two).unwrap();
+        let OutcomeKind::KnownDestinations(snapshot) = decoded.kind else {
+            panic!("expected known destinations");
+        };
+        assert_eq!(snapshot.systems[0].gas_giant_count, 0);
     }
 
     #[test]
@@ -40023,6 +40360,101 @@ mod tests {
     }
 
     #[test]
+    fn local_contacts_require_a_landmark_and_damaged_sensors_leave_transponder_data() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut txn = store.env.write_txn().unwrap();
+        let (player, mut ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        for subsystem in &mut ship.subsystems {
+            if subsystem.kind == ShipSubsystemKind::Sensors {
+                subsystem.sustained_hits = subsystem.maximum_hits;
+                subsystem.battlefield_repair_hits = 0;
+            }
+        }
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        let docked = store.combat_career_snapshot_in(&txn, &identity()).unwrap();
+        assert!(!docked.system_contacts.is_empty());
+        assert!(docked.system_contacts.iter().all(|contact| {
+            contact.resolution == crate::traffic::TrafficContactResolution::TransponderOnly
+                && !contact.ship_name.is_empty()
+                && !contact.transponder.is_empty()
+                && contact.catalog_id == 0
+                && contact.class_name.is_empty()
+        }));
+        assert!(!docked.local_contacts.is_empty());
+        assert!(docked.local_contacts.iter().all(|contact| {
+            contact.resolution == crate::traffic::TrafficContactResolution::TransponderOnly
+                && !contact.ship_name.is_empty()
+                && !contact.transponder.is_empty()
+                && contact.catalog_id == 0
+                && contact.class_name.is_empty()
+        }));
+
+        ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: 1,
+            plan_revision: 1,
+            leg_index: 0,
+            origin: ShipLocusRecord::Port {
+                system_id: ship.system_id,
+                world_id: ship.system_id,
+                facility_id: ship.system_id,
+            },
+            destination: ShipLocusRecord::JumpLocus {
+                system_id: ship.system_id,
+            },
+            started_second: 0,
+            due_second: crate::simulation::SECONDS_PER_DAY,
+            purpose: FlightLegPurpose::DepartForJump {
+                jump_destination_system_id: ship.system_id.saturating_add(1),
+            },
+        });
+        store
+            .ships
+            .put(
+                &mut txn,
+                &player.ship_id,
+                &encode_ship_record(&ship).unwrap(),
+            )
+            .unwrap();
+        let under_way = store.combat_career_snapshot_in(&txn, &identity()).unwrap();
+        assert!(!under_way.system_contacts.is_empty());
+        assert!(under_way.local_contacts.is_empty());
+
+        ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: 1,
+            plan_revision: 1,
+            leg_index: 1,
+            origin: ShipLocusRecord::JumpLocus {
+                system_id: ship.system_id,
+            },
+            destination: ShipLocusRecord::JumpLocus {
+                system_id: ship.system_id,
+            },
+            started_second: 0,
+            due_second: crate::simulation::SECONDS_PER_DAY,
+            purpose: FlightLegPurpose::Jump {
+                inaccurate_extra_days: 0,
+                critical_transition: false,
+            },
+        });
+        store
+            .ships
+            .put(
+                &mut txn,
+                &player.ship_id,
+                &encode_ship_record(&ship).unwrap(),
+            )
+            .unwrap();
+        let jump = store.combat_career_snapshot_in(&txn, &identity()).unwrap();
+        assert!(jump.system_contacts.is_empty());
+        assert!(jump.local_contacts.is_empty());
+    }
+
+    #[test]
     fn warrant_satisfaction_is_a_second_physically_delivered_instrument() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
@@ -40237,14 +40669,10 @@ mod tests {
         initialize_player_fixture(&store);
         let mut txn = store.env.write_txn().unwrap();
         let (_, ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
-        let system = store
-            .simulation
-            .systems(&txn)
+        let contact = store
+            .local_traffic_contacts_in(&txn, &identity(), &ship, 0)
             .unwrap()
-            .into_iter()
-            .find(|system| system.system_id == ship.system_id)
-            .unwrap();
-        let contact = crate::traffic::snapshot(&system, 0).unwrap().remove(0);
+            .remove(0);
         let mut career = store.career_state_in(&txn, &identity()).unwrap();
         career.mode = crate::careers::CombatCareerMode::Navy;
         career.opportunities = vec![crate::careers::CareerOpportunity {
@@ -40357,14 +40785,10 @@ mod tests {
         let old_captain_id = player.captain_person_id;
         let old_ship_id = ship.ship_id;
         let career_before = store.career_state_in(&txn, &identity()).unwrap();
-        let system = store
-            .simulation
-            .systems(&txn)
+        let contact = store
+            .local_traffic_contacts_in(&txn, &identity(), &ship, 0)
             .unwrap()
-            .into_iter()
-            .find(|system| system.system_id == ship.system_id)
-            .unwrap();
-        let contact = crate::traffic::snapshot(&system, 0).unwrap().remove(0);
+            .remove(0);
         store
             .engage_traffic_contact_in(
                 &mut txn,
@@ -40462,14 +40886,10 @@ mod tests {
         let (player, ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
         let old_captain_id = player.captain_person_id;
         let career_before = store.career_state_in(&txn, &identity()).unwrap();
-        let system = store
-            .simulation
-            .systems(&txn)
+        let contact = store
+            .local_traffic_contacts_in(&txn, &identity(), &ship, 0)
             .unwrap()
-            .into_iter()
-            .find(|system| system.system_id == ship.system_id)
-            .unwrap();
-        let contact = crate::traffic::snapshot(&system, 0).unwrap().remove(0);
+            .remove(0);
         store
             .engage_traffic_contact_in(
                 &mut txn,

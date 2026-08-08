@@ -50,6 +50,7 @@ public:
 
    DoorProfile profile() const noexcept;
    size_t columns() const noexcept;
+   size_t content_columns() const noexcept;
    size_t rows() const noexcept;
    size_t page_content_rows(size_t reserved_rows) const noexcept;
 

@@ -124,9 +124,14 @@ constexpr std::array<DoorHelp, static_cast<size_t>(DoorHelpTopic::Count)> HELP{{
    },
    {
       "Operations and service",
-      "Operations covers local traffic, naval or private authority, orders, reports, warrants, and "
-      "combat-related activity. Traffic contacts are real vessels with changing positions; a report "
-      "is a dated observation, not permanent omniscience.\n\n"
+      "Operations covers local contacts, naval or private authority, orders, reports, warrants, and "
+      "combat-related activity. Local contacts contain only vessels sharing the ship's present "
+      "traffic locus, such as a port, Jump locus, or frontier-fuel body. Ordinary interplanetary "
+      "flight and Jump space normally have no local contacts.\n\n"
+      "Civilian identity and registry details come from transponders. Hull classification and "
+      "tonnage are sensor observations whose confidence depends on the fitted electronics and "
+      "sensor damage. System-wide traffic-control reports are a separate transponder picture; they "
+      "do not imply that a reported ship is locally detectable or interceptable.\n\n"
       "Interception, piracy, mutiny, and misuse of an issued command can create durable legal and "
       "career consequences. Read the displayed authority and confirmation text before proceeding.\n\n"
       "Service orders and reports are instruments that may need physical delivery before another "
@@ -170,6 +175,9 @@ constexpr std::array<DoorHelp, static_cast<size_t>(DoorHelpTopic::Count)> HELP{{
       "Fastest minimizes elapsed travel; cheapest weighs known monetary costs and may take longer. "
       "A purchased course tape uses knowledge sold at the current port and may differ from the plot "
       "available aboard.\n\n"
+      "The charted-leg destination list shows distance from that leg's origin, primary-world port, "
+      "population and technology codes, and charted gas giants. Open its dossier for chart age, "
+      "source, and coordinates before selecting a destination.\n\n"
       "Preview shows the committed sequence. Filing is the consequential step. If a future purchase "
       "cannot be completed, the ship holds that plan rather than inventing fuel or skipping the stop.",
    },

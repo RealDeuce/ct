@@ -1,14 +1,22 @@
 # System Traffic and Encounter Geography
 
 *Status: high-level semantics and initial traffic calibration adopted; daily
-traffic, deterministic observer projections, and the first checkpoint contact
-model are implemented, while economic coefficients and trajectory thresholds
-remain subject to calibration, 2026-08-01*
+traffic, deterministic landmark-scoped observer projections, sensor-qualified
+identification, and the first checkpoint contact model are implemented, while
+economic coefficients and trajectory thresholds remain subject to calibration,
+2026-08-08*
 
 Random traffic is not distributed uniformly through a system. It arises from
 population, technology, trade, and the movement of ships between a small
 number of useful destinations. A random contact becomes an encounter only
 when the ships can actually converge.
+
+Two related observations must remain distinct. **System traffic** is the
+traffic-control picture assembled from active transponders and movement
+reports across the system. **Local contacts** are vessels detected at the
+observer's present locus and are the only ordinary candidates for immediate
+interception. A civilian contact can contribute transponder identity to both
+pictures, but its hull solution still comes from local sensors.
 
 ## Unaligned regional character
 

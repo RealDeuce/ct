@@ -450,6 +450,18 @@ pub fn ship_catalog_revision(catalog_id: u32) -> Option<u64> {
     ship_source_opt(catalog_id).map(|source| scalar_u64(source, "revision").unwrap_or(1))
 }
 
+pub fn ship_electronics_dm(catalog_id: u32) -> Option<i8> {
+    let source = ship_source_opt(catalog_id)?;
+    Some(match text_value(source, "electronics").as_str() {
+        "standard" => -4,
+        "basic-civilian" => -2,
+        "basic-military" => 0,
+        "advanced" => 1,
+        "very-advanced" => 2,
+        _ => return None,
+    })
+}
+
 pub fn ship_status_spec(catalog_id: u32) -> Option<ShipStatusSpec> {
     let source = ship_source_opt(catalog_id)?;
     let runtime = SHIP_RUNTIME

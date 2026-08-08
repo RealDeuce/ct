@@ -302,6 +302,11 @@ std::string door_option_prompt(
       throw std::invalid_argument("door prompt width must be nonzero");
    }
 
+   // Do not consume the terminal's physical last column.  Terminals disagree
+   // about whether writing it leaves a deferred wrap pending or advances
+   // immediately, so following a full-width line with CR/LF can produce an
+   // extra blank line.
+   const auto content_columns = columns > 1 ? columns - 1 : size_t{1};
    std::string prompt;
    if(leading_newline) {
       prompt += "\n\r";
@@ -312,7 +317,7 @@ std::string door_option_prompt(
          continue;
       }
       if(line_width != 0) {
-         if(line_width + 2 + option.size() > columns) {
+         if(line_width + 2 + option.size() > content_columns) {
             prompt += "\n\r";
             line_width = 0;
          } else {
@@ -350,6 +355,10 @@ DoorProfile DoorPresentation::profile() const noexcept {
 
 size_t DoorPresentation::columns() const noexcept {
    return columns_;
+}
+
+size_t DoorPresentation::content_columns() const noexcept {
+   return columns_ - 1;
 }
 
 size_t DoorPresentation::rows() const noexcept {
@@ -456,6 +465,7 @@ void DoorPresentation::pause_at_page_boundary(const DoorTextRole role) {
 void DoorPresentation::emit_encoded(const std::string_view bytes,
                                     const DoorTextRole role,
                                     const size_t continuation_indent) {
+   const auto line_limit = content_columns();
    for(size_t index = 0; index < bytes.size();) {
       const char byte = bytes[index];
       if(byte == '\r' || byte == '\n') {
@@ -486,17 +496,17 @@ void DoorPresentation::emit_encoded(const std::string_view bytes,
          }
          const auto next_word_size = next_word_end - index;
          if(column_ != 0 && next_word_size != 0 &&
-            column_ + space_count + next_word_size > columns_) {
+            column_ + space_count + next_word_size > line_limit) {
             wrapped_newline(role, continuation_indent);
             continue;
          }
          size_t remaining = space_count;
          while(remaining != 0) {
-            if(column_ >= columns_) {
+            if(column_ >= line_limit) {
                wrapped_newline(role, continuation_indent);
             }
             const auto count =
-               std::min(remaining, columns_ - column_);
+               std::min(remaining, line_limit - column_);
             emit(std::string_view(bytes.data() + first_space, count));
             column_ += count;
             remaining -= count;
@@ -513,15 +523,15 @@ void DoorPresentation::emit_encoded(const std::string_view bytes,
       }
       size_t remaining = index - word_start;
       size_t emitted = 0;
-      if(column_ != 0 && column_ + remaining > columns_) {
+      if(column_ != 0 && column_ + remaining > line_limit) {
          wrapped_newline(role, continuation_indent);
       }
       while(remaining != 0) {
-         if(column_ >= columns_) {
+         if(column_ >= line_limit) {
             wrapped_newline(role, continuation_indent);
          }
          const auto count =
-            std::min(remaining, columns_ - column_);
+            std::min(remaining, line_limit - column_);
          emit(std::string_view(bytes.data() + word_start + emitted, count));
          column_ += count;
          emitted += count;
@@ -549,7 +559,7 @@ void DoorPresentation::write_hanging(
    const size_t continuation_indent,
    const DoorTextRole role)
 {
-   if(continuation_indent >= columns_) {
+   if(continuation_indent >= content_columns()) {
       throw std::invalid_argument(
          "continuation indent must leave room for text");
    }

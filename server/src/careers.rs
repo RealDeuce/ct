@@ -604,7 +604,7 @@ mod warrant_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::traffic::TrafficMovementKind;
+    use crate::traffic::{TrafficContactResolution, TrafficMovementKind};
 
     fn contact() -> TrafficContact {
         TrafficContact {
@@ -620,6 +620,8 @@ mod tests {
             destination_system_id: 2,
             movement: TrafficMovementKind::Departure,
             edge_second: 500,
+            resolution: TrafficContactResolution::Identified,
+            confidence_percent: 100,
         }
     }
 

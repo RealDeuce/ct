@@ -562,6 +562,7 @@ struct KnownSystemSummary {
    double north_parsecs;
    bool remote_candidate;
    SystemKnowledgeSource knowledge_source;
+   uint8_t gas_giant_count;
 };
 
 struct KnownDestinations {
@@ -1489,6 +1490,7 @@ struct CombatCareerSnapshot {
    std::vector<WarrantRecord> warrants;
    PirateCruise cruise;
    std::string local_enforcement_summary;
+   std::vector<TrafficContact> system_contacts;
    std::vector<TrafficContact> local_contacts;
    PlayerPhase phase;
 };
@@ -1625,6 +1627,12 @@ enum class TrafficMovementKind {
    Departure,
 };
 
+enum class TrafficContactResolution {
+   TransponderOnly,
+   Approximate,
+   Identified,
+};
+
 struct TrafficContact {
    uint64_t contact_id;
    uint32_t catalog_id;
@@ -1638,6 +1646,8 @@ struct TrafficContact {
    uint64_t destination_system_id;
    TrafficMovementKind movement;
    uint64_t edge_second;
+   TrafficContactResolution resolution;
+   uint8_t confidence_percent;
 };
 
 struct TrafficSnapshot {

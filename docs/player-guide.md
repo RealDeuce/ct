@@ -256,6 +256,10 @@ frontier skimming where the ship and charts support it. The plot reports its
 modeled fuel-purchase cost and travel time. The captain still chooses and
 imports a course into the executable Flight Plan.
 
+When adding a charted leg, the destination list reports distance from that
+leg's origin, primary-world port, population and tech codes, and the number of
+charted gas giants. Its dossier adds chart age, source, and coordinates.
+
 When the ship reaches an unmapped system, you may publish it, file it directly,
 withhold it, or mark it secret. Read the prompt: disclosure choices have
 different privacy and cost consequences.
@@ -263,9 +267,22 @@ different privacy and cost consequences.
 ### Operations Ledger
 
 Operations Ledger covers naval rank and orders, privateer commissions and
-prize claims, pirate opportunities and cruises, warrants, local traffic, and
-combat-career standing. Available actions depend on local authority, delivered
-information, the ship, and the captain's current service.
+prize claims, pirate opportunities and cruises, warrants, system traffic,
+local contacts, and combat-career standing. Available actions depend on local
+authority, delivered information, the ship, and the captain's current service.
+
+The **Local contacts** section is a sensor picture of the ship's current traffic
+locus. A port, Jump locus, gas giant, or other frontier-fuel body can contain
+contacts; ordinary interplanetary transit and Jump space normally do not. A
+civilian contact's name, operator, role, and transponder come from its broadcast
+registry. Class and tonnage are separate sensor estimates, and may be
+approximate or unresolved when the ship has modest or damaged electronics.
+Only contacts still sharing the locus can be intercepted.
+
+This is distinct from the system traffic-control picture. Traffic control can
+report transponder movements elsewhere in the system, showing that the system
+is active without making those vessels local sensor contacts or viable
+interception targets.
 
 Changing service, intercepting traffic, mutiny, piracy, and similar actions
 can be irreversible or unlawful. The door supplies an additional confirmation

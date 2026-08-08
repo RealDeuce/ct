@@ -25,6 +25,13 @@ pub enum TrafficMovementKind {
     Departure,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TrafficContactResolution {
+    TransponderOnly,
+    Approximate,
+    Identified,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TrafficContact {
     pub contact_id: u64,
@@ -39,6 +46,8 @@ pub struct TrafficContact {
     pub destination_system_id: u64,
     pub movement: TrafficMovementKind,
     pub edge_second: u64,
+    pub resolution: TrafficContactResolution,
+    pub confidence_percent: u8,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -138,6 +147,8 @@ fn day_contacts(system: &SimulationSystem, day: u64) -> Result<Vec<TrafficContac
             destination_system_id,
             movement,
             edge_second: day_start.saturating_add(offset.min(SECONDS_PER_DAY - 1)),
+            resolution: TrafficContactResolution::Identified,
+            confidence_percent: 100,
         });
     }
     contacts.sort_by_key(|contact| (contact.edge_second, contact.contact_id));

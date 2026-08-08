@@ -339,7 +339,7 @@ void door_live_prompt(const char* format, ...)
    if(text.find_first_of("\r\n") != std::string::npos) {
       throw std::logic_error("a live prompt must occupy one line");
    }
-   if(text.size() >= output().columns()) {
+   if(text.size() > output().content_columns()) {
       throw std::logic_error("a live prompt must fit on one terminal row");
    }
    active_prompt = text;
@@ -357,7 +357,7 @@ void show_voyage_live_prompt()
    door_write("\n\r", ct::DoorTextRole::Normal);
    door_live_prompt(
       "%s",
-      output().columns() > std::strlen(wide_prompt)
+      output().content_columns() >= std::strlen(wide_prompt)
          ? wide_prompt
          : narrow_prompt);
 }
@@ -629,7 +629,7 @@ void show_open_game_license()
 {
    const auto page_lines = output().page_content_rows(5);
    const auto lines =
-      wrap_text(ct::OPEN_GAME_LICENSE_TEXT, output().columns());
+      wrap_text(ct::OPEN_GAME_LICENSE_TEXT, output().content_columns());
    size_t offset = 0;
    while(offset < lines.size()) {
       od_clr_scr();
@@ -896,8 +896,8 @@ void print_wrapped(
 {
    const auto indent_width = std::strlen(indent);
    const auto width =
-      output().columns() > indent_width
-      ? output().columns() - indent_width
+      output().content_columns() > indent_width
+      ? output().content_columns() - indent_width
       : size_t{1};
    for(const auto& line : wrap_text(safe_field(text), width)) {
       door_write(std::string(indent) + line + "\n\r", role);
@@ -926,7 +926,10 @@ void show_context_help()
    door_write("\n\r\n\r", ct::DoorTextRole::Normal);
    door_heading("Help - %s\n\r", safe_field(help.title).c_str());
    door_heading("%s\n\r\n\r", std::string(help.title.size() + 7, '=').c_str());
-   const auto width = output().columns() > 2 ? output().columns() - 2 : size_t{1};
+   const auto width =
+      output().content_columns() > 2
+      ? output().content_columns() - 2
+      : size_t{1};
    for(const auto& line : wrap_text(help.body, width)) {
       if(line.empty()) {
          door_write("\n\r", ct::DoorTextRole::Information);
@@ -4426,19 +4429,116 @@ void show_arrival_packet(
    wait_for_enter("Continue");
 }
 
+double known_system_distance(
+   const ct::KnownDestinations& snapshot,
+   const std::optional<uint64_t> origin_system_id,
+   const ct::KnownSystemSummary& destination)
+{
+   if(!origin_system_id || *origin_system_id == snapshot.current_system_id) {
+      return destination.distance_parsecs;
+   }
+   const auto origin = std::find_if(
+                          snapshot.systems.begin(),
+                          snapshot.systems.end(),
+   [origin_system_id](const auto & system) {
+      return system.system_id == *origin_system_id;
+   });
+   if(origin == snapshot.systems.end()) {
+      return destination.distance_parsecs;
+   }
+   const auto coreward =
+      origin->coreward_parsecs - destination.coreward_parsecs;
+   const auto spinward =
+      origin->spinward_parsecs - destination.spinward_parsecs;
+   const auto north = origin->north_parsecs - destination.north_parsecs;
+   return std::sqrt(
+      coreward * coreward + spinward * spinward + north * north);
+}
+
+void show_planning_system_dossier(
+   const ct::KnownDestinations& snapshot,
+   const ct::KnownSystemSummary& system,
+   const double distance_parsecs)
+{
+   od_clr_scr();
+   door_heading("System Dossier - ");
+   door_identifier("%s\n\r", safe_field(system.system_name).c_str());
+   door_heading("================\n\r\n\r");
+   door_label("Principal world: ");
+   door_value("%s\n\r", safe_field(system.world_name).c_str());
+   door_label("Planning range:  ");
+   door_number("%.3f parsecs\n\r", distance_parsecs);
+   door_label("Direct leg:      ");
+   if(distance_parsecs <= static_cast<double>(snapshot.jump_rating) + 1.0e-9) {
+      door_success("Within Jump-%u range\n\r", snapshot.jump_rating);
+   } else {
+      door_warning("Beyond Jump-%u range; a plotted course is required\n\r",
+                   snapshot.jump_rating);
+   }
+   door_label("Starport:        ");
+   door_value("%s\n\r", safe_field(system.starport).c_str());
+   door_label("Population code: ");
+   door_number("%u\n\r", system.population);
+   door_label("Tech level:      ");
+   door_number("%u\n\r", system.tech_level);
+   door_label("Gas giants:      ");
+   if(system.gas_giant_count == 0) {
+      door_warning("None charted\n\r");
+   } else {
+      door_success("%u charted\n\r", system.gas_giant_count);
+   }
+   door_label("Chart received:  ");
+   door_number("%s\n\r", game_date(system.observed_second).c_str());
+   door_label("Chart source:    ");
+   door_value("%s\n\r", safe_field(system.source).c_str());
+   door_label("Coordinates:     ");
+   door_number("%.6f / %.6f / %.6f pc\n\r",
+               system.coreward_parsecs,
+               system.spinward_parsecs,
+               system.north_parsecs);
+   door_information(
+      "\n\rPort, population, technical, and gas-giant records may have "
+      "changed since this chart was received.\n\r");
+   wait_for_enter("Destination list");
+}
+
 std::optional<const ct::KnownSystemSummary*> select_known_primary(
    const ct::KnownDestinations& snapshot,
    const char* title,
-   const std::optional<uint64_t> excluded = {})
+   const std::optional<uint64_t> excluded = {},
+   const std::optional<uint64_t> distance_origin_system_id = {},
+   const bool direct_only = false)
 {
-   std::vector<const ct::KnownSystemSummary*> systems;
+   struct Choice {
+      const ct::KnownSystemSummary* system;
+      double distance_parsecs;
+   };
+   std::vector<Choice> systems;
    for(const auto& system : snapshot.systems) {
       if(!excluded || system.system_id != *excluded) {
-         systems.push_back(&system);
+         const auto distance = known_system_distance(
+                                  snapshot,
+                                  distance_origin_system_id,
+                                  system);
+         if(!direct_only ||
+               distance <= static_cast<double>(snapshot.jump_rating) + 1.0e-9) {
+            systems.push_back({&system, distance});
+         }
       }
    }
+   std::sort(systems.begin(), systems.end(), [](const auto& left, const auto& right) {
+      if(left.distance_parsecs != right.distance_parsecs) {
+         return left.distance_parsecs < right.distance_parsecs;
+      }
+      return left.system->system_id < right.system->system_id;
+   });
+   if(systems.empty()) {
+      door_warning("No charted destination matches this leg.\n\r");
+      wait_for_enter();
+      return std::nullopt;
+   }
    size_t page = 0;
-   constexpr size_t page_size = 8;
+   const size_t page_size = output().columns() < 64 ? 4 : 6;
    while(true) {
       const auto page_count =
          std::max<size_t>(1, (systems.size() + page_size - 1) / page_size);
@@ -4449,7 +4549,8 @@ std::optional<const ct::KnownSystemSummary*> select_known_primary(
       door_heading("%s\n\r", title);
       door_heading("=====================\n\r\n\r");
       for(size_t index = first; index < last; ++index) {
-         const auto& system = *systems[index];
+         const auto& choice = systems[index];
+         const auto& system = *choice.system;
          door_number("%u", static_cast<unsigned>(index - first + 1));
          door_label(". ");
          door_identifier("%s", safe_field(system.system_name).c_str());
@@ -4459,13 +4560,38 @@ std::optional<const ct::KnownSystemSummary*> select_known_primary(
             door_information("  (present system)");
          }
          od_printf("\n\r");
+         door_label("   ");
+         door_number("%.3f pc", choice.distance_parsecs);
+         door_label("  Port ");
+         door_value("%s", safe_field(system.starport).c_str());
+         door_label("  Pop ");
+         door_number("%u", system.population);
+         door_label("  TL");
+         door_number("%u", system.tech_level);
+         door_label("  Gas giants ");
+         if(system.gas_giant_count == 0) {
+            door_warning("0\n\r");
+         } else {
+            door_success("%u\n\r", system.gas_giant_count);
+         }
       }
-      door_option_prompt({
-         "[1-8] Select",
-         "[< >] Page",
-         "[Enter/Q] Cancel",
-         "[?] Help",
-      });
+      if(page_size == 4) {
+         door_option_prompt({
+            "[1-4] Select",
+            "[I] Dossier",
+            "[< >] Page",
+            "[Enter/Q] Cancel",
+            "[?] Help",
+         });
+      } else {
+         door_option_prompt({
+            "[1-6] Select",
+            "[I] Dossier",
+            "[< >] Page",
+            "[Enter/Q] Cancel",
+            "[?] Help",
+         });
+      }
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
          return std::nullopt;
@@ -4474,10 +4600,21 @@ std::optional<const ct::KnownSystemSummary*> select_known_primary(
          ++page;
       } else if(key == '<' && page > 0) {
          --page;
-      } else if(key >= '1' && key <= '8') {
+      } else if(key == 'i' || key == 'I') {
+         const auto selected = input_number(
+                                  "Dossier entry",
+                                  1,
+                                  static_cast<unsigned>(last - first));
+         if(selected) {
+            const auto& choice = systems[first + *selected - 1];
+            show_planning_system_dossier(
+               snapshot, *choice.system, choice.distance_parsecs);
+         }
+      } else if(key >= '1' &&
+                key < static_cast<int>('1' + page_size)) {
          const auto index = first + static_cast<size_t>(key - '1');
          if(index < last) {
-            return systems[index];
+            return systems[index].system;
          }
       }
    }
@@ -4661,7 +4798,11 @@ return selected ? std::optional<uint64_t>{(*selected)->system_id} :
       return;
    }
    const auto destination =
-      select_known_primary(snapshot, "Select Course Destination", *origin);
+      select_known_primary(
+         snapshot,
+         "Select Course Destination",
+         *origin,
+         *origin);
    if(!destination) {
       return;
    }
@@ -4830,6 +4971,12 @@ void show_known_universe_manager(
       door_number("%u\n\r", system.population);
       door_label("Tech level:      ");
       door_number("%u\n\r", system.tech_level);
+      door_label("Gas giants:      ");
+      if(system.gas_giant_count == 0) {
+         door_warning("None charted\n\r");
+      } else {
+         door_success("%u charted\n\r", system.gas_giant_count);
+      }
       door_label("Chart received:  ");
       door_number("%s\n\r", game_date(system.observed_second).c_str());
       door_label("Chart source:    ");
@@ -4840,8 +4987,8 @@ void show_known_universe_manager(
                   system.spinward_parsecs,
                   system.north_parsecs);
       door_information(
-         "\n\rNavigation, port, population, and technical reports may have "
-         "changed since this chart was received.\n\r");
+         "\n\rNavigation, port, population, technical, and gas-giant reports "
+         "may have changed since this chart was received.\n\r");
       const bool secret = system.knowledge_source ==
          ct::SystemKnowledgeSource::SecretChart;
       door_prompt(secret
@@ -4975,18 +5122,70 @@ std::optional<ct::PlayerPhase> show_combat_operations(
          }
          door_label("\n\r");
       }
-      door_identifier("\n\rLocal traffic\n\r");
+      door_identifier("\n\rSystem traffic control\n\r");
+      if(snapshot.system_contacts.empty()) {
+         if(snapshot.phase == ct::PlayerPhase::Jump) {
+            door_information("  No traffic-control reception is possible in Jump space.\n\r");
+         } else {
+            door_information("  No active transponder movement is reported.\n\r");
+         }
+      }
+      for(const auto&c : snapshot.system_contacts) {
+         door_identifier("  %s", safe_field(c.ship_name).c_str());
+         door_label("  [");
+         door_value("%s", safe_field(c.transponder).c_str());
+         door_label("]\n\r");
+         print_wrapped_field(
+            "    Registry: ",
+            safe_field(c.operator_name) + " — " + safe_field(c.role));
+         door_label("    Movement: ");
+         door_value("%s  %s\n\r",
+                    c.movement == ct::TrafficMovementKind::Arrival
+                    ? "arrival"
+                    : "departure",
+                    game_date(c.edge_second).c_str());
+      }
+      door_identifier("\n\rLocal contacts\n\r");
       if(snapshot.local_contacts.empty()) {
-         door_information("  No contact remains in the traffic window.\n\r");
+         if(snapshot.phase == ct::PlayerPhase::Jump) {
+            door_information("  No local sensor picture is possible in Jump space.\n\r");
+         } else if(snapshot.phase == ct::PlayerPhase::Interplanetary) {
+            door_information("  No contact resolves at the ship's present position.\n\r");
+         } else {
+            door_information("  No contact remains at this traffic locus.\n\r");
+         }
       }
       for(size_t i = 0; i < snapshot.local_contacts.size(); ++i) {
          const auto&c = snapshot.local_contacts[i];
          door_number("%zu", i + 1);
          door_label(". ");
          door_identifier("%s", safe_field(c.ship_name).c_str());
-         door_label(" — ");
-         door_value("%s", safe_field(c.role).c_str());
-         door_label("\n\r");
+         door_label("  [");
+         door_value("%s", safe_field(c.transponder).c_str());
+         door_label("]\n\r");
+         print_wrapped_field(
+            "   Registry: ",
+            safe_field(c.operator_name) + " — " + safe_field(c.role));
+         switch(c.resolution) {
+         case ct::TrafficContactResolution::TransponderOnly:
+            door_label("   Sensors:  ");
+            door_warning("No reliable hull solution; transponder data only.\n\r");
+            break;
+         case ct::TrafficContactResolution::Approximate:
+            door_label("   Sensors:  ");
+            door_warning("%s, approximately %.0f t (%u%% confidence)\n\r",
+                         safe_field(c.class_name).c_str(),
+                         c.displacement_millitons / 1000.0,
+                         c.confidence_percent);
+            break;
+         case ct::TrafficContactResolution::Identified:
+            door_label("   Sensors:  ");
+            door_value("%s, %.1f t (%u%% confidence)\n\r",
+                       safe_field(c.class_name).c_str(),
+                       c.displacement_millitons / 1000.0,
+                       c.confidence_percent);
+            break;
+         }
       }
       if(!snapshot.prizes.empty()) {
          door_identifier("\n\rPrizes\n\r");
@@ -6096,39 +6295,16 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
          const uint64_t origin_system_id = proposal.steps.empty()
                                            ? destinations.current_system_id
                                            : proposal.steps.back().locus.system_id;
-         std::vector<const ct::KnownSystemSummary*> reachable;
-         for(const auto& system : destinations.systems) {
-            if(system.system_id == origin_system_id) {
-               continue;
-            }
-            // The server remains authoritative for future-leg range.  The
-            // carried summary's direct marker is only meaningful at the
-            // current system, so future candidates are previewed before file.
-            if(origin_system_id == destinations.current_system_id &&
-                  !system.within_jump_rating) {
-               continue;
-            }
-            reachable.push_back(&system);
-         }
-         if(reachable.empty()) {
-            door_warning("No carried chart is available for another leg.\n\r");
-            wait_for_enter();
-            continue;
-         }
-         output().resume_paging();
-         for(size_t index = 0; index < reachable.size(); ++index) {
-            door_number("%zu", index + 1);
-            door_label(". ");
-            door_identifier("%s", safe_field(reachable[index]->system_name).c_str());
-            door_label(" / ");
-            door_value("%s\n\r", safe_field(reachable[index]->world_name).c_str());
-         }
-         const auto selected = input_number(
-                                  "Destination", 1, static_cast<unsigned>(reachable.size()));
+         const auto selected = select_known_primary(
+                                  destinations,
+                                  "Add Charted Leg",
+                                  origin_system_id,
+                                  origin_system_id,
+                                  true);
          if(!selected) {
             continue;
          }
-         const auto destination_system_id = reachable[*selected - 1]->system_id;
+         const auto destination_system_id = (*selected)->system_id;
          auto jump = origin_system_id == 0
                      ? jump_step_from_locus(travel.origin, destination_system_id)
                      : jump_step(origin_system_id, destination_system_id);

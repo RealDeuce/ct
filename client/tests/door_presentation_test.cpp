@@ -68,7 +68,7 @@ void check_profile_and_width(const ct::DoorProfile profile,
       "A deliberately long market, crew, contract, and ship record with "
       "12345678901234567890 credits at coordinates "
       "-123456789.125/+987654321.875/-444444444.500.");
-   check(maximum_visible_width(output) <= columns);
+   check(maximum_visible_width(output) < columns);
    if(profile == ct::DoorProfile::Iso646) {
       check(!output.empty() && output.front() == '\f');
       check(output.find('\x1b') == std::string::npos);
@@ -147,7 +147,7 @@ int main() {
                std::string(help.body),
             ct::DoorTextRole::Information);
          check(help_output.find("Help - ") != std::string::npos);
-         check(maximum_visible_width(help_output) <= columns);
+         check(maximum_visible_width(help_output) < columns);
       }
    }
    bool rejected_help_topic = false;
@@ -231,7 +231,19 @@ int main() {
       "           limited local commission;\r\n"
       "           prize rights require\r\n"
       "           adjudication");
-   check(maximum_visible_width(hanging) <= 40);
+   check(maximum_visible_width(hanging) < 40);
+
+   std::string exact_margin;
+   ct::DoorPresentation margin_presentation(
+      ct::DoorProfile::Iso646,
+      40,
+      24,
+      [&exact_margin](const std::string_view bytes) {
+         exact_margin.append(bytes);
+      });
+   margin_presentation.write(std::string(40, 'x') + "\r\nnext");
+   check(maximum_visible_width(exact_margin) == 39);
+   check(exact_margin == std::string(39, 'x') + "\r\nx\r\nnext");
 
    std::string paged;
    unsigned pauses = 0;
@@ -292,7 +304,7 @@ int main() {
    check(ct::parse_door_profile("cp437") == ct::DoorProfile::Cp437Color);
    check(ct::door_single_line_field("ship\r\n\x1b[31m") ==
          "ship  ?[31m");
-   check(
+   const auto wide_options =
       ct::door_option_prompt(
          {"[Letter] Docked service",
           "[U] Universal managers",
@@ -300,9 +312,12 @@ int main() {
           "[Enter] Refresh",
           "[Q] Return to BBS",
           "[?] Help"},
-         80) ==
+         80);
+   check(
+      wide_options ==
       "\n\r[Letter] Docked service  [U] Universal managers  [L] License  "
       "[Enter] Refresh\n\r[Q] Return to BBS  [?] Help\n\r");
+   check(maximum_visible_width(wide_options) < 80);
    check(
       ct::door_option_prompt(
          {"[Letter] Docked service",
