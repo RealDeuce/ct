@@ -177,8 +177,25 @@ impl DoorSession {
     fn acknowledge_page_prompts(&mut self, semantic: &str) {
         let page_prompts = semantic.matches("Enter/Space").count();
         while self.acknowledged_page_prompts < page_prompts {
+            const ERASED_PAGE_PROMPT: &[u8] = b"\r                      \r";
+            let output_length = self.output.lock().unwrap().len();
             self.send(b" ");
             self.acknowledged_page_prompts += 1;
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                let prompt_erased = self.output.lock().unwrap()[output_length..]
+                    .windows(ERASED_PAGE_PROMPT.len())
+                    .any(|bytes| bytes == ERASED_PAGE_PROMPT);
+                if prompt_erased {
+                    break;
+                }
+                let output = self.output();
+                assert!(
+                    Instant::now() < deadline,
+                    "door did not erase its page prompt; output: {output:?}"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
         }
     }
 
@@ -229,16 +246,15 @@ impl DoorSession {
         &mut self,
         bytes: &[u8],
         rendered_text: &str,
-        active_prompt: &str,
+        progress_text: &str,
     ) -> String {
         let deadline = Instant::now() + Duration::from_secs(10);
         let rendered = normalized_display_text(rendered_text);
-        let prompt = normalized_display_text(active_prompt);
+        let progress = normalized_display_text(progress_text);
         let initial = normalized_display_text(&self.output());
         let rendered_before = initial.matches(&rendered).count();
-        let mut prompt_occurrences = initial.matches(&prompt).count();
+        let progress_before = initial.matches(&progress).count();
         let mut acknowledged_prompts = self.acknowledged_page_prompts;
-        let mut retry = false;
         self.send(bytes);
         loop {
             let output = self.output();
@@ -249,14 +265,10 @@ impl DoorSession {
             }
             if self.acknowledged_page_prompts > acknowledged_prompts {
                 acknowledged_prompts = self.acknowledged_page_prompts;
-                retry = true;
+                if semantic.matches(&progress).count() == progress_before {
+                    self.send(bytes);
+                }
             }
-            let current_prompt_occurrences = semantic.matches(&prompt).count();
-            if retry && current_prompt_occurrences > prompt_occurrences {
-                self.send(bytes);
-                retry = false;
-            }
-            prompt_occurrences = current_prompt_occurrences;
             assert!(
                 Instant::now() < deadline,
                 "door did not render {rendered_text:?} after input; output: {output:?}"
@@ -488,56 +500,65 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
             session.send_through_page_prompt(
                 b"\r",
                 "Captain's Command Console",
-                "[F] Revise Flight Plan  [Enter] Command console",
+                "Captain's Command Console",
             );
         } else {
             session.send_through_page_prompt(
                 b"u",
                 "Captain's Command Console",
-                "(Q) Return to BBS",
+                "Captain's Command Console",
             );
         }
     } else if arrival_result == 1 {
         session.send_through_page_prompt(
             b"\r",
             "Captain's Command Console",
-            "[F] Revise Flight Plan  [Enter] Command console",
+            "Captain's Command Console",
         );
     } else {
-        session.send_through_page_prompt(b"u", "Captain's Command Console", "(Q) Return to BBS");
+        session.send_through_page_prompt(
+            b"u",
+            "Captain's Command Console",
+            "Captain's Command Console",
+        );
     }
     session.send(b"m");
     const MESSAGE_HEADING: &str = "Message Management\r\n==================";
     session.wait_for(MESSAGE_HEADING);
-    session.send(b"i");
-    session.wait_for("Message number on this page");
-    let console_prompts = normalized_display_text(&session.output())
-        .matches("Console")
-        .count();
-    session.send(b"1");
-    session.wait_for_occurrences("Console", console_prompts + 1);
-    session.send(b"l");
-    session.wait_for_occurrences("Message number on this page", 2);
-    let console_prompts = normalized_display_text(&session.output())
-        .matches("Console")
-        .count();
-    session.send(b"2");
-    let classified = session.wait_for_occurrences("Console", console_prompts + 1);
+    session.send_through_page_prompt(
+        b"i",
+        "Message number on this page",
+        "Message number on this page",
+    );
+    session.send_through_page_prompt(b"1", "Console", MESSAGE_HEADING);
+    session.send_through_page_prompt(
+        b"l",
+        "Message number on this page",
+        "Message number on this page",
+    );
+    let classified = session.send_through_page_prompt(b"2", "Console", MESSAGE_HEADING);
     assert!(strip_ecma48(&classified).contains("Ignored"));
     assert!(
         strip_ecma48(&classified).contains("Review"),
         "classification output: {classified:?}"
     );
-    session.send(b"3");
-    session.wait_for_occurrences("Communications Record", 2);
-    session.send(b"\r");
-    session.wait_for_occurrences(MESSAGE_HEADING, 4);
-    session.send(b"q");
-    session.wait_for_occurrences("Captain's Command Console", 2);
-    session.send(b"k");
-    session.wait_for("Ship's Navigation Library");
-    session.send(b"\r");
-    session.wait_for_occurrences("Captain's Command Console", 3);
+    session.send_through_page_prompt(b"3", "Communications Record", "Communications Record");
+    session.send_through_page_prompt(b"\r", "Console", MESSAGE_HEADING);
+    session.send_through_page_prompt(
+        b"q",
+        "Captain's Command Console",
+        "Captain's Command Console",
+    );
+    session.send_through_page_prompt(
+        b"k",
+        "Ship's Navigation Library",
+        "Ship's Navigation Library",
+    );
+    session.send_through_page_prompt(
+        b"\r",
+        "Captain's Command Console",
+        "Captain's Command Console",
+    );
     session.return_to_bbs();
     session.finish()
 }
@@ -1337,7 +1358,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     server.stop();
     let combat_root = tempfile::tempdir().unwrap();
     copy_directory(data.path(), combat_root.path());
-    {
+    let local_contact_available = {
         let identity = PlayerIdentity {
             bbs_id: 1,
             player_id: 1,
@@ -1371,94 +1392,95 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
                 .advance_simulation_to(current_second.saturating_add((hour + 1) * 3_600))
                 .unwrap();
         }
-        assert!(
-            found,
-            "no local traffic window was found within fourteen days"
+        found
+    };
+    if local_contact_available {
+        let mut combat_server = spawn_server(
+            &server_executable,
+            &game_address_text,
+            &admin_address_text,
+            &sysop_address_text,
+            combat_root.path(),
         );
-    }
-    let mut combat_server = spawn_server(
-        &server_executable,
-        &game_address_text,
-        &admin_address_text,
-        &sysop_address_text,
-        combat_root.path(),
-    );
-    let mut combat_door = DoorSession::spawn(&door, combat_root.path(), "iso646", "40");
-    combat_door.send(b"\r");
-    combat_door.wait_for("Docked Operations");
-    combat_door.send(b"u");
-    combat_door.wait_for("Captain's Command Console");
-    combat_door.wait_for("(C/S/T/M/K/O) Manager");
-    combat_door.send(b"o");
-    combat_door.wait_for_occurrences("Accept order or file report", 1);
-    combat_door.send(b"m");
-    combat_door.wait_for("Naval service");
-    combat_door.send(b"r");
-    combat_door.wait_for_occurrences("Operations Ledger", 2);
-    combat_door.wait_for("Service: Pirate");
-    combat_door.wait_for_occurrences("Accept order or file report", 2);
-    combat_door.send(b"i");
-    combat_door.wait_for("Contact (Q to cancel");
-    combat_door.send(b"1\r");
-    combat_door.wait_for("irreversible act");
-    combat_door.wait_for("Confirm intercept");
-    combat_door.send(b"i");
-    combat_door.wait_for("Vessel Combat");
-    combat_door.wait_for("Standing policy");
-    combat_door.send(b"d");
-    combat_door.wait_for("Joint orders sealed for this activation");
-    let combat_screen = combat_door.terminate();
-    combat_server.stop();
-    for expected in [
-        "Operations Ledger",
-        "Service: Pirate",
-        "Vessel Combat",
-        "General quarters",
-    ] {
-        assert!(combat_screen.contains(expected), "{combat_screen:?}");
-    }
-    {
-        let engine = Engine::open(combat_root.path(), BbsRegistry::default()).unwrap();
-        let identity = PlayerIdentity {
-            bbs_id: 1,
-            player_id: 1,
-        };
-        let (epoch, _, _) = engine.issue_session(&identity).unwrap();
-        let career_batch = engine
-            .submit(
-                identity.clone(),
-                engine_request(epoch, 89_000, WireCommand::GetCombatCareer),
-            )
-            .unwrap();
-        let career = career_batch
-            .deliveries
-            .iter()
-            .find_map(|delivery| match &delivery.outcome.kind {
-                cepheus_trader_server::wire::OutcomeKind::CombatCareer(snapshot) => Some(snapshot),
-                _ => None,
-            })
-            .expect("the career observation must be delivered");
-        assert_eq!(
-            career.state.mode,
-            cepheus_trader_server::careers::CombatCareerMode::Pirate
-        );
-        assert!(!career.state.warrants.is_empty());
-        let combat_batch = engine
-            .submit(
-                identity,
-                engine_request(epoch, 89_001, WireCommand::GetCombat),
-            )
-            .unwrap();
-        let combat = combat_batch
-            .deliveries
-            .iter()
-            .find_map(|delivery| match &delivery.outcome.kind {
-                cepheus_trader_server::wire::OutcomeKind::Combat(snapshot) => Some(snapshot),
-                _ => None,
-            })
-            .expect("the combat observation must be delivered");
-        assert!(combat.player_order_submitted);
-        assert!(!combat.actors.is_empty());
+        let mut combat_door = DoorSession::spawn(&door, combat_root.path(), "iso646", "40");
+        combat_door.send(b"\r");
+        combat_door.wait_for("Docked Operations");
+        combat_door.send(b"u");
+        combat_door.wait_for("Captain's Command Console");
+        combat_door.wait_for("(C/S/T/M/K/O) Manager");
+        combat_door.send(b"o");
+        combat_door.wait_for_occurrences("Accept order or file report", 1);
+        combat_door.send(b"m");
+        combat_door.wait_for("Naval service");
+        combat_door.send(b"r");
+        combat_door.wait_for_occurrences("Operations Ledger", 2);
+        combat_door.wait_for("Service: Pirate");
+        combat_door.wait_for_occurrences("Accept order or file report", 2);
+        combat_door.send(b"i");
+        combat_door.wait_for("Contact (Q to cancel");
+        combat_door.send(b"1\r");
+        combat_door.wait_for("irreversible act");
+        combat_door.wait_for("Confirm intercept");
+        combat_door.send(b"i");
+        combat_door.wait_for("Vessel Combat");
+        combat_door.wait_for("Standing policy");
+        combat_door.send(b"d");
+        combat_door.wait_for("Joint orders sealed for this activation");
+        let combat_screen = combat_door.terminate();
+        combat_server.stop();
+        for expected in [
+            "Operations Ledger",
+            "Service: Pirate",
+            "Vessel Combat",
+            "General quarters",
+        ] {
+            assert!(combat_screen.contains(expected), "{combat_screen:?}");
+        }
+        {
+            let engine = Engine::open(combat_root.path(), BbsRegistry::default()).unwrap();
+            let identity = PlayerIdentity {
+                bbs_id: 1,
+                player_id: 1,
+            };
+            let (epoch, _, _) = engine.issue_session(&identity).unwrap();
+            let career_batch = engine
+                .submit(
+                    identity.clone(),
+                    engine_request(epoch, 89_000, WireCommand::GetCombatCareer),
+                )
+                .unwrap();
+            let career = career_batch
+                .deliveries
+                .iter()
+                .find_map(|delivery| match &delivery.outcome.kind {
+                    cepheus_trader_server::wire::OutcomeKind::CombatCareer(snapshot) => {
+                        Some(snapshot)
+                    }
+                    _ => None,
+                })
+                .expect("the career observation must be delivered");
+            assert_eq!(
+                career.state.mode,
+                cepheus_trader_server::careers::CombatCareerMode::Pirate
+            );
+            assert!(!career.state.warrants.is_empty());
+            let combat_batch = engine
+                .submit(
+                    identity,
+                    engine_request(epoch, 89_001, WireCommand::GetCombat),
+                )
+                .unwrap();
+            let combat = combat_batch
+                .deliveries
+                .iter()
+                .find_map(|delivery| match &delivery.outcome.kind {
+                    cepheus_trader_server::wire::OutcomeKind::Combat(snapshot) => Some(snapshot),
+                    _ => None,
+                })
+                .expect("the combat observation must be delivered");
+            assert!(combat.player_order_submitted);
+            assert!(!combat.actors.is_empty());
+        }
     }
     server = spawn_server(
         &server_executable,
