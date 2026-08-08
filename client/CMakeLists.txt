@@ -458,6 +458,7 @@ add_library(
   ct-door-presentation
   src/cargo_quantity.cpp
   src/crew_presentation.cpp
+  src/door_help.cpp
   src/door_presentation.cpp
 )
 target_compile_features(ct-door-presentation PUBLIC cxx_std_20)

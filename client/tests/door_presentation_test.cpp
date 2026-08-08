@@ -1,5 +1,6 @@
 #include "ct/cargo_quantity.hpp"
 #include "ct/crew_presentation.hpp"
+#include "ct/door_help.hpp"
 #include "ct/door_presentation.hpp"
 
 #include <algorithm>
@@ -130,6 +131,32 @@ int main() {
       check_profile_and_width(profile, 40, 24);
       check_profile_and_width(profile, 80, 24);
    }
+
+   const auto help_topics = ct::all_door_help();
+   check(help_topics.size() ==
+         static_cast<size_t>(ct::DoorHelpTopic::Count));
+   for(const auto& help : help_topics) {
+      check(!help.title.empty());
+      check(!help.body.empty());
+      for(const auto columns : {size_t{40}, size_t{80}}) {
+         const auto help_output = render(
+            ct::DoorProfile::Iso646,
+            columns,
+            24,
+            std::string("Help - ") + std::string(help.title) + "\r\n\r\n" +
+               std::string(help.body),
+            ct::DoorTextRole::Information);
+         check(help_output.find("Help - ") != std::string::npos);
+         check(maximum_visible_width(help_output) <= columns);
+      }
+   }
+   bool rejected_help_topic = false;
+   try {
+      static_cast<void>(ct::door_help(ct::DoorHelpTopic::Count));
+   } catch(const std::out_of_range&) {
+      rejected_help_topic = true;
+   }
+   check(rejected_help_topic);
 
    const auto plain = render(
       ct::DoorProfile::Iso646,

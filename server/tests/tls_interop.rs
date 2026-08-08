@@ -553,7 +553,7 @@ fn complete_arrival_and_trade(
     session.send(b"f");
     session.wait_for("Fuel and Supplies");
     session.send(b"f");
-    session.wait_for("Fuel source (Q to cancel):");
+    session.wait_for("Fuel source (Q to cancel");
     session.send(b"1\r");
     // The 40-column profile may wrap the prompt between "to" and
     // "cancel"; match the semantic prefix shared by every width.
@@ -628,7 +628,7 @@ fn complete_arrival_and_trade(
         })
         .unwrap_or_else(|| panic!("cargo menu omitted {cargo_name:?}: {cargo_section:?}"));
     session.send(b"s");
-    session.wait_for("Cargo lot (Q to cancel):");
+    session.wait_for("Cargo lot (Q to cancel");
     session.send(format!("{cargo_selection}\r").as_bytes());
     session.wait_for("Tonnes (maximum");
     session.send(b"1\r");
@@ -1192,7 +1192,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     docked_door.wait_for("Task Ledger");
     docked_door.wait_for("Carriage declaration");
     docked_door.send(b"i");
-    docked_door.wait_for("Offer (Q to cancel):");
+    docked_door.wait_for("Offer (Q to cancel");
     docked_door.send(b"1\r");
     docked_door.wait_for("Signed Offer Instrument");
     docked_door.wait_for("(Enter) Return");
@@ -1200,7 +1200,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     docked_door.wait_for_occurrences("Task Ledger", 2);
     docked_door.wait_for_occurrences("Carriage declaration", 2);
     docked_door.send(b"a");
-    docked_door.wait_for_occurrences("Offer (Q to cancel):", 2);
+    docked_door.wait_for_occurrences("Offer (Q to cancel", 2);
     docked_door.send(b"1\r");
     docked_door.wait_for("entered it in the task ledger.");
     docked_door.wait_for("(Enter) Previous menu");
@@ -1247,6 +1247,22 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     assert!(reconnect_screen.contains("Accepted obligations"));
     assert!(reconnect_screen.contains("No.1 "));
     assert!(reconnect_screen.contains("Reserved:"));
+
+    // Context help pages through the real door, then restores the exact
+    // operational prompt that was active when the player pressed `?`.
+    let mut help_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
+    help_door.send(b"\r");
+    help_door.wait_for("Docked Operations");
+    help_door.wait_for("Return to BBS");
+    help_door.send(b"?");
+    help_door.wait_for("Help - Docked operations");
+    help_door.wait_for("(Enter) Resume");
+    help_door.send(b"\r");
+    help_door.wait_for_occurrences("Return to BBS", 2);
+    help_door.return_to_bbs();
+    let help_screen = normalized_display_text(&help_door.finish());
+    assert!(help_screen.contains("services actually present at this port"));
+    assert!(help_screen.contains("(?) Help"));
 
     // Exercise the Milestone 5 correspondence controls through the real door
     // rather than merely proving their wire codecs. Banking is also exercised
@@ -1376,7 +1392,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     combat_door.wait_for("Service: Pirate");
     combat_door.wait_for_occurrences("Accept order or file report", 2);
     combat_door.send(b"i");
-    combat_door.wait_for("Contact (Q to cancel):");
+    combat_door.wait_for("Contact (Q to cancel");
     combat_door.send(b"1\r");
     combat_door.wait_for("irreversible act");
     combat_door.wait_for("Confirm intercept");
@@ -1457,7 +1473,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     voyage_door.send(b"c");
     voyage_door.wait_for_occurrences("Find market", 1);
     voyage_door.send(b"b");
-    voyage_door.wait_for("Offer (Q to cancel):");
+    voyage_door.wait_for("Offer (Q to cancel");
     voyage_door.send(b"1\r");
     voyage_door.wait_for("Tonnes (maximum");
     voyage_door.send(b"1\r");
@@ -1467,7 +1483,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     voyage_door.send(b"d");
     voyage_door.wait_for("Flight Plan\r\n===========");
     voyage_door.send(b"a");
-    voyage_door.wait_for("Destination (Q to cancel):");
+    voyage_door.wait_for("Destination (Q to cancel");
     voyage_door.send(b"1\r");
     voyage_door.wait_for("Buy fresh course tape");
     voyage_door.send(b"o");

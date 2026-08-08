@@ -20,6 +20,9 @@ screen. Letter choices are case-insensitive.
 - `Q` normally cancels the current action or backs out. At a command console
   or the docked menu it offers to return to the BBS; you must confirm with
   `Y` before the game exits.
+- `?` opens help for the screen or decision in front of you. Help pages like
+  other long output; press Enter at the resume prompt to return to the same
+  menu or input prompt.
 - `<` and `>` move between pages where shown. Some packet screens also accept
   the corresponding arrow keys and display letter alternatives.
 - A full page pauses at an `[Enter/Space] Continue` prompt. Press Enter or

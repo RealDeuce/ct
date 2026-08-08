@@ -3,6 +3,7 @@
 #include "ct/cargo_quantity.hpp"
 #include "ct/crew_presentation.hpp"
 #include "ct/crypto.hpp"
+#include "ct/door_help.hpp"
 #include "ct/door_presentation.hpp"
 #include "ct/legal_text.hpp"
 #include "ct/player_identity_registry.hpp"
@@ -88,6 +89,27 @@ std::vector<std::string> pending_traffic_notices;
 uint64_t phase_event_generation = 0;
 uint64_t displayed_phase_event_generation = 0;
 std::string active_prompt;
+ct::DoorHelpTopic active_help_topic = ct::DoorHelpTopic::General;
+
+class HelpScope {
+public:
+   explicit HelpScope(const ct::DoorHelpTopic topic)
+      : previous_(active_help_topic)
+   {
+      active_help_topic = topic;
+   }
+
+   ~HelpScope()
+   {
+      active_help_topic = previous_;
+   }
+
+   HelpScope(const HelpScope&) = delete;
+   HelpScope& operator=(const HelpScope&) = delete;
+
+private:
+   ct::DoorHelpTopic previous_;
+};
 
 void door_write(std::string_view text, ct::DoorTextRole role);
 void door_printf(const char* format, ...);
@@ -97,6 +119,8 @@ const char* ship_activity_name(ct::ShipActivityKind kind);
 const char* phase_name(ct::PlayerPhase phase);
 void wait_for_enter(const char* destination = "Previous menu");
 bool confirm_return_to_bbs();
+void show_context_help();
+int door_get_key(BOOL wait);
 
 ct::DoorPresentation& output()
 {
@@ -193,6 +217,10 @@ int door_get_live_key()
       collect_player_events();
       flush_player_events();
       const auto key = od_get_key(FALSE);
+      if(key == '?') {
+         show_context_help();
+         continue;
+      }
       if(key != 0) {
          return key;
       }
@@ -202,10 +230,17 @@ int door_get_live_key()
 
 int door_get_translated_key()
 {
-   tODInputEvent event{};
-   while(!od_get_input(&event, OD_NO_TIMEOUT, GETIN_NORMAL)) {
+   while(true) {
+      tODInputEvent event{};
+      while(!od_get_input(&event, OD_NO_TIMEOUT, GETIN_NORMAL)) {
+      }
+      const auto key = static_cast<unsigned char>(event.chKeyPress);
+      if(key == '?') {
+         show_context_help();
+         continue;
+      }
+      return key;
    }
-   return static_cast<unsigned char>(event.chKeyPress);
 }
 
 void door_clear_screen()
@@ -409,10 +444,10 @@ const char* ship_activity_name(const ct::ShipActivityKind kind)
 bool confirm_return_to_bbs()
 {
    door_prompt(
-      "\n\rReturn to the BBS?  [Y] Yes  [N/Enter] Stay in Cepheus Trader: ");
+      "\n\rReturn to the BBS?  [Y] Yes  [N/Enter] Stay  [?] Help: ");
    while(true) {
       const auto key = static_cast<char>(
-         std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
+         std::toupper(static_cast<unsigned char>(door_get_key(TRUE))));
       if(key == 'Y') {
          od_printf("\n\r");
          return true;
@@ -565,11 +600,12 @@ void render_startup_notice()
 
 bool await_startup_choice()
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::General);
    render_startup_notice();
    door_prompt(
-      "[Enter] Continue  [L] License and copyright notices  [Q] Exit\n\r");
+      "[Enter] Continue  [L] License  [Q] Exit  [?] Help\n\r");
    while(true) {
-      const auto key = od_get_key(TRUE);
+      const auto key = door_get_key(TRUE);
       if(key == 'q' || key == 'Q') {
          return false;
       }
@@ -577,7 +613,7 @@ bool await_startup_choice()
          show_open_game_license();
          render_startup_notice();
          door_prompt(
-            "[Enter] Continue  [L] License and copyright notices  [Q] Exit\n\r");
+            "[Enter] Continue  [L] License  [Q] Exit  [?] Help\n\r");
       } else if(key == '\r' || key == '\n') {
          return true;
       }
@@ -683,17 +719,26 @@ std::optional<std::string> input_text(const char* prompt,
                                       const std::string& default_value,
                                       const size_t maximum = 128)
 {
-   door_prompt(
-      "%s [%s] (Q to cancel): ", prompt, safe_field(default_value).c_str());
-   std::vector<char> input(maximum + 1, '\0');
-   od_input_str(input.data(), static_cast<INT>(maximum), 32, 255);
-   if(input[0] == '\0') {
-      return default_value;
+   while(true) {
+      door_prompt(
+         "%s [%s] (Q to cancel, ? for help): ",
+         prompt,
+         safe_field(default_value).c_str());
+      std::vector<char> input(maximum + 1, '\0');
+      od_input_str(input.data(), static_cast<INT>(maximum), 32, 255);
+      if(input[0] == '\0') {
+         return default_value;
+      }
+      if(input[0] == '?' && input[1] == '\0') {
+         show_context_help();
+         door_printf("\n\r");
+         continue;
+      }
+      if((input[0] == 'q' || input[0] == 'Q') && input[1] == '\0') {
+         return std::nullopt;
+      }
+      return input.data();
    }
-   if((input[0] == 'q' || input[0] == 'Q') && input[1] == '\0') {
-      return std::nullopt;
-   }
-   return input.data();
 }
 
 std::optional<unsigned> input_number(const char* prompt,
@@ -703,14 +748,20 @@ std::optional<unsigned> input_number(const char* prompt,
 {
    while(true) {
       if(default_value) {
-         door_prompt("%s [%u] (Q to cancel): ", prompt, *default_value);
+         door_prompt(
+            "%s [%u] (Q to cancel, ? for help): ", prompt, *default_value);
       } else {
-         door_prompt("%s (Q to cancel): ", prompt);
+         door_prompt("%s (Q to cancel, ? for help): ", prompt);
       }
       std::array<char, 16> input{};
       od_input_str(input.data(), static_cast<INT>(input.size() - 1), 32, 255);
       if(input[0] == '\0' && default_value) {
          return default_value;
+      }
+      if(input[0] == '?' && input[1] == '\0') {
+         show_context_help();
+         door_printf("\n\r");
+         continue;
       }
       if((input[0] == 'q' || input[0] == 'Q') && input[1] == '\0') {
          return std::nullopt;
@@ -731,11 +782,16 @@ std::optional<uint64_t> input_tonnage(const char* prompt,
 {
    while(true) {
       door_prompt(
-         "%s (maximum %s t; Q to cancel): ",
+         "%s (maximum %s t; Q to cancel, ? for help): ",
          prompt,
          ct::format_tonnage(maximum_millitons).c_str());
       std::array<char, 32> input{};
       od_input_str(input.data(), static_cast<INT>(input.size() - 1), 32, 255);
+      if(input[0] == '?' && input[1] == '\0') {
+         show_context_help();
+         door_printf("\n\r");
+         continue;
+      }
       if((input[0] == 'q' || input[0] == 'Q') && input[1] == '\0') {
          return std::nullopt;
       }
@@ -775,6 +831,55 @@ void print_wrapped_field(
    door_write("\n\r", role);
 }
 
+void show_context_help()
+{
+   const auto saved_prompt = active_prompt;
+   const auto& help = ct::door_help(active_help_topic);
+   active_prompt.clear();
+   output().resume_paging();
+   door_write("\n\r\n\r", ct::DoorTextRole::Normal);
+   door_heading("Help - %s\n\r", safe_field(help.title).c_str());
+   door_heading("%s\n\r\n\r", std::string(help.title.size() + 7, '=').c_str());
+   const auto width = output().columns() > 2 ? output().columns() - 2 : size_t{1};
+   for(const auto& line : wrap_text(help.body, width)) {
+      if(line.empty()) {
+         door_write("\n\r", ct::DoorTextRole::Information);
+      } else {
+         door_information("  %s\n\r", safe_field(line).c_str());
+      }
+   }
+   output().suspend_paging();
+   active_prompt.clear();
+   door_prompt("\n\r[Enter] Resume\n\r");
+   while(true) {
+      const auto key = ::od_get_key(TRUE);
+      if(key == '\r' || key == '\n') {
+         break;
+      }
+   }
+   output().erase_prompt(std::string_view("[Enter] Resume").size());
+   active_prompt.clear();
+   door_write("\n\r", ct::DoorTextRole::Normal);
+   active_prompt = saved_prompt;
+   if(!saved_prompt.empty()) {
+      output().write(saved_prompt, ct::DoorTextRole::Prompt);
+   }
+}
+
+int door_get_key(const BOOL wait)
+{
+   while(true) {
+      const auto key = ::od_get_key(wait);
+      if(key == '?') {
+         show_context_help();
+         continue;
+      }
+      return key;
+   }
+}
+
+#define od_get_key(wait) door_get_key(wait)
+
 const char* career_name(const ct::Career career)
 {
    switch(career) {
@@ -813,6 +918,7 @@ int characteristic_total_cost(const ct::Characteristics& characteristics,
 void edit_characteristics(ct::PersonDraft& person,
                           const ct::CharacteristicPointBuy& point_buy)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Characteristics);
    const auto original = person.characteristics;
    const std::array<const char*, 6> names{"STR", "DEX", "END", "INT", "EDU", "CHA"};
    while(true) {
@@ -867,7 +973,8 @@ void edit_characteristics(ct::PersonDraft& person,
          door_number("%+d\n\r", remaining);
       }
       door_prompt(
-         "\n\r[1-6] Change score  [R] Restore defaults  [Enter] Finish  [Q] Cancel\n\r");
+         "\n\r[1-6] Change score  [R] Restore defaults\n\r"
+         "[Enter] Finish  [Q] Cancel  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key >= '1' && key <= '6') {
          const auto index = static_cast<size_t>(key - '1');
@@ -1255,10 +1362,12 @@ bool edit_person(ct::PersonDraft& person,
          door_number(
             "%d\n\r", static_cast<int>(characteristic_point_buy->budget));
          door_prompt(
-            "[Enter] Accept  [C] Characteristics  [E] Skills  [T] Training  [Q] Cancel\n\r");
+            "[Enter] Accept  [C] Characteristics  [E] Skills\n\r"
+            "[T] Training  [Q] Cancel  [?] Help\n\r");
       } else {
          door_prompt(
-            "\n\r[Enter] Accept  [E] Skill selections  [T] Training  [Q] Cancel\n\r");
+            "\n\r[Enter] Accept  [E] Skill selections  [T] Training\n\r"
+            "[Q] Cancel  [?] Help\n\r");
       }
       const auto key = od_get_key(TRUE);
       if(key == 'e' || key == 'E') {
@@ -1467,6 +1576,7 @@ void edit_crew_member(
    const std::vector<ct::SkillDefinition>& definitions,
    const char menu_key)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Crew);
    const auto naming =
       ct::describe_crew_naming(slot.role, slot.represented_positions);
    while(true) {
@@ -1489,7 +1599,8 @@ void edit_crew_member(
       print_wrapped(naming.explanation, "", ct::DoorTextRole::Information);
       od_printf("\n\r");
       render_person(person, definitions);
-      door_prompt("\n\r[Enter] Roster  [N] Rename  [T] Training target\n\r");
+      door_prompt(
+         "\n\r[Enter] Roster  [N] Rename  [T] Training target  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
          return;
@@ -1510,6 +1621,7 @@ std::optional<std::vector<ct::InitialCrewDraft>> edit_crew_roster(
    const std::vector<ct::SkillDefinition>& definitions,
    std::vector<ct::InitialCrewDraft> drafts = {})
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Crew);
    if(plan.slots.size() > 26) {
       throw std::runtime_error(
          "server returned more than 26 named starting crew roles");
@@ -1574,8 +1686,10 @@ std::optional<std::vector<ct::InitialCrewDraft>> edit_crew_roster(
 bool run_player_creation(ct::TlsConnection& connection,
                          const ct::ServerHello& hello)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::PlayerRegistration);
    while(true) {
-      door_prompt("\n\r  [Enter] Register a captain  [Q] Return to BBS\n\r");
+      door_prompt(
+         "\n\r  [Enter] Register captain  [Q] Return to BBS  [?] Help\n\r");
       const auto opening = od_get_key(TRUE);
       if(opening == '\r' || opening == '\n') {
          break;
@@ -1614,6 +1728,7 @@ bool run_player_creation(ct::TlsConnection& connection,
                           hello.assigned_epoch,
                           random_command_id(random),
                           request_id++);
+   active_help_topic = ct::DoorHelpTopic::StartingShip;
    if(offers.setup_revision != captain_options.setup_revision ||
          offers.offers.size() != 3) {
       throw std::runtime_error("server returned inconsistent starting offers");
@@ -1652,7 +1767,8 @@ bool run_player_creation(ct::TlsConnection& connection,
       bool return_to_offers = false;
       while(!return_to_offers) {
          render_ship_detail(ship_options);
-         door_prompt("\n\r[Enter] Name ship  [Q] Starting offers\n\r");
+         door_prompt(
+            "\n\r[Enter] Name ship  [Q] Starting offers  [?] Help\n\r");
          while(true) {
             const auto key = od_get_key(TRUE);
             if(key == 'q' || key == 'Q') {
@@ -1905,9 +2021,9 @@ void render_managed_crew_roster(
    }
    if(page_count > 1) {
       door_prompt(
-         "\n\r[Letter] Crew member  [< >] Page  [Enter] Console\n\r");
+         "\n\r[Letter] Crew member  [< >] Page  [Enter] Console  [?] Help\n\r");
    } else {
-      door_prompt("\n\r[Letter] Crew member  [Enter] Console\n\r");
+      door_prompt("\n\r[Letter] Crew member  [Enter] Console  [?] Help\n\r");
    }
 }
 
@@ -1977,10 +2093,11 @@ std::optional<std::vector<uint16_t>> edit_duty_assignments(
       if(page_count > 1) {
          door_prompt(
             "[Letter] Toggle  [< >] Page  [-] Off watch\n\r"
-            "[Enter] Save  [Esc] Cancel\n\r");
+            "[Enter] Save  [Esc] Cancel  [?] Help\n\r");
       } else {
          door_prompt(
-            "[Letter] Toggle  [-] Off watch  [Enter] Save  [Esc] Cancel\n\r");
+            "[Letter] Toggle  [-] Off watch  [Enter] Save\n\r"
+            "[Esc] Cancel  [?] Help\n\r");
       }
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
@@ -2122,7 +2239,7 @@ void show_crew_member(
       door_prompt(
          "\n\r[T] Training  [A] Duty  [L] Leave  [R] Recall\n\r"
          "[F] First aid  [S] Surgery  [M] Medical  [V] Transfer  [D] Dismiss\n\r"
-         "[Enter] Roster\n\r");
+         "[Enter] Roster  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
          return;
@@ -2184,7 +2301,8 @@ void show_crew_member(
             }
             target_ship_id = *ship;
          } else if(key == 'd' || key == 'D') {
-            door_prompt("Discharge this crewmember? [D] Confirm  [Q] Keep: ");
+            door_prompt(
+               "Discharge this crewmember? [D] Confirm  [Q] Keep  [?] Help: ");
             const auto confirm = od_get_key(TRUE);
             od_printf("\n\r");
             if(confirm != 'd' && confirm != 'D') {
@@ -2220,6 +2338,7 @@ void show_crew_manager(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Crew);
    auto snapshot = ct::get_crew_management(
                       connection,
                       session_epoch,
@@ -2277,6 +2396,7 @@ void print_millitons(const uint64_t millitons)
 void show_ship_subsystem(
    const ct::ShipSubsystemStatus& subsystem)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Ship);
    od_clr_scr();
    door_heading("%s\n\r", safe_field(subsystem.label).c_str());
    door_heading(
@@ -2319,7 +2439,7 @@ void show_ship_subsystem(
          "\n\rBattlefield repair only masks underlying damage. It expires "
          "when the encounter ends and does not count as maintenance.\n\r");
    }
-   door_prompt("\n\r[Enter] Subsystem list\n\r");
+   door_prompt("\n\r[Enter] Subsystem list  [?] Help\n\r");
    while(true) {
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
@@ -2330,6 +2450,7 @@ void show_ship_subsystem(
 
 void show_ship_subsystems(const ct::ShipStatusSnapshot& snapshot)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Ship);
    const size_t reserved_rows = 7;
    const size_t available_rows =
       output().rows() > reserved_rows ? output().rows() - reserved_rows : 1;
@@ -2367,9 +2488,10 @@ void show_ship_subsystems(const ct::ShipStatusSnapshot& snapshot)
       }
       if(page_count > 1) {
          door_prompt(
-            "\n\r[Letter] Details  [< >] Page  [Enter] Ship status\n\r");
+            "\n\r[Letter] Details  [< >] Page  [Enter] Ship status  [?] Help\n\r");
       } else {
-         door_prompt("\n\r[Letter] Details  [Enter] Ship status\n\r");
+         door_prompt(
+            "\n\r[Letter] Details  [Enter] Ship status  [?] Help\n\r");
       }
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
@@ -2562,6 +2684,7 @@ void show_fleet_manager(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Ship);
    auto fleet = ct::get_fleet(
                    connection,
                    session_epoch,
@@ -2587,7 +2710,7 @@ void show_fleet_manager(
                     safe_field(ship.location).c_str(),
                     safe_field(ship.commanding_person_name).c_str());
       }
-      door_prompt("\n\r[Number] Vessel  [Enter] Ship status\n\r");
+      door_prompt("\n\r[Number] Vessel  [Enter] Ship status  [?] Help\n\r");
       const auto choice = input_number(
          "Vessel", 1, static_cast<unsigned>(fleet.ships.size()));
       if(!choice) {
@@ -2623,7 +2746,7 @@ void show_fleet_manager(
          if(!ship.active) {
             door_prompt("[C] Assume command  [A] Assign captain  ");
          }
-         door_prompt("[T] Transfer stores  [Enter] Roster\n\r");
+         door_prompt("[T] Transfer stores  [Enter] Roster  [?] Help\n\r");
          const auto key = od_get_key(TRUE);
          if(key == '\r' || key == '\n') {
             break;
@@ -2693,6 +2816,7 @@ void show_ship_manager(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Ship);
    auto snapshot = ct::get_ship_status(
                       connection,
                       session_epoch,
@@ -2814,7 +2938,7 @@ void show_ship_manager(
       door_prompt(
          "\n\r[S] Subsystems  [F] Vessel roster\n\r"
          "[P] Proper repair  [R] Begin refit\n\r"
-         "[Enter] Console\n\r");
+         "[Enter] Console  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
          return;
@@ -2959,6 +3083,7 @@ void report_offer_claim(const ct::TaskLedger& ledger, const uint64_t offer_id)
 
 void show_task_offer_detail(const ct::TaskOffer& offer)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Tasks);
    od_clr_scr();
    door_heading("Signed Offer Instrument\n\r=======================\n\r\n\r");
    door_label("Service:       ");
@@ -3012,6 +3137,7 @@ void show_task_offer_detail(const ct::TaskOffer& offer)
 void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epoch,
                        ct::CommandIdGenerator& random, uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Tasks);
    while(true) {
       auto ledger = ct::get_task_ledger(connection, session_epoch, random_command_id(random),
                                         request_id++);
@@ -3093,7 +3219,7 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
       }
       door_prompt(
          "\n\r[I] Inspect offer  [A] Accept offer  [M] Manage task\n\r"
-         "[C] Carriage declaration  [Enter] Previous\n\r");
+         "[C] Carriage declaration  [Enter] Previous  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
          return;
@@ -3236,6 +3362,7 @@ void show_finance(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Finance);
    auto finance = ct::get_finance(
                      connection, session_epoch, random_command_id(random), request_id++);
    while(true) {
@@ -3278,7 +3405,7 @@ void show_finance(
       if(finance.in_default && finance.principal_credits > 0) {
          door_prompt("  [K] Petition for bankruptcy");
       }
-      door_prompt("  [Enter] Return\n\r");
+      door_prompt("  [Enter] Return  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
          return;
@@ -3327,6 +3454,7 @@ void show_finance(
 void run_shipyard_market(ct::TlsConnection& connection, const uint64_t epoch,
                          ct::CommandIdGenerator& random, uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Shipyard);
    while(true) {
       auto market = ct::get_ship_market(connection, epoch, random_command_id(random), request_id++);
       od_clr_scr();
@@ -3352,7 +3480,7 @@ void run_shipyard_market(ct::TlsConnection& connection, const uint64_t epoch,
          }
          door_label("\n\r");
       }
-      door_prompt("\n\r[B] Buy with trade-in  [Enter] Port\n\r");
+      door_prompt("\n\r[B] Buy with trade-in  [Enter] Port  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
          return;
@@ -3378,6 +3506,7 @@ void run_shipyard_market(ct::TlsConnection& connection, const uint64_t epoch,
 void run_crew_exchange(ct::TlsConnection& connection, const uint64_t epoch,
                        ct::CommandIdGenerator& random, uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Personnel);
    while(true) {
       auto market = ct::get_crew_market(connection, epoch, random_command_id(random), request_id++);
       od_clr_scr();
@@ -3394,7 +3523,9 @@ void run_crew_exchange(ct::TlsConnection& connection, const uint64_t epoch,
          door_label("  Cr");
          door_number("%llu/month\n\r", static_cast<unsigned long long>(c.monthly_salary_credits));
       }
-      door_prompt("\n\r[H] Hire  [R] Ship roster and personnel actions  [Enter] Port\n\r");
+      door_prompt(
+         "\n\r[H] Hire  [R] Ship roster and personnel actions\n\r"
+         "[Enter] Port  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
          return;
@@ -3492,6 +3623,7 @@ void show_known_universe_manager(
 
 std::optional<ct::MessageActionKind> show_message_detail(const ct::MessageItem& item)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Messages);
    od_clr_scr();
    door_heading("Communications Record\n\r");
    door_heading("=====================\n\r\n\r");
@@ -3518,7 +3650,7 @@ std::optional<ct::MessageActionKind> show_message_detail(const ct::MessageItem& 
    od_printf("\n\r");
    print_wrapped(item.body, "");
    if(item.offer_available && item.offer_id.has_value()) {
-      door_prompt("\n\r[A] Claim signed offer  [Enter] Return\n\r");
+      door_prompt("\n\r[A] Claim signed offer  [Enter] Return  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key == 'a' || key == 'A') {
          return ct::MessageActionKind::ClaimOffer;
@@ -3526,28 +3658,29 @@ std::optional<ct::MessageActionKind> show_message_detail(const ct::MessageItem& 
       return std::nullopt;
    }
    if(item.action_kind == ct::MessageActionKind::ReviewTask) {
-      door_prompt("\n\r[T] Open task ledger  [Enter] Return\n\r");
+      door_prompt("\n\r[T] Open task ledger  [Enter] Return  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       return key == 't' || key == 'T'
              ? std::optional{ct::MessageActionKind::ReviewTask}
              : std::nullopt;
    }
    if(item.action_kind == ct::MessageActionKind::ReviewFinance) {
-      door_prompt("\n\r[B] Open accounts ledger  [Enter] Return\n\r");
+      door_prompt("\n\r[B] Open accounts ledger  [Enter] Return  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       return key == 'b' || key == 'B'
              ? std::optional{ct::MessageActionKind::ReviewFinance}
              : std::nullopt;
    }
    if(item.action_kind == ct::MessageActionKind::ReviewOperations) {
-      door_prompt("\n\r[O] Open operations ledger  [Enter] Return\n\r");
+      door_prompt(
+         "\n\r[O] Open operations ledger  [Enter] Return  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       return key == 'o' || key == 'O'
              ? std::optional{ct::MessageActionKind::ReviewOperations}
              : std::nullopt;
    }
    if(item.action_kind == ct::MessageActionKind::ReviewMapping) {
-      door_prompt("\n\r[K] Open carried charts  [Enter] Return\n\r");
+      door_prompt("\n\r[K] Open carried charts  [Enter] Return  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       return key == 'k' || key == 'K'
              ? std::optional{ct::MessageActionKind::ReviewMapping}
@@ -3653,7 +3786,7 @@ void configure_message_filters(
          door_label(" at least ");
          door_value("%s\n\r", message_importance_name(filter.minimum_importance));
       }
-      door_prompt("\n\r[1-5] Change service  [Q] Messages\n\r");
+      door_prompt("\n\r[1-5] Change service  [Q] Messages  [?] Help\n\r");
       const auto selected = od_get_key(TRUE);
       if(selected == 'q' || selected == 'Q' || selected == '\r' || selected == '\n') {
          return;
@@ -3695,7 +3828,8 @@ void compose_private_message(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
-   door_prompt("Recipient: [S]ystem office  [C]aptain  [Q] Cancel: ");
+   door_prompt(
+      "Recipient: [S]ystem office  [C]aptain  [Q] Cancel  [?] Help: ");
    const auto kind = od_get_key(TRUE);
    od_printf("\n\r");
    if(kind == 'q' || kind == 'Q') {
@@ -3762,6 +3896,7 @@ void show_message_manager(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Messages);
    size_t page = 0;
    constexpr size_t page_size = 7;
    while(true) {
@@ -3796,7 +3931,7 @@ void show_message_manager(
       door_prompt(
          "\n\r[1-7] Inspect  [N/P] Page  [I] Ignore  [L] Later\n\r"
          "[A] Actioned  [R] Archive  [F] Filters  [C] Compose\n\r"
-         "[Q] Console\n\r");
+         "[Q] Console  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key >= '1' && key <= '7') {
          const auto index = first + static_cast<size_t>(key - '1');
@@ -3858,6 +3993,7 @@ void show_arrival_packet(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Arrival);
    const auto packet = ct::open_arrival_packet(
                           connection,
                           session_epoch,
@@ -3895,7 +4031,7 @@ void show_arrival_packet(
       door_identifier("%s\n\r", safe_field(item.subject).c_str());
       door_prompt(
          "\n\r[I/Left] Ignore  [M/Right] Mark for later  [N/Down] Next\n\r"
-         "[Enter] Inspect  [A] File as actioned  [Q] Stop review\n\r");
+         "[Enter] Inspect  [A] File as actioned  [Q] Stop review  [?] Help\n\r");
       const auto key = door_get_translated_key();
       if(key == OD_KEY_LEFT || key == 'i' || key == 'I') {
          change_message_classification(
@@ -3934,7 +4070,8 @@ void show_arrival_packet(
             "published.\n\r");
          door_prompt(
             "\n\r[P] Send public notice  [D] Send sealed filing to Earth\n\r"
-            "[W] Withhold  [S] Withhold and mark secret  [Q] Decide later\n\r");
+            "[W] Withhold  [S] Withhold and mark secret\n\r"
+            "[Q] Decide later  [?] Help\n\r");
          const auto key = od_get_key(TRUE);
          std::optional<ct::SystemMappingChoice> choice;
          if(key == 'p' || key == 'P') {
@@ -4029,7 +4166,8 @@ std::optional<const ct::KnownSystemSummary*> select_known_primary(
          }
          od_printf("\n\r");
       }
-      door_prompt("\n\r[1-8] Select  [< >] Page  [Enter/Q] Cancel\n\r");
+      door_prompt(
+         "\n\r[1-8] Select  [< >] Page  [Enter/Q] Cancel  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
          return std::nullopt;
@@ -4145,7 +4283,9 @@ void show_course_plot(const ct::CoursePlot& plot)
          "\n\rEstimate includes purchased port fuel and mean frontier "
          "skimming/processing time. Payroll, maintenance, fees, hazards, and "
          "encounter delays are excluded.\n\r");
-      door_prompt("[F] Fastest  [C] Cheapest  [< >] Page  [Enter] Charts\n\r");
+      door_prompt(
+         "[F] Fastest  [C] Cheapest  [< >] Page\n\r"
+         "[Enter] Charts  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
          return;
@@ -4171,6 +4311,7 @@ void run_course_plotter(
    uint64_t& request_id,
    const ct::KnownDestinations& snapshot)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::FlightPlan);
    od_clr_scr();
    door_heading("Navigation Course Plotter\n\r");
    door_heading("=========================\n\r\n\r");
@@ -4180,7 +4321,7 @@ void run_course_plotter(
    door_number("P");
    door_label(". ");
    door_identifier("Known primary to known primary\n\r");
-   door_prompt("\n\r[C/P] Plot type  [Enter/Q] Charts\n\r");
+   door_prompt("\n\r[C/P] Plot type  [Enter/Q] Charts  [?] Help\n\r");
    const auto mode = od_get_key(TRUE);
    if(mode == '\r' || mode == '\n' || mode == 'q' || mode == 'Q') {
       return;
@@ -4222,6 +4363,7 @@ void show_known_universe_manager(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::KnownUniverse);
    auto snapshot = ct::get_known_destinations(
                       connection,
                       session_epoch,
@@ -4288,7 +4430,8 @@ void show_known_universe_manager(
          "\n\r* marks the present system; J marks a direct jump; ? marks a "
          "newly resolved survey contact.\n\r");
       door_prompt(
-         "[1-9] Dossier  [P] Plot  [M] Markets  [J] Direct/all\n\r[< >] Page  [Enter] Console\n\r");
+         "[1-9] Dossier  [P] Plot  [M] Markets  [J] Direct/all\n\r"
+         "[< >] Page  [Enter] Console  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
          return;
@@ -4376,8 +4519,8 @@ void show_known_universe_manager(
          "changed since this chart was received.\n\r");
       const bool secret = system.source.find("secret chart") != std::string::npos;
       door_prompt(secret
-                  ? "\n\r[S] Remove from Secret Systems  [Enter] Return\n\r"
-                  : "\n\r[S] Add to Secret Systems  [Enter] Return\n\r");
+                  ? "\n\r[S] Remove from Secret Systems  [Enter] Return  [?] Help\n\r"
+                  : "\n\r[S] Add to Secret Systems  [Enter] Return  [?] Help\n\r");
       while(true) {
          const auto detail_key = od_get_key(TRUE);
          if(detail_key == '\r' || detail_key == '\n') {
@@ -4446,6 +4589,7 @@ std::optional<ct::PlayerPhase> show_combat_operations(
    ct::TlsConnection& connection, const uint64_t epoch,
    ct::CommandIdGenerator& random, uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Operations);
    auto snapshot = ct::get_combat_career(connection, epoch, random_command_id(random), request_id++);
    const auto charts = ct::get_known_destinations(
       connection, epoch, random_command_id(random), request_id++);
@@ -4554,7 +4698,7 @@ std::optional<ct::PlayerPhase> show_combat_operations(
          "\n\r[A] Accept order or file report  [I] Intercept traffic\n\r"
          "[P] Prize office  [W] Warrant court  [C] Cruise articles\n\r"
          "[M] Service or commission status\n\r"
-         "[Enter] Console\n\r");
+         "[Enter] Console  [?] Help\n\r");
       const auto key = static_cast<char>(std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
       if(key == '\r' || key == '\n' || key == 'Q') {
          return std::nullopt;
@@ -4709,7 +4853,8 @@ void render_command_console(const ct::ServerHello& hello)
    door_label(". ");
    door_identifier("Operations Ledger\n\r");
    door_prompt(
-      "\n\r[C/S/T/M/K/O] Manager  [Enter] Previous  [Q] Return to BBS\n\r");
+      "\n\r[C/S/T/M/K/O] Manager  [Enter] Previous\n\r"
+      "[Q] Return to BBS  [?] Help\n\r");
 }
 
 bool run_command_console(
@@ -4718,6 +4863,7 @@ bool run_command_console(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::CommandConsole);
    render_command_console(hello);
    while(true) {
       const auto generation = phase_event_generation;
@@ -4918,6 +5064,7 @@ void run_cargo_exchange(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Cargo);
    auto market = ct::get_market(
                     connection, session_epoch, random_command_id(random), request_id++);
    while(true) {
@@ -4925,7 +5072,7 @@ void run_cargo_exchange(
       door_prompt(
          "\n\r[B] Buy  [S] Sell  [F] Find market  [R] Reserve lead\n\r"
          "[P] Perform lead  [U] Release reservation  [X] Cancel search\n\r"
-         "[Enter] Docked operations\n\r");
+         "[Enter] Docked operations  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
          return;
@@ -5200,6 +5347,7 @@ std::optional<ct::TravelStatus> run_fuel_service(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Fuel);
    const auto account = ct::get_docked_snapshot(connection, session_epoch, random_command_id(random),
       request_id++);
    const auto services = ct::get_docked_services(connection, session_epoch, random_command_id(random),
@@ -5225,7 +5373,7 @@ std::optional<ct::TravelStatus> run_fuel_service(
    if(services.ammunition_available) {
       door_prompt("  [A] Ammunition");
    }
-   door_prompt("\n\r[Enter] Return\n\r");
+   door_prompt("\n\r[Enter] Return  [?] Help\n\r");
    const auto key = static_cast<char>(
                        std::toupper(static_cast<unsigned char>(door_get_live_key())));
    if(key == '\r' || key == '\n' || key == 'Q') {
@@ -5561,6 +5709,7 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::FlightPlan);
    const auto destinations = ct::get_known_destinations(
                                 connection, session_epoch, random_command_id(random), request_id++);
    const auto current_plan = ct::get_flight_plan(
@@ -5596,7 +5745,7 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
          "[J] Add task destination  [G] Add frontier fuel stop\n\r"
          "[X] Explore coordinates\n\r"
          "[D] Delete last leg  [T] Last authority\n\r"
-         "[P] Preview and file  [Q/Enter] Keep existing plan\n\r");
+         "[P] Preview and file  [Q/Enter] Keep existing plan  [?] Help\n\r");
       const auto key = static_cast<char>(
                           std::toupper(static_cast<unsigned char>(door_get_live_key())));
       if(key == 'Q' || key == '\r' || key == '\n') {
@@ -5951,7 +6100,8 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
             for(const auto& warning : preview.warnings) {
                door_warning("Warning: %s\n\r", safe_field(warning.message).c_str());
             }
-            door_prompt("\n\r[F] File this plan  [Q/Enter] Revise\n\r");
+            door_prompt(
+               "\n\r[F] File this plan  [Q/Enter] Revise  [?] Help\n\r");
             const auto confirm = static_cast<char>(
                                     std::toupper(static_cast<unsigned char>(door_get_live_key())));
             if(confirm != 'F') {
@@ -5996,13 +6146,14 @@ void render_docked_menu(const ct::DockedSnapshot& snapshot)
    door_prompt(
       "\n\r[Letter] Docked service  [U] Universal managers\n\r"
       "[L] License  [Enter] Refresh\n\r"
-      "[Q] Return to BBS\n\r");
+      "[Q] Return to BBS  [?] Help\n\r");
 }
 
 ct::PlayerPhase run_docked_menu(
    ct::TlsConnection& connection,
    ct::ServerHello& hello)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Docked);
    ct::CommandIdGenerator random;
    uint64_t request_id = 1;
    while(true) {
@@ -6106,6 +6257,7 @@ void show_travel_screen(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Voyage);
    auto status = ct::get_travel_status(
                     connection,
                     hello.assigned_epoch,
@@ -6137,7 +6289,8 @@ void show_travel_screen(
    door_information(
       "\n\rCrew, ship, task, message, and Known Universe management remain "
       "available while the scheduled voyage continues.\n\r");
-   door_prompt("\n\r[F] Revise Flight Plan  [Enter] Command console\n\r");
+   door_prompt(
+      "\n\r[F] Revise Flight Plan  [Enter] Command console  [?] Help\n\r");
    while(true) {
       const auto generation = phase_event_generation;
       const auto key = door_get_live_key();
@@ -6152,7 +6305,8 @@ void show_travel_screen(
             door_information("The ship is now docked.\n\r");
             return;
          }
-         door_prompt("\n\r[F] Revise Flight Plan  [Enter] Command console\n\r");
+         door_prompt(
+            "\n\r[F] Revise Flight Plan  [Enter] Command console  [?] Help\n\r");
          continue;
       }
       if(key == 'F' || key == 'f') {
@@ -6173,6 +6327,7 @@ void show_travel_screen(
 ct::PlayerPhase run_arrival_checkpoint(ct::TlsConnection& connection, const ct::ServerHello& hello,
                                        ct::CommandIdGenerator& random, uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Arrival);
    if(!latest_checkpoint) {
       return ct::PlayerPhase::Interplanetary;
    }
@@ -6181,7 +6336,8 @@ ct::PlayerPhase run_arrival_checkpoint(ct::TlsConnection& connection, const ct::
    door_information("The ship is holding clear of its destination until the captain takes the arrival watch.\n\r");
    door_label("Ready since: ");
    door_number("%s\n\r", game_date(latest_checkpoint->ready_second).c_str());
-   door_prompt("\n\r[A] Take arrival watch  [Q] Leave ship holding\n\r");
+   door_prompt(
+      "\n\r[A] Take arrival watch  [Q] Leave ship holding  [?] Help\n\r");
    const auto key = static_cast<char>(std::toupper(static_cast<unsigned char>(door_get_live_key())));
    if(key != 'A') {
       return ct::PlayerPhase::Interplanetary;
@@ -6344,6 +6500,7 @@ std::optional<uint16_t> select_combat_mount(const ct::CombatSnapshot& combat)
 
 std::optional<ct::CombatOrderSet> edit_combat_order(const ct::CombatSnapshot& combat)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::CombatOrders);
    ct::CombatOrderSet order = combat.default_order;
    order.actions.clear();
    order.reactions = combat.default_order.reactions;
@@ -6366,7 +6523,7 @@ std::optional<ct::CombatOrderSet> edit_combat_order(const ct::CombatSnapshot& co
       door_identifier("7. Escape craft\n\r");
       door_identifier("8. Reaction watch\n\r");
       door_success("9. Review and seal orders\n\r");
-      door_prompt("\n\rSection (Q to discard): ");
+      door_prompt("\n\rSection (Q to discard, ? for help): ");
       const auto section = door_get_live_key();
       if(section == 'q' || section == 'Q' || section == '\r' || section == '\n') {
          return std::nullopt;
@@ -6487,6 +6644,7 @@ std::optional<ct::CombatOrderSet> edit_combat_order(const ct::CombatSnapshot& co
 ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello& hello,
                            ct::CommandIdGenerator& random, uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Combat);
    auto combat = ct::get_combat(connection, hello.assigned_epoch, random_command_id(random),
                                 request_id++);
    od_clr_scr();
@@ -6564,7 +6722,7 @@ ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello&
    door_prompt(
       "\n\r[D] Conservative defaults  [T] Tactical computer\n\r"
       "[E] Edit joint orders  [A] Attack  [W] Withdraw  [B] Board\n\r"
-      "[S] Offer surrender  [P] Standing policy  [Q] Console\n\r");
+      "[S] Offer surrender  [P] Standing policy  [Q] Console  [?] Help\n\r");
    const auto key = static_cast<char>(std::toupper(static_cast<unsigned char>(door_get_live_key())));
    if(key == 'Q' || key == '\r' || key == '\n') {
       return combat.phase;
@@ -6739,6 +6897,7 @@ ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello&
 ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHello& hello,
                               ct::CommandIdGenerator& random, uint64_t& request_id)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::Encounter);
    auto encounter = latest_encounter.value_or(ct::get_encounter(connection, hello.assigned_epoch,
       random_command_id(random), request_id++));
    latest_encounter = encounter;
@@ -6758,7 +6917,9 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
       wait_for_enter();
       return ct::PlayerPhase::Encounter;
    }
-   door_prompt("\n\r[F] Fight  [R] Run  [C] Comply  [S] Surrender  [B] Board\n\r");
+   door_prompt(
+      "\n\r[F] Fight  [R] Run  [C] Comply  [S] Surrender  [B] Board\n\r"
+      "[?] Help\n\r");
    char key = static_cast<char>(std::toupper(static_cast<unsigned char>(door_get_live_key())));
    ct::EncounterPosture posture = ct::EncounterPosture::Flee;
    if(key == 'F') {
