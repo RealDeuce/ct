@@ -217,6 +217,9 @@ int door_get_live_key()
       collect_player_events();
       flush_player_events();
       const auto key = od_get_key(FALSE);
+      if(key != 0) {
+         output().reset_paging();
+      }
       if(key == '?') {
          show_context_help();
          continue;
@@ -235,6 +238,7 @@ int door_get_translated_key()
       while(!od_get_input(&event, OD_NO_TIMEOUT, GETIN_NORMAL)) {
       }
       const auto key = static_cast<unsigned char>(event.chKeyPress);
+      output().reset_paging();
       if(key == '?') {
          show_context_help();
          continue;
@@ -726,6 +730,7 @@ std::optional<std::string> input_text(const char* prompt,
          safe_field(default_value).c_str());
       std::vector<char> input(maximum + 1, '\0');
       od_input_str(input.data(), static_cast<INT>(maximum), 32, 255);
+      output().reset_paging();
       if(input[0] == '\0') {
          return default_value;
       }
@@ -755,6 +760,7 @@ std::optional<unsigned> input_number(const char* prompt,
       }
       std::array<char, 16> input{};
       od_input_str(input.data(), static_cast<INT>(input.size() - 1), 32, 255);
+      output().reset_paging();
       if(input[0] == '\0' && default_value) {
          return default_value;
       }
@@ -787,6 +793,7 @@ std::optional<uint64_t> input_tonnage(const char* prompt,
          ct::format_tonnage(maximum_millitons).c_str());
       std::array<char, 32> input{};
       od_input_str(input.data(), static_cast<INT>(input.size() - 1), 32, 255);
+      output().reset_paging();
       if(input[0] == '?' && input[1] == '\0') {
          show_context_help();
          door_printf("\n\r");
@@ -870,6 +877,9 @@ int door_get_key(const BOOL wait)
 {
    while(true) {
       const auto key = ::od_get_key(wait);
+      if(key != 0) {
+         output().reset_paging();
+      }
       if(key == '?') {
          show_context_help();
          continue;

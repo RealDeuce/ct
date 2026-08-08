@@ -344,6 +344,10 @@ void DoorPresentation::suspend_paging() noexcept {
    paging_active_ = false;
 }
 
+void DoorPresentation::reset_paging() noexcept {
+   row_ = 0;
+}
+
 void DoorPresentation::erase_prompt(const size_t visible_columns) {
    flush();
    emit("\r");

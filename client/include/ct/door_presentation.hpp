@@ -51,6 +51,7 @@ public:
    void configure_paging(size_t reserved_rows, PagePause pause);
    void resume_paging() noexcept;
    void suspend_paging() noexcept;
+   void reset_paging() noexcept;
    void erase_prompt(size_t visible_columns);
 
    void clear();

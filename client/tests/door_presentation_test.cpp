@@ -262,6 +262,15 @@ int main() {
    }
    check(pauses == 1);
 
+   pager.reset_paging();
+   pager.resume_paging();
+   for(unsigned line = 0; line < 22; ++line) {
+      pager.write("after input\n\r");
+   }
+   check(pauses == 1);
+   pager.write("page boundary\n\r");
+   check(pauses == 2);
+
    std::string wrapped_page;
    unsigned wrapped_pauses = 0;
    ct::DoorPresentation wrapped_pager(
