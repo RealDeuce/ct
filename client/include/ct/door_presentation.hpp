@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 
@@ -32,6 +33,10 @@ enum class DoorTextRole {
 DoorProfile parse_door_profile(std::string_view text);
 const char* door_profile_name(DoorProfile profile);
 std::string door_single_line_field(std::string_view text);
+std::string door_option_prompt(
+   std::initializer_list<std::string_view> options,
+   size_t columns,
+   bool leading_newline = true);
 
 class DoorPresentation {
 public:

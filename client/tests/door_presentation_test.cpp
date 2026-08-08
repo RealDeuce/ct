@@ -268,7 +268,7 @@ int main() {
       pager.write("after input\n\r");
    }
    check(pauses == 1);
-   pager.write("page boundary\n\r");
+   pager.write("page boundary\n\r", ct::DoorTextRole::Prompt);
    check(pauses == 2);
 
    std::string wrapped_page;
@@ -292,4 +292,28 @@ int main() {
    check(ct::parse_door_profile("cp437") == ct::DoorProfile::Cp437Color);
    check(ct::door_single_line_field("ship\r\n\x1b[31m") ==
          "ship  ?[31m");
+   check(
+      ct::door_option_prompt(
+         {"[Letter] Docked service",
+          "[U] Universal managers",
+          "[L] License",
+          "[Enter] Refresh",
+          "[Q] Return to BBS",
+          "[?] Help"},
+         80) ==
+      "\n\r[Letter] Docked service  [U] Universal managers  [L] License  "
+      "[Enter] Refresh\n\r[Q] Return to BBS  [?] Help\n\r");
+   check(
+      ct::door_option_prompt(
+         {"[Letter] Docked service",
+          "[U] Universal managers",
+          "[L] License",
+          "[Enter] Refresh",
+          "[Q] Return to BBS",
+          "[?] Help"},
+         40) ==
+      "\n\r[Letter] Docked service\n\r"
+      "[U] Universal managers  [L] License\n\r"
+      "[Enter] Refresh  [Q] Return to BBS\n\r"
+      "[?] Help\n\r");
 }

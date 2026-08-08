@@ -204,11 +204,11 @@ void flush_player_events()
                   game_date(latest_phase_status->current_game_second).c_str());
       displayed_phase_event_generation = phase_event_generation;
    }
-   output().suspend_paging();
    active_prompt = prompt;
    if(!active_prompt.empty()) {
       output().write(active_prompt, ct::DoorTextRole::Prompt);
    }
+   output().suspend_paging();
 }
 
 int door_get_live_key()
@@ -219,6 +219,7 @@ int door_get_live_key()
       const auto key = od_get_key(FALSE);
       if(key != 0) {
          output().reset_paging();
+         output().resume_paging();
       }
       if(key == '?') {
          show_context_help();
@@ -239,6 +240,7 @@ int door_get_translated_key()
       }
       const auto key = static_cast<unsigned char>(event.chKeyPress);
       output().reset_paging();
+      output().resume_paging();
       if(key == '?') {
          show_context_help();
          continue;
@@ -298,13 +300,22 @@ void door_printf(const char* format, ...)
 
 void door_prompt(const char* format, ...)
 {
-   output().suspend_paging();
    va_list arguments;
    va_start(arguments, format);
    const auto text = format_door_text(format, arguments);
    va_end(arguments);
    active_prompt += text;
    output().write(text, ct::DoorTextRole::Prompt);
+   output().suspend_paging();
+}
+
+void door_option_prompt(
+   const std::initializer_list<std::string_view> options,
+   const bool leading_newline = true)
+{
+   const auto prompt =
+      ct::door_option_prompt(options, output().columns(), leading_newline);
+   door_prompt("%s", prompt.c_str());
 }
 
 void door_error(const char* format, ...)
@@ -688,7 +699,7 @@ void initialize_presentation(const ct::BbsConfig& config)
    });
    presentation->configure_paging(1, [] {
       constexpr std::string_view prompt = "[Enter/Space] Continue";
-      door_prompt(prompt.data());
+      output().write(prompt, ct::DoorTextRole::Prompt);
       while(true) {
          const auto key = od_get_key(TRUE);
          if(key == '\r' || key == '\n' || key == ' ') {
@@ -731,6 +742,7 @@ std::optional<std::string> input_text(const char* prompt,
       std::vector<char> input(maximum + 1, '\0');
       od_input_str(input.data(), static_cast<INT>(maximum), 32, 255);
       output().reset_paging();
+      output().resume_paging();
       if(input[0] == '\0') {
          return default_value;
       }
@@ -761,6 +773,7 @@ std::optional<unsigned> input_number(const char* prompt,
       std::array<char, 16> input{};
       od_input_str(input.data(), static_cast<INT>(input.size() - 1), 32, 255);
       output().reset_paging();
+      output().resume_paging();
       if(input[0] == '\0' && default_value) {
          return default_value;
       }
@@ -794,6 +807,7 @@ std::optional<uint64_t> input_tonnage(const char* prompt,
       std::array<char, 32> input{};
       od_input_str(input.data(), static_cast<INT>(input.size() - 1), 32, 255);
       output().reset_paging();
+      output().resume_paging();
       if(input[0] == '?' && input[1] == '\0') {
          show_context_help();
          door_printf("\n\r");
@@ -855,12 +869,13 @@ void show_context_help()
          door_information("  %s\n\r", safe_field(line).c_str());
       }
    }
-   output().suspend_paging();
    active_prompt.clear();
    door_prompt("\n\r[Enter] Resume\n\r");
    while(true) {
       const auto key = ::od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
+         output().reset_paging();
+         output().resume_paging();
          break;
       }
    }
@@ -871,6 +886,7 @@ void show_context_help()
    if(!saved_prompt.empty()) {
       output().write(saved_prompt, ct::DoorTextRole::Prompt);
    }
+   output().suspend_paging();
 }
 
 int door_get_key(const BOOL wait)
@@ -879,6 +895,7 @@ int door_get_key(const BOOL wait)
       const auto key = ::od_get_key(wait);
       if(key != 0) {
          output().reset_paging();
+         output().resume_paging();
       }
       if(key == '?') {
          show_context_help();
@@ -982,9 +999,13 @@ void edit_characteristics(ct::PersonDraft& person,
       } else {
          door_number("%+d\n\r", remaining);
       }
-      door_prompt(
-         "\n\r[1-6] Change score  [R] Restore defaults\n\r"
-         "[Enter] Finish  [Q] Cancel  [?] Help\n\r");
+      door_option_prompt({
+         "[1-6] Change score",
+         "[R] Restore defaults",
+         "[Enter] Finish",
+         "[Q] Cancel",
+         "[?] Help",
+      });
       const auto key = od_get_key(TRUE);
       if(key >= '1' && key <= '6') {
          const auto index = static_cast<size_t>(key - '1');
@@ -1371,13 +1392,22 @@ bool edit_person(ct::PersonDraft& person,
          door_label(" / ");
          door_number(
             "%d\n\r", static_cast<int>(characteristic_point_buy->budget));
-         door_prompt(
-            "[Enter] Accept  [C] Characteristics  [E] Skills\n\r"
-            "[T] Training  [Q] Cancel  [?] Help\n\r");
+         door_option_prompt({
+            "[Enter] Accept",
+            "[C] Characteristics",
+            "[E] Skills",
+            "[T] Training",
+            "[Q] Cancel",
+            "[?] Help",
+         }, false);
       } else {
-         door_prompt(
-            "\n\r[Enter] Accept  [E] Skill selections  [T] Training\n\r"
-            "[Q] Cancel  [?] Help\n\r");
+         door_option_prompt({
+            "[Enter] Accept",
+            "[E] Skill selections",
+            "[T] Training",
+            "[Q] Cancel",
+            "[?] Help",
+         });
       }
       const auto key = od_get_key(TRUE);
       if(key == 'e' || key == 'E') {
@@ -1573,8 +1603,12 @@ void render_crew_roster(
    }
 
    if(page_count > 1) {
-      door_prompt(
-         "\n\r[Letter] Inspect/rename  [< >] Page  [Enter] Accept  [0] Back\n\r");
+      door_option_prompt({
+         "[Letter] Inspect/rename",
+         "[< >] Page",
+         "[Enter] Accept",
+         "[0] Back",
+      });
    } else {
       door_prompt("\n\r[Letter] Inspect/rename  [Enter] Accept  [0] Back\n\r");
    }
@@ -1609,8 +1643,12 @@ void edit_crew_member(
       print_wrapped(naming.explanation, "", ct::DoorTextRole::Information);
       od_printf("\n\r");
       render_person(person, definitions);
-      door_prompt(
-         "\n\r[Enter] Roster  [N] Rename  [T] Training target  [?] Help\n\r");
+      door_option_prompt({
+         "[Enter] Roster",
+         "[N] Rename",
+         "[T] Training target",
+         "[?] Help",
+      });
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
          return;
@@ -1853,7 +1891,10 @@ bool run_player_creation(ct::TlsConnection& connection,
             door_label(" named officers and senior specialists\n\r");
             door_prompt(
                "\n\rRegister this captain and starting estate? [Y/N]\n\r");
-            if(od_get_answer("YN") != 'Y') {
+            const auto registration_answer = od_get_answer("YN");
+            output().reset_paging();
+            output().resume_paging();
+            if(registration_answer != 'Y') {
                continue;
             }
             const auto created = ct::create_player(
@@ -2030,8 +2071,12 @@ void render_managed_crew_roster(
       }
    }
    if(page_count > 1) {
-      door_prompt(
-         "\n\r[Letter] Crew member  [< >] Page  [Enter] Console  [?] Help\n\r");
+      door_option_prompt({
+         "[Letter] Crew member",
+         "[< >] Page",
+         "[Enter] Console",
+         "[?] Help",
+      });
    } else {
       door_prompt("\n\r[Letter] Crew member  [Enter] Console  [?] Help\n\r");
    }
@@ -2101,13 +2146,22 @@ std::optional<std::vector<uint16_t>> edit_duty_assignments(
       door_information(
          "\n\rA person may cover several roles. Off watch permits full rest.\n\r");
       if(page_count > 1) {
-         door_prompt(
-            "[Letter] Toggle  [< >] Page  [-] Off watch\n\r"
-            "[Enter] Save  [Esc] Cancel  [?] Help\n\r");
+         door_option_prompt({
+            "[Letter] Toggle",
+            "[< >] Page",
+            "[-] Off watch",
+            "[Enter] Save",
+            "[Esc] Cancel",
+            "[?] Help",
+         }, false);
       } else {
-         door_prompt(
-            "[Letter] Toggle  [-] Off watch  [Enter] Save\n\r"
-            "[Esc] Cancel  [?] Help\n\r");
+         door_option_prompt({
+            "[Letter] Toggle",
+            "[-] Off watch",
+            "[Enter] Save",
+            "[Esc] Cancel",
+            "[?] Help",
+         }, false);
       }
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
@@ -2246,10 +2300,19 @@ void show_crew_member(
       }
       od_printf("\n\r");
       render_person(member.person, definitions);
-      door_prompt(
-         "\n\r[T] Training  [A] Duty  [L] Leave  [R] Recall\n\r"
-         "[F] First aid  [S] Surgery  [M] Medical  [V] Transfer  [D] Dismiss\n\r"
-         "[Enter] Roster  [?] Help\n\r");
+      door_option_prompt({
+         "[T] Training",
+         "[A] Duty",
+         "[L] Leave",
+         "[R] Recall",
+         "[F] First aid",
+         "[S] Surgery",
+         "[M] Medical",
+         "[V] Transfer",
+         "[D] Dismiss",
+         "[Enter] Roster",
+         "[?] Help",
+      });
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
          return;
@@ -2497,11 +2560,18 @@ void show_ship_subsystems(const ct::ShipStatusSnapshot& snapshot)
          od_printf("\n\r");
       }
       if(page_count > 1) {
-         door_prompt(
-            "\n\r[Letter] Details  [< >] Page  [Enter] Ship status  [?] Help\n\r");
+         door_option_prompt({
+            "[Letter] Details",
+            "[< >] Page",
+            "[Enter] Ship status",
+            "[?] Help",
+         });
       } else {
-         door_prompt(
-            "\n\r[Letter] Details  [Enter] Ship status  [?] Help\n\r");
+         door_option_prompt({
+            "[Letter] Details",
+            "[Enter] Ship status",
+            "[?] Help",
+         });
       }
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
@@ -2945,10 +3015,14 @@ void show_ship_manager(
          door_label("Reported symptom: ");
          door_warning("%s\n\r", safe_field(symptom).c_str());
       }
-      door_prompt(
-         "\n\r[S] Subsystems  [F] Vessel roster\n\r"
-         "[P] Proper repair  [R] Begin refit\n\r"
-         "[Enter] Console  [?] Help\n\r");
+      door_option_prompt({
+         "[S] Subsystems",
+         "[F] Vessel roster",
+         "[P] Proper repair",
+         "[R] Begin refit",
+         "[Enter] Console",
+         "[?] Help",
+      });
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
          return;
@@ -3227,9 +3301,14 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
          }
          door_label("\n\r");
       }
-      door_prompt(
-         "\n\r[I] Inspect offer  [A] Accept offer  [M] Manage task\n\r"
-         "[C] Carriage declaration  [Enter] Previous  [?] Help\n\r");
+      door_option_prompt({
+         "[I] Inspect offer",
+         "[A] Accept offer",
+         "[M] Manage task",
+         "[C] Carriage declaration",
+         "[Enter] Previous",
+         "[?] Help",
+      });
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
          return;
@@ -3533,9 +3612,12 @@ void run_crew_exchange(ct::TlsConnection& connection, const uint64_t epoch,
          door_label("  Cr");
          door_number("%llu/month\n\r", static_cast<unsigned long long>(c.monthly_salary_credits));
       }
-      door_prompt(
-         "\n\r[H] Hire  [R] Ship roster and personnel actions\n\r"
-         "[Enter] Port  [?] Help\n\r");
+      door_option_prompt({
+         "[H] Hire",
+         "[R] Ship roster and personnel actions",
+         "[Enter] Port",
+         "[?] Help",
+      });
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
          return;
@@ -3938,10 +4020,18 @@ void show_message_manager(
       }
       door_label("\n\rPage ");
       door_number("%zu/%zu", page + 1, page_count);
-      door_prompt(
-         "\n\r[1-7] Inspect  [N/P] Page  [I] Ignore  [L] Later\n\r"
-         "[A] Actioned  [R] Archive  [F] Filters  [C] Compose\n\r"
-         "[Q] Console  [?] Help\n\r");
+      door_option_prompt({
+         "[1-7] Inspect",
+         "[N/P] Page",
+         "[I] Ignore",
+         "[L] Later",
+         "[A] Actioned",
+         "[R] Archive",
+         "[F] Filters",
+         "[C] Compose",
+         "[Q] Console",
+         "[?] Help",
+      });
       const auto key = od_get_key(TRUE);
       if(key >= '1' && key <= '7') {
          const auto index = first + static_cast<size_t>(key - '1');
@@ -4039,9 +4129,15 @@ void show_arrival_packet(
             (packet.arrival_second - item.created_second) / (24 * 60 * 60)));
       door_label("Subject:  ");
       door_identifier("%s\n\r", safe_field(item.subject).c_str());
-      door_prompt(
-         "\n\r[I/Left] Ignore  [M/Right] Mark for later  [N/Down] Next\n\r"
-         "[Enter] Inspect  [A] File as actioned  [Q] Stop review  [?] Help\n\r");
+      door_option_prompt({
+         "[I/Left] Ignore",
+         "[M/Right] Mark for later",
+         "[N/Down] Next",
+         "[Enter] Inspect",
+         "[A] File as actioned",
+         "[Q] Stop review",
+         "[?] Help",
+      });
       const auto key = door_get_translated_key();
       if(key == OD_KEY_LEFT || key == 'i' || key == 'I') {
          change_message_classification(
@@ -4078,10 +4174,14 @@ void show_arrival_packet(
          door_information(
             "The ship's records contain no proof that this system has been "
             "published.\n\r");
-         door_prompt(
-            "\n\r[P] Send public notice  [D] Send sealed filing to Earth\n\r"
-            "[W] Withhold  [S] Withhold and mark secret\n\r"
-            "[Q] Decide later  [?] Help\n\r");
+         door_option_prompt({
+            "[P] Send public notice",
+            "[D] Send sealed filing to Earth",
+            "[W] Withhold",
+            "[S] Withhold and mark secret",
+            "[Q] Decide later",
+            "[?] Help",
+         });
          const auto key = od_get_key(TRUE);
          std::optional<ct::SystemMappingChoice> choice;
          if(key == 'p' || key == 'P') {
@@ -4176,8 +4276,12 @@ std::optional<const ct::KnownSystemSummary*> select_known_primary(
          }
          od_printf("\n\r");
       }
-      door_prompt(
-         "\n\r[1-8] Select  [< >] Page  [Enter/Q] Cancel  [?] Help\n\r");
+      door_option_prompt({
+         "[1-8] Select",
+         "[< >] Page",
+         "[Enter/Q] Cancel",
+         "[?] Help",
+      });
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
          return std::nullopt;
@@ -4293,9 +4397,13 @@ void show_course_plot(const ct::CoursePlot& plot)
          "\n\rEstimate includes purchased port fuel and mean frontier "
          "skimming/processing time. Payroll, maintenance, fees, hazards, and "
          "encounter delays are excluded.\n\r");
-      door_prompt(
-         "[F] Fastest  [C] Cheapest  [< >] Page\n\r"
-         "[Enter] Charts  [?] Help\n\r");
+      door_option_prompt({
+         "[F] Fastest",
+         "[C] Cheapest",
+         "[< >] Page",
+         "[Enter] Charts",
+         "[?] Help",
+      }, false);
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
          return;
@@ -4439,9 +4547,15 @@ void show_known_universe_manager(
       door_information(
          "\n\r* marks the present system; J marks a direct jump; ? marks a "
          "newly resolved survey contact.\n\r");
-      door_prompt(
-         "[1-9] Dossier  [P] Plot  [M] Markets  [J] Direct/all\n\r"
-         "[< >] Page  [Enter] Console  [?] Help\n\r");
+      door_option_prompt({
+         "[1-9] Dossier",
+         "[P] Plot",
+         "[M] Markets",
+         "[J] Direct/all",
+         "[< >] Page",
+         "[Enter] Console",
+         "[?] Help",
+      }, false);
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
          return;
@@ -4705,11 +4819,16 @@ std::optional<ct::PlayerPhase> show_combat_operations(
             door_label("\n\r");
          }
       }
-      door_prompt(
-         "\n\r[A] Accept order or file report  [I] Intercept traffic\n\r"
-         "[P] Prize office  [W] Warrant court  [C] Cruise articles\n\r"
-         "[M] Service or commission status\n\r"
-         "[Enter] Console  [?] Help\n\r");
+      door_option_prompt({
+         "[A] Accept order or file report",
+         "[I] Intercept traffic",
+         "[P] Prize office",
+         "[W] Warrant court",
+         "[C] Cruise articles",
+         "[M] Service or commission status",
+         "[Enter] Console",
+         "[?] Help",
+      });
       const auto key = static_cast<char>(std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
       if(key == '\r' || key == '\n' || key == 'Q') {
          return std::nullopt;
@@ -4863,9 +4982,12 @@ void render_command_console(const ct::ServerHello& hello)
    door_number("O");
    door_label(". ");
    door_identifier("Operations Ledger\n\r");
-   door_prompt(
-      "\n\r[C/S/T/M/K/O] Manager  [Enter] Previous\n\r"
-      "[Q] Return to BBS  [?] Help\n\r");
+   door_option_prompt({
+      "[C/S/T/M/K/O] Manager",
+      "[Enter] Previous",
+      "[Q] Return to BBS",
+      "[?] Help",
+   });
 }
 
 bool run_command_console(
@@ -5080,10 +5202,17 @@ void run_cargo_exchange(
                     connection, session_epoch, random_command_id(random), request_id++);
    while(true) {
       render_market(market);
-      door_prompt(
-         "\n\r[B] Buy  [S] Sell  [F] Find market  [R] Reserve lead\n\r"
-         "[P] Perform lead  [U] Release reservation  [X] Cancel search\n\r"
-         "[Enter] Docked operations  [?] Help\n\r");
+      door_option_prompt({
+         "[B] Buy",
+         "[S] Sell",
+         "[F] Find market",
+         "[R] Reserve lead",
+         "[P] Perform lead",
+         "[U] Release reservation",
+         "[X] Cancel search",
+         "[Enter] Docked operations",
+         "[?] Help",
+      });
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
          return;
@@ -6154,10 +6283,14 @@ void render_docked_menu(const ct::DockedSnapshot& snapshot)
       door_label(". ");
       door_identifier("%s\n\r", entry.second);
    }
-   door_prompt(
-      "\n\r[Letter] Docked service  [U] Universal managers\n\r"
-      "[L] License  [Enter] Refresh\n\r"
-      "[Q] Return to BBS  [?] Help\n\r");
+   door_option_prompt({
+      "[Letter] Docked service",
+      "[U] Universal managers",
+      "[L] License",
+      "[Enter] Refresh",
+      "[Q] Return to BBS",
+      "[?] Help",
+   });
 }
 
 ct::PlayerPhase run_docked_menu(
@@ -6723,10 +6856,18 @@ ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello&
       wait_for_enter();
       return combat.phase;
    }
-   door_prompt(
-      "\n\r[D] Conservative defaults  [T] Tactical computer\n\r"
-      "[E] Edit joint orders  [A] Attack  [W] Withdraw  [B] Board\n\r"
-      "[S] Offer surrender  [P] Standing policy  [Q] Console  [?] Help\n\r");
+   door_option_prompt({
+      "[D] Conservative defaults",
+      "[T] Tactical computer",
+      "[E] Edit joint orders",
+      "[A] Attack",
+      "[W] Withdraw",
+      "[B] Board",
+      "[S] Offer surrender",
+      "[P] Standing policy",
+      "[Q] Console",
+      "[?] Help",
+   });
    const auto key = static_cast<char>(std::toupper(static_cast<unsigned char>(door_get_live_key())));
    if(key == 'Q' || key == '\r' || key == '\n') {
       return combat.phase;
@@ -6878,9 +7019,14 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
       wait_for_enter();
       return ct::PlayerPhase::Encounter;
    }
-   door_prompt(
-      "\n\r[F] Fight  [R] Run  [C] Comply  [S] Surrender  [B] Board\n\r"
-      "[?] Help\n\r");
+   door_option_prompt({
+      "[F] Fight",
+      "[R] Run",
+      "[C] Comply",
+      "[S] Surrender",
+      "[B] Board",
+      "[?] Help",
+   });
    char key = static_cast<char>(std::toupper(static_cast<unsigned char>(door_get_live_key())));
    ct::EncounterPosture posture = ct::EncounterPosture::Flee;
    if(key == 'F') {

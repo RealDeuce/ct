@@ -293,6 +293,40 @@ std::string door_single_line_field(const std::string_view text) {
    return result;
 }
 
+std::string door_option_prompt(
+   const std::initializer_list<std::string_view> options,
+   const size_t columns,
+   const bool leading_newline)
+{
+   if(columns == 0) {
+      throw std::invalid_argument("door prompt width must be nonzero");
+   }
+
+   std::string prompt;
+   if(leading_newline) {
+      prompt += "\n\r";
+   }
+   size_t line_width = 0;
+   for(const auto option : options) {
+      if(option.empty()) {
+         continue;
+      }
+      if(line_width != 0) {
+         if(line_width + 2 + option.size() > columns) {
+            prompt += "\n\r";
+            line_width = 0;
+         } else {
+            prompt += "  ";
+            line_width += 2;
+         }
+      }
+      prompt += option;
+      line_width += option.size();
+   }
+   prompt += "\n\r";
+   return prompt;
+}
+
 DoorPresentation::DoorPresentation(const DoorProfile profile,
                                    const size_t columns,
                                    const size_t rows,
