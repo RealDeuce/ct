@@ -511,12 +511,18 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
     session.wait_for(MESSAGE_HEADING);
     session.send(b"i");
     session.wait_for("Message number on this page");
+    let console_prompts = normalized_display_text(&session.output())
+        .matches("Console")
+        .count();
     session.send(b"1");
-    session.wait_for_occurrences(MESSAGE_HEADING, 2);
+    session.wait_for_occurrences("Console", console_prompts + 1);
     session.send(b"l");
     session.wait_for_occurrences("Message number on this page", 2);
+    let console_prompts = normalized_display_text(&session.output())
+        .matches("Console")
+        .count();
     session.send(b"2");
-    let classified = session.wait_for_occurrences(MESSAGE_HEADING, 3);
+    let classified = session.wait_for_occurrences("Console", console_prompts + 1);
     assert!(strip_ecma48(&classified).contains("Ignored"));
     assert!(
         strip_ecma48(&classified).contains("Review"),
