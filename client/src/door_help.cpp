@@ -207,8 +207,10 @@ constexpr std::array<DoorHelp, static_cast<size_t>(DoorHelpTopic::Count)> HELP{{
    {
       "Arrival checkpoint and packet",
       "The arrival packet contains messages, offers, market reports, notices, and other records made "
-      "available during the voyage. Left and right change filters; up and down move through the current "
-      "set. A displayed offer is still subject to physical claim and award rules.\n\n"
+      "available during the voyage. I or Left ignores the current message, M or Right marks it for "
+      "later, and N or Down advances to the next message. The printable keys work on terminals that "
+      "cannot send arrow-key sequences. A displayed offer is still subject to physical claim and award "
+      "rules.\n\n"
       "At the checkpoint the ship waits until the captain takes the arrival watch. Taking the watch "
       "can expose an encounter or complete docking. Leaving the ship holding postpones that transition.\n\n"
       "The communications receipt records which mailbags and personally carried instruments arrived.",
