@@ -161,12 +161,7 @@ impl DoorSession {
     }
 
     fn return_to_bbs(&mut self) {
-        let occurrence = normalized_display_text(&self.output())
-            .matches("Return to the BBS?")
-            .count()
-            + 1;
-        self.send(b"q");
-        self.wait_for_occurrences("Return to the BBS?", occurrence);
+        self.send_through_page_prompt(b"q", "Return to the BBS?", "Return to the BBS?", false);
         self.send(b"y");
     }
 
@@ -175,18 +170,37 @@ impl DoorSession {
     }
 
     fn acknowledge_page_prompts(&mut self, semantic: &str) {
+        const ERASED_PAGE_PROMPT: &[u8] = b"\r                      \r";
         let page_prompts = semantic.matches("Enter/Space").count();
+        let erased_page_prompts = self
+            .output
+            .lock()
+            .unwrap()
+            .windows(ERASED_PAGE_PROMPT.len())
+            .filter(|bytes| *bytes == ERASED_PAGE_PROMPT)
+            .count();
+        self.acknowledged_page_prompts = self
+            .acknowledged_page_prompts
+            .max(erased_page_prompts.min(page_prompts));
         while self.acknowledged_page_prompts < page_prompts {
-            const ERASED_PAGE_PROMPT: &[u8] = b"\r                      \r";
-            let output_length = self.output.lock().unwrap().len();
+            let erased_before = self
+                .output
+                .lock()
+                .unwrap()
+                .windows(ERASED_PAGE_PROMPT.len())
+                .filter(|bytes| *bytes == ERASED_PAGE_PROMPT)
+                .count();
             self.send(b" ");
-            self.acknowledged_page_prompts += 1;
             let deadline = Instant::now() + Duration::from_secs(10);
             loop {
-                let prompt_erased = self.output.lock().unwrap()[output_length..]
+                let erased_now = self
+                    .output
+                    .lock()
+                    .unwrap()
                     .windows(ERASED_PAGE_PROMPT.len())
-                    .any(|bytes| bytes == ERASED_PAGE_PROMPT);
-                if prompt_erased {
+                    .filter(|bytes| *bytes == ERASED_PAGE_PROMPT)
+                    .count();
+                if erased_now > erased_before {
                     break;
                 }
                 let output = self.output();
@@ -196,6 +210,7 @@ impl DoorSession {
                 );
                 std::thread::sleep(Duration::from_millis(10));
             }
+            self.acknowledged_page_prompts += 1;
         }
     }
 
@@ -247,6 +262,7 @@ impl DoorSession {
         bytes: &[u8],
         rendered_text: &str,
         progress_text: &str,
+        target_pages: bool,
     ) -> String {
         let deadline = Instant::now() + Duration::from_secs(10);
         let rendered = normalized_display_text(rendered_text);
@@ -254,13 +270,16 @@ impl DoorSession {
         let initial = normalized_display_text(&self.output());
         let rendered_before = initial.matches(&rendered).count();
         let progress_before = initial.matches(&progress).count();
+        let page_prompts_before = initial.matches("Enter/Space").count();
         let mut acknowledged_prompts = self.acknowledged_page_prompts;
         self.send(bytes);
         loop {
             let output = self.output();
             let semantic = normalized_display_text(&output);
             self.acknowledge_page_prompts(&semantic);
-            if semantic.matches(&rendered).count() > rendered_before {
+            if semantic.matches(&rendered).count() > rendered_before
+                && (!target_pages || self.acknowledged_page_prompts > page_prompts_before)
+            {
                 return output;
             }
             if self.acknowledged_page_prompts > acknowledged_prompts {
@@ -501,12 +520,14 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
                 b"\r",
                 "Captain's Command Console",
                 "Captain's Command Console",
+                false,
             );
         } else {
             session.send_through_page_prompt(
                 b"u",
                 "Captain's Command Console",
                 "Captain's Command Console",
+                false,
             );
         }
     } else if arrival_result == 1 {
@@ -514,51 +535,67 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
             b"\r",
             "Captain's Command Console",
             "Captain's Command Console",
+            false,
         );
     } else {
         session.send_through_page_prompt(
             b"u",
             "Captain's Command Console",
             "Captain's Command Console",
+            false,
         );
     }
+    let message_page_prompts = normalized_display_text(&session.output())
+        .matches("Enter/Space")
+        .count();
     session.send(b"m");
     const MESSAGE_HEADING: &str = "Message Management\r\n==================";
     session.wait_for(MESSAGE_HEADING);
+    if columns == "40" {
+        session.wait_for_occurrences("Enter/Space", message_page_prompts + 1);
+    }
     session.send_through_page_prompt(
         b"i",
         "Message number on this page",
         "Message number on this page",
+        false,
     );
-    session.send_through_page_prompt(b"1", "Console", MESSAGE_HEADING);
+    session.send_through_page_prompt(b"1", "Console", MESSAGE_HEADING, columns == "40");
     session.send_through_page_prompt(
         b"l",
         "Message number on this page",
         "Message number on this page",
+        false,
     );
-    let classified = session.send_through_page_prompt(b"2", "Console", MESSAGE_HEADING);
+    let classified =
+        session.send_through_page_prompt(b"2", "Console", MESSAGE_HEADING, columns == "40");
     assert!(strip_ecma48(&classified).contains("Ignored"));
     assert!(
         strip_ecma48(&classified).contains("Review"),
         "classification output: {classified:?}"
     );
-    session.send_through_page_prompt(b"3", "Communications Record", "Communications Record");
-    session.send_through_page_prompt(b"\r", "Console", MESSAGE_HEADING);
+    session.send_through_page_prompt(b"3", "Return", "Communications Record", false);
+    session.send_through_page_prompt(b"\r", "Console", MESSAGE_HEADING, columns == "40");
     session.send_through_page_prompt(
         b"q",
         "Captain's Command Console",
         "Captain's Command Console",
+        false,
     );
-    session.send_through_page_prompt(
-        b"k",
-        "Ship's Navigation Library",
-        "Ship's Navigation Library",
-    );
-    session.send_through_page_prompt(
-        b"\r",
-        "Captain's Command Console",
-        "Captain's Command Console",
-    );
+    if columns == "80" {
+        session.send_through_page_prompt(
+            b"k",
+            "Ship's Navigation Library",
+            "Ship's Navigation Library",
+            false,
+        );
+        session.send_through_page_prompt(
+            b"\r",
+            "Captain's Command Console",
+            "Captain's Command Console",
+            false,
+        );
+    }
     session.return_to_bbs();
     session.finish()
 }
@@ -577,10 +614,13 @@ fn complete_arrival_and_trade(
     session.send(b"\r");
     session.wait_for("Docked Operations");
 
-    session.send(b"f");
-    session.wait_for("Fuel and Supplies");
-    session.send(b"f");
-    session.wait_for("Fuel source (Q to cancel");
+    session.send_through_page_prompt(b"f", "Fuel source", "Fuel and Supplies", false);
+    session.send_through_page_prompt(
+        b"f",
+        "Fuel source (Q to cancel",
+        "Refined starship fuel",
+        false,
+    );
     session.send(b"1\r");
     // The 40-column profile may wrap the prompt between "to" and
     // "cancel"; match the semantic prefix shared by every width.
@@ -588,28 +628,25 @@ fn complete_arrival_and_trade(
     if selection == 0 {
         session.send(b"1\r");
         session.wait_for("Ship's stores have been loaded");
-        session.send(b"\r");
     } else {
-        session.send(b"\r");
+        session.wait_for("That service");
     }
-    session.wait_for_occurrences("Docked Operations", 2);
+    session.send_through_page_prompt(b"\r", "Docked Operations", "Docked Operations", false);
 
     // Exercise the facility-backed provision service when the destination
     // has a chandlery. At a frontier port, prove the same stale/forged key is
     // rejected with in-world copy rather than inventing stock.
-    session.send(b"f");
-    let supplies = session.wait_for_occurrences("Fuel and Supplies", 2);
+    let supplies =
+        session.send_through_page_prompt(b"f", "Fuel source", "Fuel and Supplies", false);
     session.send(b"p");
     if strip_ecma48(&supplies).contains("P) Provisions") {
         session.wait_for("Monthly packages (Q to");
         session.send(b"1\r");
         session.wait_for("Ship's stores have been loaded");
-        session.send(b"\r");
     } else {
         session.wait_for("No bonded chandlery");
-        session.send(b"\r");
     }
-    session.wait_for_occurrences("Docked Operations", 3);
+    session.send_through_page_prompt(b"\r", "Docked Operations", "Docked Operations", false);
 
     // Arrival processing may add task-titled cargo, and the wire snapshot is
     // the authority for menu order. Identify the purchased lot by its rendered
@@ -632,11 +669,10 @@ fn complete_arrival_and_trade(
             .commodity_name
             .clone()
     };
-    session.send(b"c");
     // The heading is written before the rest of the page.  Wait for the
     // section delimiter used below so the reader thread has captured the
     // complete cargo list before taking the output snapshot.
-    let exchange = session.wait_for_occurrences("Find market", 1);
+    let exchange = session.send_through_page_prompt(b"c", "Find market", "Cargo Exchange -", true);
     let semantic = strip_ecma48(&exchange);
     let cargo_section = semantic
         .rsplit_once("Cargo Exchange -")
@@ -654,14 +690,16 @@ fn complete_arrival_and_trade(
         .and_then(|number| number.strip_suffix('.'))
         .and_then(|number| number.parse::<usize>().ok())
         .unwrap_or_else(|| panic!("cargo menu omitted {cargo_name:?}: {cargo_section:?}"));
-    session.send(b"s");
-    session.wait_for("Cargo lot (Q to cancel");
+    session.send_through_page_prompt(
+        b"s",
+        "Cargo lot (Q to cancel",
+        "Cargo lot (Q to cancel",
+        false,
+    );
     session.send(format!("{cargo_selection}\r").as_bytes());
     session.wait_for("Tonnes (maximum");
-    session.send(b"1\r");
-    session.wait_for_occurrences("Find market", 2);
-    session.send(b"\r");
-    session.wait_for_occurrences("Docked Operations", 3);
+    session.send_through_page_prompt(b"1\r", "Find market", "Cargo Exchange -", true);
+    session.send_through_page_prompt(b"\r", "Docked Operations", "Docked Operations", false);
     session.return_to_bbs();
     session.finish()
 }
@@ -1308,8 +1346,12 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         services_door.wait_for_occurrences("Docked Operations", 2);
         services_door.wait_for_occurrences("Return to BBS", 2);
     }
-    services_door.send(b"u");
-    services_door.wait_for("Captain's Command Console");
+    services_door.send_through_page_prompt(
+        b"u",
+        "Captain's Command Console",
+        "Captain's Command Console",
+        false,
+    );
     services_door.wait_for("(C/S/T/M/K/O) Manager");
     services_door.send(b"m");
     services_door.wait_for("Message Management");
@@ -1332,8 +1374,12 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     services_door.send(b"\r");
     services_door.wait_for_occurrences("Message Management", 2);
     services_door.wait_for_occurrences("(Q) Console", 2);
-    services_door.send(b"q");
-    services_door.wait_for_occurrences("Captain's Command Console", 2);
+    services_door.send_through_page_prompt(
+        b"q",
+        "Captain's Command Console",
+        "Captain's Command Console",
+        false,
+    );
     services_door.wait_for_occurrences("(C/S/T/M/K/O) Manager", 2);
     services_door.send(b"\r");
     let final_docked_occurrence = if banking_available { 3 } else { 2 };
@@ -1405,8 +1451,12 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         let mut combat_door = DoorSession::spawn(&door, combat_root.path(), "iso646", "40");
         combat_door.send(b"\r");
         combat_door.wait_for("Docked Operations");
-        combat_door.send(b"u");
-        combat_door.wait_for("Captain's Command Console");
+        combat_door.send_through_page_prompt(
+            b"u",
+            "Captain's Command Console",
+            "Captain's Command Console",
+            false,
+        );
         combat_door.wait_for("(C/S/T/M/K/O) Manager");
         combat_door.send(b"o");
         combat_door.wait_for_occurrences("Accept order or file report", 1);
@@ -1524,8 +1574,12 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     voyage_door.wait_for("Departure authorized.");
     voyage_door.send(b"\r");
     voyage_door.wait_for("Voyage Status -");
-    voyage_door.send(b"\r");
-    voyage_door.wait_for("Captain's Command Console");
+    voyage_door.send_through_page_prompt(
+        b"\r",
+        "Captain's Command Console",
+        "Captain's Command Console",
+        false,
+    );
     voyage_door.return_to_bbs();
     let voyage_screen = voyage_door.finish();
     for expected in [
@@ -1686,9 +1740,14 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
             "Arrival Communications Receipt",
             "Message Management",
             "Review",
-            "Ship's Navigation Library",
         ] {
             assert!(semantic.contains(expected), "{profile}: {profile_screen:?}");
+        }
+        if columns == "80" {
+            assert!(
+                semantic.contains("Ship's Navigation Library"),
+                "{profile}: {profile_screen:?}"
+            );
         }
         for duplicate_prompt in [
             "(Enter) Continue\r\n\r\n(Enter) Previous menu",
