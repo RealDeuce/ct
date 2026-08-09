@@ -316,7 +316,7 @@ int main() {
    check(
       wide_options ==
       "\n\r[Letter] Docked service  [U] Universal managers  [L] License  "
-      "[Enter] Refresh\n\r[Q] Return to BBS  [?] Help\n\r");
+      "[Enter] Refresh\n\r[Q] Return to BBS  [?] Help: ");
    check(maximum_visible_width(wide_options) < 80);
    check(
       ct::door_option_prompt(
@@ -330,5 +330,5 @@ int main() {
       "\n\r[Letter] Docked service\n\r"
       "[U] Universal managers  [L] License\n\r"
       "[Enter] Refresh  [Q] Return to BBS\n\r"
-      "[?] Help\n\r");
+      "[?] Help: ");
 }

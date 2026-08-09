@@ -328,7 +328,7 @@ std::string door_option_prompt(
       prompt += option;
       line_width += option.size();
    }
-   prompt += "\n\r";
+   prompt += ": ";
    return prompt;
 }
 

@@ -251,6 +251,28 @@ void flush_player_events()
    output().suspend_paging();
 }
 
+bool prompt_awaits_input_on_current_line()
+{
+   return !active_prompt.empty() &&
+          active_prompt.back() != '\r' && active_prompt.back() != '\n';
+}
+
+void echo_prompt_key(const int key, const bool preserve_prompt)
+{
+   if(prompt_awaits_input_on_current_line()) {
+      std::string response;
+      if(key >= 0x20 && key <= 0x7e) {
+         response.push_back(static_cast<char>(key));
+      }
+      response += "\n\r";
+      output().write(response, ct::DoorTextRole::Prompt);
+   }
+   if(!preserve_prompt) {
+      active_prompt.clear();
+      active_prompt_on_current_line = false;
+   }
+}
+
 int door_get_live_key()
 {
    for(;;) {
@@ -258,19 +280,16 @@ int door_get_live_key()
       flush_player_events();
       const auto key = od_get_key(FALSE);
       if(key != 0) {
-         if(active_prompt_on_current_line && !active_prompt.empty()) {
-            output().erase_prompt(active_prompt.size());
-         }
          output().reset_paging();
          output().resume_paging();
       }
       if(key == '?') {
+         echo_prompt_key(key, true);
          show_context_help();
          continue;
       }
       if(key != 0) {
-         active_prompt.clear();
-         active_prompt_on_current_line = false;
+         echo_prompt_key(key, false);
          return key;
       }
       od_sleep(10);
@@ -287,9 +306,11 @@ int door_get_translated_key()
       output().reset_paging();
       output().resume_paging();
       if(key == '?') {
+         echo_prompt_key(key, true);
          show_context_help();
          continue;
       }
+      echo_prompt_key(key, false);
       return key;
    }
 }
@@ -349,8 +370,20 @@ void door_prompt(const char* format, ...)
 {
    va_list arguments;
    va_start(arguments, format);
-   const auto text = format_door_text(format, arguments);
+   auto text = format_door_text(format, arguments);
    va_end(arguments);
+   const auto has_prompt_text =
+      text.find_first_not_of("\r\n") != std::string::npos;
+   bool removed_line_ending = false;
+   if(has_prompt_text) {
+      while(!text.empty() && (text.back() == '\r' || text.back() == '\n')) {
+         text.pop_back();
+         removed_line_ending = true;
+      }
+      if(removed_line_ending && !text.empty() && text.back() != ' ') {
+         text.push_back(' ');
+      }
+   }
    active_prompt += text;
    active_prompt_on_current_line = false;
    output().write(text, ct::DoorTextRole::Prompt);
@@ -972,13 +1005,12 @@ void show_context_help()
       if(key == '\r' || key == '\n') {
          output().reset_paging();
          output().resume_paging();
+         echo_prompt_key(key, false);
          break;
       }
    }
-   output().erase_prompt(std::string_view("[Enter] Resume").size());
    active_prompt.clear();
    active_prompt_on_current_line = false;
-   door_write("\n\r", ct::DoorTextRole::Normal);
    active_prompt = saved_prompt;
    if(!saved_prompt.empty()) {
       output().write(saved_prompt, ct::DoorTextRole::Prompt);
@@ -996,8 +1028,12 @@ int door_get_key(const BOOL wait)
          output().resume_paging();
       }
       if(key == '?') {
+         echo_prompt_key(key, true);
          show_context_help();
          continue;
+      }
+      if(key != 0) {
+         echo_prompt_key(key, false);
       }
       return key;
    }

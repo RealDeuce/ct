@@ -1271,6 +1271,10 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         assert!(docked_semantic.contains(expected), "{docked_screen:?}");
     }
     assert!(docked_semantic.contains("entered it in the task ledger."));
+    assert!(
+        docked_semantic.contains("Help: j"),
+        "menu prompt did not retain the cursor and echo its selection: {docked_screen:?}"
+    );
     if availability == 1 {
         assert!(docked_semantic.contains("Unavailable to this captain:"));
     }
