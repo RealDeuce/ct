@@ -101,6 +101,8 @@ the rows above a transient continuation prompt, including rows introduced by
 narrow-terminal wrapping. No rows are reserved for the eventual action menu.
 After acknowledgement the door overwrites the prompt with spaces on the same
 line, does not clear the screen, and continues streaming output on that row.
+The continuation prompt also offers `C` for continuous output, which suppresses
+additional page pauses until the next keyboard input resets pagination.
 Screens with their own page navigation, such as the license display and
 indexed rosters, retain their explicit paging controls.
 

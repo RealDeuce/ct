@@ -57,6 +57,7 @@ public:
    void configure_paging(size_t reserved_rows, PagePause pause);
    void resume_paging() noexcept;
    void suspend_paging() noexcept;
+   void suppress_paging_until_input() noexcept;
    void reset_paging() noexcept;
    void erase_prompt(size_t visible_columns);
 
@@ -85,6 +86,7 @@ private:
    size_t paging_content_rows_ = 0;
    PagePause page_pause_;
    bool paging_active_ = false;
+   bool paging_suppressed_until_input_ = false;
    bool handling_page_pause_ = false;
    Sink sink_;
    std::string pending_;

@@ -25,8 +25,10 @@ screen. Letter choices are case-insensitive.
   menu or input prompt.
 - `<` and `>` move between pages where shown. Some packet screens also accept
   the corresponding arrow keys and display letter alternatives.
-- A full page pauses at an `[Enter/Space] Continue` prompt. Press Enter or
-  Space to continue; the prompt is erased and output resumes beneath it.
+- A full page pauses at an `[Enter/Space] Continue  [C] Continuous` prompt.
+  Press Enter or Space to continue one page, or `C` to suppress further page
+  pauses until the next keyboard input. The prompt is erased and output resumes
+  beneath it.
 - A menu may omit an action when the present port, ship, or situation cannot
   support it.
 

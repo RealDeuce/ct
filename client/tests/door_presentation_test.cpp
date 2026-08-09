@@ -283,6 +283,34 @@ int main() {
    pager.write("page boundary\n\r", ct::DoorTextRole::Prompt);
    check(pauses == 2);
 
+   std::string continuous_page;
+   unsigned continuous_pauses = 0;
+   ct::DoorPresentation continuous_pager(
+      ct::DoorProfile::Iso646,
+      40,
+      24,
+      [&continuous_page](const std::string_view bytes) {
+         continuous_page.append(bytes);
+      });
+   continuous_pager.configure_paging(
+      1,
+      [&continuous_pager, &continuous_pauses] {
+         ++continuous_pauses;
+         continuous_pager.suppress_paging_until_input();
+      });
+   continuous_pager.resume_paging();
+   for(unsigned line = 0; line < 80; ++line) {
+      continuous_pager.write("continuous output\n\r");
+      continuous_pager.resume_paging();
+   }
+   check(continuous_pauses == 1);
+   continuous_pager.reset_paging();
+   continuous_pager.resume_paging();
+   for(unsigned line = 0; line < 23; ++line) {
+      continuous_pager.write("after keyboard input\n\r");
+   }
+   check(continuous_pauses == 2);
+
    std::string wrapped_page;
    unsigned wrapped_pauses = 0;
    ct::DoorPresentation wrapped_pager(

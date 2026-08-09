@@ -380,15 +380,22 @@ void DoorPresentation::configure_paging(const size_t reserved_rows,
 }
 
 void DoorPresentation::resume_paging() noexcept {
-   paging_active_ = static_cast<bool>(page_pause_);
+   paging_active_ = static_cast<bool>(page_pause_) &&
+                    !paging_suppressed_until_input_;
 }
 
 void DoorPresentation::suspend_paging() noexcept {
    paging_active_ = false;
 }
 
+void DoorPresentation::suppress_paging_until_input() noexcept {
+   paging_suppressed_until_input_ = true;
+   paging_active_ = false;
+}
+
 void DoorPresentation::reset_paging() noexcept {
    row_ = 0;
+   paging_suppressed_until_input_ = false;
 }
 
 void DoorPresentation::erase_prompt(const size_t visible_columns) {
@@ -451,12 +458,14 @@ void DoorPresentation::pause_at_page_boundary(const DoorTextRole role) {
       page_pause_();
    } catch(...) {
       handling_page_pause_ = false;
-      paging_active_ = true;
+      paging_active_ = static_cast<bool>(page_pause_) &&
+                       !paging_suppressed_until_input_;
       throw;
    }
    row_ = 0;
    handling_page_pause_ = false;
-   paging_active_ = true;
+   paging_active_ = static_cast<bool>(page_pause_) &&
+                    !paging_suppressed_until_input_;
    if(profile_ != DoorProfile::Iso646) {
       emit(role_sequence(role));
    }

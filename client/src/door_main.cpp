@@ -821,11 +821,16 @@ void initialize_presentation(const ct::BbsConfig& config)
       od_disp_emu(terminated.c_str(), TRUE);
    });
    presentation->configure_paging(1, [] {
-      constexpr std::string_view prompt = "[Enter/Space] Continue";
+      constexpr std::string_view prompt =
+         "[Enter/Space] Continue  [C] Continuous";
       output().write(prompt, ct::DoorTextRole::Prompt);
       while(true) {
          const auto key = od_get_key(TRUE);
          if(key == '\r' || key == '\n' || key == ' ') {
+            break;
+         }
+         if(key == 'c' || key == 'C') {
+            output().suppress_paging_until_input();
             break;
          }
       }

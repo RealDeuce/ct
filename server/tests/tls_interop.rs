@@ -170,14 +170,15 @@ impl DoorSession {
     }
 
     fn acknowledge_page_prompts(&mut self, semantic: &str) {
-        const ERASED_PAGE_PROMPT: &[u8] = b"\r                      \r";
+        const PAGE_PROMPT: &str = "[Enter/Space] Continue  [C] Continuous";
+        let erased_page_prompt = format!("\r{}\r", " ".repeat(PAGE_PROMPT.len()));
         let page_prompts = semantic.matches("Enter/Space").count();
         let erased_page_prompts = self
             .output
             .lock()
             .unwrap()
-            .windows(ERASED_PAGE_PROMPT.len())
-            .filter(|bytes| *bytes == ERASED_PAGE_PROMPT)
+            .windows(erased_page_prompt.len())
+            .filter(|bytes| *bytes == erased_page_prompt.as_bytes())
             .count();
         self.acknowledged_page_prompts = self
             .acknowledged_page_prompts
@@ -187,8 +188,8 @@ impl DoorSession {
                 .output
                 .lock()
                 .unwrap()
-                .windows(ERASED_PAGE_PROMPT.len())
-                .filter(|bytes| *bytes == ERASED_PAGE_PROMPT)
+                .windows(erased_page_prompt.len())
+                .filter(|bytes| *bytes == erased_page_prompt.as_bytes())
                 .count();
             self.send(b" ");
             let deadline = Instant::now() + Duration::from_secs(10);
@@ -197,8 +198,8 @@ impl DoorSession {
                     .output
                     .lock()
                     .unwrap()
-                    .windows(ERASED_PAGE_PROMPT.len())
-                    .filter(|bytes| *bytes == ERASED_PAGE_PROMPT)
+                    .windows(erased_page_prompt.len())
+                    .filter(|bytes| *bytes == erased_page_prompt.as_bytes())
                     .count();
                 if erased_now > erased_before {
                     break;
