@@ -20,7 +20,7 @@ namespace ct
 namespace
 {
 
-constexpr uint16_t PROTOCOL_VERSION = 5;
+constexpr uint16_t PROTOCOL_VERSION = 6;
 constexpr size_t MAX_FRAME_BYTES = 1024 * 1024;
 
 void send_frame(TlsConnection& connection, const kj::ArrayPtr<const kj::byte> message)
@@ -1330,7 +1330,7 @@ SystemRadioSnapshot decode_system_radio(const rpc::Response::Reader response)
 
 TaskOffer decode_task_offer(const rpc::TaskOffer::Reader source)
 {
-   return {
+   TaskOffer result{
       .offer_id = source.getOfferId(),
       .revision = source.getRevision(),
       .kind = static_cast<TaskKind>(source.getKind()),
@@ -1354,7 +1354,12 @@ TaskOffer decode_task_offer(const rpc::TaskOffer::Reader source)
       .non_delivery_liability_credits = source.getNonDeliveryLiabilityCredits(),
       .passenger_grace_seconds = source.getPassengerGraceSeconds(),
       .declared_value_credits = source.getDeclaredValueCredits(),
+      .unavailable_reasons = {},
    };
+   for(const auto reason : source.getUnavailableReasons()) {
+      result.unavailable_reasons.emplace_back(reason.cStr());
+   }
+   return result;
 }
 
 TaskRecord decode_task_record(const rpc::TaskRecord::Reader source)

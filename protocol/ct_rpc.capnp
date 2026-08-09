@@ -1011,6 +1011,7 @@ struct TaskOffer {
   nonDeliveryLiabilityCredits @20 :UInt64;
   passengerGraceSeconds @21 :UInt64;
   declaredValueCredits @22 :UInt64;
+  unavailableReasons @23 :List(Text);
 }
 
 enum PassengerClass { none @0; high @1; middle @2; steerage @3; low @4; charter @5; courier @6; }

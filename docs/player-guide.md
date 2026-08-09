@@ -167,6 +167,18 @@ executable course to the issuing system. Green means more than six hours,
 yellow means 30 minutes through six hours, and red means less than 30 minutes,
 already late, or no executable course.
 
+The ledger initially shows only offers the commanded ship and its present crew
+can reasonably perform. It reports how many unavailable offers are hidden;
+press `V` to view those offers and the reasons they are unavailable. The check
+includes hold or passenger capacity, required steward or medical staffing,
+whether posting the collateral would leave enough cash to clear the current
+berth, an executable course to pickup, and deadlines that can already be proven
+impossible. The unavailable classification is advisory: you may still inspect
+and claim an offer from that view, accepting the risk that you must correct the
+listed problems before performance. The classification is refreshed with the
+ledger, so selling cargo, hiring crew, or otherwise correcting a stated problem
+can make an offer appear in the normal list.
+
 After successful delivery, the task remains awaiting settlement while the
 delivery filing travels back to the issuing office. Payment and release of the
 posted collateral take effect when the remittance reaches you.
@@ -194,8 +206,8 @@ managers that remain inspectable throughout normal play:
 - `K` — **Known Universe**
 - `O` — **Operations Ledger**
 
-Enter returns to the previous operational screen. `Q` offers to return to the
-BBS and requires confirmation.
+Enter refreshes the command console. `X` returns to the previous operational
+screen. `Q` offers to return to the BBS and requires confirmation.
 
 ### Crew Management
 
@@ -222,9 +234,12 @@ make underlying damage or overdue maintenance disappear.
 ### Task Management
 
 Task Management holds accepted obligations, local offers, and
-automatic-carriage declarations. Inspect an offer before claiming it. Actions
-such as cancellation, default, dispute, claim withdrawal, or custody return
-are available only when supported by the task's current state.
+automatic-carriage declarations. Available offers are shown by default; `V`
+switches between them and the otherwise-hidden offers that the current ship or
+crew cannot reasonably perform. Either view permits inspection and acceptance.
+Inspect an offer before claiming it. Actions
+such as cancellation, default, dispute, claim withdrawal, or custody return are
+available only when supported by the task's current state.
 
 ### Message Management
 

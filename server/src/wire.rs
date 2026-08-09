@@ -11,7 +11,7 @@ use crate::ct_rpc_capnp::{
     person_draft, player_creation, request,
 };
 
-pub const PROTOCOL_VERSION: u16 = 5;
+pub const PROTOCOL_VERSION: u16 = 6;
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 pub const COMMAND_ID_BYTES: usize = 16;
 pub const MAX_NAME_BYTES: usize = 128;
@@ -1031,6 +1031,7 @@ pub struct TaskOffer {
     pub non_delivery_liability_credits: u64,
     pub passenger_grace_seconds: u64,
     pub declared_value_credits: u64,
+    pub unavailable_reasons: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -4778,6 +4779,12 @@ fn set_task_offer(mut builder: crate::ct_rpc_capnp::task_offer::Builder<'_>, off
     builder.set_non_delivery_liability_credits(offer.non_delivery_liability_credits);
     builder.set_passenger_grace_seconds(offer.passenger_grace_seconds);
     builder.set_declared_value_credits(offer.declared_value_credits);
+    let reason_count = u32::try_from(offer.unavailable_reasons.len())
+        .expect("fewer task-offer unavailability reasons");
+    let mut reasons = builder.init_unavailable_reasons(reason_count);
+    for (index, reason) in offer.unavailable_reasons.iter().enumerate() {
+        reasons.set(index as u32, reason);
+    }
 }
 
 fn set_task_record(mut builder: crate::ct_rpc_capnp::task_record::Builder<'_>, task: &TaskRecord) {

@@ -557,8 +557,8 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
         strip_ecma48(&classified).contains("Review"),
         "classification output: {classified:?}"
     );
-    session.send_through_page_prompt(b"3", "Return", "Communications Record");
-    session.send_through_page_prompt(b"\r", "Console", MESSAGE_HEADING);
+    session.send_through_page_prompt(b"3", "Messages", "Communications Record");
+    session.send_through_page_prompt(b"q", "Console", MESSAGE_HEADING);
     session.send_through_page_prompt(
         b"q",
         "Captain's Command Console",
@@ -571,7 +571,7 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
             "Ship's Navigation Library",
         );
         session.send_through_page_prompt(
-            b"\r",
+            b"q",
             "Captain's Command Console",
             "Captain's Command Console",
         );
@@ -606,6 +606,7 @@ fn complete_arrival_and_trade(
     } else {
         session.wait_for("That service");
     }
+    session.wait_for("(Enter) Previous menu");
     session.send_through_page_prompt(b"\r", "Docked Operations", "Docked Operations");
 
     // Exercise the facility-backed provision service when the destination
@@ -620,6 +621,7 @@ fn complete_arrival_and_trade(
     } else {
         session.wait_for("No bonded chandlery");
     }
+    session.wait_for("(Enter) Previous menu");
     session.send_through_page_prompt(b"\r", "Docked Operations", "Docked Operations");
 
     // Arrival processing may add task-titled cargo, and the wire snapshot is
@@ -668,7 +670,7 @@ fn complete_arrival_and_trade(
     session.send(format!("{cargo_selection}\r").as_bytes());
     session.wait_for("Tonnes (maximum");
     session.send_through_page_prompt(b"1\r", "Find market", "Cargo Exchange -");
-    session.send_through_page_prompt(b"\r", "Docked Operations", "Docked Operations");
+    session.send_through_page_prompt(b"q", "Docked Operations", "Docked Operations");
     session.return_to_bbs();
     session.finish()
 }
@@ -1225,24 +1227,31 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     docked_door.send(b"j");
     docked_door.wait_for("Task Ledger");
     docked_door.wait_for("Carriage declaration");
+    let (availability, _) = docked_door.wait_for_any(&[
+        "Offers available here (0 unavailable hidden)",
+        "Offers available here (1 unavailable hidden)",
+    ]);
+    if availability == 1 {
+        docked_door.send(b"v");
+        docked_door.wait_for("Offers unavailable to this captain");
+    }
     docked_door.send(b"i");
     docked_door.wait_for("Offer (Q to cancel");
     docked_door.send(b"1\r");
     docked_door.wait_for("Signed Offer Instrument");
-    docked_door.wait_for("(Enter) Return");
-    docked_door.send(b"\r");
+    if availability == 1 {
+        docked_door.wait_for("Unavailable to this captain:");
+    }
+    docked_door.wait_for("(Q) Task ledger");
+    docked_door.send(b"q");
     docked_door.wait_for_occurrences("Task Ledger", 2);
-    docked_door.wait_for_occurrences("Carriage declaration", 2);
-    docked_door.send(b"a");
-    docked_door.wait_for_occurrences("Offer (Q to cancel", 2);
+    docked_door.send_through_page_prompt(b"a", "Offer (Q to cancel", "Offer (Q to cancel");
     docked_door.send(b"1\r");
     docked_door.wait_for("entered it in the task ledger.");
     docked_door.wait_for("(Enter) Previous menu");
     docked_door.send(b"\r");
     docked_door.wait_for_occurrences("Task Ledger", 3);
-    docked_door.wait_for_occurrences("Carriage declaration", 3);
-    docked_door.send(b"q");
-    docked_door.wait_for_occurrences("Docked Operations", 2);
+    docked_door.send_through_page_prompt(b"q", "Docked Operations", "Docked Operations");
     docked_door.wait_for_occurrences("Return to BBS", 2);
     docked_door.return_to_bbs();
     let docked_screen = docked_door.finish();
@@ -1257,10 +1266,13 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Universal",
         "Signed Offer Instrument",
         "Failure charge:",
-        "entered it in the task ledger.",
         "Accepted obligations",
     ] {
         assert!(docked_semantic.contains(expected), "{docked_screen:?}");
+    }
+    assert!(docked_semantic.contains("entered it in the task ledger."));
+    if availability == 1 {
+        assert!(docked_semantic.contains("Unavailable to this captain:"));
     }
     let mut reconnected_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     reconnected_door.send(b"\r");
@@ -1311,7 +1323,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         services_door.send(b"b");
         services_door.wait_for_occurrences("Destination aid:", 2);
         services_door.wait_for("Day 365");
-        services_door.send(b"\r");
+        services_door.send(b"q");
         services_door.wait_for_occurrences("Docked Operations", 2);
         services_door.wait_for_occurrences("Return to BBS", 2);
     }
@@ -1323,9 +1335,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     services_door.wait_for("(C/S/T/M/R/K/O) Manager");
     services_door.send(b"m");
     services_door.wait_for("Message Management");
-    services_door.wait_for("(Q) Console");
-    services_door.send(b"c");
-    services_door.wait_for("Recipient:");
+    services_door.send_through_page_prompt(b"c", "Recipient:", "Recipient:");
     services_door.send(b"c");
     services_door.wait_for("BBS number");
     services_door.send(b"1\r");
@@ -1348,7 +1358,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Captain's Command Console",
     );
     services_door.wait_for_occurrences("(C/S/T/M/R/K/O) Manager", 2);
-    services_door.send(b"\r");
+    services_door.send(b"x");
     let final_docked_occurrence = if banking_available { 3 } else { 2 };
     services_door.wait_for_occurrences("Docked Operations", final_docked_occurrence);
     services_door.wait_for_occurrences("Return to BBS", final_docked_occurrence);
@@ -1519,7 +1529,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     voyage_door.send(b"1\r");
     voyage_door.wait_for("Tonnes (maximum");
     voyage_door.send_through_page_prompt(b"1\r", "Find market", "Cargo Exchange -");
-    voyage_door.send_through_page_prompt(b"\r", "Docked Operations", "Docked Operations");
+    voyage_door.send_through_page_prompt(b"q", "Docked Operations", "Docked Operations");
     voyage_door.send_through_page_prompt(
         b"d",
         "Flight Plan\r\n===========",

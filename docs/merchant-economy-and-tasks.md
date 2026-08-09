@@ -74,6 +74,15 @@ accepted, sourcing/loading, in-transit, settlement, completed, and defaulted
 states. A deadline is a concrete scheduled work item admitted through the
 same ordered queue as player commands and every other simulator action.
 
+Task-ledger offer listings carry contextual availability reasons. The player
+client hides unavailable offers by default, reports the hidden count, and can
+show them with their reasons on request. Server-derived reasons cover current
+hold or berth capacity, required passenger staff, and whether posting the
+collateral would leave enough cash to clear the current berth; the client adds
+current course and deadline feasibility from authoritative course plots. These
+are refreshed observations, not permanent properties of the offer, and they do
+not prohibit a captain from accepting the associated risk.
+
 The accepted record names one performing ship. Freight loading creates a
 task-titled cargo lot; passenger, charter, and passenger-courier work creates
 a manifest with class, head count, origin, destination, and embarkation time.

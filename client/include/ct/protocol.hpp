@@ -706,6 +706,7 @@ struct TaskOffer {
    uint64_t non_delivery_liability_credits;
    uint64_t passenger_grace_seconds;
    uint64_t declared_value_credits;
+   std::vector<std::string> unavailable_reasons;
 };
 
 struct TaskRecord {

@@ -13166,23 +13166,164 @@ impl Store {
             .filter(unsettled)
             .map(|t| t.reserved_cargo_millitons)
             .sum();
+        let ship_reserved_cargo_millitons = tasks
+            .iter()
+            .filter(unsettled)
+            .filter(|task| task.performing_ship_id == ship.ship_id)
+            .map(|task| task.reserved_cargo_millitons)
+            .sum();
         let reserved_passenger_count = tasks
             .iter()
             .filter(unsettled)
             .map(|t| t.reserved_passenger_count)
             .sum();
+        let spec = creation::ship_status_spec(ship.catalog_id)
+            .ok_or(StoreError::Corrupt("ship status data missing"))?;
+        let cargo_used_millitons = ship
+            .cargo
+            .iter()
+            .map(|lot| lot.quantity_millitons)
+            .sum::<u64>();
+        let occupied_regular_berths = ship
+            .passengers
+            .iter()
+            .filter(|manifest| manifest.passenger_class != crate::wire::PassengerClass::Low)
+            .map(|manifest| manifest.passenger_count)
+            .fold(0_u16, u16::saturating_add);
+        let occupied_low_berths = ship
+            .passengers
+            .iter()
+            .filter(|manifest| manifest.passenger_class == crate::wire::PassengerClass::Low)
+            .map(|manifest| manifest.passenger_count)
+            .fold(0_u16, u16::saturating_add);
+        let reserved_regular_berths = tasks
+            .iter()
+            .filter(unsettled)
+            .filter(|task| task.performing_ship_id == ship.ship_id)
+            .filter(|task| task.offer.passenger_class != crate::wire::PassengerClass::Low)
+            .map(|task| task.reserved_passenger_count)
+            .fold(0_u16, u16::saturating_add);
+        let reserved_low_berths = tasks
+            .iter()
+            .filter(unsettled)
+            .filter(|task| task.performing_ship_id == ship.ship_id)
+            .filter(|task| task.offer.passenger_class == crate::wire::PassengerClass::Low)
+            .map(|task| task.reserved_passenger_count)
+            .fold(0_u16, u16::saturating_add);
+        let has_steward = self.ship_has_crew_skill_in(
+            txn,
+            identity,
+            ship.ship_id,
+            crate::wire::SkillId::Etiquette,
+        )?;
+        let has_medic = self.ship_has_crew_skill_in(
+            txn,
+            identity,
+            ship.ship_id,
+            crate::wire::SkillId::Medicine,
+        )?;
+        let current_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        let current_berth_fee = match ship.location {
+            ShipLocationRecord::Docked { arrived_second, .. } => {
+                crate::ship_condition::berth_fee_credits(arrived_second, current_second)
+            }
+            _ => 0,
+        };
+        let unreserved_credits = player.credits.saturating_sub(reserved_credits);
+        let mut local_offers = if matches!(ship.location, ShipLocationRecord::Docked { .. }) {
+            self.local_task_offers_in(txn, identity, &ship)?
+        } else {
+            Vec::new()
+        };
+        for offer in &mut local_offers {
+            let reasons = &mut offer.unavailable_reasons;
+            if tasks
+                .iter()
+                .any(|task| task.offer.offer_id == offer.offer_id)
+            {
+                reasons.push("This offer has already been accepted.".into());
+            }
+            if unreserved_credits >= offer.collateral_credits
+                && unreserved_credits.saturating_sub(offer.collateral_credits) < current_berth_fee
+            {
+                let remaining = unreserved_credits.saturating_sub(offer.collateral_credits);
+                reasons.push(format!(
+                    "Posting the collateral leaves Cr{remaining}; Cr{current_berth_fee} is due to clear the current berth."
+                ));
+            }
+            if offer.kind == crate::wire::TaskKind::Freight {
+                let available = effective_cargo_capacity(&ship, &spec)
+                    .saturating_sub(cargo_used_millitons)
+                    .saturating_sub(ship_reserved_cargo_millitons);
+                if available < offer.quantity_millitons {
+                    reasons.push(format!(
+                        "The contract needs {:.3} t of hold space; only {:.3} t is uncommitted.",
+                        offer.quantity_millitons as f64 / 1_000.0,
+                        available as f64 / 1_000.0
+                    ));
+                }
+            } else if matches!(
+                offer.kind,
+                crate::wire::TaskKind::PurchaseOrder
+                    | crate::wire::TaskKind::ForwardSale
+                    | crate::wire::TaskKind::SupplyCommitment
+            ) && effective_cargo_capacity(&ship, &spec) < offer.quantity_millitons
+            {
+                reasons.push(format!(
+                    "The contract needs {:.3} t of hold capacity; this ship has {:.3} t.",
+                    offer.quantity_millitons as f64 / 1_000.0,
+                    effective_cargo_capacity(&ship, &spec) as f64 / 1_000.0
+                ));
+            }
+            if matches!(
+                offer.kind,
+                crate::wire::TaskKind::Passenger
+                    | crate::wire::TaskKind::Charter
+                    | crate::wire::TaskKind::Courier
+            ) {
+                let (capacity, occupied, reserved, accommodation) =
+                    if offer.passenger_class == crate::wire::PassengerClass::Low {
+                        (
+                            spec.low_berths,
+                            occupied_low_berths,
+                            reserved_low_berths,
+                            "low berths",
+                        )
+                    } else {
+                        (
+                            spec.passenger_berths,
+                            occupied_regular_berths,
+                            reserved_regular_berths,
+                            "passenger berths",
+                        )
+                    };
+                let available = capacity.saturating_sub(occupied).saturating_sub(reserved);
+                if available < offer.passenger_count {
+                    reasons.push(format!(
+                        "The contract needs {} {accommodation}; only {available} are uncommitted.",
+                        offer.passenger_count
+                    ));
+                }
+            }
+            if matches!(
+                offer.passenger_class,
+                crate::wire::PassengerClass::High | crate::wire::PassengerClass::Middle
+            ) && !has_steward
+            {
+                reasons.push("No qualified steward is aboard for high or middle passage.".into());
+            }
+            if offer.passenger_class == crate::wire::PassengerClass::Low && !has_medic {
+                reasons.push("No qualified medical attendant is aboard for low passage.".into());
+            }
+        }
         Ok(crate::wire::TaskLedger {
-            current_second: get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0),
-            available_credits: player.credits.saturating_sub(reserved_credits),
+            current_second,
+            available_credits: unreserved_credits,
             reserved_credits,
             reserved_cargo_millitons,
             reserved_passenger_count,
             tasks,
-            local_offers: if matches!(ship.location, ShipLocationRecord::Docked { .. }) {
-                self.local_task_offers_in(txn, identity, &ship)?
-            } else {
-                Vec::new()
-            },
+            local_offers,
             carriage: self.carriage_in(txn, identity)?,
         })
     }
@@ -15054,36 +15195,6 @@ impl Store {
             ));
         }
         let active = self.task_ledger_in(txn, identity)?;
-        let ship_reserved_cargo = active
-            .tasks
-            .iter()
-            .filter(|task| {
-                task.performing_ship_id == ship.ship_id
-                    && !matches!(
-                        task.state,
-                        crate::wire::TaskState::Completed
-                            | crate::wire::TaskState::Expired
-                            | crate::wire::TaskState::Cancelled
-                            | crate::wire::TaskState::Defaulted
-                    )
-            })
-            .map(|task| task.reserved_cargo_millitons)
-            .sum::<u64>();
-        let ship_reserved_passengers = active
-            .tasks
-            .iter()
-            .filter(|task| {
-                task.performing_ship_id == ship.ship_id
-                    && !matches!(
-                        task.state,
-                        crate::wire::TaskState::Completed
-                            | crate::wire::TaskState::Expired
-                            | crate::wire::TaskState::Cancelled
-                            | crate::wire::TaskState::Defaulted
-                    )
-            })
-            .map(|task| task.reserved_passenger_count)
-            .sum::<u16>();
         if active.tasks.iter().any(|t| t.offer.offer_id == offer_id) {
             return Ok(RuleResult::Rejected(
                 "offer has already been accepted".into(),
@@ -15092,33 +15203,6 @@ impl Store {
         if player.credits.saturating_sub(active.reserved_credits) < offer.collateral_credits {
             return Ok(RuleResult::Rejected(
                 "insufficient unreserved credits for collateral".into(),
-            ));
-        }
-        let spec = creation::ship_status_spec(ship.catalog_id)
-            .ok_or(StoreError::Corrupt("ship status data missing"))?;
-        let used: u64 = ship.cargo.iter().map(|c| c.quantity_millitons).sum();
-        if offer.kind == crate::wire::TaskKind::Freight
-            && effective_cargo_capacity(&ship, &spec)
-                .saturating_sub(used)
-                .saturating_sub(ship_reserved_cargo)
-                < offer.quantity_millitons
-        {
-            return Ok(RuleResult::Rejected(
-                "insufficient uncommitted cargo capacity".into(),
-            ));
-        }
-        if matches!(
-            offer.kind,
-            crate::wire::TaskKind::Passenger
-                | crate::wire::TaskKind::Charter
-                | crate::wire::TaskKind::Courier
-        ) && spec
-            .passenger_berths
-            .saturating_sub(ship_reserved_passengers)
-            < offer.passenger_count
-        {
-            return Ok(RuleResult::Rejected(
-                "insufficient uncommitted passenger accommodation".into(),
             ));
         }
         let task_id = take_id_range(self.meta, txn, META_NEXT_TASK_ID, 1)?;
@@ -22050,6 +22134,7 @@ impl Store {
                     crate::wire::TaskKind::Courier => crate::simulation::SECONDS_PER_DAY,
                     _ => 0,
                 },
+                unavailable_reasons: Vec::new(),
             };
             let stored = StoredTaskOffer {
                 offer,
@@ -29206,6 +29291,16 @@ fn encode_task_ledger_into(
         bytes.extend_from_slice(&n.to_be_bytes());
     }
     bytes.push(u8::from(c.accept_electronic_mail));
+    bytes.push(1);
+    bytes.extend_from_slice(&(ledger.local_offers.len() as u32).to_be_bytes());
+    for offer in &ledger.local_offers {
+        let reason_count = u16::try_from(offer.unavailable_reasons.len())
+            .map_err(|_| StoreError::Corrupt("too many offer unavailability reasons"))?;
+        bytes.extend_from_slice(&reason_count.to_be_bytes());
+        for reason in &offer.unavailable_reasons {
+            encode_text(bytes, reason)?;
+        }
+    }
     Ok(())
 }
 fn decode_task_ledger(d: &mut Decoder<'_>) -> Result<crate::wire::TaskLedger, StoreError> {
@@ -29232,6 +29327,22 @@ fn decode_task_ledger(d: &mut Decoder<'_>) -> Result<crate::wire::TaskLedger, St
         low_berths: d.u16()?,
         accept_electronic_mail: d.u8()? != 0,
     };
+    if !d.remaining().is_empty() {
+        if d.u8()? != 1 {
+            return Err(StoreError::Corrupt("unknown task-ledger extension version"));
+        }
+        let offer_count = d.u32()? as usize;
+        if offer_count != local_offers.len() {
+            return Err(StoreError::Corrupt("task-ledger offer extension mismatch"));
+        }
+        for offer in &mut local_offers {
+            let reason_count = d.u16()? as usize;
+            offer.unavailable_reasons.reserve(reason_count);
+            for _ in 0..reason_count {
+                offer.unavailable_reasons.push(d.text()?);
+            }
+        }
+    }
     Ok(crate::wire::TaskLedger {
         current_second,
         available_credits,
@@ -30664,6 +30775,7 @@ fn decode_task_offer(decoder: &mut Decoder<'_>) -> Result<crate::wire::TaskOffer
         non_delivery_liability_credits: decoder.u64()?,
         passenger_grace_seconds: decoder.u64()?,
         declared_value_credits: decoder.u64()?,
+        unavailable_reasons: Vec::new(),
     })
 }
 
@@ -35626,6 +35738,7 @@ mod tests {
             non_delivery_liability_credits: 30_000,
             passenger_grace_seconds: 0,
             declared_value_credits: 30_000,
+            unavailable_reasons: Vec::new(),
         }
     }
 
@@ -41637,6 +41750,84 @@ mod tests {
     }
 
     #[test]
+    fn task_ledger_marks_offers_that_leave_insufficient_departure_cash_and_hold_capacity() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let (player, ship) = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let mut txn = store.env.write_txn().unwrap();
+        let now = get_meta_u64(store.meta, &txn, META_GAME_SECOND)
+            .unwrap()
+            .unwrap_or(0);
+        let (offer_id, _) = store
+            .simulation
+            .dispatch_message(
+                &mut txn,
+                now,
+                ship.system_id,
+                crate::simulation::MessageClass::ContractOffer,
+                crate::simulation::MessageImportance::Notable,
+                "Oversized fixture contract",
+                "A fixture instrument is attached.",
+                &[],
+            )
+            .unwrap();
+        let mut offer = test_task_offer(
+            offer_id,
+            ship.system_id,
+            ship.system_id,
+            crate::wire::TaskKind::Freight,
+        );
+        offer.quantity_millitons = u64::MAX;
+        offer.collateral_credits = player.credits;
+        offer.expires_second = now.saturating_add(crate::simulation::SECONDS_PER_DAY);
+        store
+            .task_offers
+            .put(
+                &mut txn,
+                &offer_id.to_be_bytes(),
+                &encode_stored_task_offer(&StoredTaskOffer {
+                    offer,
+                    claimed_by: None,
+                    claimed_task_id: 0,
+                    closure_message_id: 0,
+                })
+                .unwrap(),
+            )
+            .unwrap();
+        txn.commit().unwrap();
+
+        let ledger = store
+            .task_ledger_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let listed = ledger
+            .local_offers
+            .iter()
+            .find(|candidate| candidate.offer_id == offer_id)
+            .unwrap();
+        assert!(
+            listed
+                .unavailable_reasons
+                .iter()
+                .any(|reason| reason.contains("due to clear the current berth"))
+        );
+        assert!(
+            listed
+                .unavailable_reasons
+                .iter()
+                .any(|reason| reason.contains("hold space"))
+        );
+
+        let mut encoded = Vec::new();
+        encode_task_ledger_into(&mut encoded, &ledger).unwrap();
+        let mut decoder = Decoder::new(&encoded);
+        assert_eq!(decode_task_ledger(&mut decoder).unwrap(), ledger);
+        decoder.finish().unwrap();
+    }
+
+    #[test]
     fn remote_claim_races_are_physical_private_and_custody_waits_for_the_reply() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
@@ -42630,6 +42821,7 @@ mod tests {
             non_delivery_liability_credits: 10_000,
             passenger_grace_seconds: 0,
             declared_value_credits: 0,
+            unavailable_reasons: Vec::new(),
         };
         let stored = StoredTask {
             identity: identity(),

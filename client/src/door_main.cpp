@@ -2172,11 +2172,17 @@ void render_managed_crew_roster(
       door_option_prompt({
          "[Letter] Crew member",
          "[< >] Page",
-         "[Enter] Console",
+         "[Enter] Refresh",
+         "[Q] Console",
          "[?] Help",
       });
    } else {
-      door_prompt("\n\r[Letter] Crew member  [Enter] Console  [?] Help\n\r");
+      door_option_prompt({
+         "[Letter] Crew member",
+         "[Enter] Refresh",
+         "[Q] Console",
+         "[?] Help",
+      });
    }
 }
 
@@ -2320,7 +2326,7 @@ void show_crew_member(
    ct::CommandIdGenerator& random,
    uint64_t& request_id,
    ct::CrewManagementSnapshot& snapshot,
-   const size_t index)
+   size_t index)
 {
    const std::vector<ct::SkillDefinition> definitions;
    while(true) {
@@ -2408,11 +2414,27 @@ void show_crew_member(
          "[M] Medical",
          "[V] Transfer",
          "[D] Dismiss",
-         "[Enter] Roster",
+         "[Enter] Refresh",
+         "[Q] Roster",
          "[?] Help",
       });
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
+         const auto person_id = member.person_id;
+         snapshot = ct::get_crew_management(
+            connection, session_epoch, random_command_id(random), request_id++);
+         const auto refreshed = std::find_if(
+            snapshot.members.begin(), snapshot.members.end(),
+            [person_id](const auto& candidate) {
+               return candidate.person_id == person_id;
+            });
+         if(refreshed == snapshot.members.end()) {
+            return;
+         }
+         index = static_cast<size_t>(refreshed - snapshot.members.begin());
+         continue;
+      }
+      if(key == 'q' || key == 'Q') {
          return;
       }
       if(key == 't' || key == 'T') {
@@ -2526,13 +2548,23 @@ void show_crew_manager(
       output().rows() > reserved_rows ? output().rows() - reserved_rows : 1;
    const size_t page_size =
       std::max<size_t>(1, available_rows / rows_per_entry);
-   const size_t page_count =
-      std::max<size_t>(1, (snapshot.members.size() + page_size - 1) / page_size);
    size_t page = 0;
    while(true) {
+      const size_t page_count =
+         std::max<size_t>(1, (snapshot.members.size() + page_size - 1) / page_size);
+      page = std::min(page, page_count - 1);
       render_managed_crew_roster(snapshot, page);
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
+         snapshot = ct::get_crew_management(
+            connection, session_epoch, random_command_id(random), request_id++);
+         if(snapshot.members.size() > 26) {
+            throw std::runtime_error(
+               "crew manager supports at most 26 named crew records");
+         }
+         continue;
+      }
+      if(key == 'q' || key == 'Q') {
          return;
       }
       if(key == '>' && page + 1 < page_count) {
@@ -2565,61 +2597,88 @@ void print_millitons(const uint64_t millitons)
 }
 
 void show_ship_subsystem(
-   const ct::ShipSubsystemStatus& subsystem)
+   ct::TlsConnection& connection,
+   const uint64_t session_epoch,
+   ct::CommandIdGenerator& random,
+   uint64_t& request_id,
+   ct::ShipStatusSnapshot& snapshot,
+   const uint16_t subsystem_id)
 {
    const HelpScope help_scope(ct::DoorHelpTopic::Ship);
-   od_clr_scr();
-   door_heading("%s\n\r", safe_field(subsystem.label).c_str());
-   door_heading(
-      "%s\n\r\n\r",
-      std::string(safe_field(subsystem.label).size(), '=').c_str());
-   door_label("Underlying damage: ");
-   door_number(
-      "%u/%u hits\n\r", subsystem.sustained_hits, subsystem.maximum_hits);
-   door_label("Battlefield coverage: ");
-   door_number("%u hits\n\r", subsystem.battlefield_repair_hits);
-   door_label("Effective during encounter: ");
-   door_number("%u hits\n\r", subsystem.effective_hits);
-   door_label("Current effect: ");
-   if(subsystem.effective_hits == 0) {
-      door_identifier(
-         "%s\n\r", safe_field(subsystem.operational_effect).c_str());
-   } else {
-      door_warning(
-         "%s\n\r", safe_field(subsystem.operational_effect).c_str());
-   }
-   od_printf("\n\r");
-   door_label("Last proper repair: ");
-   door_number("%s\n\r", game_date(subsystem.last_proper_repair_second).c_str());
-   door_label("Installed: ");
-   door_number("%s\n\r", game_date(subsystem.installed_second).c_str());
-   door_label("Last refit: ");
-   door_number("%s\n\r", game_date(subsystem.last_refit_second).c_str());
-   door_label("Recorded service: ");
-   door_number(
-      "%u months / %u duty cycles\n\r",
-      subsystem.calendar_age_months,
-      subsystem.duty_cycles);
-   if(subsystem.neglect_damage_hits > 0) {
-      door_warning(
-         "\n\r%u underlying hit(s) came from neglected routine upkeep.\n\r",
-         subsystem.neglect_damage_hits);
-   }
-   if(subsystem.battlefield_repair_hits > 0) {
-      door_warning(
-         "\n\rBattlefield repair only masks underlying damage. It expires "
-         "when the encounter ends and does not count as maintenance.\n\r");
-   }
-   door_prompt("\n\r[Enter] Subsystem list  [?] Help\n\r");
    while(true) {
-      const auto key = od_get_key(TRUE);
-      if(key == '\r' || key == '\n') {
+      const auto found = std::find_if(
+         snapshot.subsystems.begin(), snapshot.subsystems.end(),
+         [subsystem_id](const auto& candidate) {
+            return candidate.subsystem_id == subsystem_id;
+         });
+      if(found == snapshot.subsystems.end()) {
          return;
+      }
+      const auto& subsystem = *found;
+      od_clr_scr();
+      door_heading("%s\n\r", safe_field(subsystem.label).c_str());
+      door_heading(
+         "%s\n\r\n\r",
+         std::string(safe_field(subsystem.label).size(), '=').c_str());
+      door_label("Underlying damage: ");
+      door_number(
+         "%u/%u hits\n\r", subsystem.sustained_hits, subsystem.maximum_hits);
+      door_label("Battlefield coverage: ");
+      door_number("%u hits\n\r", subsystem.battlefield_repair_hits);
+      door_label("Effective during encounter: ");
+      door_number("%u hits\n\r", subsystem.effective_hits);
+      door_label("Current effect: ");
+      if(subsystem.effective_hits == 0) {
+         door_identifier(
+            "%s\n\r", safe_field(subsystem.operational_effect).c_str());
+      } else {
+         door_warning(
+            "%s\n\r", safe_field(subsystem.operational_effect).c_str());
+      }
+      od_printf("\n\r");
+      door_label("Last proper repair: ");
+      door_number("%s\n\r", game_date(subsystem.last_proper_repair_second).c_str());
+      door_label("Installed: ");
+      door_number("%s\n\r", game_date(subsystem.installed_second).c_str());
+      door_label("Last refit: ");
+      door_number("%s\n\r", game_date(subsystem.last_refit_second).c_str());
+      door_label("Recorded service: ");
+      door_number(
+         "%u months / %u duty cycles\n\r",
+         subsystem.calendar_age_months,
+         subsystem.duty_cycles);
+      if(subsystem.neglect_damage_hits > 0) {
+         door_warning(
+            "\n\r%u underlying hit(s) came from neglected routine upkeep.\n\r",
+            subsystem.neglect_damage_hits);
+      }
+      if(subsystem.battlefield_repair_hits > 0) {
+         door_warning(
+            "\n\rBattlefield repair only masks underlying damage. It expires "
+            "when the encounter ends and does not count as maintenance.\n\r");
+      }
+      door_option_prompt({
+         "[Enter] Refresh",
+         "[Q] Subsystem list",
+         "[?] Help",
+      });
+      const auto key = od_get_key(TRUE);
+      if(key == 'q' || key == 'Q') {
+         return;
+      }
+      if(key == '\r' || key == '\n') {
+         snapshot = ct::get_ship_status(
+            connection, session_epoch, random_command_id(random), request_id++);
       }
    }
 }
 
-void show_ship_subsystems(const ct::ShipStatusSnapshot& snapshot)
+void show_ship_subsystems(
+   ct::TlsConnection& connection,
+   const uint64_t session_epoch,
+   ct::CommandIdGenerator& random,
+   uint64_t& request_id,
+   ct::ShipStatusSnapshot& snapshot)
 {
    const HelpScope help_scope(ct::DoorHelpTopic::Ship);
    const size_t reserved_rows = 7;
@@ -2661,18 +2720,25 @@ void show_ship_subsystems(const ct::ShipStatusSnapshot& snapshot)
          door_option_prompt({
             "[Letter] Details",
             "[< >] Page",
-            "[Enter] Ship status",
+            "[Enter] Refresh",
+            "[Q] Ship status",
             "[?] Help",
          });
       } else {
          door_option_prompt({
             "[Letter] Details",
-            "[Enter] Ship status",
+            "[Enter] Refresh",
+            "[Q] Ship status",
             "[?] Help",
          });
       }
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
+         snapshot = ct::get_ship_status(
+            connection, session_epoch, random_command_id(random), request_id++);
+         continue;
+      }
+      if(key == 'q' || key == 'Q') {
          return;
       }
       if(key == '>' && page + 1 < page_count) {
@@ -2686,7 +2752,13 @@ void show_ship_subsystems(const ct::ShipStatusSnapshot& snapshot)
             const auto index =
                first + static_cast<size_t>(normalized - 'A');
             if(index < last) {
-               show_ship_subsystem(snapshot.subsystems[index]);
+               show_ship_subsystem(
+                  connection,
+                  session_epoch,
+                  random,
+                  request_id,
+                  snapshot,
+                  snapshot.subsystems[index].subsystem_id);
             }
          }
       }
@@ -2893,13 +2965,34 @@ void show_fleet_manager(
                     safe_field(ship.location).c_str(),
                     safe_field(ship.commanding_person_name).c_str());
       }
-      door_prompt("\n\r[Number] Vessel  [Enter] Ship status  [?] Help\n\r");
-      const auto choice = input_number(
-         "Vessel", 1, static_cast<unsigned>(fleet.ships.size()));
-      if(!choice) {
+      door_prompt("\n\r[Number] Vessel  [Enter] Refresh  [Q] Ship status  [?] Help: ");
+      std::array<char, 16> input{};
+      od_input_str(input.data(), static_cast<INT>(input.size() - 1), 32, 255);
+      output().reset_paging();
+      output().resume_paging();
+      if(input[0] == '\0') {
+         fleet = ct::get_fleet(
+                    connection, session_epoch, random_command_id(random), request_id++);
+         continue;
+      }
+      if(input[0] == '?' && input[1] == '\0') {
+         show_context_help();
+         continue;
+      }
+      if((input[0] == 'q' || input[0] == 'Q') && input[1] == '\0') {
          return;
       }
-      const size_t index = *choice - 1;
+      unsigned choice = 0;
+      const auto [end, error] = std::from_chars(
+         input.data(), input.data() + std::strlen(input.data()), choice);
+      if(error != std::errc() || end != input.data() + std::strlen(input.data()) ||
+            choice < 1 || choice > fleet.ships.size()) {
+         door_error("Select a vessel number from the roster.\n\r");
+         wait_for_enter();
+         continue;
+      }
+      size_t index = choice - 1;
+      const auto selected_ship_id = fleet.ships[index].ship_id;
       while(true) {
          const auto& ship = fleet.ships[index];
          od_clr_scr();
@@ -2935,9 +3028,23 @@ void show_fleet_manager(
          if(!ship.active) {
             door_prompt("[C] Assume command  [A] Assign captain  ");
          }
-         door_prompt("[T] Transfer stores  [Enter] Roster  [?] Help\n\r");
+         door_prompt("[T] Transfer stores  [Enter] Refresh  [Q] Roster  [?] Help\n\r");
          const auto key = od_get_key(TRUE);
          if(key == '\r' || key == '\n') {
+            fleet = ct::get_fleet(
+                       connection, session_epoch, random_command_id(random), request_id++);
+            const auto refreshed = std::find_if(
+               fleet.ships.begin(), fleet.ships.end(),
+               [selected_ship_id](const auto& candidate) {
+                  return candidate.ship_id == selected_ship_id;
+               });
+            if(refreshed == fleet.ships.end()) {
+               break;
+            }
+            index = static_cast<size_t>(refreshed - fleet.ships.begin());
+            continue;
+         }
+         if(key == 'q' || key == 'Q') {
             break;
          }
          if((key == 'c' || key == 'C') && !ship.active) {
@@ -3129,15 +3236,22 @@ void show_ship_manager(
          "[F] Vessel roster",
          "[P] Proper repair",
          "[R] Begin refit",
-         "[Enter] Console",
+         "[Enter] Refresh",
+         "[Q] Console",
          "[?] Help",
       });
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
+         snapshot = ct::get_ship_status(
+            connection, session_epoch, random_command_id(random), request_id++);
+         continue;
+      }
+      if(key == 'q' || key == 'Q') {
          return;
       }
       if(key == 's' || key == 'S') {
-         show_ship_subsystems(snapshot);
+         show_ship_subsystems(
+            connection, session_epoch, random, request_id, snapshot);
       } else if(key == 'f' || key == 'F') {
          show_fleet_manager(connection, session_epoch, random, request_id);
          snapshot = ct::get_ship_status(
@@ -3328,10 +3442,44 @@ void print_pickup_slack(const PickupSlack& slack)
    }
 }
 
+std::vector<std::string> task_offer_unavailable_reasons(
+   const ct::TaskOffer& offer,
+   const PickupRouteEstimate& pickup_route,
+   const PickupRouteEstimate* delivery_route)
+{
+   auto reasons = offer.unavailable_reasons;
+   const auto slack = pickup_slack(offer, pickup_route);
+   if(!slack.available) {
+      reasons.emplace_back("No executable course reaches the pickup system.");
+   } else if(slack.late) {
+      reasons.emplace_back(
+         "The fastest course reaches the pickup system after the offer closes.");
+   }
+   if(delivery_route != nullptr) {
+      if(!delivery_route->available) {
+         reasons.emplace_back("No executable course reaches the delivery system.");
+      } else {
+         const auto arrival = delivery_route->current_second >
+                                 std::numeric_limits<uint64_t>::max() -
+                                    delivery_route->elapsed_seconds
+                              ? std::numeric_limits<uint64_t>::max()
+                              : delivery_route->current_second +
+                                 delivery_route->elapsed_seconds;
+         if(arrival > offer.delivery_deadline_second) {
+            reasons.emplace_back(
+               "The fastest course reaches the delivery system after the deadline.");
+         }
+      }
+   }
+   return reasons;
+}
+
 void show_task_offer_detail(const ct::TaskOffer& offer,
-                            const PickupSlack& slack)
+                            const PickupSlack& slack,
+                            const std::vector<std::string>& unavailable_reasons)
 {
    const HelpScope help_scope(ct::DoorHelpTopic::Tasks);
+   while(true) {
    od_clr_scr();
    door_heading("Signed Offer Instrument\n\r=======================\n\r\n\r");
    door_label("Service:       ");
@@ -3382,13 +3530,25 @@ void show_task_offer_detail(const ct::TaskOffer& offer,
       door_number("%llu days\n\r", static_cast<unsigned long long>(offer.recurrence_seconds /
             (24 * 60 * 60)));
    }
-   wait_for_enter("Return");
+   if(!unavailable_reasons.empty()) {
+      door_warning("\n\rUnavailable to this captain:\n\r");
+      for(const auto& reason : unavailable_reasons) {
+         door_warning("  - %s\n\r", safe_field(reason).c_str());
+      }
+   }
+   door_prompt("\n\r[Enter] Refresh  [Q] Task ledger  [?] Help\n\r");
+   const auto key = od_get_key(TRUE);
+   if(key == 'q' || key == 'Q') {
+      return;
+   }
+   }
 }
 
 void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epoch,
                        ct::CommandIdGenerator& random, uint64_t& request_id)
 {
    const HelpScope help_scope(ct::DoorHelpTopic::Tasks);
+   bool show_unavailable = false;
    while(true) {
       auto ledger = ct::get_task_ledger(connection, session_epoch, random_command_id(random),
                                         request_id++);
@@ -3442,6 +3602,78 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
                .elapsed_seconds = plot.fastest.elapsed_seconds,
             });
       }
+      std::unordered_map<uint64_t, PickupRouteEstimate> delivery_routes;
+      for(const auto& offer : ledger.local_offers) {
+         if(offer.origin_system_id != charts.current_system_id ||
+               delivery_routes.contains(offer.destination_system_id)) {
+            continue;
+         }
+         if(offer.destination_system_id == charts.current_system_id) {
+            delivery_routes.emplace(
+               offer.destination_system_id,
+               PickupRouteEstimate{
+                  .available = true,
+                  .current_second = ledger.current_second,
+                  .elapsed_seconds = 0,
+               });
+            continue;
+         }
+         const auto destination_known = std::any_of(
+            charts.systems.begin(), charts.systems.end(),
+            [&offer](const auto& system) {
+               return system.system_id == offer.destination_system_id;
+            });
+         if(!destination_known) {
+            delivery_routes.emplace(
+               offer.destination_system_id,
+               PickupRouteEstimate{
+                  .available = false,
+                  .current_second = ledger.current_second,
+                  .elapsed_seconds = 0,
+               });
+            continue;
+         }
+         const auto plot = ct::plot_course(
+            connection,
+            session_epoch,
+            charts.current_system_id,
+            offer.destination_system_id,
+            true,
+            random_command_id(random),
+            request_id++);
+         delivery_routes.emplace(
+            offer.destination_system_id,
+            PickupRouteEstimate{
+               .available = plot.fastest.available,
+               .current_second = plot.current_game_second,
+               .elapsed_seconds = plot.fastest.elapsed_seconds,
+            });
+      }
+      struct ListedOffer {
+         const ct::TaskOffer* offer;
+         PickupSlack pickup;
+         std::vector<std::string> unavailable_reasons;
+      };
+      std::vector<ListedOffer> available_offers;
+      std::vector<ListedOffer> unavailable_offers;
+      for(const auto& offer : ledger.local_offers) {
+         const auto delivery = delivery_routes.find(offer.destination_system_id);
+         auto listed = ListedOffer{
+            .offer = &offer,
+            .pickup = pickup_slack(offer, pickup_routes.at(offer.origin_system_id)),
+            .unavailable_reasons = task_offer_unavailable_reasons(
+               offer,
+               pickup_routes.at(offer.origin_system_id),
+               delivery == delivery_routes.end() ? nullptr : &delivery->second),
+         };
+         if(listed.unavailable_reasons.empty()) {
+            available_offers.push_back(std::move(listed));
+         } else {
+            unavailable_offers.push_back(std::move(listed));
+         }
+      }
+      const auto& displayed_offers =
+         show_unavailable ? unavailable_offers : available_offers;
       const auto destination_name = [&charts](const uint64_t system_id) {
          const auto found = std::find_if(
             charts.systems.begin(), charts.systems.end(),
@@ -3496,9 +3728,23 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
          door_label("; mail ");
          door_value("%s\n\r", ledger.carriage.accept_electronic_mail ? "accepted" : "declined");
       }
-      door_identifier("\n\rOffers available here\n\r");
-      for(size_t i = 0; i < ledger.local_offers.size(); ++i) {
-         const auto& offer = ledger.local_offers[i];
+      if(show_unavailable) {
+         door_identifier("\n\rOffers unavailable to this captain");
+         door_label(" (");
+         door_number("%zu", available_offers.size());
+         door_label(" available hidden)\n\r");
+      } else {
+         door_identifier("\n\rOffers available here");
+         door_label(" (");
+         door_number("%zu", unavailable_offers.size());
+         door_label(" unavailable hidden)\n\r");
+      }
+      if(displayed_offers.empty()) {
+         door_information("  None\n\r");
+      }
+      for(size_t i = 0; i < displayed_offers.size(); ++i) {
+         const auto& listed = displayed_offers[i];
+         const auto& offer = *listed.offer;
          door_number("%zu", i + 1);
          door_label(". ");
          door_value("%s", safe_field(offer.title).c_str());
@@ -3518,35 +3764,60 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
             "%s",
             safe_field(destination_name(offer.origin_system_id)).c_str());
          door_label(" slack: ");
-         print_pickup_slack(pickup_slack(
-            offer, pickup_routes.at(offer.origin_system_id)));
+         print_pickup_slack(listed.pickup);
          od_printf("\n\r");
+         for(const auto& reason : listed.unavailable_reasons) {
+            door_warning("   - %s\n\r", safe_field(reason).c_str());
+         }
       }
-      door_option_prompt({
-         "[I] Inspect offer",
-         "[A] Accept offer",
-         "[M] Manage task",
-         "[C] Carriage declaration",
-         "[Enter] Previous",
-         "[?] Help",
-      });
+      if(show_unavailable) {
+         door_option_prompt({
+            "[I] Inspect offer",
+            "[A] Accept offer",
+            "[V] Available offers",
+            "[M] Manage task",
+            "[C] Carriage declaration",
+            "[Enter] Refresh",
+            "[Q] Console",
+            "[?] Help",
+         });
+      } else {
+         door_option_prompt({
+            "[I] Inspect offer",
+            "[A] Accept offer",
+            "[V] Unavailable offers",
+            "[M] Manage task",
+            "[C] Carriage declaration",
+            "[Enter] Refresh",
+            "[Q] Console",
+            "[?] Help",
+         });
+      }
       const auto key = od_get_key(TRUE);
-      if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
+      if(key == '\r' || key == '\n') {
+         continue;
+      }
+      if(key == 'q' || key == 'Q') {
          return;
       }
-      if((key == 'i' || key == 'I') && !ledger.local_offers.empty()) {
-         const auto selected = input_number("Offer", 1, static_cast<unsigned>(ledger.local_offers.size()));
+      if(key == 'v' || key == 'V') {
+         show_unavailable = !show_unavailable;
+      } else if((key == 'i' || key == 'I') && !displayed_offers.empty()) {
+         const auto selected = input_number(
+            "Offer", 1, static_cast<unsigned>(displayed_offers.size()));
          if(selected) {
-            const auto& offer = ledger.local_offers[*selected - 1];
+            const auto& listed = displayed_offers[*selected - 1];
+            const auto& offer = *listed.offer;
             show_task_offer_detail(
                offer,
-               pickup_slack(
-                  offer, pickup_routes.at(offer.origin_system_id)));
+               listed.pickup,
+               listed.unavailable_reasons);
          }
-      } else if((key == 'a' || key == 'A') && !ledger.local_offers.empty()) {
-         const auto selected = input_number("Offer", 1, static_cast<unsigned>(ledger.local_offers.size()));
+      } else if((key == 'a' || key == 'A') && !displayed_offers.empty()) {
+         const auto selected = input_number(
+            "Offer", 1, static_cast<unsigned>(displayed_offers.size()));
          if(selected) {
-            const auto& offer = ledger.local_offers[*selected - 1];
+            const auto& offer = *displayed_offers[*selected - 1].offer;
             try {
                const auto updated = ct::accept_task_offer(
                   connection, session_epoch, offer.offer_id, offer.revision,
@@ -3719,9 +3990,14 @@ void show_finance(
       if(finance.in_default && finance.principal_credits > 0) {
          door_prompt("  [K] Petition for bankruptcy");
       }
-      door_prompt("  [Enter] Return  [?] Help\n\r");
+      door_prompt("  [Enter] Refresh  [Q] Console  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
-      if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
+      if(key == '\r' || key == '\n') {
+         finance = ct::get_finance(
+            connection, session_epoch, random_command_id(random), request_id++);
+         continue;
+      }
+      if(key == 'q' || key == 'Q') {
          return;
       }
       if((key == 'k' || key == 'K') && finance.in_default
@@ -3794,9 +4070,12 @@ void run_shipyard_market(ct::TlsConnection& connection, const uint64_t epoch,
          }
          door_label("\n\r");
       }
-      door_prompt("\n\r[B] Buy with trade-in  [Enter] Port  [?] Help\n\r");
+      door_prompt("\n\r[B] Buy with trade-in  [Enter] Refresh  [Q] Port  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
-      if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
+      if(key == '\r' || key == '\n') {
+         continue;
+      }
+      if(key == 'q' || key == 'Q') {
          return;
       }
       if((key == 'b' || key == 'B') && !market.offers.empty()) {
@@ -3840,11 +4119,15 @@ void run_crew_exchange(ct::TlsConnection& connection, const uint64_t epoch,
       door_option_prompt({
          "[H] Hire",
          "[R] Ship roster and personnel actions",
-         "[Enter] Port",
+         "[Enter] Refresh",
+         "[Q] Port",
          "[?] Help",
       });
       const auto key = od_get_key(TRUE);
-      if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
+      if(key == '\r' || key == '\n') {
+         continue;
+      }
+      if(key == 'q' || key == 'Q') {
          return;
       }
       if((key == 'h' || key == 'H') && !market.candidates.empty()) {
@@ -3941,6 +4224,7 @@ void show_known_universe_manager(
 std::optional<ct::MessageActionKind> show_message_detail(const ct::MessageItem& item)
 {
    const HelpScope help_scope(ct::DoorHelpTopic::Messages);
+   while(true) {
    od_clr_scr();
    door_heading("Communications Record\n\r");
    door_heading("=====================\n\r\n\r");
@@ -3967,44 +4251,46 @@ std::optional<ct::MessageActionKind> show_message_detail(const ct::MessageItem& 
    od_printf("\n\r");
    print_wrapped(item.body, "");
    if(item.offer_available && item.offer_id.has_value()) {
-      door_prompt("\n\r[A] Claim signed offer  [Enter] Return  [?] Help\n\r");
+      door_prompt("\n\r[A] Claim signed offer  [Enter] Refresh  [Q] Messages  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key == 'a' || key == 'A') {
          return ct::MessageActionKind::ClaimOffer;
       }
+      if(key == 'q' || key == 'Q') {
+         return std::nullopt;
+      }
+      continue;
+   }
+   const auto action = item.action_kind;
+   switch(action) {
+   case ct::MessageActionKind::ReviewTask:
+      door_prompt("\n\r[T] Open task ledger  [Enter] Refresh  [Q] Messages  [?] Help\n\r");
+      break;
+   case ct::MessageActionKind::ReviewFinance:
+      door_prompt("\n\r[B] Open accounts ledger  [Enter] Refresh  [Q] Messages  [?] Help\n\r");
+      break;
+   case ct::MessageActionKind::ReviewOperations:
+      door_prompt("\n\r[O] Open operations ledger  [Enter] Refresh  [Q] Messages  [?] Help\n\r");
+      break;
+   case ct::MessageActionKind::ReviewMapping:
+      door_prompt("\n\r[K] Open carried charts  [Enter] Refresh  [Q] Messages  [?] Help\n\r");
+      break;
+   case ct::MessageActionKind::ClaimOffer:
+   case ct::MessageActionKind::None:
+      door_prompt("\n\r[Enter] Refresh  [Q] Messages  [?] Help\n\r");
+      break;
+   }
+   const auto key = od_get_key(TRUE);
+   if(key == 'q' || key == 'Q') {
       return std::nullopt;
    }
-   if(item.action_kind == ct::MessageActionKind::ReviewTask) {
-      door_prompt("\n\r[T] Open task ledger  [Enter] Return  [?] Help\n\r");
-      const auto key = od_get_key(TRUE);
-      return key == 't' || key == 'T'
-             ? std::optional{ct::MessageActionKind::ReviewTask}
-             : std::nullopt;
+   if((action == ct::MessageActionKind::ReviewTask && (key == 't' || key == 'T')) ||
+         (action == ct::MessageActionKind::ReviewFinance && (key == 'b' || key == 'B')) ||
+         (action == ct::MessageActionKind::ReviewOperations && (key == 'o' || key == 'O')) ||
+         (action == ct::MessageActionKind::ReviewMapping && (key == 'k' || key == 'K'))) {
+      return action;
    }
-   if(item.action_kind == ct::MessageActionKind::ReviewFinance) {
-      door_prompt("\n\r[B] Open accounts ledger  [Enter] Return  [?] Help\n\r");
-      const auto key = od_get_key(TRUE);
-      return key == 'b' || key == 'B'
-             ? std::optional{ct::MessageActionKind::ReviewFinance}
-             : std::nullopt;
    }
-   if(item.action_kind == ct::MessageActionKind::ReviewOperations) {
-      door_prompt(
-         "\n\r[O] Open operations ledger  [Enter] Return  [?] Help\n\r");
-      const auto key = od_get_key(TRUE);
-      return key == 'o' || key == 'O'
-             ? std::optional{ct::MessageActionKind::ReviewOperations}
-             : std::nullopt;
-   }
-   if(item.action_kind == ct::MessageActionKind::ReviewMapping) {
-      door_prompt("\n\r[K] Open carried charts  [Enter] Return  [?] Help\n\r");
-      const auto key = od_get_key(TRUE);
-      return key == 'k' || key == 'K'
-             ? std::optional{ct::MessageActionKind::ReviewMapping}
-             : std::nullopt;
-   }
-   wait_for_enter("Return");
-   return std::nullopt;
 }
 
 void claim_message_offer(
@@ -4103,10 +4389,13 @@ void configure_message_filters(
          door_label(" at least ");
          door_value("%s\n\r", message_importance_name(filter.minimum_importance));
       }
-      door_prompt("\n\r[1-5] Change service  [Q] Messages  [?] Help\n\r");
+      door_prompt("\n\r[1-5] Change service  [Enter] Refresh  [Q] Messages  [?] Help\n\r");
       const auto selected = od_get_key(TRUE);
-      if(selected == 'q' || selected == 'Q' || selected == '\r' || selected == '\n') {
+      if(selected == 'q' || selected == 'Q') {
          return;
+      }
+      if(selected == '\r' || selected == '\n') {
+         continue;
       }
       const auto index = static_cast<size_t>(selected - '1');
       if(selected < '1' || selected > '5' || index >= snapshot.filters.size()) {
@@ -4254,6 +4543,7 @@ void show_message_manager(
          "[R] Archive",
          "[F] Filters",
          "[C] Compose",
+         "[Enter] Refresh",
          "[Q] Console",
          "[?] Help",
       });
@@ -4306,7 +4596,9 @@ void show_message_manager(
                   classification);
             }
          }
-      } else if(key == 'q' || key == 'Q' || key == '\r' || key == '\n') {
+      } else if(key == '\r' || key == '\n') {
+         continue;
+      } else if(key == 'q' || key == 'Q') {
          return;
       }
    }
@@ -4498,6 +4790,7 @@ void show_planning_system_dossier(
    const ct::KnownSystemSummary& system,
    const double distance_parsecs)
 {
+   while(true) {
    od_clr_scr();
    door_heading("System Dossier - ");
    door_identifier("%s\n\r", safe_field(system.system_name).c_str());
@@ -4537,7 +4830,12 @@ void show_planning_system_dossier(
    door_information(
       "\n\rPort, population, technical, and gas-giant records may have "
       "changed since this chart was received.\n\r");
-   wait_for_enter("Destination list");
+   door_prompt("\n\r[Enter] Refresh  [Q] Destination list  [?] Help\n\r");
+   const auto key = od_get_key(TRUE);
+   if(key == 'q' || key == 'Q') {
+      return;
+   }
+   }
 }
 
 std::optional<const ct::KnownSystemSummary*> select_known_primary(
@@ -4777,11 +5075,15 @@ void show_course_plot(const ct::CoursePlot& plot)
          "[F] Fastest",
          "[C] Cheapest",
          "[< >] Page",
-         "[Enter] Charts",
+         "[Enter] Refresh",
+         "[Q] Charts",
          "[?] Help",
       }, false);
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
+         continue;
+      }
+      if(key == 'q' || key == 'Q') {
          return;
       }
       if(key == 'f' || key == 'F') {
@@ -4933,11 +5235,17 @@ void show_known_universe_manager(
          "[M] Markets",
          "[J] Direct/all",
          "[< >] Page",
-         "[Enter] Console",
+         "[Enter] Refresh",
+         "[Q] Console",
          "[?] Help",
       }, false);
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
+         snapshot = ct::get_known_destinations(
+            connection, session_epoch, random_command_id(random), request_id++);
+         continue;
+      }
+      if(key == 'q' || key == 'Q') {
          return;
       }
       if(key == 'j' || key == 'J') {
@@ -4950,25 +5258,33 @@ void show_known_universe_manager(
          continue;
       }
       if(key == 'm' || key == 'M') {
-         const auto knowledge = ct::get_market_knowledge(connection, session_epoch,
-            random_command_id(random), request_id++);
-         od_clr_scr();
-         door_heading("Carried Market Reports\n\r======================\n\r\n\r");
-         if(knowledge.observations.empty()) {
-            door_information("No market observations have been entered.\n\r");
+         while(true) {
+            const auto knowledge = ct::get_market_knowledge(
+               connection, session_epoch, random_command_id(random), request_id++);
+            od_clr_scr();
+            door_heading("Carried Market Reports\n\r======================\n\r\n\r");
+            if(knowledge.observations.empty()) {
+               door_information("No market observations have been entered.\n\r");
+            }
+            for(const auto& report : knowledge.observations) {
+               door_identifier("%s / %s\n\r", safe_field(report.system_name).c_str(),
+                               safe_field(report.commodity_name).c_str());
+               door_label("  observed second ");
+               door_number("%llu", static_cast<unsigned long long>(report.observed_second));
+               door_label("; Cr");
+               door_number(
+                  "%llu-%llu/t",
+                  static_cast<unsigned long long>(report.minimum_price_per_ton),
+                  static_cast<unsigned long long>(report.maximum_price_per_ton));
+               door_label("; confidence ");
+               door_number("%u%%\n\r", report.confidence_percent);
+            }
+            door_prompt("\n\r[Enter] Refresh  [Q] Charts  [?] Help\n\r");
+            const auto report_key = od_get_key(TRUE);
+            if(report_key == 'q' || report_key == 'Q') {
+               break;
+            }
          }
-         for(const auto& report : knowledge.observations) {
-            door_identifier("%s / %s\n\r", safe_field(report.system_name).c_str(),
-                            safe_field(report.commodity_name).c_str());
-            door_label("  observed second ");
-            door_number("%llu", static_cast<unsigned long long>(report.observed_second));
-            door_label("; Cr");
-            door_number("%llu-%llu/t", static_cast<unsigned long long>(report.minimum_price_per_ton),
-                        static_cast<unsigned long long>(report.maximum_price_per_ton));
-            door_label("; confidence ");
-            door_number("%u%%\n\r", report.confidence_percent);
-         }
-         wait_for_enter();
          continue;
       }
       if(key == '>' && page + 1 < page_count) {
@@ -4987,6 +5303,7 @@ void show_known_universe_manager(
          continue;
       }
       const auto& system = *systems[index];
+      while(true) {
       od_clr_scr();
       door_heading("System Dossier - ");
       door_identifier("%s\n\r", safe_field(system.system_name).c_str());
@@ -5030,34 +5347,36 @@ void show_known_universe_manager(
       const bool secret = system.knowledge_source ==
          ct::SystemKnowledgeSource::SecretChart;
       door_prompt(secret
-                  ? "\n\r[S] Remove from Secret Systems  [Enter] Return  [?] Help\n\r"
-                  : "\n\r[S] Add to Secret Systems  [Enter] Return  [?] Help\n\r");
-      while(true) {
-         const auto detail_key = od_get_key(TRUE);
-         if(detail_key == '\r' || detail_key == '\n') {
-            break;
+                  ? "\n\r[S] Remove from Secret Systems  [Enter] Refresh  [Q] Return  [?] Help\n\r"
+                  : "\n\r[S] Add to Secret Systems  [Enter] Refresh  [Q] Return  [?] Help\n\r");
+      const auto detail_key = od_get_key(TRUE);
+      if(detail_key == 'q' || detail_key == 'Q') {
+         break;
+      }
+      if(detail_key == '\r' || detail_key == '\n') {
+         continue;
+      }
+      if(detail_key == 's' || detail_key == 'S') {
+         try {
+            ct::set_system_mapping_disclosure(
+               connection,
+               session_epoch,
+               system.system_id,
+               secret ? ct::SystemMappingChoice::Withhold
+               : ct::SystemMappingChoice::WithholdSecret,
+               random_command_id(random),
+               request_id++);
+            snapshot = ct::get_known_destinations(
+                          connection,
+                          session_epoch,
+                          random_command_id(random),
+                          request_id++);
+         } catch(const std::exception& error) {
+            door_error("%s\n\r", safe_field(error.what()).c_str());
+            wait_for_enter();
          }
-         if(detail_key == 's' || detail_key == 'S') {
-            try {
-               ct::set_system_mapping_disclosure(
-                  connection,
-                  session_epoch,
-                  system.system_id,
-                  secret ? ct::SystemMappingChoice::Withhold
-                  : ct::SystemMappingChoice::WithholdSecret,
-                  random_command_id(random),
-                  request_id++);
-               snapshot = ct::get_known_destinations(
-                             connection,
-                             session_epoch,
-                             random_command_id(random),
-                             request_id++);
-            } catch(const std::exception& error) {
-               door_error("%s\n\r", safe_field(error.what()).c_str());
-               wait_for_enter();
-            }
-            break;
-         }
+         break;
+      }
       }
    }
 }
@@ -5102,7 +5421,7 @@ std::optional<ct::PlayerPhase> show_combat_operations(
 {
    const HelpScope help_scope(ct::DoorHelpTopic::Operations);
    auto snapshot = ct::get_combat_career(connection, epoch, random_command_id(random), request_id++);
-   const auto charts = ct::get_known_destinations(
+   auto charts = ct::get_known_destinations(
       connection, epoch, random_command_id(random), request_id++);
    const auto system_name = [&charts](const uint64_t system_id) {
       const auto found = std::find_if(
@@ -5280,11 +5599,19 @@ std::optional<ct::PlayerPhase> show_combat_operations(
          "[W] Warrant court",
          "[C] Cruise articles",
          "[M] Service or commission status",
-         "[Enter] Console",
+         "[Enter] Refresh",
+         "[Q] Console",
          "[?] Help",
       });
       const auto key = static_cast<char>(std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
-      if(key == '\r' || key == '\n' || key == 'Q') {
+      if(key == '\r' || key == '\n') {
+         snapshot = ct::get_combat_career(
+            connection, epoch, random_command_id(random), request_id++);
+         charts = ct::get_known_destinations(
+            connection, epoch, random_command_id(random), request_id++);
+         continue;
+      }
+      if(key == 'Q') {
          return std::nullopt;
       }
       try {
@@ -5494,12 +5821,16 @@ void show_system_radio(
          "[B] Broadcast",
          "[M] Mute sender",
          "[U] Unmute",
-         "[Enter] Console",
+         "[Enter] Refresh",
+         "[Q] Console",
          "[?] Help",
       });
       const auto key = static_cast<char>(
          std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
-      if(key == '\r' || key == '\n' || key == 'Q') {
+      if(key == '\r' || key == '\n') {
+         continue;
+      }
+      if(key == 'Q') {
          return;
       }
       try {
@@ -5616,7 +5947,8 @@ void render_command_console(const ct::ServerHello& hello)
    door_identifier("Operations Ledger\n\r");
    door_option_prompt({
       "[C/S/T/M/R/K/O] Manager",
-      "[Enter] Previous",
+      "[Enter] Refresh",
+      "[X] Operational view",
       "[Q] Return to BBS",
       "[?] Help",
    });
@@ -5687,6 +6019,8 @@ bool run_command_console(
          }
          render_command_console(hello);
       } else if(key == '\r' || key == '\n') {
+         render_command_console(hello);
+      } else if(key == 'x' || key == 'X') {
          return false;
       }
    }
@@ -5849,11 +6183,17 @@ void run_cargo_exchange(
          "[P] Perform lead",
          "[U] Release reservation",
          "[X] Cancel search",
-         "[Enter] Docked operations",
+         "[Enter] Refresh",
+         "[Q] Docked operations",
          "[?] Help",
       });
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
+         market = ct::get_market(
+            connection, session_epoch, random_command_id(random), request_id++);
+         continue;
+      }
+      if(key == 'q' || key == 'Q') {
          return;
       }
       if(key == 'b' || key == 'B') {
@@ -6127,6 +6467,7 @@ std::optional<ct::TravelStatus> run_fuel_service(
    uint64_t& request_id)
 {
    const HelpScope help_scope(ct::DoorHelpTopic::Fuel);
+   while(true) {
    const auto account = ct::get_docked_snapshot(connection, session_epoch, random_command_id(random),
       request_id++);
    const auto services = ct::get_docked_services(connection, session_epoch, random_command_id(random),
@@ -6152,10 +6493,13 @@ std::optional<ct::TravelStatus> run_fuel_service(
    if(services.ammunition_available) {
       door_prompt("  [A] Ammunition");
    }
-   door_prompt("\n\r[Enter] Return  [?] Help\n\r");
+   door_prompt("\n\r[Enter] Refresh  [Q] Docked operations  [?] Help\n\r");
    const auto key = static_cast<char>(
                        std::toupper(static_cast<unsigned char>(door_get_live_key())));
-   if(key == '\r' || key == '\n' || key == 'Q') {
+   if(key == '\r' || key == '\n') {
+      continue;
+   }
+   if(key == 'Q') {
       return std::nullopt;
    }
    ct::DockedServiceOrder order{};
@@ -6279,6 +6623,7 @@ std::optional<ct::TravelStatus> run_fuel_service(
       od_get_key(TRUE);
    }
    return std::nullopt;
+   }
 }
 
 const char* waypoint_authority_name(const ct::WaypointAuthority authority)
@@ -6524,10 +6869,13 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
          "[J] Add task destination  [G] Add frontier fuel stop\n\r"
          "[X] Explore coordinates\n\r"
          "[D] Delete last leg  [T] Last authority\n\r"
-         "[P] Preview and file  [Q/Enter] Keep existing plan  [?] Help\n\r");
+         "[P] Preview and file  [Enter] Refresh  [Q] Keep existing plan  [?] Help\n\r");
       const auto key = static_cast<char>(
                           std::toupper(static_cast<unsigned char>(door_get_live_key())));
-      if(key == 'Q' || key == '\r' || key == '\n') {
+      if(key == '\r' || key == '\n') {
+         continue;
+      }
+      if(key == 'Q') {
          return std::nullopt;
       }
       if(key == 'A') {
@@ -7099,16 +7447,25 @@ ct::PlayerPhase run_arrival_checkpoint(ct::TlsConnection& connection, const ct::
    if(!latest_checkpoint) {
       return ct::PlayerPhase::Interplanetary;
    }
-   od_clr_scr();
-   door_heading("Arrival Checkpoint\n\r==================\n\r\n\r");
-   door_information("The ship is holding clear of its destination until the captain takes the arrival watch.\n\r");
-   door_label("Ready since: ");
-   door_number("%s\n\r", game_date(latest_checkpoint->ready_second).c_str());
-   door_prompt(
-      "\n\r[A] Take arrival watch  [Q] Leave ship holding  [?] Help\n\r");
-   const auto key = static_cast<char>(std::toupper(static_cast<unsigned char>(door_get_live_key())));
-   if(key != 'A') {
-      return ct::PlayerPhase::Interplanetary;
+   while(true) {
+      od_clr_scr();
+      door_heading("Arrival Checkpoint\n\r==================\n\r\n\r");
+      door_information("The ship is holding clear of its destination until the captain takes the arrival watch.\n\r");
+      door_label("Ready since: ");
+      door_number("%s\n\r", game_date(latest_checkpoint->ready_second).c_str());
+      door_prompt(
+         "\n\r[A] Take arrival watch  [Enter] Refresh  [Q] Leave ship holding  [?] Help\n\r");
+      const auto key = static_cast<char>(
+         std::toupper(static_cast<unsigned char>(door_get_live_key())));
+      if(key == '\r' || key == '\n') {
+         continue;
+      }
+      if(key == 'Q') {
+         return ct::PlayerPhase::Interplanetary;
+      }
+      if(key == 'A') {
+         break;
+      }
    }
    auto acknowledged = ct::acknowledge_checkpoint(connection, hello.assigned_epoch,
       latest_checkpoint->checkpoint_id, random_command_id(random), request_id++);
@@ -7494,11 +7851,15 @@ ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello&
       "[B] Board",
       "[S] Offer surrender",
       "[P] Standing policy",
+      "[Enter] Refresh",
       "[Q] Console",
       "[?] Help",
    });
    const auto key = static_cast<char>(std::toupper(static_cast<unsigned char>(door_get_live_key())));
-   if(key == 'Q' || key == '\r' || key == '\n') {
+   if(key == '\r' || key == '\n') {
+      return combat.phase;
+   }
+   if(key == 'Q') {
       return combat.phase;
    }
    if(key == 'P') {
@@ -7654,18 +8015,28 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
       "[C] Comply",
       "[S] Surrender",
       "[B] Board",
+      "[Enter] Refresh",
       "[?] Help",
    });
    char key = static_cast<char>(std::toupper(static_cast<unsigned char>(door_get_live_key())));
-   ct::EncounterPosture posture = ct::EncounterPosture::Flee;
+   if(key == '\r' || key == '\n') {
+      latest_encounter.reset();
+      return ct::PlayerPhase::Encounter;
+   }
+   std::optional<ct::EncounterPosture> posture;
    if(key == 'F') {
       posture = ct::EncounterPosture::Fight;
+   } else if(key == 'R') {
+      posture = ct::EncounterPosture::Flee;
    } else if(key == 'C') {
       posture = ct::EncounterPosture::Comply;
    } else if(key == 'S') {
       posture = ct::EncounterPosture::Surrender;
    } else if(key == 'B') {
       posture = ct::EncounterPosture::Board;
+   }
+   if(!posture.has_value()) {
+      return ct::PlayerPhase::Encounter;
    }
    const std::vector<ct::EncounterFallback> fallbacks{
       ct::EncounterFallback::JettisonCargo,
@@ -7676,7 +8047,7 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
                     hello.assigned_epoch,
                     encounter.encounter_id,
                     encounter.revision,
-                    posture,
+                    *posture,
                     fallbacks,
                     random_command_id(random),
                     request_id++);
@@ -7739,7 +8110,9 @@ void run_operational_loop(ct::TlsConnection& connection, ct::ServerHello& hello)
          door_information(
             "A surviving captain remains the same person through rescue, custody, or parole. "
             "Only a recorded death opens the estate to a successor.\n\r");
-         door_prompt("\n\r[R] Review recovery or succession  [Q] Leave game: ");
+         door_prompt(
+            "\n\r[R] Review recovery or succession  [Enter] Refresh  "
+            "[Q] Leave game: ");
          const auto action = static_cast<char>(std::toupper(
             static_cast<unsigned char>(od_get_key(TRUE))));
          if(action == 'Q') {
