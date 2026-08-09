@@ -634,6 +634,12 @@ fn person_dead(person: &PersonRecord) -> bool {
     person_physical(person).dead()
 }
 
+fn crew_service_living_positions(service: &CrewServiceRecord, person: &PersonRecord) -> u16 {
+    service
+        .represented_positions
+        .saturating_sub(u16::from(person_dead(person)))
+}
+
 fn person_incapacitated(person: &PersonRecord) -> bool {
     let physical = person_physical(person);
     physical.dead() || physical.unconscious() || person.fatigue_points >= 2
@@ -1142,10 +1148,59 @@ struct FinanceRecord {
     in_default: bool,
     impound_order_known_locally: bool,
     impound_message_id: u64,
+    authorized_expense_credits: u64,
+    forged_receipt_credits: u64,
+    forged_receipt_count: u32,
+    forged_receipt_bbs_id: u32,
+    forged_receipt_player_id: u32,
 }
 
 fn ship_finance_key(ship_id: u64) -> [u8; 8] {
     ship_id.to_be_bytes()
+}
+
+fn forged_receipt_detection_percent(
+    amount: u64,
+    authorized_expenses: u64,
+    receipt_count: u32,
+) -> u8 {
+    let amount_risk = amount
+        .checked_ilog2()
+        .unwrap_or(0)
+        .saturating_add(1)
+        .saturating_mul(5);
+    let repetition_risk = receipt_count.saturating_sub(1).saturating_mul(10).min(20);
+    let total_expenses = amount.saturating_add(authorized_expenses).max(1);
+    let fraudulent_percent = ((u128::from(amount) * 100) / u128::from(total_expenses)) as u32;
+
+    // A false claim is easier to spot when it dominates the month's accounts
+    // and easier to hide among legitimate ship expenses. Absolute scale and
+    // repeated claims still matter independently. Detection remains uncertain.
+    let scrutiny_percent = 50_u32.saturating_add(fraudulent_percent);
+    amount_risk
+        .saturating_add(repetition_risk)
+        .saturating_mul(scrutiny_percent)
+        .div_ceil(100)
+        .clamp(1, 90) as u8
+}
+
+fn forged_receipt_audit_detected(
+    ship_id: u64,
+    due_second: u64,
+    amount: u64,
+    authorized_expenses: u64,
+    receipt_count: u32,
+) -> bool {
+    let detection_percent =
+        forged_receipt_detection_percent(amount, authorized_expenses, receipt_count);
+    let entropy = crate::ship_condition::mix64(
+        ship_id
+            ^ due_second.rotate_left(17)
+            ^ amount.rotate_left(31)
+            ^ u64::from(receipt_count).rotate_left(47)
+            ^ 0x4155_4449_545f_5243,
+    );
+    entropy % 100 < u64::from(detection_percent)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4550,6 +4605,15 @@ impl Store {
                     },
                 }
             }
+            Command::MisappropriateRestrictedCredits { amount } => {
+                match self.misappropriate_restricted_credits_in(txn, &queued.identity, amount)? {
+                    RuleResult::Applied(v) => OutcomeKind::Finance(v),
+                    RuleResult::Rejected(message) => OutcomeKind::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message,
+                    },
+                }
+            }
             Command::GetSystemRadio => {
                 OutcomeKind::SystemRadio(self.system_radio_in(txn, &queued.identity)?)
             }
@@ -4769,7 +4833,8 @@ impl Store {
         let mut system_id = ship.system_id;
         let mut fuel_millitons = 0_u64;
         let mut available_fuel_millitons = ship.current_fuel_millitons;
-        let mut available_credits = player.credits;
+        let mut available_credits =
+            self.operating_account_credits_in(txn, &player, ship.ship_id)?;
         let mut elapsed_seconds = match ship.location {
             ShipLocationRecord::InFlight(FlightLegRecord {
                 due_second,
@@ -5451,10 +5516,8 @@ impl Store {
                 .map(decode_person_record)
                 .transpose()?
                 .ok_or(StoreError::Corrupt("provisioned crewmember is missing"))?;
-            if !person_dead(&person) {
-                crew_count =
-                    crew_count.saturating_add(u64::from(service.represented_positions.max(1)));
-            }
+            crew_count = crew_count
+                .saturating_add(u64::from(crew_service_living_positions(&service, &person)));
         }
         let selected_passengers = carriage_offers
             .iter()
@@ -7642,6 +7705,11 @@ impl Store {
                 || offer.order_message_id == 0
                 || delivered.contains(&offer.order_message_id)
         });
+        state.warrants.retain(|warrant| {
+            delivered.contains(&warrant.message_id)
+                || (warrant.resolution_message_id != 0
+                    && delivered.contains(&warrant.resolution_message_id))
+        });
         let rank = if state.mode == crate::careers::CombatCareerMode::Navy {
             crate::careers::naval_grade_by_index(state.naval_grade_index)
                 .name
@@ -9510,6 +9578,11 @@ impl Store {
                 in_default: false,
                 impound_order_known_locally: false,
                 impound_message_id: 0,
+                authorized_expense_credits: 0,
+                forged_receipt_credits: 0,
+                forged_receipt_count: 0,
+                forged_receipt_bbs_id: 0,
+                forged_receipt_player_id: 0,
             }),
         )?;
         self.schedule_ship_condition_in(
@@ -11813,6 +11886,61 @@ impl Store {
         Ok((player, ship))
     }
 
+    fn operating_account_credits_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        player: &PlayerRecord,
+        ship_id: u64,
+    ) -> Result<u64, StoreError> {
+        let finance = self
+            .finances
+            .get(txn, &ship_finance_key(ship_id))?
+            .map(decode_finance_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("ship finance record is missing"))?;
+        Ok(player.credits.saturating_add(finance.restricted_credits))
+    }
+
+    /// Pays an authorized ship expense, exhausting restricted operating
+    /// credit before touching the captain's liquid account.
+    fn charge_operating_account_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        player: &mut PlayerRecord,
+        ship_id: u64,
+        amount: u64,
+    ) -> Result<bool, StoreError> {
+        let key = ship_finance_key(ship_id);
+        let mut finance = self
+            .finances
+            .get(txn, &key)?
+            .map(decode_finance_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("ship finance record is missing"))?;
+        let restricted_payment = finance.restricted_credits.min(amount);
+        let liquid_payment = amount - restricted_payment;
+        if player.credits < liquid_payment {
+            return Ok(false);
+        }
+        let track_naval_expense =
+            finance.title == crate::wire::ShipTitleKind::InstitutionOwned && amount != 0;
+        if track_naval_expense {
+            finance.authorized_expense_credits = finance
+                .authorized_expense_credits
+                .checked_add(amount)
+                .ok_or(StoreError::Corrupt(
+                    "naval operating expense total overflow",
+                ))?;
+        }
+        finance.restricted_credits -= restricted_payment;
+        player.credits -= liquid_payment;
+        if restricted_payment != 0 || track_naval_expense {
+            self.finances
+                .put(txn, &key, &encode_finance_record(&finance))?;
+        }
+        Ok(true)
+    }
+
     fn career_state_in(
         &self,
         txn: &heed::RoTxn<'_>,
@@ -11880,6 +12008,13 @@ impl Store {
         let current_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
         let fuel_capacity_millitons = effective_fuel_capacity(&ship, &spec);
         let cargo_capacity_millitons = effective_cargo_capacity(&ship, &spec);
+        let restricted_credits = self
+            .finances
+            .get(txn, &ship_finance_key(ship.ship_id))?
+            .map(decode_finance_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("ship finance record is missing"))?
+            .restricted_credits;
         Ok(DockedSnapshot {
             ship_id: ship.ship_id,
             ship_name: ship.name,
@@ -11895,6 +12030,7 @@ impl Store {
             law_level: world.law_level,
             arrived_second,
             credits: player.credits,
+            restricted_credits,
             debt_credits: player.debt_credits,
             fuel_millitons: ship.current_fuel_millitons,
             fuel_capacity_millitons,
@@ -13229,6 +13365,14 @@ impl Store {
             }
             _ => 0,
         };
+        let restricted_credits = self
+            .finances
+            .get(txn, &ship_finance_key(ship.ship_id))?
+            .map(decode_finance_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("ship finance record is missing"))?
+            .restricted_credits;
+        let liquid_berth_fee = current_berth_fee.saturating_sub(restricted_credits);
         let unreserved_credits = player.credits.saturating_sub(reserved_credits);
         let mut local_offers = if matches!(ship.location, ShipLocationRecord::Docked { .. }) {
             self.local_task_offers_in(txn, identity, &ship)?
@@ -13244,11 +13388,11 @@ impl Store {
                 reasons.push("This offer has already been accepted.".into());
             }
             if unreserved_credits >= offer.collateral_credits
-                && unreserved_credits.saturating_sub(offer.collateral_credits) < current_berth_fee
+                && unreserved_credits.saturating_sub(offer.collateral_credits) < liquid_berth_fee
             {
                 let remaining = unreserved_credits.saturating_sub(offer.collateral_credits);
                 reasons.push(format!(
-                    "Posting the collateral leaves Cr{remaining}; Cr{current_berth_fee} is due to clear the current berth."
+                    "Posting the collateral leaves Cr{remaining}; Cr{liquid_berth_fee} remains due to clear the current berth after applying ship credit."
                 ));
             }
             if offer.kind == crate::wire::TaskKind::Freight {
@@ -15159,6 +15303,77 @@ impl Store {
         ))
     }
 
+    fn misappropriate_restricted_credits_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        amount: u64,
+    ) -> Result<RuleResult<crate::wire::FinanceSnapshot>, StoreError> {
+        if amount == 0 {
+            return Ok(RuleResult::Rejected(
+                "a forged receipt must claim a positive amount".into(),
+            ));
+        }
+        let (mut player, ship) = self.player_and_ship_in(txn, identity)?;
+        let career = self.career_state_in(txn, identity)?;
+        let key = ship_finance_key(ship.ship_id);
+        let mut finance = self
+            .finances
+            .get(txn, &key)?
+            .map(decode_finance_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("ship finance record is missing"))?;
+        if career.mode != crate::careers::CombatCareerMode::Navy
+            || finance.title != crate::wire::ShipTitleKind::InstitutionOwned
+        {
+            return Ok(RuleResult::Rejected(
+                "only a captain holding an institutional naval command can file against this service account"
+                    .into(),
+            ));
+        }
+        if finance.restricted_credits < amount {
+            return Ok(RuleResult::Rejected(format!(
+                "the naval service account has only Cr{} available",
+                finance.restricted_credits
+            )));
+        }
+        if finance.forged_receipt_count != 0
+            && (finance.forged_receipt_bbs_id != identity.bbs_id
+                || finance.forged_receipt_player_id != identity.player_id)
+        {
+            return Ok(RuleResult::Rejected(
+                "the prior command's receipts remain pending for the next accounts audit".into(),
+            ));
+        }
+        if finance.forged_receipt_count == 0 {
+            finance.forged_receipt_bbs_id = identity.bbs_id;
+            finance.forged_receipt_player_id = identity.player_id;
+        }
+        finance.restricted_credits -= amount;
+        finance.forged_receipt_credits = finance
+            .forged_receipt_credits
+            .checked_add(amount)
+            .ok_or(StoreError::Corrupt("forged receipt total overflow"))?;
+        finance.forged_receipt_count = finance
+            .forged_receipt_count
+            .checked_add(1)
+            .ok_or(StoreError::Corrupt("forged receipt count overflow"))?;
+        player.credits = player
+            .credits
+            .checked_add(amount)
+            .ok_or(StoreError::Corrupt("captain credit balance overflow"))?;
+        self.finances
+            .put(txn, &key, &encode_finance_record(&finance))?;
+        self.players.put(
+            txn,
+            &encode_identity(identity),
+            &encode_player_record(&player),
+        )?;
+        Ok(RuleResult::Applied(
+            self.finance_snapshot_in(txn, identity)?,
+        ))
+    }
+
     fn accept_task_offer_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
@@ -16003,6 +16218,11 @@ impl Store {
                 in_default: false,
                 impound_order_known_locally: false,
                 impound_message_id: 0,
+                authorized_expense_credits: 0,
+                forged_receipt_credits: 0,
+                forged_receipt_count: 0,
+                forged_receipt_bbs_id: 0,
+                forged_receipt_player_id: 0,
             }),
         )?;
         self.schedule_ship_condition_in(txn, ship_id, ship.maintenance.next_accounting_second)?;
@@ -16571,6 +16791,11 @@ impl Store {
             in_default: false,
             impound_order_known_locally: false,
             impound_message_id: 0,
+            authorized_expense_credits: 0,
+            forged_receipt_credits: 0,
+            forged_receipt_count: 0,
+            forged_receipt_bbs_id: 0,
+            forged_receipt_player_id: 0,
         };
         match old_finance.title {
             crate::wire::ShipTitleKind::OwnedWithLien => {
@@ -17646,12 +17871,11 @@ impl Store {
         let cost = u64::from(packs)
             .checked_mul(lot.price_per_pack_credits)
             .ok_or(StoreError::Corrupt("ammunition price overflow"))?;
-        if player.credits < cost {
+        if !self.charge_operating_account_in(txn, &mut player, ship.ship_id, cost)? {
             return Ok(RuleResult::Rejected(
                 "the operating account cannot cover that ammunition order".into(),
             ));
         }
-        player.credits -= cost;
         lot.remaining += units;
         ship.revision = ship.revision.saturating_add(1);
         self.players.put(
@@ -17710,12 +17934,11 @@ impl Store {
         let cost = spec
             .monthly_life_support_credits
             .saturating_mul(u64::from(packages));
-        if player.credits < cost {
+        if !self.charge_operating_account_in(txn, &mut player, ship.ship_id, cost)? {
             return Ok(RuleResult::Rejected(
                 "the operating account cannot cover those life-support stores".into(),
             ));
         }
-        player.credits -= cost;
         ship.provisions.person_days_remaining += quantity;
         ship.provisions.installed_capacity_person_days = maximum;
         ship.revision = ship.revision.saturating_add(1);
@@ -17788,7 +18011,7 @@ impl Store {
             ));
         }
         let (cost, duration) = replacement_quote(subsystem, reconditioned);
-        if player.credits < cost {
+        if !self.charge_operating_account_in(txn, &mut player, ship.ship_id, cost)? {
             return Ok(RuleResult::Rejected(format!(
                 "replacement costs {cost} credits; the operating account is short"
             )));
@@ -17800,7 +18023,6 @@ impl Store {
         let activity_id = crate::ship_condition::mix64(
             ship.ship_id ^ current ^ u64::from(subsystem_id) ^ 0x5245_504c_4143_4500,
         );
-        player.credits -= cost;
         ship.activity = Some(ShipActivityRecord {
             activity_id,
             kind: ShipActivityKind::Refurbishment {
@@ -17953,12 +18175,11 @@ impl Store {
         let cost = REFINED_FUEL_PRICE_PER_TON
             .checked_mul(quantity_millitons / MILLITONS_PER_TON)
             .ok_or(StoreError::Corrupt("fuel price overflow"))?;
-        if cost > player.credits {
+        if !self.charge_operating_account_in(txn, &mut player, ship.ship_id, cost)? {
             return Ok(RuleResult::Rejected(
                 "the account has insufficient available credits".into(),
             ));
         }
-        player.credits -= cost;
         ship.current_fuel_millitons += quantity_millitons;
         ship.revision = ship.revision.saturating_add(1);
         self.players.put(
@@ -18012,7 +18233,7 @@ impl Store {
         }
         let cost =
             crate::ship_condition::refit_price_credits(ship.maintenance.purchase_price_credits);
-        if player.credits < cost {
+        if !self.charge_operating_account_in(txn, &mut player, ship.ship_id, cost)? {
             return Ok(RuleResult::Rejected(format!(
                 "the refit costs {cost} credits; the operating account is short"
             )));
@@ -18022,7 +18243,6 @@ impl Store {
         let due = current
             .checked_add(crate::ship_condition::refit_duration_seconds(activity_id))
             .ok_or(StoreError::Corrupt("refit due time overflow"))?;
-        player.credits -= cost;
         ship.activity = Some(ShipActivityRecord {
             activity_id,
             kind: ShipActivityKind::Refit,
@@ -18174,12 +18394,11 @@ impl Store {
         let cost = UNREFINED_FUEL_PRICE_PER_TON
             .checked_mul(quantity_millitons / MILLITONS_PER_TON)
             .ok_or(StoreError::Corrupt("fuel price overflow"))?;
-        if player.credits < cost {
+        if !self.charge_operating_account_in(txn, &mut player, ship.ship_id, cost)? {
             return Ok(RuleResult::Rejected(
                 "the account has insufficient available credits".into(),
             ));
         }
-        player.credits -= cost;
         ship.current_fuel_millitons += quantity_millitons;
         ship.unrefined_fuel_millitons += quantity_millitons;
         ship.revision = ship.revision.saturating_add(1);
@@ -18676,12 +18895,11 @@ impl Store {
                 ShipQuirkKind::HullAirLeak,
             ],
         );
-        if player.credits < departure_cost {
+        if !self.charge_operating_account_in(txn, &mut player, ship.ship_id, departure_cost)? {
             return Ok(RuleResult::Rejected(format!(
                 "departure requires Cr{departure_cost} (Cr{berth_fee} berth and Cr{tape_cost} navigation); the operating account is short"
             )));
         }
-        player.credits -= departure_cost;
         let celestial = derive_celestial_system(&origin)?;
         let approach = primary_world_jump_safety(
             &celestial,
@@ -18836,12 +19054,11 @@ impl Store {
             0
         };
         let departure_cost = berth_fee.saturating_add(tape_cost);
-        if player.credits < departure_cost {
+        if !self.charge_operating_account_in(txn, &mut player, ship.ship_id, departure_cost)? {
             return Ok(RuleResult::Rejected(format!(
                 "departure requires Cr{departure_cost} (Cr{berth_fee} berth and Cr{tape_cost} navigation); the operating account is short"
             )));
         }
-        player.credits -= departure_cost;
         let celestial = derive_celestial_system(&origin)?;
         let approach = primary_world_jump_safety(
             &celestial,
@@ -19539,12 +19756,16 @@ impl Store {
                         as i16)
                 };
                 let cost = u64::from(treatment_effect.max(0) as u16).saturating_mul(5_000);
-                if player.credits < cost {
+                if !self.charge_operating_account_in(
+                    txn,
+                    &mut player,
+                    commanded_ship.ship_id,
+                    cost,
+                )? {
                     return Ok(RuleResult::Rejected(format!(
                         "the hospital requires Cr{cost} for the completed procedure"
                     )));
                 }
-                player.credits -= cost;
                 service.assigned_slot_ids.clear();
                 service.availability = CrewAvailability::MedicalCare;
                 service.shore_system_id = commanded_ship.system_id;
@@ -19693,18 +19914,33 @@ impl Store {
         }
         let mut members = Vec::new();
         let mut roles = std::collections::BTreeMap::new();
+        let mut designed_roles =
+            creation::commanded_crew_roles(ship.catalog_id).unwrap_or_default();
         for entry in self.crew_services.iter(txn)? {
             let (_, encoded) = entry?;
             let service = decode_crew_service(encoded)?;
             if service.ship_id != ship.ship_id || service.command != *identity {
                 continue;
             }
+            let designed_positions = if service.slot_id == 0 {
+                1
+            } else if let Some(index) = designed_roles
+                .iter()
+                .position(|(role, _)| role == &service.role)
+            {
+                designed_roles
+                    .remove(index)
+                    .1
+                    .max(service.represented_positions)
+            } else {
+                service.represented_positions
+            };
             roles
                 .entry(service.slot_id)
                 .or_insert(crate::wire::CrewRole {
                     slot_id: service.slot_id,
                     role: service.role.clone(),
-                    represented_positions: service.represented_positions,
+                    represented_positions: designed_positions,
                 });
             if !service_active(&service) {
                 continue;
@@ -19812,6 +20048,8 @@ impl Store {
             ship_name: ship.name,
             members,
             roles: roles.into_values().collect(),
+            established_complement: creation::ship_crew_complement(ship.catalog_id)
+                .unwrap_or_default(),
         })
     }
 
@@ -20119,6 +20357,11 @@ impl Store {
             in_default: false,
             impound_order_known_locally: false,
             impound_message_id: 0,
+            authorized_expense_credits: 0,
+            forged_receipt_credits: 0,
+            forged_receipt_count: 0,
+            forged_receipt_bbs_id: 0,
+            forged_receipt_player_id: 0,
         };
         self.finances.put(
             txn,
@@ -22500,7 +22743,7 @@ impl Store {
         if crew_hits == 0 {
             return Ok(());
         }
-        let mut services = self
+        let services = self
             .crew_services
             .iter(txn)?
             .filter_map(|entry| match entry {
@@ -22508,42 +22751,75 @@ impl Store {
                 Err(error) => Some(Err(StoreError::Heed(error))),
             })
             .collect::<Result<Vec<_>, _>>()?;
-        services.retain(|service| service.command == *identity && service.ship_id == ship_id);
-        services.sort_by_key(|service| service.person_id);
-        if services.is_empty() {
+        let mut crew = Vec::new();
+        for service in services.into_iter().filter(|service| {
+            service.command == *identity
+                && service.ship_id == ship_id
+                && service_active(service)
+                && service.availability == CrewAvailability::Active
+        }) {
+            let person = self
+                .persons
+                .get(txn, &service.person_id)?
+                .map(decode_person_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("combat casualty is missing"))?;
+            crew.push((service, person));
+        }
+        crew.sort_by_key(|(service, _)| service.person_id);
+        if crew.is_empty() {
             return Err(StoreError::Corrupt("combat vessel has no recorded crew"));
         }
         for ordinal in 0..crew_hits {
             let entropy = crate::ship_condition::mix64(
                 encounter_id ^ u64::from(ordinal).rotate_left(19) ^ current,
             );
-            let index = entropy as usize % services.len();
-            let service = &mut services[index];
-            let mut person = self
-                .persons
-                .get(txn, &service.person_id)?
-                .map(decode_person_record)
-                .transpose()?
-                .ok_or(StoreError::Corrupt("combat casualty is missing"))?;
-            if person_dead(&person) {
+            let living_positions = crew
+                .iter()
+                .map(|(service, person)| u64::from(crew_service_living_positions(service, person)))
+                .sum::<u64>();
+            if living_positions == 0 {
+                break;
+            }
+            let mut selected_position = entropy % living_positions;
+            let index = crew
+                .iter()
+                .position(|(service, person)| {
+                    let positions = u64::from(crew_service_living_positions(service, person));
+                    if selected_position < positions {
+                        true
+                    } else {
+                        selected_position -= positions;
+                        false
+                    }
+                })
+                .ok_or(StoreError::Corrupt("combat crew selection failed"))?;
+            let (service, person) = &mut crew[index];
+            let supporting_positions = service.represented_positions.saturating_sub(1);
+            if selected_position < u64::from(supporting_positions) {
+                service.represented_positions = service.represented_positions.saturating_sub(1);
+                service.revision = service.revision.saturating_add(1);
+                self.crew_services
+                    .put(txn, &service.person_id, &encode_crew_service(service)?)?;
                 continue;
             }
-            let mut physical = person_physical(&person);
+            let mut physical = person_physical(person);
             crate::personnel::apply_damage(
                 &mut physical,
-                person_maximum(&person),
+                person_maximum(person),
                 1 + ((entropy >> 8) % 3) as u16,
             );
-            set_person_physical(&mut person, physical);
+            set_person_physical(person, physical);
             person.last_injury_second = current;
             person.first_aid_applied = false;
-            if person_incapacitated(&person) {
+            if person_incapacitated(person) {
                 service.assigned_slot_ids.clear();
+                service.revision = service.revision.saturating_add(1);
                 self.crew_services
                     .put(txn, &service.person_id, &encode_crew_service(service)?)?;
             }
             self.persons
-                .put(txn, &person.person_id, &encode_person_record(&person)?)?;
+                .put(txn, &person.person_id, &encode_person_record(person)?)?;
         }
         Ok(())
     }
@@ -22659,6 +22935,84 @@ impl Store {
             }
             self.put_career_state_in(txn, &ship.command, &career)?;
         }
+        if finance.forged_receipt_count != 0 {
+            let amount = finance.forged_receipt_credits;
+            let authorized_expenses = finance.authorized_expense_credits;
+            let receipt_count = finance.forged_receipt_count;
+            let offender = PlayerIdentity {
+                bbs_id: finance.forged_receipt_bbs_id,
+                player_id: finance.forged_receipt_player_id,
+            };
+            finance.forged_receipt_credits = 0;
+            finance.forged_receipt_count = 0;
+            finance.forged_receipt_bbs_id = 0;
+            finance.forged_receipt_player_id = 0;
+            if forged_receipt_audit_detected(
+                ship_id,
+                due_second,
+                amount,
+                authorized_expenses,
+                receipt_count,
+            ) {
+                let offender_player = self
+                    .players
+                    .get(txn, &encode_identity(&offender))?
+                    .map(decode_player_record)
+                    .transpose()?
+                    .ok_or(StoreError::Corrupt("audited command player is missing"))?;
+                let captain = self
+                    .persons
+                    .get(txn, &offender_player.captain_person_id)?
+                    .map(decode_person_record)
+                    .transpose()?
+                    .ok_or(StoreError::Corrupt("audited command captain is missing"))?;
+                let origin = self
+                    .systems
+                    .get(txn, &captain.origin_system_id)?
+                    .map(decode_stellar_system)
+                    .transpose()?
+                    .ok_or(StoreError::Corrupt("audited captain origin is missing"))?;
+                let warrant_id = take_next_id(self.meta, txn, META_NEXT_ENCOUNTER_ID)?;
+                let mut warrant = crate::careers::warrant_for_unlawful_attack(
+                    warrant_id,
+                    origin.polity_id,
+                    origin.id,
+                    due_second,
+                    amount.max(1),
+                    100,
+                );
+                warrant.severity = (1 + amount.max(1).ilog10().saturating_sub(2) as u8).min(10);
+                warrant.bounty_credits = amount.saturating_mul(2).max(100);
+                warrant.accusation =
+                    format!("forgery and misappropriation of Cr{amount} in naval service funds");
+                let destinations = self
+                    .simulation
+                    .systems(txn)?
+                    .into_iter()
+                    .map(|system| system.system_id)
+                    .collect::<Vec<_>>();
+                let (message_id, _) = self.simulation.dispatch_message(
+                    txn,
+                    due_second,
+                    origin.id,
+                    crate::simulation::MessageClass::PublicService,
+                    crate::simulation::MessageImportance::Important,
+                    &format!("Naval accounts warrant {warrant_id}"),
+                    &format!(
+                        "The Admiralty audit at {} identifies {} false receipt(s) totaling Cr{} against the service account of {}. Warrant {} may be enforced only after this signed finding reaches local authorities through the mail.",
+                        origin.name, receipt_count, amount, ship.name, warrant_id,
+                    ),
+                    &destinations,
+                )?;
+                warrant.message_id = message_id;
+                warrant.status = crate::careers::WarrantStatus::Propagating;
+                let mut career = self.career_state_in(txn, &offender)?;
+                career.warrants.push(warrant);
+                career.revision = career.revision.saturating_add(1);
+                self.put_career_state_in(txn, &offender, &career)?;
+            }
+        }
+        finance.authorized_expense_credits = 0;
         let charge = crate::ship_condition::monthly_maintenance_credits(
             ship.maintenance.purchase_price_credits,
         );
@@ -23044,6 +23398,11 @@ impl Store {
                 in_default: false,
                 impound_order_known_locally: false,
                 impound_message_id: 0,
+                authorized_expense_credits: 0,
+                forged_receipt_credits: 0,
+                forged_receipt_count: 0,
+                forged_receipt_bbs_id: 0,
+                forged_receipt_player_id: 0,
             }),
         )?;
         self.schedule_ship_condition_in(
@@ -23514,10 +23873,8 @@ impl Store {
                     .map(decode_person_record)
                     .transpose()?
                     .ok_or(StoreError::Corrupt("provisioned crewmember is missing"))?;
-                if !person_dead(&person) {
-                    required =
-                        required.saturating_add(u64::from(service.represented_positions.max(1)));
-                }
+                required = required
+                    .saturating_add(u64::from(crew_service_living_positions(service, &person)));
             }
             required = required.saturating_add(awake_passenger_count(&ship.passengers));
             ship.provisions.person_days_remaining = ship
@@ -28639,6 +28996,10 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
             bytes.extend_from_slice(&encode_identity(sender));
             bytes.push(u8::from(muted));
         }
+        Command::MisappropriateRestrictedCredits { amount } => {
+            bytes.push(77);
+            bytes.extend_from_slice(&amount.to_be_bytes());
+        }
     }
     Ok(bytes)
 }
@@ -29027,6 +29388,9 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
         76 => Command::SetRadioMute {
             sender: decode_identity(&mut decoder)?,
             muted: decoder.u8()? != 0,
+        },
+        77 => Command::MisappropriateRestrictedCredits {
+            amount: decoder.u64()?,
         },
         71 => Command::ApplyPersonnelAction {
             person_id: decoder.u64()?,
@@ -30210,7 +30574,7 @@ fn decode_traffic_contact_record(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(4);
+    bytes.push(5);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -30422,7 +30786,7 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
 fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
     let mut decoder = Decoder::new(bytes);
     let version = decoder.u8()?;
-    if version != 1 && version != 2 && version != 3 && version != 4 {
+    if version != 1 && version != 2 && version != 3 && version != 4 && version != 5 {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
     let command_id = decoder.array()?;
@@ -30462,7 +30826,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         6 => OutcomeKind::StartingShipOffers(decode_starting_ship_offers(&mut decoder)?),
         7 => OutcomeKind::StartingShipOptions(decode_starting_ship_options(&mut decoder)?),
         8 => OutcomeKind::StartingCrewPlan(decode_starting_crew_plan(&mut decoder)?),
-        9 => OutcomeKind::CrewManagement(decode_crew_management(&mut decoder)?),
+        9 => OutcomeKind::CrewManagement(decode_crew_management(&mut decoder, version)?),
         10 => OutcomeKind::ShipStatus(decode_ship_status(&mut decoder)?),
         11 => OutcomeKind::DockedSnapshot(decode_docked_snapshot(&mut decoder)?),
         12 => OutcomeKind::KnownDestinations(decode_known_destinations(&mut decoder, version)?),
@@ -30904,7 +31268,7 @@ fn decode_work_assignment(
 }
 
 fn encode_finance_record(record: &FinanceRecord) -> Vec<u8> {
-    let mut bytes = vec![1, record.title as u8];
+    let mut bytes = vec![2, record.title as u8];
     for value in [
         record.restricted_credits,
         record.original_hull_price_credits,
@@ -30919,12 +31283,18 @@ fn encode_finance_record(record: &FinanceRecord) -> Vec<u8> {
     bytes.push(u8::from(record.in_default));
     bytes.push(u8::from(record.impound_order_known_locally));
     bytes.extend_from_slice(&record.impound_message_id.to_be_bytes());
+    bytes.extend_from_slice(&record.authorized_expense_credits.to_be_bytes());
+    bytes.extend_from_slice(&record.forged_receipt_credits.to_be_bytes());
+    bytes.extend_from_slice(&record.forged_receipt_count.to_be_bytes());
+    bytes.extend_from_slice(&record.forged_receipt_bbs_id.to_be_bytes());
+    bytes.extend_from_slice(&record.forged_receipt_player_id.to_be_bytes());
     bytes
 }
 
 fn decode_finance_record(bytes: &[u8]) -> Result<FinanceRecord, StoreError> {
     let mut d = Decoder::new(bytes);
-    if d.u8()? != 1 {
+    let version = d.u8()?;
+    if !matches!(version, 1 | 2) {
         return Err(StoreError::Corrupt("unsupported finance record version"));
     }
     let title = match d.u8()? {
@@ -30949,6 +31319,11 @@ fn decode_finance_record(bytes: &[u8]) -> Result<FinanceRecord, StoreError> {
         in_default: d.u8()? != 0,
         impound_order_known_locally: d.u8()? != 0,
         impound_message_id: d.u64()?,
+        authorized_expense_credits: if version >= 2 { d.u64()? } else { 0 },
+        forged_receipt_credits: if version >= 2 { d.u64()? } else { 0 },
+        forged_receipt_count: if version >= 2 { d.u32()? } else { 0 },
+        forged_receipt_bbs_id: if version >= 2 { d.u32()? } else { 0 },
+        forged_receipt_player_id: if version >= 2 { d.u32()? } else { 0 },
     };
     d.finish()?;
     Ok(record)
@@ -33307,11 +33682,13 @@ fn encode_crew_management_into(
         encode_text(bytes, &role.role)?;
         bytes.extend_from_slice(&role.represented_positions.to_be_bytes());
     }
+    bytes.extend_from_slice(&snapshot.established_complement.to_be_bytes());
     Ok(())
 }
 
 fn decode_crew_management(
     decoder: &mut Decoder<'_>,
+    outcome_version: u8,
 ) -> Result<crate::wire::CrewManagementSnapshot, StoreError> {
     let ship_id = decoder.u64()?;
     let ship_name = decoder.text()?;
@@ -33404,11 +33781,20 @@ fn decode_crew_management(
             represented_positions: decoder.u16()?,
         });
     }
+    let established_complement = if outcome_version >= 5 {
+        decoder.u16()?
+    } else {
+        members
+            .iter()
+            .map(|member| member.represented_positions)
+            .fold(0_u16, u16::saturating_add)
+    };
     Ok(crate::wire::CrewManagementSnapshot {
         ship_id,
         ship_name,
         members,
         roles,
+        established_complement,
     })
 }
 
@@ -33740,6 +34126,7 @@ fn encode_docked_snapshot_into(
     bytes.push(snapshot.authority_available as u8);
     bytes.push(snapshot.medical_level);
     bytes.push(snapshot.clearance_required as u8);
+    bytes.extend_from_slice(&snapshot.restricted_credits.to_be_bytes());
     Ok(())
 }
 
@@ -33960,7 +34347,7 @@ fn decode_flight_locus_status(decoder: &mut Decoder<'_>) -> Result<FlightLocus, 
 }
 
 fn decode_docked_snapshot(decoder: &mut Decoder<'_>) -> Result<DockedSnapshot, StoreError> {
-    Ok(DockedSnapshot {
+    let mut snapshot = DockedSnapshot {
         ship_id: decoder.u64()?,
         ship_name: decoder.text()?,
         system_id: decoder.u64()?,
@@ -33975,6 +34362,7 @@ fn decode_docked_snapshot(decoder: &mut Decoder<'_>) -> Result<DockedSnapshot, S
         law_level: decoder.u8()?,
         arrived_second: decoder.u64()?,
         credits: decoder.u64()?,
+        restricted_credits: 0,
         debt_credits: decoder.u64()?,
         fuel_millitons: decoder.u64()?,
         fuel_capacity_millitons: decoder.u64()?,
@@ -33990,7 +34378,11 @@ fn decode_docked_snapshot(decoder: &mut Decoder<'_>) -> Result<DockedSnapshot, S
         authority_available: decoder.u8()? != 0,
         medical_level: decoder.u8()?,
         clearance_required: decoder.u8()? != 0,
-    })
+    };
+    if decoder.remaining().len() >= std::mem::size_of::<u64>() {
+        snapshot.restricted_credits = decoder.u64()?;
+    }
+    Ok(snapshot)
 }
 
 fn encode_known_destinations_into(
@@ -35542,6 +35934,39 @@ mod tests {
     }
 
     #[test]
+    fn crew_outcome_encoding_preserves_establishment_and_reads_version_four() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let snapshot = store
+            .crew_management_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let outcome = Outcome {
+            command_id: [9; COMMAND_ID_BYTES],
+            committed_sequence: 15,
+            revision: 16,
+            replayed: false,
+            phase: PlayerPhase::Docked,
+            kind: OutcomeKind::CrewManagement(snapshot.clone()),
+        };
+
+        let encoded = encode_outcome(&outcome).unwrap();
+        assert_eq!(decode_outcome(&encoded).unwrap(), outcome);
+
+        let mut version_four = encoded;
+        version_four[0] = 4;
+        version_four.truncate(version_four.len() - 2);
+        let decoded = decode_outcome(&version_four).unwrap();
+        let OutcomeKind::CrewManagement(legacy) = decoded.kind else {
+            panic!("expected crew management");
+        };
+        assert_eq!(
+            legacy.established_complement,
+            snapshot.established_complement
+        );
+    }
+
+    #[test]
     fn course_plans_separate_fast_port_fuel_from_cheap_frontier_fuel() {
         let nodes = vec![
             CourseNode {
@@ -36103,6 +36528,11 @@ mod tests {
                     in_default: false,
                     impound_order_known_locally: false,
                     impound_message_id: 0,
+                    authorized_expense_credits: 0,
+                    forged_receipt_credits: 0,
+                    forged_receipt_count: 0,
+                    forged_receipt_bbs_id: 0,
+                    forged_receipt_player_id: 0,
                 }),
             )
             .unwrap();
@@ -36155,6 +36585,160 @@ mod tests {
             OutcomeKind::PlayerCreated(_)
         ));
         epoch
+    }
+
+    fn make_fixture_naval_command(store: &Store, restricted_credits: u64) -> ShipRecord {
+        let mut txn = store.env.write_txn().unwrap();
+        let (mut player, ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        player.credits = 0;
+        store
+            .players
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_player_record(&player),
+            )
+            .unwrap();
+        let key = ship_finance_key(ship.ship_id);
+        let mut finance =
+            decode_finance_record(store.finances.get(&txn, &key).unwrap().unwrap()).unwrap();
+        finance.title = crate::wire::ShipTitleKind::InstitutionOwned;
+        finance.restricted_credits = restricted_credits;
+        store
+            .finances
+            .put(&mut txn, &key, &encode_finance_record(&finance))
+            .unwrap();
+        let mut career = store.career_state_in(&txn, &identity()).unwrap();
+        career.mode = crate::careers::CombatCareerMode::Navy;
+        career.revision = career.revision.saturating_add(1);
+        store
+            .put_career_state_in(&mut txn, &identity(), &career)
+            .unwrap();
+        txn.commit().unwrap();
+        ship
+    }
+
+    #[test]
+    fn naval_service_account_pays_the_initial_berth_charge() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let ship = make_fixture_naval_command(&store, 10_000);
+        let current = get_meta_u64(store.meta, &store.env.read_txn().unwrap(), META_GAME_SECOND)
+            .unwrap()
+            .unwrap_or(0);
+        let arrived = match ship.location {
+            ShipLocationRecord::Docked { arrived_second, .. } => arrived_second,
+            _ => panic!("fixture ship is not docked"),
+        };
+        let berth_fee = crate::ship_condition::berth_fee_credits(arrived, current);
+        assert!(berth_fee > 0);
+        let destination = store
+            .known_destinations_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap()
+            .systems
+            .into_iter()
+            .find(|candidate| candidate.system_id != ship.system_id && candidate.within_jump_rating)
+            .unwrap();
+
+        let mut txn = store.env.write_txn().unwrap();
+        assert!(matches!(
+            store
+                .begin_voyage_in(
+                    &mut txn,
+                    &identity(),
+                    destination.system_id,
+                    crate::wire::JumpNavigationMethod::Onboard,
+                )
+                .unwrap(),
+            RuleResult::Applied(_)
+        ));
+        txn.commit().unwrap();
+
+        let player = store.player_record(&identity()).unwrap().unwrap();
+        assert_eq!(player.credits, 0);
+        let finance = decode_finance_record(
+            store
+                .finances
+                .get(
+                    &store.env.read_txn().unwrap(),
+                    &ship_finance_key(ship.ship_id),
+                )
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(finance.restricted_credits, 10_000 - berth_fee);
+    }
+
+    #[test]
+    fn forged_naval_receipts_move_cash_now_and_face_the_next_accounts_audit() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let ship = make_fixture_naval_command(&store, 1_000_000);
+        let due = ship.maintenance.next_accounting_second;
+        let amount = (1..=1_000_000)
+            .find(|amount| forged_receipt_audit_detected(ship.ship_id, due, *amount, 0, 1))
+            .unwrap();
+
+        let mut txn = store.env.write_txn().unwrap();
+        let RuleResult::Applied(snapshot) = store
+            .misappropriate_restricted_credits_in(&mut txn, &identity(), amount)
+            .unwrap()
+        else {
+            panic!("forged receipt was rejected");
+        };
+        assert_eq!(snapshot.liquid_credits, amount);
+        assert_eq!(snapshot.restricted_credits, 1_000_000 - amount);
+        assert!(
+            store
+                .career_state_in(&txn, &identity())
+                .unwrap()
+                .warrants
+                .is_empty()
+        );
+        txn.commit().unwrap();
+
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .process_ship_condition_in(&mut txn, due, ship.ship_id)
+            .unwrap();
+        let finance = decode_finance_record(
+            store
+                .finances
+                .get(&txn, &ship_finance_key(ship.ship_id))
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(finance.forged_receipt_credits, 0);
+        assert_eq!(finance.forged_receipt_count, 0);
+        let warrant = store
+            .career_state_in(&txn, &identity())
+            .unwrap()
+            .warrants
+            .into_iter()
+            .find(|warrant| warrant.accusation.contains("misappropriation"))
+            .expect("a detected forged receipt should produce a mailed warrant");
+        assert_ne!(warrant.message_id, 0);
+        txn.commit().unwrap();
+    }
+
+    #[test]
+    fn forged_receipt_scrutiny_combines_amount_and_expense_share() {
+        assert_eq!(forged_receipt_detection_percent(3, 1, 1), 13);
+        assert!(
+            forged_receipt_detection_percent(1_000_000, 0, 1)
+                > forged_receipt_detection_percent(3, 1, 1)
+        );
+        assert_eq!(forged_receipt_detection_percent(1_000_000, 0, 1), 90);
+        assert!(
+            forged_receipt_detection_percent(3, 1, 2) > forged_receipt_detection_percent(3, 1, 1)
+        );
+        assert!(
+            forged_receipt_detection_percent(3, 97, 1) < forged_receipt_detection_percent(3, 1, 1)
+        );
     }
 
     fn establish_colocated_player(store: &Store, identity: &PlayerIdentity, template: &ShipRecord) {
@@ -40832,14 +41416,50 @@ mod tests {
         let store = Store::open(dir.path()).unwrap();
         initialize_player_fixture(&store);
         let player = store.player_record(&identity()).unwrap().unwrap();
+        let mut before = store.crew_services(player.ship_id).unwrap();
+        before.sort_by_key(|service| service.person_id);
+        let grouped = {
+            let service = before
+                .iter_mut()
+                .find(|service| service.slot_id != 0)
+                .unwrap();
+            service.role = "other".into();
+            service.represented_positions = 17;
+            service.clone()
+        };
+        let before_positions = before
+            .iter()
+            .map(|service| u64::from(service.represented_positions))
+            .sum::<u64>();
         let mut txn = store.env.write_txn().unwrap();
+        store
+            .crew_services
+            .put(
+                &mut txn,
+                &grouped.person_id,
+                &encode_crew_service(&grouped).unwrap(),
+            )
+            .unwrap();
+        let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        ship.catalog_id = 90;
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
         store
             .apply_combat_crew_hits_in(&mut txn, &identity(), player.ship_id, 500, 100, 77)
             .unwrap();
         txn.commit().unwrap();
+        let after = store.crew_services(player.ship_id).unwrap();
+        let after_positions = after
+            .iter()
+            .map(|service| u64::from(service.represented_positions))
+            .sum::<u64>();
+        assert!(after_positions < before_positions);
         let roster = store
             .crew_management_in(&store.env.read_txn().unwrap(), &identity())
             .unwrap();
+        assert_eq!(roster.established_complement, 26);
         assert!(roster.members.iter().any(|member| member.injury_points > 0));
         assert!(roster.members.iter().any(|member| !member.available));
         assert!(
@@ -40849,6 +41469,13 @@ mod tests {
                 .filter(|member| !member.available)
                 .all(|member| member.assigned_slot_ids.is_empty())
         );
+        assert!(roster.members.iter().any(|member| {
+            roster
+                .roles
+                .iter()
+                .find(|role| role.slot_id == member.slot_id)
+                .is_some_and(|role| role.represented_positions > member.represented_positions)
+        }));
     }
 
     #[test]

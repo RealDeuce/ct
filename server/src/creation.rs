@@ -462,6 +462,23 @@ pub fn ship_electronics_dm(catalog_id: u32) -> Option<i8> {
     })
 }
 
+pub fn commanded_crew_roles(catalog_id: u32) -> Option<Vec<(String, u16)>> {
+    let mut roles = crew_roles(ship_source_opt(catalog_id)?);
+    if let Some((_, count)) = roles.iter_mut().find(|(role, _)| role == "command") {
+        *count = count.saturating_sub(1);
+    } else if let Some((_, count)) = roles.iter_mut().find(|(role, _)| role == "pilot") {
+        *count = count.saturating_sub(1);
+    }
+    roles.retain(|(_, count)| *count != 0);
+    Some(roles)
+}
+
+pub fn ship_crew_complement(catalog_id: u32) -> Option<u16> {
+    crew_roles(ship_source_opt(catalog_id)?)
+        .into_iter()
+        .try_fold(0_u16, |total, (_, positions)| total.checked_add(positions))
+}
+
 pub fn ship_status_spec(catalog_id: u32) -> Option<ShipStatusSpec> {
     let source = ship_source_opt(catalog_id)?;
     let runtime = SHIP_RUNTIME
@@ -604,13 +621,7 @@ pub fn crew_plan(path: u8, revision: u64, offer_id: u32) -> Option<StartingCrewP
     let offer = offer_records()
         .into_iter()
         .find(|offer| offer.path == path && offer.id == offer_id)?;
-    let mut roles = crew_roles(ship_source(offer.ship));
-    if let Some(command) = roles.iter_mut().find(|(role, _)| role == "command") {
-        command.1 = command.1.saturating_sub(1);
-    } else if let Some(pilot) = roles.iter_mut().find(|(role, _)| role == "pilot") {
-        pilot.1 = pilot.1.saturating_sub(1);
-    }
-    roles.retain(|(_, count)| *count > 0);
+    let roles = commanded_crew_roles(offer.ship)?;
     let slots = roles
         .into_iter()
         .enumerate()

@@ -337,6 +337,7 @@ struct CrewManagementSnapshot {
    std::string ship_name;
    std::vector<CrewManagementMember> members;
    std::vector<CrewRole> roles;
+   uint16_t established_complement;
    uint64_t committed_sequence;
    uint64_t revision;
    PlayerPhase phase;
@@ -531,6 +532,7 @@ struct DockedSnapshot {
    uint8_t law_level;
    uint64_t arrived_second;
    uint64_t credits;
+   uint64_t restricted_credits;
    uint64_t debt_credits;
    uint64_t fuel_millitons;
    uint64_t fuel_capacity_millitons;
@@ -1948,6 +1950,12 @@ FinanceSnapshot purchase_insurance(
    uint64_t session_epoch,
    InsuranceKind kind,
    bool enabled,
+   const std::array<uint8_t, 16>& command_id,
+   uint64_t request_id);
+FinanceSnapshot misappropriate_restricted_credits(
+   TlsConnection&,
+   uint64_t session_epoch,
+   uint64_t amount,
    const std::array<uint8_t, 16>& command_id,
    uint64_t request_id);
 FinanceSnapshot get_finance(TlsConnection&, uint64_t, const std::array<uint8_t, 16>&, uint64_t);

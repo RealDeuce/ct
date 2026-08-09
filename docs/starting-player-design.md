@@ -273,6 +273,14 @@ Customization uses three visibly separate budgets:
    authorized service supply account. The UI never presents these as
    interchangeable funds.
 
+Authorized ship costs consume restricted operating credit before the
+captain's liquid funds. A naval captain can deliberately misappropriate that
+credit only by filing a forged expense receipt; the converted funds become
+personal cash, while the durable receipt is exposed to a later accounts audit
+and mail-propagated legal consequences. Audit risk combines the absolute false
+total, repeated claims, and the fraction of that accounting cycle's ship
+expenses represented by fraudulent receipts.
+
 Standard components cannot be stripped and converted into startup cash.
 Player-funded later improvements can retain recoverable value according to
 the title ledger. This prevents a combat-origin player from taking a costly

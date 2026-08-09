@@ -162,6 +162,7 @@ struct Request {
     peekRadioReception @67 :RadioReceptionRequest;
     acknowledgeRadioReception @68 :RadioReceptionRequest;
     setRadioMute @69 :SetRadioMuteRequest;
+    misappropriateRestrictedCredits @70 :MisappropriateRestrictedCreditsRequest;
   }
 }
 
@@ -515,6 +516,7 @@ struct CrewManagementSnapshot {
   shipName @1 :Text;
   members @2 :List(CrewManagementMember);
   roles @3 :List(CrewRole);
+  establishedComplement @4 :UInt16;
 }
 
 enum ShipSubsystemKind {
@@ -737,6 +739,7 @@ struct DockedSnapshot {
   authorityAvailable @26 :Bool;
   medicalLevel @27 :UInt8;
   clearanceRequired @28 :Bool;
+  restrictedCredits @29 :UInt64;
 }
 
 struct KnownSystemSummary {
@@ -1855,6 +1858,8 @@ struct SetRadioMuteRequest { sender @0 :PlayerIdentity; muted @1 :Bool; }
 
 enum InsuranceKind { destinationAssistance @0; }
 struct PurchaseInsuranceRequest { kind @0 :InsuranceKind; enabled @1 :Bool; }
+
+struct MisappropriateRestrictedCreditsRequest { amount @0 :UInt64; }
 
 enum SystemMappingState {
   knownPublic @0;

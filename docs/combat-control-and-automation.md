@@ -19,7 +19,13 @@ Large establishments retain the existing data-model boundary: named officers,
 leaders, and senior specialists receive individual orders, while aggregate
 supporting personnel act as station or formation teams. The game does not
 create hundreds of indistinguishable UI prompts merely because a naval design
-has hundreds of supporting crew.
+has hundreds of supporting crew. Crew hits select among the actual people
+represented by those records rather than selecting named records uniformly.
+A hit on supporting personnel reduces that team's effective strength one
+position at a time; a hit on its named leader uses the ordinary individual
+injury model. Crew Management shows current strength against the established
+complement so aggregate combat losses cannot be mistaken for a fully manned
+ship.
 
 ## Two Automation Levels
 

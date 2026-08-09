@@ -63,7 +63,8 @@ service:
   authority and prize rights, but also restrictions and obligations.
 - **Navy** starts in public service with an issued command. Rank, orders, pay,
   and service obligations matter; commanding the vessel is not the same as
-  owning it.
+  owning it. The naval service account is restricted institutional credit,
+  separate from the captain's personal funds.
 
 Inspect each offer rather than comparing only ship size or weapons. The detail
 screen explains the ship, starting package, reserves, authority, and exit
@@ -81,7 +82,11 @@ what the ship is prepared to do; they are not extra cash paid to the captain.
 The roster names officers, leaders, and senior specialists. Supporting crew
 may be represented as part of a position rather than requiring an individual
 name for every person aboard. You may inspect or rename the named crew and
-select their training targets.
+select their training targets. Crew Management reports the effective headcount
+against the ship's established complement. A grouped appointment shows its
+current and established strength; combat casualties reduce that strength one
+supporting position at a time, so a short-handed ship remains visibly short
+until replacement personnel are assigned.
 
 The final confirmation creates the captain, ship, crew, and starting estate
 together. Nothing is registered until you answer `Y` on that screen.
@@ -112,9 +117,10 @@ authoritative state; it does not rewind the voyage.
 
 ## Docked operations
 
-The docked screen shows the ship, facility, system, port conditions, cash and
-debt, berth account, fuel, and cargo use. Its services are local: another port
-may have different stock, facilities, law, or institutional offices.
+The docked screen shows the ship, facility, system, port conditions, cash,
+restricted ship credit, debt, berth account, fuel, and cargo use. Its services
+are local: another port may have different stock, facilities, law, or
+institutional offices.
 
 - `C` — **Cargo Exchange:** inspect the hold, buy finite local stock, sell
   cargo carried from another system, and research suppliers or buyers.
@@ -136,6 +142,26 @@ may have different stock, facilities, law, or institutional offices.
 Banking, personnel, authorities, refined fuel, repairs, and other services are
 not guaranteed at every facility. A missing menu entry is useful information,
 not a display error.
+
+### Naval service accounts
+
+A naval captain's liquid balance is personal money. The separately displayed
+naval service account pays authorized vessel expenses before personal cash:
+berthing and navigation charges, fuel, provisions, ammunition, necessary crew
+medical treatment, repairs, replacement work, and refits. It cannot ordinarily
+pay for cargo trading, collateral, private messages, personal insurance, fines,
+or other private obligations.
+
+The Banking and Accounts screen permits a naval captain to file a false
+ship-expense receipt and move service credit into the personal balance. The
+confirmation is deliberate: the receipt is retained for the next accounts
+audit. Detection is not certain; its probability rises with the total amount
+and the number of forged receipts in that accounting cycle, and with the share
+of the month's ship expenses represented by false claims. A small false claim
+can therefore hide more easily among substantial legitimate operating costs.
+A detected forgery produces a naval warrant at the auditing office. That
+finding reaches the captain and other authorities by mail; it is not
+instantaneously known across systems.
 
 ### Cargo and local markets
 

@@ -669,6 +669,7 @@ CrewManagementSnapshot decode_crew_management(
       .ship_name = source.getShipName().cStr(),
       .members = {},
       .roles = {},
+      .established_complement = source.getEstablishedComplement(),
       .committed_sequence = response.getCommittedSequence(),
       .revision = response.getRevision(),
       .phase = decode_response_phase(response.getPhase()),
@@ -949,6 +950,7 @@ DockedSnapshot decode_docked_snapshot(const rpc::Response::Reader response)
       .law_level = source.getLawLevel(),
       .arrived_second = source.getArrivedSecond(),
       .credits = source.getCredits(),
+      .restricted_credits = source.getRestrictedCredits(),
       .debt_credits = source.getDebtCredits(),
       .fuel_millitons = source.getFuelMillitons(),
       .fuel_capacity_millitons = source.getFuelCapacityMillitons(),
@@ -2495,6 +2497,25 @@ FinanceSnapshot purchase_insurance(
    auto insurance = request.initPurchaseInsurance();
    insurance.setKind(static_cast<rpc::InsuranceKind>(kind));
    insurance.setEnabled(enabled);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_finance_snapshot(
+             checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+
+FinanceSnapshot misappropriate_restricted_credits(
+   TlsConnection& connection,
+   const uint64_t epoch,
+   const uint64_t amount,
+   const std::array<uint8_t, 16>& id,
+   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   request.initMisappropriateRestrictedCredits().setAmount(amount);
    send_frame(connection, capnp::messageToFlatArray(message).asBytes());
    const auto words = receive_response(connection, epoch, request_id);
    capnp::FlatArrayMessageReader reader(words);

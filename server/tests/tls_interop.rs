@@ -1348,6 +1348,13 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Captain's Command Console",
     );
     services_door.wait_for("(C/S/T/M/R/K/O) Manager");
+    services_door.send(b"c");
+    services_door.wait_for("Crew Management -");
+    services_door.wait_for("Complement:");
+    services_door.wait_for("managed appointments");
+    services_door.send(b"q");
+    services_door.wait_for_occurrences("Captain's Command Console", 2);
+    services_door.wait_for_occurrences("(C/S/T/M/R/K/O) Manager", 2);
     services_door.send(b"m");
     services_door.wait_for("Message Management");
     services_door.send_through_page_prompt(b"c", "Recipient:", "Recipient:");

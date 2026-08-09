@@ -512,6 +512,7 @@ pub struct CrewManagementSnapshot {
     pub ship_name: String,
     pub members: Vec<CrewManagementMember>,
     pub roles: Vec<CrewRole>,
+    pub established_complement: u16,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -730,6 +731,7 @@ pub struct DockedSnapshot {
     pub law_level: u8,
     pub arrived_second: u64,
     pub credits: u64,
+    pub restricted_credits: u64,
     pub debt_credits: u64,
     pub fuel_millitons: u64,
     pub fuel_capacity_millitons: u64,
@@ -2073,6 +2075,9 @@ pub enum Command {
         kind: InsuranceKind,
         enabled: bool,
     },
+    MisappropriateRestrictedCredits {
+        amount: u64,
+    },
     GetFleet,
     SetActiveShip {
         expected_revision: u64,
@@ -2184,7 +2189,8 @@ impl Command {
             | Self::ReleaseMarketReservation { .. }
             | Self::ApplyTaskAction { .. }
             | Self::SendPrivateMessage(_)
-            | Self::PurchaseInsurance { .. } => CommandPersistence::Transaction,
+            | Self::PurchaseInsurance { .. }
+            | Self::MisappropriateRestrictedCredits { .. } => CommandPersistence::Transaction,
             Self::SetActiveShip { .. }
             | Self::AssignShipCaptain { .. }
             | Self::TransferShipStores { .. }
@@ -2987,6 +2993,11 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
                     }
                 },
                 enabled: value.get_enabled(),
+            }
+        }
+        request::MisappropriateRestrictedCredits(value) => {
+            Command::MisappropriateRestrictedCredits {
+                amount: value?.get_amount(),
             }
         }
         request::GetFleet(()) => Command::GetFleet,
@@ -3881,6 +3892,11 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
             });
             value.set_enabled(enabled);
         }
+        Command::MisappropriateRestrictedCredits { amount } => {
+            builder
+                .init_misappropriate_restricted_credits()
+                .set_amount(amount);
+        }
         Command::GetFleet => builder.set_get_fleet(()),
         Command::SetActiveShip {
             expected_revision,
@@ -4329,6 +4345,7 @@ fn set_crew_management(
 ) -> Result<(), WireError> {
     builder.set_ship_id(snapshot.ship_id);
     builder.set_ship_name(&snapshot.ship_name);
+    builder.set_established_complement(snapshot.established_complement);
     let count = u32::try_from(snapshot.members.len())
         .map_err(|_| WireError::Expected("fewer crew members"))?;
     let mut members = builder.reborrow().init_members(count);
@@ -4620,6 +4637,7 @@ fn set_docked_snapshot(
     builder.set_unrefined_fuel_millitons(snapshot.unrefined_fuel_millitons);
     builder.set_unrefined_fuel_price_per_ton(snapshot.unrefined_fuel_price_per_ton);
     builder.set_accrued_berth_fee_credits(snapshot.accrued_berth_fee_credits);
+    builder.set_restricted_credits(snapshot.restricted_credits);
     builder.set_facility_revision(snapshot.facility_revision);
     builder.set_personnel_available(snapshot.personnel_available);
     builder.set_banking_available(snapshot.banking_available);
@@ -6606,6 +6624,12 @@ mod tests {
                 session_epoch: 23,
                 command_id: [0xa8; COMMAND_ID_BYTES],
                 command: Command::GetShipStatus,
+            },
+            CommandRequest {
+                request_id: 201,
+                session_epoch: 23,
+                command_id: [0xb8; COMMAND_ID_BYTES],
+                command: Command::MisappropriateRestrictedCredits { amount: 12_345 },
             },
             CommandRequest {
                 request_id: 21,

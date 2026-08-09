@@ -938,6 +938,33 @@ std::optional<unsigned> input_number(const char* prompt,
    }
 }
 
+std::optional<uint64_t> input_credit_amount(const char* prompt, const uint64_t maximum)
+{
+   while(true) {
+      door_prompt("%s (maximum Cr%llu; Q to cancel, ? for help): ",
+                  prompt, static_cast<unsigned long long>(maximum));
+      std::array<char, 32> input{};
+      od_input_str(input.data(), static_cast<INT>(input.size() - 1), 32, 255);
+      if(input[0] == '?' && input[1] == '\0') {
+         show_context_help();
+         door_printf("\n\r");
+         continue;
+      }
+      if((input[0] == 'q' || input[0] == 'Q') && input[1] == '\0') {
+         return std::nullopt;
+      }
+      uint64_t value = 0;
+      const auto length = std::strlen(input.data());
+      const auto [end, error] =
+         std::from_chars(input.data(), input.data() + length, value);
+      if(error == std::errc() && end == input.data() + length && value >= 1 && value <= maximum) {
+         return value;
+      }
+      door_error("Enter a credit amount from 1 through %llu.\n\r",
+                 static_cast<unsigned long long>(maximum));
+   }
+}
+
 std::optional<uint64_t> input_tonnage(const char* prompt,
                                       const uint64_t maximum_millitons)
 {
@@ -2081,6 +2108,24 @@ std::string crew_role_name(const ct::CrewRole& role)
           .appointment;
 }
 
+uint16_t crew_member_living_positions(const ct::CrewManagementMember& member)
+{
+   return member.condition == ct::PersonCondition::Dead &&
+          member.represented_positions != 0
+          ? static_cast<uint16_t>(member.represented_positions - 1)
+          : member.represented_positions;
+}
+
+uint16_t crew_member_established_positions(
+   const ct::CrewManagementSnapshot& snapshot,
+   const ct::CrewManagementMember& member)
+{
+   const auto* role = find_crew_role(snapshot, member.slot_id);
+   return role == nullptr
+          ? member.represented_positions
+          : std::max(role->represented_positions, member.represented_positions);
+}
+
 std::string crew_assignments(
    const ct::CrewManagementSnapshot& snapshot,
    const ct::CrewManagementMember& member,
@@ -2165,7 +2210,7 @@ void render_managed_crew_roster(
 {
    const bool compact = output().columns() < 68;
    const size_t rows_per_entry = compact ? 2 : 1;
-   const size_t reserved_rows = compact ? 8 : 7;
+   const size_t reserved_rows = compact ? 9 : 8;
    const size_t available_rows =
       output().rows() > reserved_rows ? output().rows() - reserved_rows : 1;
    const size_t page_size =
@@ -2181,14 +2226,51 @@ void render_managed_crew_roster(
    door_heading("=================\n\r");
    door_label("Ship status: ");
    door_identifier("%s", phase_name(snapshot.phase));
-   od_printf("\n\r\n\r");
+   od_printf("\n\r");
+   const auto living_positions = std::accumulate(
+      snapshot.members.begin(), snapshot.members.end(), uint64_t{0},
+      [](const uint64_t total, const auto& member) {
+         return total + crew_member_living_positions(member);
+      });
+   const auto established_positions = snapshot.established_complement == 0
+                                      ? living_positions
+                                      : uint64_t{snapshot.established_complement};
+   door_label("Complement:  ");
+   if(living_positions < established_positions) {
+      door_warning(
+         "%llu/%llu — %llu position%s short",
+         static_cast<unsigned long long>(living_positions),
+         static_cast<unsigned long long>(established_positions),
+         static_cast<unsigned long long>(established_positions - living_positions),
+         established_positions - living_positions == 1 ? "" : "s");
+   } else {
+      door_number(
+         "%llu/%llu",
+         static_cast<unsigned long long>(living_positions),
+         static_cast<unsigned long long>(established_positions));
+   }
+   door_label(" in ");
+   door_number("%zu", snapshot.members.size());
+   door_label(" managed appointments\n\r\n\r");
    for(size_t index = first; index < last; ++index) {
       const auto& member = snapshot.members[index];
-      const auto assignment = crew_assignments(snapshot, member, true);
+      auto assignment = crew_assignments(snapshot, member, true);
+      const auto living = crew_member_living_positions(member);
+      const auto established = crew_member_established_positions(snapshot, member);
+      if(established > 1 || living != established) {
+         assignment += living == established
+                       ? " (" + std::to_string(living) + ")"
+                       : " (" + std::to_string(living) + "/" +
+                         std::to_string(established) + ")";
+      }
       door_number("%c", crew_menu_key(index));
       door_label(". ");
       if(compact) {
-         door_identifier("%s\n\r", safe_field(assignment).c_str());
+         if(living < established) {
+            door_warning("%s\n\r", safe_field(assignment).c_str());
+         } else {
+            door_identifier("%s\n\r", safe_field(assignment).c_str());
+         }
          door_value("   %s", safe_field(member.person.name).c_str());
          door_label(" - ");
          door_identifier(
@@ -2198,7 +2280,11 @@ void render_managed_crew_roster(
          door_label("/");
          door_number("%u\n\r", member.person.training.needed_weeks);
       } else {
-         door_identifier("%-30s", safe_field(assignment).c_str());
+         if(living < established) {
+            door_warning("%-30s", safe_field(assignment).c_str());
+         } else {
+            door_identifier("%-30s", safe_field(assignment).c_str());
+         }
          door_value("%-16s", safe_field(member.person.name).c_str());
          door_identifier(
             "%s", canonical_skill_name(member.person.training.skill));
@@ -2371,6 +2457,9 @@ void show_crew_member(
    const std::vector<ct::SkillDefinition> definitions;
    while(true) {
       const auto& member = snapshot.members[index];
+      const auto living_positions = crew_member_living_positions(member);
+      const auto established_positions =
+         crew_member_established_positions(snapshot, member);
       od_clr_scr();
       door_heading("%s\n\r", safe_field(member.person.name).c_str());
       door_heading(
@@ -2383,7 +2472,7 @@ void show_crew_member(
             member.captain
             ? std::string("Captain")
             : ct::describe_crew_naming(
-               member.role_kind, member.role, member.represented_positions)
+               member.role_kind, member.role, established_positions)
             .appointment)
          .c_str());
       door_label("On watch: ");
@@ -2437,10 +2526,18 @@ void show_crew_member(
                       static_cast<unsigned long long>(member.arrears_credits));
       }
       od_printf("\n\r");
-      if(member.represented_positions > 1) {
+      if(established_positions > 1 || living_positions != established_positions) {
          door_label("Service complement: ");
-         door_number("%u", member.represented_positions);
-         door_label(" positions\n\r");
+         if(living_positions < established_positions) {
+            door_warning("%u/%u", living_positions, established_positions);
+            door_warning(
+               " — %u position%s short",
+               established_positions - living_positions,
+               established_positions - living_positions == 1 ? "" : "s");
+         } else {
+            door_number("%u/%u", living_positions, established_positions);
+         }
+         door_label("\n\r");
       }
       od_printf("\n\r");
       render_person(member.person, definitions);
@@ -3996,6 +4093,12 @@ void show_finance(
       door_heading("====================\n\r\n\r");
       door_label("Liquid credits:       ");
       door_number("Cr%llu\n\r", static_cast<unsigned long long>(finance.liquid_credits));
+      if(finance.title == ct::ShipTitleKind::InstitutionOwned || finance.restricted_credits != 0) {
+         door_label(finance.title == ct::ShipTitleKind::InstitutionOwned
+                    ? "Naval service account: "
+                    : "Restricted operating:  ");
+         door_number("Cr%llu\n\r", static_cast<unsigned long long>(finance.restricted_credits));
+      }
       door_label("Reserved credits:     ");
       door_number("Cr%llu\n\r", static_cast<unsigned long long>(finance.reserved_credits));
       door_label("Secured principal:    ");
@@ -4032,6 +4135,9 @@ void show_finance(
       if(finance.in_default && finance.principal_credits > 0) {
          door_prompt("  [K] Petition for bankruptcy");
       }
+      if(finance.title == ct::ShipTitleKind::InstitutionOwned && finance.restricted_credits != 0) {
+         door_prompt("  [F] Forge expense receipt");
+      }
       door_prompt("  [Enter] Refresh  [Q] Console  [?] Help\n\r");
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
@@ -4041,6 +4147,33 @@ void show_finance(
       }
       if(key == 'q' || key == 'Q') {
          return;
+      }
+      if((key == 'f' || key == 'F')
+            && finance.title == ct::ShipTitleKind::InstitutionOwned
+            && finance.restricted_credits != 0) {
+         door_warning(
+            "\n\rThis converts naval service credit into personal funds by filing a false "
+            "ship-expense receipt. A later accounts audit may uncover the forgery.\n\r");
+         const auto amount = input_credit_amount(
+            "False receipt amount", finance.restricted_credits);
+         if(!amount) {
+            continue;
+         }
+         door_prompt("Forge a receipt for Cr%llu? [y/N]: ",
+                     static_cast<unsigned long long>(*amount));
+         const auto confirmation = od_get_key(TRUE);
+         if(confirmation != 'y' && confirmation != 'Y') {
+            continue;
+         }
+         try {
+            finance = ct::misappropriate_restricted_credits(
+                         connection, session_epoch, *amount,
+                         random_command_id(random), request_id++);
+         } catch(const ct::PlayerRequestRejected& error) {
+            door_error("\n\r%s\n\r", safe_field(error.what()).c_str());
+            wait_for_enter("Banking and Accounts");
+         }
+         continue;
       }
       if((key == 'k' || key == 'K') && finance.in_default
             && finance.principal_credits > 0) {
@@ -6091,6 +6224,10 @@ void render_docked_snapshot(const ct::DockedSnapshot& snapshot)
    door_number("%u\n\r", snapshot.law_level);
    door_label("Cash: ");
    door_number("Cr%llu", static_cast<unsigned long long>(snapshot.credits));
+   if(snapshot.restricted_credits != 0) {
+      door_label("  Ship account: ");
+      door_number("Cr%llu", static_cast<unsigned long long>(snapshot.restricted_credits));
+   }
    door_label("  Debt: ");
    door_number("Cr%llu\n\r", static_cast<unsigned long long>(snapshot.debt_credits));
    door_label("Berth account: ");
