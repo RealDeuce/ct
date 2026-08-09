@@ -1119,6 +1119,7 @@ struct ManagedShipSummary {
   provisionCapacityPersonDays @18 :UInt64;
   cargo @19 :List(CargoLot);
   ammunition @20 :List(ShipAmmunitionStatus);
+  onlineControlled @21 :Bool;
 }
 
 struct FleetSnapshot {
@@ -1608,6 +1609,8 @@ struct CombatParticipant {
   disposition @9 :CombatDisposition;
   weapons @10 :List(CombatWeaponMount);
   commanded @11 :Bool;
+  playerOwned @12 :Bool;
+  onlineControlled @13 :Bool;
 }
 
 struct CombatActor {
@@ -1903,6 +1906,7 @@ struct RadioUnread {
 enum TrafficMovementKind {
   arrival @0;
   departure @1;
+  present @2;
 }
 
 enum TrafficContactResolution {
@@ -1926,6 +1930,8 @@ struct TrafficContact {
   edgeSecond @11 :UInt64;
   resolution @12 :TrafficContactResolution;
   confidencePercent @13 :UInt8;
+  playerOwned @14 :Bool;
+  onlineControlled @15 :Bool;
 }
 
 struct TrafficSnapshot {

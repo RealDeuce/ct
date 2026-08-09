@@ -23,6 +23,7 @@ include!(concat!(env!("OUT_DIR"), "/traffic_catalog.rs"));
 pub enum TrafficMovementKind {
     Arrival,
     Departure,
+    Present,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -48,6 +49,8 @@ pub struct TrafficContact {
     pub edge_second: u64,
     pub resolution: TrafficContactResolution,
     pub confidence_percent: u8,
+    pub player_owned: bool,
+    pub online_controlled: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -129,6 +132,7 @@ fn day_contacts(system: &SimulationSystem, day: u64) -> Result<Vec<TrafficContac
         let (origin_system_id, destination_system_id) = match movement {
             TrafficMovementKind::Arrival => (neighbor, system.system_id),
             TrafficMovementKind::Departure => (system.system_id, neighbor),
+            TrafficMovementKind::Present => unreachable!("generated traffic is always moving"),
         };
         contacts.push(TrafficContact {
             contact_id,
@@ -149,6 +153,8 @@ fn day_contacts(system: &SimulationSystem, day: u64) -> Result<Vec<TrafficContac
             edge_second: day_start.saturating_add(offset.min(SECONDS_PER_DAY - 1)),
             resolution: TrafficContactResolution::Identified,
             confidence_percent: 100,
+            player_owned: false,
+            online_controlled: false,
         });
     }
     contacts.sort_by_key(|contact| (contact.edge_second, contact.contact_id));

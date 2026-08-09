@@ -1550,6 +1550,18 @@ TravelStatus decode_travel_status(const rpc::Response::Reader response)
 
 TrafficContact decode_traffic_contact(const rpc::TrafficContact::Reader source)
 {
+   TrafficMovementKind movement;
+   switch(source.getMovement()) {
+   case rpc::TrafficMovementKind::ARRIVAL:
+      movement = TrafficMovementKind::Arrival;
+      break;
+   case rpc::TrafficMovementKind::DEPARTURE:
+      movement = TrafficMovementKind::Departure;
+      break;
+   case rpc::TrafficMovementKind::PRESENT:
+      movement = TrafficMovementKind::Present;
+      break;
+   }
    return TrafficContact{
       .contact_id = source.getContactId(),
       .catalog_id = source.getCatalogId(),
@@ -1561,12 +1573,12 @@ TrafficContact decode_traffic_contact(const rpc::TrafficContact::Reader source)
       .displacement_millitons = source.getDisplacementMillitons(),
       .origin_system_id = source.getOriginSystemId(),
       .destination_system_id = source.getDestinationSystemId(),
-      .movement = source.getMovement() == rpc::TrafficMovementKind::ARRIVAL
-      ? TrafficMovementKind::Arrival
-      : TrafficMovementKind::Departure,
+      .movement = movement,
       .edge_second = source.getEdgeSecond(),
       .resolution = static_cast<TrafficContactResolution>(source.getResolution()),
       .confidence_percent = source.getConfidencePercent(),
+      .player_owned = source.getPlayerOwned(),
+      .online_controlled = source.getOnlineControlled(),
    };
 }
 
@@ -2628,6 +2640,7 @@ FleetSnapshot decode_fleet(const rpc::Response::Reader response)
          .provision_capacity_person_days = wire_ship.getProvisionCapacityPersonDays(),
          .cargo = {},
          .ammunition = {},
+         .online_controlled = wire_ship.getOnlineControlled(),
       });
       auto& ship = result.ships.back();
       for(const auto lot : wire_ship.getCargo()) {
@@ -3056,6 +3069,8 @@ CombatSnapshot decode_combat(const rpc::Response::Reader response)
          .disposition = static_cast<CombatDisposition>(participant.getDisposition()),
          .weapons = {},
          .commanded = participant.getCommanded(),
+         .player_owned = participant.getPlayerOwned(),
+         .online_controlled = participant.getOnlineControlled(),
       };
       for(auto mount : participant.getWeapons()) {
          CombatWeaponMount fitted{

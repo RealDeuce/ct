@@ -266,6 +266,14 @@ tonnage remain sensor observations with equipment- and damage-dependent
 confidence. The system-wide traffic-control feed is a separate transponder
 picture and does not make a remote vessel interceptable. Prize claims move by
 ordinary mail, and a warrant has no local effect before its message arrives.
+Player-owned vessels carry a `[PLAYER]` marker when operating under standing
+orders and an `[ONLINE]` marker while a connected captain directly controls
+them. Ownership and control markers do not improve the local sensor solution.
+Intercepting either marker creates one authoritative combat shared by all
+participating vessels. Only the captain directly commanding a participant
+receives tactical prompts; another vessel in the same account follows its
+persistent policy without sending its distant owner an instantaneous alert.
+Its loss or capture is reported through ordinary causal private mail.
 
 ## Door Navigation
 

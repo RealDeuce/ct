@@ -156,9 +156,13 @@ void collect_player_events()
       case ct::PlayerEventKind::TrafficMovement: {
          const auto& contact = *event->traffic_contact;
          std::ostringstream notice;
-         notice << (contact.movement == ct::TrafficMovementKind::Arrival
-                    ? "Arrival"
-                    : "Departure")
+         const char* movement = "Present";
+         if(contact.movement == ct::TrafficMovementKind::Arrival) {
+            movement = "Arrival";
+         } else if(contact.movement == ct::TrafficMovementKind::Departure) {
+            movement = "Departure";
+         }
+         notice << movement
                 << ": " << contact.ship_name << " (" << contact.class_name
                 << ", " << contact.role << ")";
          pending_traffic_notices.push_back(notice.str());
@@ -2871,6 +2875,11 @@ void show_fleet_manager(
          const auto& ship = fleet.ships[index];
          door_number("%zu", index + 1);
          door_label(". ");
+         if(ship.online_controlled) {
+            door_success("[ONLINE] ");
+         } else {
+            door_identifier("[PLAYER] ");
+         }
          if(ship.active) {
             door_identifier("* %s", safe_field(ship.name).c_str());
          } else {
@@ -2906,6 +2915,12 @@ void show_fleet_manager(
                     safe_field(ship.location).c_str());
          door_label("Captain: ");
          door_identifier("%s\n\r", safe_field(ship.commanding_person_name).c_str());
+         door_label("Control: ");
+         if(ship.online_controlled) {
+            door_success("Online player command\n\r");
+         } else {
+            door_value("Player-owned; standing orders\n\r");
+         }
          door_label("Fuel: ");
          print_millitons(ship.fuel_millitons);
          door_label(" / ");
@@ -5154,19 +5169,30 @@ std::optional<ct::PlayerPhase> show_combat_operations(
          }
       }
       for(const auto&c : snapshot.system_contacts) {
-         door_identifier("  %s", safe_field(c.ship_name).c_str());
+         if(c.online_controlled) {
+            door_success("  [ONLINE] ");
+         } else if(c.player_owned) {
+            door_identifier("  [PLAYER] ");
+         } else {
+            door_label("  ");
+         }
+         door_identifier("%s", safe_field(c.ship_name).c_str());
          door_label("  [");
          door_value("%s", safe_field(c.transponder).c_str());
          door_label("]\n\r");
          print_wrapped_field(
             "    Registry: ",
             safe_field(c.operator_name) + " — " + safe_field(c.role));
-         door_label("    Movement: ");
-         door_value("%s  %s\n\r",
-                    c.movement == ct::TrafficMovementKind::Arrival
-                    ? "arrival"
-                    : "departure",
-                    game_date(c.edge_second).c_str());
+         door_label("    Status: ");
+         if(c.movement == ct::TrafficMovementKind::Present) {
+            door_value("present in system\n\r");
+         } else {
+            door_value("%s  %s\n\r",
+                       c.movement == ct::TrafficMovementKind::Arrival
+                       ? "arrival"
+                       : "departure",
+                       game_date(c.edge_second).c_str());
+         }
       }
       door_identifier("\n\rLocal contacts\n\r");
       if(snapshot.local_contacts.empty()) {
@@ -5182,6 +5208,11 @@ std::optional<ct::PlayerPhase> show_combat_operations(
          const auto&c = snapshot.local_contacts[i];
          door_number("%zu", i + 1);
          door_label(". ");
+         if(c.online_controlled) {
+            door_success("[ONLINE] ");
+         } else if(c.player_owned) {
+            door_identifier("[PLAYER] ");
+         }
          door_identifier("%s", safe_field(c.ship_name).c_str());
          door_label("  [");
          door_value("%s", safe_field(c.transponder).c_str());
@@ -5269,13 +5300,24 @@ std::optional<ct::PlayerPhase> show_combat_operations(
             const auto selected = input_number("Contact", 1,
                                                static_cast<unsigned>(snapshot.local_contacts.size()));
             if(selected) {
+               const auto& target = snapshot.local_contacts[*selected - 1];
+               if(target.player_owned) {
+                  door_warning(
+                     "This is another player's real vessel. Combat can kill its crew, destroy "
+                     "cargo, or transfer the ship by surrender or boarding.\n\r");
+                  if(target.online_controlled) {
+                     door_information("Its captain is presently commanding it online.\n\r");
+                  } else {
+                     door_information("It will fight under its captain's standing combat policy.\n\r");
+                  }
+               }
                door_warning("An armed intercept is an irreversible act.\n\r");
                door_prompt("[I] Confirm intercept  [Q] Cancel: ");
                const auto confirm = static_cast<char>(std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
                od_printf("\n\r");
                if(confirm == 'I') {
                   auto combat = ct::engage_traffic_contact(connection, epoch,
-                     snapshot.local_contacts[*selected - 1].contact_id, snapshot.revision, random_command_id(random),
+                     target.contact_id, snapshot.revision, random_command_id(random),
                      request_id++);
                   return combat.phase;
                }
@@ -7381,6 +7423,11 @@ ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello&
          door_warning("Contact: ");
       }
       door_value("%s", safe_field(vessel.name).c_str());
+      if(vessel.online_controlled) {
+         door_success(" [ONLINE]");
+      } else if(vessel.player_owned) {
+         door_information(" [PLAYER]");
+      }
       door_label("  ");
       door_value("%s\n\r", safe_field(vessel.class_name).c_str());
       door_label("  initiative ");

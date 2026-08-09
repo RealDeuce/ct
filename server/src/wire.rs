@@ -1162,6 +1162,7 @@ pub struct ManagedShipSummary {
     pub provision_capacity_person_days: u64,
     pub cargo: Vec<CargoLot>,
     pub ammunition: Vec<ShipAmmunitionStatus>,
+    pub online_controlled: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1668,6 +1669,8 @@ pub struct CombatParticipant {
     pub disposition: crate::combat::VesselDisposition,
     pub weapons: Vec<CombatWeaponMount>,
     pub commanded: bool,
+    pub player_owned: bool,
+    pub online_controlled: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4948,6 +4951,7 @@ fn set_fleet(
         ship.set_cargo_capacity_millitons(source.cargo_capacity_millitons);
         ship.set_provision_person_days(source.provision_person_days);
         ship.set_provision_capacity_person_days(source.provision_capacity_person_days);
+        ship.set_online_controlled(source.online_controlled);
         let cargo_count = u32::try_from(source.cargo.len())
             .map_err(|_| WireError::Expected("fewer managed-vessel cargo lots"))?;
         let mut cargo = ship.reborrow().init_cargo(cargo_count);
@@ -5785,6 +5789,8 @@ fn set_combat_snapshot(
             }
         });
         item.set_commanded(participant.commanded);
+        item.set_player_owned(participant.player_owned);
+        item.set_online_controlled(participant.online_controlled);
         let mut mounts = item.reborrow().init_weapons(
             u32::try_from(participant.weapons.len())
                 .map_err(|_| WireError::Expected("fewer combat mounts"))?,
@@ -6345,6 +6351,9 @@ fn set_traffic_contact(
         crate::traffic::TrafficMovementKind::Departure => {
             crate::ct_rpc_capnp::TrafficMovementKind::Departure
         }
+        crate::traffic::TrafficMovementKind::Present => {
+            crate::ct_rpc_capnp::TrafficMovementKind::Present
+        }
     });
     builder.set_edge_second(contact.edge_second);
     builder.set_resolution(match contact.resolution {
@@ -6359,6 +6368,8 @@ fn set_traffic_contact(
         }
     });
     builder.set_confidence_percent(contact.confidence_percent);
+    builder.set_player_owned(contact.player_owned);
+    builder.set_online_controlled(contact.online_controlled);
 }
 
 fn encode_ship_subsystem_kind(kind: ShipSubsystemKind) -> SchemaShipSubsystemKind {

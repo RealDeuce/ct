@@ -622,6 +622,8 @@ mod tests {
             edge_second: 500,
             resolution: TrafficContactResolution::Identified,
             confidence_percent: 100,
+            player_owned: false,
+            online_controlled: false,
         }
     }
 

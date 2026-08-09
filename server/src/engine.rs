@@ -125,9 +125,7 @@ impl Engine {
             if let Some(delivery) = processed.delivery {
                 deliveries.push(delivery);
             }
-            if let Some(transition) = processed.player_transition {
-                player_transitions.push(transition);
-            }
+            player_transitions.extend(processed.player_transitions);
             if self.reset_if_unique_cargo_destroyed()? {
                 // Reset invalidates every delivery and transition gathered
                 // from the replaced universe.
@@ -339,6 +337,13 @@ impl Engine {
         identity: &PlayerIdentity,
     ) -> Result<Option<crate::traffic::TrafficSnapshot>, EngineError> {
         Ok(self.store.traffic_snapshot(identity)?)
+    }
+
+    pub fn active_ship_id(&self, identity: &PlayerIdentity) -> Result<Option<u64>, EngineError> {
+        Ok(self
+            .store
+            .player_record(identity)?
+            .map(|player| player.ship_id))
     }
 
     pub fn traffic_movements(

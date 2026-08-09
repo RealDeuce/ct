@@ -105,6 +105,7 @@ const SHIP_RECORD_CODEC_VERSION: u8 = 1;
 const CNS5_COVERAGE_DISTRIBUTION_VERSION: u16 = 1;
 const CNS5_COVERAGE_SAMPLER_VERSION: u16 = 1;
 const PERSON_TREATMENT_EVENT_BIT: u64 = 1_u64 << 63;
+const PERSON_PRISONER_RELEASE_EVENT_BIT: u64 = 1_u64 << 62;
 const SETTLEMENT_CAPACITY_SAMPLER_VERSION: u16 = 1;
 const FRONTIER_ARRIVAL_SAMPLER_VERSION: u16 = 1;
 const MAX_UNINHABITED_SEED_DRAWS: usize = 100_000;
@@ -262,6 +263,11 @@ enum ScheduledInput {
         identity: PlayerIdentity,
         encounter_id: u64,
     },
+    SharedCombatTurn {
+        event_id: u64,
+        due_second: u64,
+        combat_id: u64,
+    },
     ContactCheck {
         event_id: u64,
         due_second: u64,
@@ -282,7 +288,8 @@ impl ScheduledInput {
             | Self::ShipCondition { due_second, .. }
             | Self::PersonTraining { due_second, .. }
             | Self::ShipActivity { due_second, .. }
-            | Self::EncounterTurn { due_second, .. } => *due_second,
+            | Self::EncounterTurn { due_second, .. }
+            | Self::SharedCombatTurn { due_second, .. } => *due_second,
             Self::ContactCheck { due_second, .. } | Self::MerchantWork { due_second, .. } => {
                 *due_second
             }
@@ -331,6 +338,12 @@ enum ScheduledCandidate {
         identity: PlayerIdentity,
         encounter_id: u64,
     },
+    SharedCombatTurn {
+        key: Vec<u8>,
+        due_second: u64,
+        event_id: u64,
+        combat_id: u64,
+    },
     ContactCheck {
         key: Vec<u8>,
         due_second: u64,
@@ -374,6 +387,11 @@ impl ScheduledCandidate {
                 event_id,
                 ..
             }
+            | Self::SharedCombatTurn {
+                due_second,
+                event_id,
+                ..
+            }
             | Self::ContactCheck {
                 due_second,
                 event_id,
@@ -391,7 +409,7 @@ impl ScheduledCandidate {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProcessedEngineInput {
     pub delivery: Option<Delivery>,
-    pub player_transition: Option<PlayerTravelTransition>,
+    pub player_transitions: Vec<PlayerTravelTransition>,
     pub scheduled_event: Option<ProcessedEvent>,
     pub category: Option<ProcessedScheduledCategory>,
 }
@@ -893,6 +911,27 @@ struct EncounterRecord {
     combat: Option<crate::combat::CombatState>,
     player_order: Option<crate::combat::JointOrder>,
     automation_decision: Option<crate::combat::AutomationDecision>,
+    combat_log: Vec<String>,
+    pending_interventions: Vec<PendingCombatIntervention>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SharedCombatParticipant {
+    identity: PlayerIdentity,
+    ship_id: u64,
+    side: u16,
+    directly_commanded: bool,
+    initiated: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SharedCombatRecord {
+    combat: crate::combat::CombatState,
+    system_id: u64,
+    authorized_attack: bool,
+    participants: Vec<SharedCombatParticipant>,
+    orders: Vec<crate::combat::JointOrder>,
+    automation_decisions: Vec<crate::combat::AutomationDecision>,
     combat_log: Vec<String>,
     pending_interventions: Vec<PendingCombatIntervention>,
 }
@@ -1562,6 +1601,7 @@ fn combat_snapshot(
     actors: Vec<crate::wire::CombatActor>,
     submitted: bool,
     log: &[String],
+    player_owned_ship_ids: &[u64],
 ) -> crate::wire::CombatSnapshot {
     let catalog = creation::ship_market_catalog()
         .into_iter()
@@ -1615,6 +1655,8 @@ fn combat_snapshot(
                 })
                 .collect(),
             commanded: vessel.vessel_id == ship.ship_id,
+            player_owned: player_owned_ship_ids.contains(&vessel.vessel_id),
+            online_controlled: false,
         })
         .collect();
     crate::wire::CombatSnapshot {
@@ -2634,6 +2676,9 @@ pub struct Store {
     checkpoints: Database<Bytes, Bytes>,
     encounters: Database<Bytes, Bytes>,
     encounter_events: Database<Bytes, Bytes>,
+    shared_combats: UniverseDatabase,
+    ship_combats: UniverseDatabase,
+    shared_combat_events: Database<Bytes, Bytes>,
     contact_events: Database<Bytes, Bytes>,
     simulation: SimulationDatabases,
 }
@@ -2734,6 +2779,10 @@ impl Store {
         let checkpoints = env.create_database(&mut txn, Some("arrival-checkpoints"))?;
         let encounters = env.create_database(&mut txn, Some("encounters"))?;
         let encounter_events = env.create_database(&mut txn, Some("encounter-turn-events"))?;
+        let shared_combats = env.create_database(&mut txn, Some("shared-combats"))?;
+        let ship_combats = env.create_database(&mut txn, Some("ship-combats"))?;
+        let shared_combat_events =
+            env.create_database(&mut txn, Some("shared-combat-turn-events"))?;
         let contact_events = env.create_database(&mut txn, Some("contact-check-events"))?;
         let simulation = SimulationDatabases::create(&env, &mut txn)?;
         match get_meta_u64(meta, &txn, META_STORAGE_FORMAT_VERSION)? {
@@ -2820,6 +2869,9 @@ impl Store {
             checkpoints,
             encounters,
             encounter_events,
+            shared_combats,
+            ship_combats,
+            shared_combat_events,
             contact_events,
             simulation,
         })
@@ -3180,10 +3232,31 @@ impl Store {
             return Ok(None);
         };
         match input {
-            EngineInput::Player(_) => {
-                Ok(self.process_next()?.map(|delivery| ProcessedEngineInput {
+            EngineInput::Player(queued) => {
+                let Some(delivery) = self.process_next()? else {
+                    return Ok(None);
+                };
+                let player_transitions = if !delivery.outcome.replayed
+                    && matches!(queued.request.command, Command::EngageTrafficContact { .. })
+                {
+                    match &delivery.outcome.kind {
+                        OutcomeKind::Combat(snapshot) => self
+                            .shared_combat_transitions(
+                                snapshot.combat_id,
+                                delivery.outbox_sequence,
+                                delivery.outcome.revision,
+                            )?
+                            .into_iter()
+                            .filter(|transition| transition.identity != queued.identity)
+                            .collect(),
+                        _ => Vec::new(),
+                    }
+                } else {
+                    Vec::new()
+                };
+                Ok(Some(ProcessedEngineInput {
                     delivery: Some(delivery),
-                    player_transition: None,
+                    player_transitions,
                     scheduled_event: None,
                     category: None,
                 }))
@@ -3234,7 +3307,7 @@ impl Store {
             .checked_add(1)
             .ok_or(StoreError::Corrupt("revision overflow"))?;
         put_meta_u64(self.meta, &mut txn, META_GAME_SECOND, due_second)?;
-        let mut player_transition = None;
+        let mut player_transitions = Vec::new();
         let mut scheduled_event = None;
         let mut category = None;
         let journal = match event {
@@ -3303,7 +3376,7 @@ impl Store {
                     self.process_player_travel_in(&mut txn, due_second, ship_id)?;
                 let phase = self.player_phase_in(&txn, &identity)?;
                 let status = self.travel_status_in(&txn, &identity)?;
-                player_transition = Some(PlayerTravelTransition {
+                player_transitions.push(PlayerTravelTransition {
                     identity,
                     committed_sequence: sequence,
                     revision,
@@ -3334,6 +3407,13 @@ impl Store {
                         person_id & !PERSON_TREATMENT_EVENT_BIT,
                     )?;
                     0x54
+                } else if person_id & PERSON_PRISONER_RELEASE_EVENT_BIT != 0 {
+                    self.process_prisoner_release_in(
+                        &mut txn,
+                        due_second,
+                        person_id & !PERSON_PRISONER_RELEASE_EVENT_BIT,
+                    )?;
+                    0x50
                 } else {
                     self.process_person_training_in(&mut txn, due_second, person_id)?;
                     0x4b
@@ -3342,7 +3422,7 @@ impl Store {
                 encode_timed_object_event_journal(
                     journal_kind,
                     due_second,
-                    person_id & !PERSON_TREATMENT_EVENT_BIT,
+                    person_id & !PERSON_TREATMENT_EVENT_BIT & !PERSON_PRISONER_RELEASE_EVENT_BIT,
                 )
             }
             ScheduledInput::ShipActivity {
@@ -3363,7 +3443,7 @@ impl Store {
                 self.process_encounter_turn_in(&mut txn, due_second, &identity, encounter_id)?;
                 let phase = self.player_phase_in(&txn, &identity)?;
                 let status = self.travel_status_in(&txn, &identity)?;
-                player_transition = Some(PlayerTravelTransition {
+                player_transitions.push(PlayerTravelTransition {
                     identity,
                     committed_sequence: sequence,
                     revision,
@@ -3372,6 +3452,27 @@ impl Store {
                 });
                 category = Some(ProcessedScheduledCategory::EncounterTurn);
                 encode_timed_object_event_journal(0x45, due_second, encounter_id)
+            }
+            ScheduledInput::SharedCombatTurn {
+                due_second,
+                combat_id,
+                ..
+            } => {
+                let identities =
+                    self.process_shared_combat_turn_in(&mut txn, due_second, combat_id)?;
+                for identity in identities {
+                    let phase = self.player_phase_in(&txn, &identity)?;
+                    let status = self.travel_status_in(&txn, &identity)?;
+                    player_transitions.push(PlayerTravelTransition {
+                        identity,
+                        committed_sequence: sequence,
+                        revision,
+                        phase,
+                        status,
+                    });
+                }
+                category = Some(ProcessedScheduledCategory::EncounterTurn);
+                encode_timed_object_event_journal(0x50, due_second, combat_id)
             }
             ScheduledInput::ContactCheck {
                 due_second,
@@ -3383,7 +3484,7 @@ impl Store {
                 {
                     let phase = self.player_phase_in(&txn, &identity)?;
                     let status = self.travel_status_in(&txn, &identity)?;
-                    player_transition = Some(PlayerTravelTransition {
+                    player_transitions.push(PlayerTravelTransition {
                         identity,
                         committed_sequence: sequence,
                         revision,
@@ -3410,7 +3511,7 @@ impl Store {
         put_meta_u64(self.meta, &mut txn, META_REVISION, revision)?;
         Ok(ProcessedEngineInput {
             delivery: None,
-            player_transition,
+            player_transitions,
             scheduled_event,
             category,
         })
@@ -3456,7 +3557,7 @@ impl Store {
         txn.commit()?;
         Ok(Some(ProcessedEngineInput {
             delivery: None,
-            player_transition: None,
+            player_transitions: Vec::new(),
             scheduled_event: None,
             category: None,
         }))
@@ -7003,6 +7104,48 @@ impl Store {
         let Some(record) = self.encounter_in(txn, identity)? else {
             return Ok(None);
         };
+        if let Some(shared) = self
+            .shared_combats
+            .get(txn, &record.snapshot.encounter_id)?
+            .map(decode_shared_combat_record)
+            .transpose()?
+        {
+            let (_, ship) = self.player_and_ship_in(txn, identity)?;
+            let participant = shared
+                .participants
+                .iter()
+                .find(|participant| {
+                    participant.identity == *identity && participant.ship_id == ship.ship_id
+                })
+                .ok_or(StoreError::Corrupt(
+                    "commanded ship is not a shared-combat participant",
+                ))?;
+            if !participant.directly_commanded {
+                return Ok(None);
+            }
+            let default =
+                crate::combat::conservative_order(&shared.combat, ship.ship_id).map_err(|_| {
+                    StoreError::Corrupt("commanded vessel is absent from shared combat")
+                })?;
+            let actors = self.combat_actors_in(txn, identity, ship.ship_id)?;
+            let submitted = shared
+                .orders
+                .iter()
+                .any(|order| order.vessel_id == ship.ship_id);
+            return Ok(Some(combat_snapshot(
+                &shared.combat,
+                &ship,
+                &default,
+                actors,
+                submitted,
+                &shared.combat_log,
+                &shared
+                    .participants
+                    .iter()
+                    .map(|participant| participant.ship_id)
+                    .collect::<Vec<_>>(),
+            )));
+        }
         let Some(combat) = &record.combat else {
             return Ok(None);
         };
@@ -7017,6 +7160,7 @@ impl Store {
             actors,
             record.player_order.is_some(),
             &record.combat_log,
+            &[ship.ship_id],
         )))
     }
 
@@ -7166,6 +7310,18 @@ impl Store {
         else {
             return Ok(RuleResult::Rejected("there is no active combat".into()));
         };
+        if self
+            .shared_combats
+            .get(txn, &record.snapshot.encounter_id)?
+            .is_some()
+        {
+            return self.submit_shared_combat_order_in(
+                txn,
+                identity,
+                record.snapshot.encounter_id,
+                request,
+            );
+        }
         let Some(combat) = record.combat.as_ref() else {
             return Ok(RuleResult::Rejected(
                 "the current encounter is not a combat".into(),
@@ -7233,6 +7389,126 @@ impl Store {
             actors,
             true,
             &record.combat_log,
+            &[ship.ship_id],
+        )))
+    }
+
+    fn submit_shared_combat_order_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        combat_id: u64,
+        request: &crate::wire::CombatOrderSet,
+    ) -> Result<RuleResult<crate::wire::CombatSnapshot>, StoreError> {
+        let Some(mut shared) = self
+            .shared_combats
+            .get(txn, &combat_id)?
+            .map(decode_shared_combat_record)
+            .transpose()?
+        else {
+            return Ok(RuleResult::Rejected(
+                "there is no active shared combat".into(),
+            ));
+        };
+        let (_, ship) = self.player_and_ship_in(txn, identity)?;
+        let Some(participant) = shared.participants.iter().find(|participant| {
+            participant.identity == *identity && participant.ship_id == ship.ship_id
+        }) else {
+            return Ok(RuleResult::Rejected(
+                "the commanded ship is not in this combat".into(),
+            ));
+        };
+        if !participant.directly_commanded {
+            return Ok(RuleResult::Rejected(
+                "that ship is fighting under its standing combat policy".into(),
+            ));
+        }
+        if shared.combat.complete
+            || request.combat_id != shared.combat.combat_id
+            || request.view_revision != shared.combat.revision
+        {
+            return Ok(RuleResult::Rejected("that combat view is stale".into()));
+        }
+        if shared
+            .orders
+            .iter()
+            .any(|order| order.vessel_id == ship.ship_id)
+        {
+            return Ok(RuleResult::Rejected(
+                "orders for this combat revision are already sealed".into(),
+            ));
+        }
+        let order = if request.use_tactical_controller {
+            let mut decision = crate::combat::risk_directed_order(
+                &shared.combat,
+                ship.ship_id,
+                &ship.combat_policy,
+            )
+            .map_err(|_| StoreError::Corrupt("tactical controller could not create an order"))?;
+            decision.order = self.staff_automated_order_in(
+                txn,
+                identity,
+                &ship,
+                &shared.combat,
+                &decision.order,
+            )?;
+            shared
+                .automation_decisions
+                .retain(|stored| stored.order.vessel_id != ship.ship_id);
+            shared.automation_decisions.push(decision.clone());
+            decision.order
+        } else {
+            match self.player_combat_order_in(txn, identity, &ship, &shared.combat, request)? {
+                Ok(order) => order,
+                Err(message) => return Ok(RuleResult::Rejected(message)),
+            }
+        };
+        let mut validation = shared.orders.clone();
+        validation.push(order.clone());
+        let missing_vessels = shared
+            .combat
+            .vessels
+            .iter()
+            .filter(|vessel| {
+                vessel.disposition == crate::combat::VesselDisposition::Active
+                    && !validation
+                        .iter()
+                        .any(|order| order.vessel_id == vessel.vessel_id)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        for vessel in &missing_vessels {
+            validation.push(
+                crate::combat::risk_directed_order(
+                    &shared.combat,
+                    vessel.vessel_id,
+                    &crate::combat::AutomationPolicy::default(),
+                )
+                .map_err(|_| StoreError::Corrupt("combat controller could not validate orders"))?
+                .order,
+            );
+        }
+        if let Err(message) = crate::combat::resolve_round(&shared.combat, &validation) {
+            return Ok(RuleResult::Rejected(message));
+        }
+        shared.orders.push(order);
+        self.shared_combats
+            .put(txn, &combat_id, &encode_shared_combat_record(&shared)?)?;
+        let default = crate::combat::conservative_order(&shared.combat, ship.ship_id)
+            .map_err(|_| StoreError::Corrupt("commanded vessel is absent from shared combat"))?;
+        let actors = self.combat_actors_in(txn, identity, ship.ship_id)?;
+        Ok(RuleResult::Applied(combat_snapshot(
+            &shared.combat,
+            &ship,
+            &default,
+            actors,
+            true,
+            &shared.combat_log,
+            &shared
+                .participants
+                .iter()
+                .map(|participant| participant.ship_id)
+                .collect::<Vec<_>>(),
         )))
     }
 
@@ -7264,6 +7540,34 @@ impl Store {
                 "combat policy saved; there is no active combat".into(),
             ));
         };
+        if let Some(shared) = self
+            .shared_combats
+            .get(txn, &record.snapshot.encounter_id)?
+            .map(decode_shared_combat_record)
+            .transpose()?
+        {
+            let default =
+                crate::combat::conservative_order(&shared.combat, ship.ship_id).map_err(|_| {
+                    StoreError::Corrupt("commanded vessel is absent from shared combat")
+                })?;
+            let actors = self.combat_actors_in(txn, identity, ship.ship_id)?;
+            return Ok(RuleResult::Applied(combat_snapshot(
+                &shared.combat,
+                &ship,
+                &default,
+                actors,
+                shared
+                    .orders
+                    .iter()
+                    .any(|order| order.vessel_id == ship.ship_id),
+                &shared.combat_log,
+                &shared
+                    .participants
+                    .iter()
+                    .map(|participant| participant.ship_id)
+                    .collect::<Vec<_>>(),
+            )));
+        }
         let Some(combat) = &record.combat else {
             return Ok(RuleResult::Rejected(
                 "combat policy saved; there is no active combat".into(),
@@ -7279,6 +7583,7 @@ impl Store {
             actors,
             record.player_order.is_some(),
             &record.combat_log,
+            &[ship.ship_id],
         )))
     }
 
@@ -7310,7 +7615,10 @@ impl Store {
                 .into_iter()
                 .find(|system| system.system_id == ship.system_id)
                 .ok_or(StoreError::MissingTrafficSimulationSystem(ship.system_id))?;
-            crate::traffic::snapshot(&system, current)?
+            let mut contacts = crate::traffic::snapshot(&system, current)?;
+            contacts.extend(self.player_traffic_contacts_in(txn, &ship, None, current)?);
+            contacts.sort_by_key(|contact| (contact.edge_second, contact.contact_id));
+            contacts
                 .into_iter()
                 .map(|mut contact| {
                     contact.catalog_id = 0;
@@ -7416,7 +7724,11 @@ impl Store {
                 FlightLocus::DeepSpace { .. } => None,
             });
         }
-        Ok(match ship.location {
+        Ok(Self::ship_traffic_locus(ship))
+    }
+
+    fn ship_traffic_locus(ship: &ShipRecord) -> Option<ShipLocusRecord> {
+        match ship.location {
             ShipLocationRecord::Docked {
                 world_id,
                 facility_id,
@@ -7437,7 +7749,7 @@ impl Store {
                 ..
             }) if locus == destination => Some(locus),
             _ => None,
-        })
+        }
     }
 
     fn local_traffic_contacts_in(
@@ -7477,6 +7789,7 @@ impl Store {
             let present = match contact.movement {
                 crate::traffic::TrafficMovementKind::Arrival => contact.edge_second <= current,
                 crate::traffic::TrafficMovementKind::Departure => contact.edge_second >= current,
+                crate::traffic::TrafficMovementKind::Present => true,
             };
             if !present {
                 return false;
@@ -7497,6 +7810,88 @@ impl Store {
                 ShipLocusRecord::DeepSpace { .. } => false,
             }
         });
+        contacts.extend(self.player_traffic_contacts_in(txn, ship, Some(&locus), current)?);
+        contacts.sort_by_key(|contact| (contact.edge_second, contact.contact_id));
+        Ok(contacts)
+    }
+
+    fn player_traffic_contacts_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        observing_ship: &ShipRecord,
+        required_locus: Option<&ShipLocusRecord>,
+        current: u64,
+    ) -> Result<Vec<crate::traffic::TrafficContact>, StoreError> {
+        let catalog = creation::ship_market_catalog();
+        let mut contacts = Vec::new();
+        for entry in self.ships.iter(txn)? {
+            let (_, encoded) = entry?;
+            let candidate = decode_ship_record(encoded)?;
+            if candidate.ship_id == observing_ship.ship_id
+                || candidate.system_id == 0
+                || candidate.system_id != observing_ship.system_id
+                || matches!(
+                    candidate.location,
+                    ShipLocationRecord::InFlight(FlightLegRecord {
+                        purpose: FlightLegPurpose::Jump { .. },
+                        ..
+                    })
+                )
+            {
+                continue;
+            }
+            let Some(owner) = self
+                .players
+                .get(txn, &encode_identity(&candidate.command))?
+                .map(decode_player_record)
+                .transpose()?
+            else {
+                continue;
+            };
+            if !owner.managed_ship_ids.contains(&candidate.ship_id) {
+                continue;
+            }
+            if let Some(required) = required_locus {
+                let candidate_locus = if owner.ship_id == candidate.ship_id {
+                    self.local_traffic_locus_in(txn, &candidate.command, &candidate)?
+                } else {
+                    Self::ship_traffic_locus(&candidate)
+                };
+                if candidate_locus.as_ref() != Some(required) {
+                    continue;
+                }
+            }
+            let design = catalog
+                .iter()
+                .find(|entry| entry.catalog_id == candidate.catalog_id)
+                .ok_or(StoreError::Corrupt(
+                    "player traffic catalog data is missing",
+                ))?;
+            let registry = self.bbs_configuration_in(txn, candidate.command.bbs_id)?;
+            let role = match candidate.career {
+                crate::wire::Career::Trader => "independent merchant",
+                crate::wire::Career::Privateer => "commissioned privateer",
+                crate::wire::Career::Navy => "naval vessel",
+            };
+            contacts.push(crate::traffic::TrafficContact {
+                contact_id: candidate.ship_id,
+                catalog_id: candidate.catalog_id,
+                class_name: design.class_name.clone(),
+                ship_name: candidate.name,
+                transponder: format!("CT-{:016X}", candidate.ship_id),
+                operator_name: format!("{} registry", registry.settings.bbs_name),
+                role: role.into(),
+                displacement_millitons: design.displacement_millitons,
+                origin_system_id: candidate.system_id,
+                destination_system_id: candidate.system_id,
+                movement: crate::traffic::TrafficMovementKind::Present,
+                edge_second: current,
+                resolution: crate::traffic::TrafficContactResolution::Identified,
+                confidence_percent: 100,
+                player_owned: true,
+                online_controlled: false,
+            });
+        }
         Ok(contacts)
     }
 
@@ -7774,6 +8169,36 @@ impl Store {
                 "the named traffic contact is no longer at this locus".into(),
             ));
         };
+        if self.ship_combats.get(txn, &ship.ship_id)?.is_some() {
+            return Ok(RuleResult::Rejected(
+                "the command is already engaged in combat".into(),
+            ));
+        }
+        let mut player_target = if contact.player_owned {
+            let Some(target) = self
+                .ships
+                .get(txn, &contact.contact_id)?
+                .map(decode_ship_record)
+                .transpose()?
+            else {
+                return Ok(RuleResult::Rejected(
+                    "the player-owned contact is no longer present".into(),
+                ));
+            };
+            if target.command == *identity {
+                return Ok(RuleResult::Rejected(
+                    "a command cannot intercept another vessel in its own fleet".into(),
+                ));
+            }
+            if self.ship_combats.get(txn, &target.ship_id)?.is_some() {
+                return Ok(RuleResult::Rejected(
+                    "that vessel is already engaged in combat".into(),
+                ));
+            }
+            Some(target)
+        } else {
+            None
+        };
         let system = self
             .simulation
             .systems(txn)?
@@ -7862,6 +8287,196 @@ impl Store {
         )
         .map_err(|_| StoreError::Corrupt("player combat loadout is invalid"))?;
         apply_ship_damage_to_combat(&ship, &mut player_vessel);
+        if let Some(mut target_ship) = player_target.take() {
+            manifest_ship_quirks(
+                &mut target_ship,
+                &[
+                    ShipQuirkKind::TurretFault,
+                    ShipQuirkKind::BridgeChairFault,
+                    ShipQuirkKind::FullSpeedVibration,
+                ],
+            );
+            let target_owner = self
+                .players
+                .get(txn, &encode_identity(&target_ship.command))?
+                .map(decode_player_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("player combat target has no owner"))?;
+            let target_directly_commanded = target_owner.ship_id == target_ship.ship_id;
+            if target_directly_commanded
+                && self.player_phase_in(txn, &target_ship.command)? == PlayerPhase::Encounter
+            {
+                return Ok(RuleResult::Rejected(
+                    "that captain is already resolving another encounter".into(),
+                ));
+            }
+            let mut target_vessel = crate::combat::materialize_vessel(
+                target_ship.ship_id,
+                2,
+                target_ship.name.clone(),
+                target_ship.catalog_id,
+                (((entropy >> 16) % 6) + ((entropy >> 24) % 6) + 2) as i16,
+            )
+            .map_err(|_| StoreError::Corrupt("player target combat loadout is invalid"))?;
+            apply_ship_damage_to_combat(&target_ship, &mut target_vessel);
+            let combat = crate::combat::CombatState {
+                combat_id: encounter_id,
+                revision: 1,
+                round: 1,
+                round_started_second: current,
+                range: crate::combat::RangeBand::Short,
+                vessels: vec![player_vessel, target_vessel],
+                missiles: Vec::new(),
+                boarding: Vec::new(),
+                complete: false,
+            };
+            let shared = SharedCombatRecord {
+                combat: combat.clone(),
+                system_id: ship.system_id,
+                authorized_attack: authorized,
+                participants: vec![
+                    SharedCombatParticipant {
+                        identity: identity.clone(),
+                        ship_id: ship.ship_id,
+                        side: 1,
+                        directly_commanded: true,
+                        initiated: true,
+                    },
+                    SharedCombatParticipant {
+                        identity: target_ship.command.clone(),
+                        ship_id: target_ship.ship_id,
+                        side: 2,
+                        directly_commanded: target_directly_commanded,
+                        initiated: false,
+                    },
+                ],
+                orders: Vec::new(),
+                automation_decisions: Vec::new(),
+                combat_log: vec![format!(
+                    "{} initiates armed interception of {}.",
+                    ship.name, target_ship.name
+                )],
+                pending_interventions: self.pending_interventions_for_combat(
+                    txn, &system, current, contact_id, authorized, entropy,
+                )?,
+            };
+            let attacker_record = EncounterRecord {
+                snapshot: EncounterSnapshot {
+                    encounter_id,
+                    revision: 1,
+                    kind: EncounterKind::Hostile,
+                    state: EncounterState::Resolving,
+                    started_second: current,
+                    next_turn_second: current
+                        .saturating_add(crate::combat::COMBAT_TURN_SECONDS),
+                    turn: 1,
+                    contact: EncounterContact {
+                        contact_id: target_ship.ship_id,
+                        ship_name: target_ship.name.clone(),
+                        class_name: contact.class_name.clone(),
+                        transponder: contact.transponder.clone(),
+                        role: contact.role.clone(),
+                        range: "short".into(),
+                        confidence_percent: contact.confidence_percent,
+                    },
+                    summary: "Your command initiates an armed intercept against another captain. Joint crew orders are required.".into(),
+                },
+                opponent_catalog_id: target_ship.catalog_id,
+                posture: Some(EncounterPosture::Fight),
+                fallbacks: vec![EncounterFallback::BreakOff, EncounterFallback::Surrender],
+                result: None,
+                combat: None,
+                player_order: None,
+                automation_decision: None,
+                combat_log: shared.combat_log.clone(),
+                pending_interventions: Vec::new(),
+            };
+            self.encounters.put(
+                txn,
+                &encode_identity(identity),
+                &encode_encounter_record(&attacker_record)?,
+            )?;
+            if target_directly_commanded {
+                let defender_record = EncounterRecord {
+                    snapshot: EncounterSnapshot {
+                        encounter_id,
+                        revision: 1,
+                        kind: EncounterKind::Hostile,
+                        state: EncounterState::Resolving,
+                        started_second: current,
+                        next_turn_second: current
+                            .saturating_add(crate::combat::COMBAT_TURN_SECONDS),
+                        turn: 1,
+                        contact: EncounterContact {
+                            contact_id: ship.ship_id,
+                            ship_name: ship.name.clone(),
+                            class_name: creation::ship_market_catalog()
+                                .into_iter()
+                                .find(|entry| entry.catalog_id == ship.catalog_id)
+                                .map_or_else(
+                                    || "Unclassified vessel".into(),
+                                    |entry| entry.class_name,
+                                ),
+                            transponder: format!("CT-{:016X}", ship.ship_id),
+                            role: "armed interceptor".into(),
+                            range: "short".into(),
+                            confidence_percent: 100,
+                        },
+                        summary: format!(
+                            "{} has initiated an armed intercept against your command. Joint crew orders are required.",
+                            ship.name
+                        ),
+                    },
+                    opponent_catalog_id: ship.catalog_id,
+                    posture: Some(EncounterPosture::Fight),
+                    fallbacks: vec![EncounterFallback::BreakOff, EncounterFallback::Surrender],
+                    result: None,
+                    combat: None,
+                    player_order: None,
+                    automation_decision: None,
+                    combat_log: shared.combat_log.clone(),
+                    pending_interventions: Vec::new(),
+                };
+                self.encounters.put(
+                    txn,
+                    &encode_identity(&target_ship.command),
+                    &encode_encounter_record(&defender_record)?,
+                )?;
+            }
+            self.shared_combats
+                .put(txn, &encounter_id, &encode_shared_combat_record(&shared)?)?;
+            self.ship_combats
+                .put(txn, &ship.ship_id, &encounter_id.to_be_bytes())?;
+            self.ship_combats
+                .put(txn, &target_ship.ship_id, &encounter_id.to_be_bytes())?;
+            self.ships
+                .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+            self.ships.put(
+                txn,
+                &target_ship.ship_id,
+                &encode_ship_record(&target_ship)?,
+            )?;
+            self.put_career_state_in(txn, identity, &career)?;
+            self.schedule_shared_combat_turn_in(
+                txn,
+                encounter_id,
+                current.saturating_add(crate::combat::COMBAT_TURN_SECONDS),
+            )?;
+            let default =
+                crate::combat::conservative_order(&combat, ship.ship_id).map_err(|_| {
+                    StoreError::Corrupt("commanded vessel is absent from shared combat")
+                })?;
+            let actors = self.combat_actors_in(txn, identity, ship.ship_id)?;
+            return Ok(RuleResult::Applied(combat_snapshot(
+                &combat,
+                &ship,
+                &default,
+                actors,
+                false,
+                &shared.combat_log,
+                &[ship.ship_id, target_ship.ship_id],
+            )));
+        }
         let opponent_id = contact.contact_id | (1_u64 << 63);
         let opponent = crate::combat::materialize_vessel(
             opponent_id,
@@ -7942,6 +8557,7 @@ impl Store {
             actors,
             false,
             &record.combat_log,
+            &[ship.ship_id],
         )))
     }
 
@@ -8077,13 +8693,36 @@ impl Store {
         };
         let captured_ship_id = career.prizes[prize_index].captured_vessel_id;
         let captured_person_ids = career.prizes[prize_index].captured_person_ids.clone();
+        if matches!(
+            method,
+            crate::wire::PrizeSettlementMethod::Fence
+                | crate::wire::PrizeSettlementMethod::CourtSale
+        ) {
+            let active_lost_command = self
+                .players
+                .iter(txn)?
+                .map(|entry| {
+                    let (_, bytes) = entry?;
+                    decode_player_record(bytes)
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?
+                .into_iter()
+                .any(|candidate| candidate.ship_id == captured_ship_id);
+            if active_lost_command {
+                return Ok(RuleResult::Rejected(
+                    "the captured command cannot be disposed of before parole and recovery conclude"
+                        .into(),
+                ));
+            }
+        }
         let mut custody_transferred = false;
         match method {
             crate::wire::PrizeSettlementMethod::FileClaim => {
                 let prize = &mut career.prizes[prize_index];
                 if !matches!(
                     mode,
-                    crate::careers::CombatCareerMode::Navy
+                    crate::careers::CombatCareerMode::Independent
+                        | crate::careers::CombatCareerMode::Navy
                         | crate::careers::CombatCareerMode::Privateer
                 ) || prize.status != crate::careers::PrizeStatus::Secured
                 {
@@ -8122,7 +8761,8 @@ impl Store {
                 let prize = &mut career.prizes[prize_index];
                 if !matches!(
                     mode,
-                    crate::careers::CombatCareerMode::Navy
+                    crate::careers::CombatCareerMode::Independent
+                        | crate::careers::CombatCareerMode::Navy
                         | crate::careers::CombatCareerMode::Privateer
                 ) || !matches!(
                     prize.status,
@@ -8164,7 +8804,8 @@ impl Store {
                 let prize = &mut career.prizes[prize_index];
                 if !matches!(
                     mode,
-                    crate::careers::CombatCareerMode::Navy
+                    crate::careers::CombatCareerMode::Independent
+                        | crate::careers::CombatCareerMode::Navy
                         | crate::careers::CombatCareerMode::Privateer
                 ) || prize.status != crate::careers::PrizeStatus::Adjudicated
                 {
@@ -8882,6 +9523,19 @@ impl Store {
         } else {
             vec![lost_ship.ship_id]
         };
+        let removable_ship_ids = liquidated_ship_ids
+            .iter()
+            .copied()
+            .filter_map(|candidate_id| {
+                self.ships
+                    .get(txn, &candidate_id)
+                    .ok()
+                    .flatten()
+                    .and_then(|bytes| decode_ship_record(bytes).ok())
+                    .filter(|candidate| candidate.command == *identity)
+                    .map(|_| candidate_id)
+            })
+            .collect::<Vec<_>>();
         let services = self
             .crew_services
             .iter(txn)?
@@ -8906,6 +9560,9 @@ impl Store {
             }
             service.ship_id = ship_id;
             service.assigned_slot_ids.clear();
+            service.availability = CrewAvailability::Active;
+            service.available_second = current;
+            service.revision = service.revision.saturating_add(1);
             self.crew_services
                 .put(txn, &service.person_id, &encode_crew_service(&service)?)?;
         }
@@ -8947,7 +9604,7 @@ impl Store {
         player.fleet_revision = player.fleet_revision.saturating_add(1);
         self.players
             .put(txn, &key, &encode_player_record(&player))?;
-        for liquidated_ship_id in &liquidated_ship_ids {
+        for liquidated_ship_id in &removable_ship_ids {
             self.ships.delete(txn, liquidated_ship_id)?;
             self.finances
                 .delete(txn, &ship_finance_key(*liquidated_ship_id))?;
@@ -8985,7 +9642,7 @@ impl Store {
                 .iter(txn)?
                 .filter_map(|entry| match entry {
                     Ok((event_key, bytes)) => match decode_scheduled_object(event_key, bytes) {
-                        Ok((_, _, id)) if liquidated_ship_ids.contains(&id) => {
+                        Ok((_, _, id)) if removable_ship_ids.contains(&id) => {
                             Some(Ok(event_key.to_vec()))
                         }
                         Ok(_) => None,
@@ -9806,6 +10463,887 @@ impl Store {
         Ok(())
     }
 
+    fn process_shared_combat_turn_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        due_second: u64,
+        combat_id: u64,
+    ) -> Result<Vec<PlayerIdentity>, StoreError> {
+        let Some(mut shared) = self
+            .shared_combats
+            .get(txn, &combat_id)?
+            .map(decode_shared_combat_record)
+            .transpose()?
+        else {
+            return Err(StoreError::Corrupt("scheduled shared combat is missing"));
+        };
+        if shared.combat.complete
+            || shared
+                .combat
+                .round_started_second
+                .saturating_add(crate::combat::COMBAT_TURN_SECONDS)
+                != due_second
+        {
+            return Err(StoreError::Corrupt(
+                "shared combat turn disagrees with combat state",
+            ));
+        }
+
+        let mut orders = std::mem::take(&mut shared.orders);
+        shared.automation_decisions.clear();
+        let missing_vessels = shared
+            .combat
+            .vessels
+            .iter()
+            .filter(|vessel| {
+                vessel.disposition == crate::combat::VesselDisposition::Active
+                    && !orders
+                        .iter()
+                        .any(|order| order.vessel_id == vessel.vessel_id)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        for vessel in &missing_vessels {
+            if let Some(participant) = shared
+                .participants
+                .iter()
+                .find(|participant| participant.ship_id == vessel.vessel_id)
+            {
+                let ship = self
+                    .ships
+                    .get(txn, &participant.ship_id)?
+                    .map(decode_ship_record)
+                    .transpose()?
+                    .ok_or(StoreError::Corrupt("shared-combat ship is missing"))?;
+                let mut decision = crate::combat::risk_directed_order(
+                    &shared.combat,
+                    ship.ship_id,
+                    &ship.combat_policy,
+                )
+                .map_err(|_| StoreError::Corrupt("offline tactical controller failed"))?;
+                decision.order = self.staff_automated_order_in(
+                    txn,
+                    &participant.identity,
+                    &ship,
+                    &shared.combat,
+                    &decision.order,
+                )?;
+                orders.push(decision.order.clone());
+                shared.automation_decisions.push(decision);
+            } else {
+                orders.push(
+                    crate::combat::risk_directed_order(
+                        &shared.combat,
+                        vessel.vessel_id,
+                        &crate::combat::AutomationPolicy {
+                            objective: crate::combat::Objective::Defeat,
+                            minimum_victory_percent: 55,
+                            ..Default::default()
+                        },
+                    )
+                    .map_err(|_| StoreError::Corrupt("contact tactical controller failed"))?
+                    .order,
+                );
+            }
+        }
+        let resolution = crate::combat::resolve_round(&shared.combat, &orders)
+            .map_err(|_| StoreError::Corrupt("shared combat order failed resolution"))?;
+        for event in &resolution.events {
+            shared.combat_log.push(combat_event_text(event));
+        }
+        let mut next_state = resolution.state;
+        let mut waiting = Vec::new();
+        for intervention in shared.pending_interventions.drain(..) {
+            if intervention.due_second <= due_second {
+                let vessel_id = intervention.contact_id | (1_u64 << 62);
+                if !next_state
+                    .vessels
+                    .iter()
+                    .any(|vessel| vessel.vessel_id == vessel_id)
+                {
+                    next_state.vessels.push(
+                        crate::combat::materialize_vessel(
+                            vessel_id,
+                            intervention.side,
+                            intervention.ship_name.clone(),
+                            intervention.catalog_id,
+                            7,
+                        )
+                        .map_err(|_| {
+                            StoreError::Corrupt("intervening combat loadout is invalid")
+                        })?,
+                    );
+                    next_state.revision = next_state.revision.saturating_add(1);
+                    next_state.complete = false;
+                    shared.combat_log.push(format!(
+                        "{} completes its delayed intercept and joins the engagement.",
+                        intervention.ship_name
+                    ));
+                }
+            } else {
+                waiting.push(intervention);
+            }
+        }
+        shared.pending_interventions = waiting;
+        if shared.combat_log.len() > 40 {
+            shared.combat_log.drain(..shared.combat_log.len() - 40);
+        }
+
+        let participants = shared.participants.clone();
+        for participant in &participants {
+            let vessel = next_state
+                .vessels
+                .iter()
+                .find(|vessel| vessel.vessel_id == participant.ship_id)
+                .ok_or(StoreError::Corrupt(
+                    "player vessel vanished from shared combat",
+                ))?
+                .clone();
+            let mut ship = self
+                .ships
+                .get(txn, &participant.ship_id)?
+                .map(decode_ship_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("shared-combat ship is missing"))?;
+            apply_combat_damage_to_ship(&vessel, &mut ship);
+            if next_state.complete {
+                self.apply_combat_crew_hits_in(
+                    txn,
+                    &participant.identity,
+                    participant.ship_id,
+                    vessel.crew_hits,
+                    due_second,
+                    combat_id,
+                )?;
+                if !matches!(
+                    vessel.disposition,
+                    crate::combat::VesselDisposition::Captured
+                        | crate::combat::VesselDisposition::Surrendered
+                        | crate::combat::VesselDisposition::Abandoned
+                        | crate::combat::VesselDisposition::Destroyed
+                ) {
+                    begin_offline_recovery(&mut ship, due_second);
+                }
+            }
+            self.ships
+                .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+        }
+        shared.combat = next_state;
+
+        if shared.combat.complete {
+            self.finish_shared_combat_in(txn, due_second, &mut shared)?;
+            for participant in &participants {
+                self.ship_combats.delete(txn, &participant.ship_id)?;
+            }
+        } else {
+            for participant in participants
+                .iter()
+                .filter(|participant| participant.directly_commanded)
+            {
+                self.update_shared_encounter_view_in(txn, participant, &shared, false)?;
+            }
+            self.schedule_shared_combat_turn_in(
+                txn,
+                combat_id,
+                shared
+                    .combat
+                    .round_started_second
+                    .saturating_add(crate::combat::COMBAT_TURN_SECONDS),
+            )?;
+        }
+        self.shared_combats
+            .put(txn, &combat_id, &encode_shared_combat_record(&shared)?)?;
+        Ok(participants
+            .into_iter()
+            .filter(|participant| participant.directly_commanded)
+            .map(|participant| participant.identity)
+            .collect())
+    }
+
+    fn update_shared_encounter_view_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        participant: &SharedCombatParticipant,
+        shared: &SharedCombatRecord,
+        complete: bool,
+    ) -> Result<(), StoreError> {
+        let key = encode_identity(&participant.identity);
+        let Some(mut record) = self
+            .encounters
+            .get(txn, &key)?
+            .map(decode_encounter_record)
+            .transpose()?
+        else {
+            return Err(StoreError::Corrupt(
+                "shared-combat encounter view is missing",
+            ));
+        };
+        let vessel = shared
+            .combat
+            .vessels
+            .iter()
+            .find(|vessel| vessel.vessel_id == participant.ship_id)
+            .ok_or(StoreError::Corrupt("shared-combat participant is missing"))?;
+        record.snapshot.revision = record.snapshot.revision.saturating_add(1);
+        record.snapshot.turn = shared.combat.round;
+        record.snapshot.next_turn_second = shared
+            .combat
+            .round_started_second
+            .saturating_add(crate::combat::COMBAT_TURN_SECONDS);
+        record.combat_log = shared.combat_log.clone();
+        record.player_order = None;
+        record.automation_decision = shared
+            .automation_decisions
+            .iter()
+            .find(|decision| decision.order.vessel_id == participant.ship_id)
+            .cloned();
+        if complete {
+            record.combat = Some(shared.combat.clone());
+            let command_lost = matches!(
+                vessel.disposition,
+                crate::combat::VesselDisposition::Captured
+                    | crate::combat::VesselDisposition::Surrendered
+                    | crate::combat::VesselDisposition::Abandoned
+                    | crate::combat::VesselDisposition::Destroyed
+            );
+            let outcome = match vessel.disposition {
+                crate::combat::VesselDisposition::Destroyed => {
+                    "The ship breaks up under fire; command and vessel are lost."
+                }
+                crate::combat::VesselDisposition::Captured
+                | crate::combat::VesselDisposition::Surrendered => {
+                    "The opposing crew takes custody of the surrendered vessel."
+                }
+                crate::combat::VesselDisposition::Abandoned => {
+                    "The surviving crew abandons the vessel in escape craft."
+                }
+                crate::combat::VesselDisposition::Withdrawing => {
+                    "The ship opens the range and breaks contact."
+                }
+                _ => "The opposing vessel can no longer contest the engagement.",
+            }
+            .to_string();
+            let ship = self
+                .ships
+                .get(txn, &participant.ship_id)?
+                .map(decode_ship_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("shared-combat result ship is missing"))?;
+            record.snapshot.state = EncounterState::Resolved;
+            record.snapshot.summary = outcome.clone();
+            record.result = Some(EncounterResult {
+                encounter_id: shared.combat.combat_id,
+                resolved: true,
+                terminal: command_lost,
+                outcome,
+                turns: shared.combat.round.saturating_sub(1),
+                cargo_lost_millitons: 0,
+                fuel_lost_millitons: 0,
+                damage_hits: ship
+                    .subsystems
+                    .iter()
+                    .map(|subsystem| subsystem.sustained_hits)
+                    .sum(),
+            });
+        } else {
+            record.snapshot.summary = format!(
+                "Combat round {} is complete. Fresh joint orders are required.",
+                shared.combat.round.saturating_sub(1)
+            );
+        }
+        self.encounters
+            .put(txn, &key, &encode_encounter_record(&record)?)?;
+        Ok(())
+    }
+
+    fn finish_shared_combat_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        due_second: u64,
+        shared: &mut SharedCombatRecord,
+    ) -> Result<(), StoreError> {
+        let participants = shared.participants.clone();
+        for participant in &participants {
+            if participant.directly_commanded {
+                self.update_shared_encounter_view_in(txn, participant, shared, true)?;
+                let key = encode_identity(&participant.identity);
+                let vessel = shared
+                    .combat
+                    .vessels
+                    .iter()
+                    .find(|vessel| vessel.vessel_id == participant.ship_id)
+                    .ok_or(StoreError::Corrupt("shared-combat participant is missing"))?;
+                let command_lost = matches!(
+                    vessel.disposition,
+                    crate::combat::VesselDisposition::Captured
+                        | crate::combat::VesselDisposition::Surrendered
+                        | crate::combat::VesselDisposition::Abandoned
+                        | crate::combat::VesselDisposition::Destroyed
+                );
+                if command_lost
+                    && !matches!(
+                        vessel.disposition,
+                        crate::combat::VesselDisposition::Captured
+                            | crate::combat::VesselDisposition::Surrendered
+                    )
+                {
+                    self.relocate_unique_cargo_after_command_loss_in(
+                        txn,
+                        participant.ship_id,
+                        shared.system_id,
+                        vessel.disposition,
+                        0,
+                    )?;
+                }
+                if let Some(mut plan) = self
+                    .flight_plans
+                    .get(txn, &key)?
+                    .map(decode_flight_plan_snapshot)
+                    .transpose()?
+                {
+                    plan.state = if command_lost {
+                        FlightPlanState::Terminal
+                    } else {
+                        FlightPlanState::Checkpoint
+                    };
+                    plan.suspension_reason = if command_lost {
+                        "command lost during combat".into()
+                    } else {
+                        "combat resolved; recovery watch set".into()
+                    };
+                    self.flight_plans
+                        .put(txn, &key, &encode_flight_plan_snapshot(&plan)?)?;
+                }
+                if !command_lost {
+                    if let Some(checkpoint) = self
+                        .checkpoints
+                        .get(txn, &key)?
+                        .map(decode_checkpoint_snapshot)
+                        .transpose()?
+                    {
+                        self.finish_checkpoint_arrival_in(txn, &participant.identity, &checkpoint)?;
+                    }
+                    self.start_post_combat_recovery_in(txn, &participant.identity)?;
+                }
+            }
+        }
+        self.apply_inactive_shared_losses_in(txn, due_second, shared)?;
+        self.transfer_shared_combat_prize_in(txn, due_second, shared)?;
+        self.finish_shared_combat_careers_in(txn, due_second, shared)?;
+        Ok(())
+    }
+
+    fn finish_shared_combat_careers_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        due_second: u64,
+        shared: &SharedCombatRecord,
+    ) -> Result<(), StoreError> {
+        for participant in shared
+            .participants
+            .iter()
+            .filter(|participant| participant.initiated)
+        {
+            let Some(target) = shared
+                .participants
+                .iter()
+                .find(|target| target.side != participant.side)
+            else {
+                continue;
+            };
+            let Some(player_vessel) = shared
+                .combat
+                .vessels
+                .iter()
+                .find(|vessel| vessel.vessel_id == participant.ship_id)
+            else {
+                continue;
+            };
+            let Some(target_vessel) = shared
+                .combat
+                .vessels
+                .iter()
+                .find(|vessel| vessel.vessel_id == target.ship_id)
+            else {
+                continue;
+            };
+            let command_lost = matches!(
+                player_vessel.disposition,
+                crate::combat::VesselDisposition::Captured
+                    | crate::combat::VesselDisposition::Surrendered
+                    | crate::combat::VesselDisposition::Abandoned
+                    | crate::combat::VesselDisposition::Destroyed
+            );
+            let mut career = self.career_state_in(txn, &participant.identity)?;
+            for opportunity in career.opportunities.iter_mut().filter(|opportunity| {
+                opportunity.state == crate::careers::OpportunityState::Accepted
+                    && opportunity.target_contact_id == target.ship_id
+            }) {
+                let Some(evidence) = crate::careers::combat_objective_evidence(
+                    opportunity.objective_kind,
+                    command_lost,
+                    Some(target_vessel.disposition),
+                    false,
+                ) else {
+                    continue;
+                };
+                opportunity.evidence_kind = evidence;
+                opportunity.evidence_second = due_second;
+                if matches!(
+                    evidence,
+                    crate::careers::ObjectiveEvidenceKind::TargetCaptured
+                        | crate::careers::ObjectiveEvidenceKind::CargoSecured
+                ) {
+                    opportunity.evidence_vessel_id = target.ship_id;
+                }
+                career.revision = career.revision.saturating_add(1);
+            }
+            let mut player = self
+                .players
+                .get(txn, &encode_identity(&participant.identity))?
+                .map(decode_player_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt(
+                    "shared-combat career player is missing",
+                ))?;
+            if target_vessel.disposition != crate::combat::VesselDisposition::Active {
+                self.settle_combat_bounties_in(
+                    txn,
+                    &participant.identity,
+                    &mut player,
+                    shared.system_id,
+                    due_second,
+                )?;
+            }
+            self.players.put(
+                txn,
+                &encode_identity(&participant.identity),
+                &encode_player_record(&player),
+            )?;
+            self.put_career_state_in(txn, &participant.identity, &career)?;
+        }
+        Ok(())
+    }
+
+    fn apply_inactive_shared_losses_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        due_second: u64,
+        shared: &SharedCombatRecord,
+    ) -> Result<(), StoreError> {
+        for participant in shared
+            .participants
+            .iter()
+            .filter(|participant| !participant.directly_commanded)
+        {
+            let vessel = shared
+                .combat
+                .vessels
+                .iter()
+                .find(|vessel| vessel.vessel_id == participant.ship_id)
+                .ok_or(StoreError::Corrupt("shared-combat participant is missing"))?;
+            if !matches!(
+                vessel.disposition,
+                crate::combat::VesselDisposition::Destroyed
+                    | crate::combat::VesselDisposition::Abandoned
+            ) {
+                continue;
+            }
+            let ship = self
+                .ships
+                .get(txn, &participant.ship_id)?
+                .map(decode_ship_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("lost managed ship is missing"))?;
+            let mut owner = self
+                .players
+                .get(txn, &encode_identity(&participant.identity))?
+                .map(decode_player_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("lost managed ship owner is missing"))?;
+            owner
+                .managed_ship_ids
+                .retain(|ship_id| *ship_id != participant.ship_id);
+            owner.fleet_revision = owner.fleet_revision.saturating_add(1);
+            self.players.put(
+                txn,
+                &encode_identity(&participant.identity),
+                &encode_player_record(&owner),
+            )?;
+            self.relocate_unique_cargo_after_command_loss_in(
+                txn,
+                ship.ship_id,
+                shared.system_id,
+                vessel.disposition,
+                0,
+            )?;
+            let services = self
+                .crew_services
+                .iter(txn)?
+                .map(|entry| {
+                    let (_, bytes) = entry?;
+                    decode_crew_service(bytes)
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?;
+            for mut service in services.into_iter().filter(|service| {
+                service.ship_id == ship.ship_id && service.command == participant.identity
+            }) {
+                service.assigned_slot_ids.clear();
+                service.availability = CrewAvailability::Detached;
+                service.available_second = due_second.saturating_add(
+                    if vessel.disposition == crate::combat::VesselDisposition::Abandoned {
+                        7
+                    } else {
+                        14
+                    } * crate::simulation::SECONDS_PER_DAY,
+                );
+                service.shore_system_id = shared.system_id;
+                service.shore_facility_id = shared.system_id;
+                service.revision = service.revision.saturating_add(1);
+                self.crew_services
+                    .put(txn, &service.person_id, &encode_crew_service(&service)?)?;
+                self.schedule_prisoner_release_in(
+                    txn,
+                    service.person_id,
+                    service.available_second,
+                )?;
+            }
+            self.remove_ship_schedules_in(txn, ship.ship_id, true)?;
+            self.ships.delete(txn, &ship.ship_id)?;
+            self.finances.delete(txn, &ship_finance_key(ship.ship_id))?;
+            self.dispatch_combat_aftermath_in(
+                txn,
+                due_second,
+                shared.system_id,
+                &participant.identity,
+                &format!("Loss of {}", ship.name),
+                &format!(
+                    "A delayed command report records the loss of {} in system {}. Surviving personnel enter rescue or recovery proceedings.",
+                    ship.name, shared.system_id
+                ),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn transfer_shared_combat_prize_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        due_second: u64,
+        shared: &SharedCombatRecord,
+    ) -> Result<(), StoreError> {
+        let captured = shared
+            .participants
+            .iter()
+            .filter(|participant| {
+                shared.combat.vessels.iter().any(|vessel| {
+                    vessel.vessel_id == participant.ship_id
+                        && matches!(
+                            vessel.disposition,
+                            crate::combat::VesselDisposition::Captured
+                                | crate::combat::VesselDisposition::Surrendered
+                        )
+                })
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        for loser in captured {
+            let Some(captor) = shared
+                .participants
+                .iter()
+                .filter(|candidate| candidate.side != loser.side)
+                .filter(|candidate| {
+                    shared.combat.vessels.iter().any(|vessel| {
+                        vessel.vessel_id == candidate.ship_id
+                            && !matches!(
+                                vessel.disposition,
+                                crate::combat::VesselDisposition::Captured
+                                    | crate::combat::VesselDisposition::Surrendered
+                                    | crate::combat::VesselDisposition::Abandoned
+                                    | crate::combat::VesselDisposition::Destroyed
+                            )
+                    })
+                })
+                .min_by_key(|candidate| (!candidate.initiated, candidate.ship_id))
+                .cloned()
+            else {
+                continue;
+            };
+            let mut ship = self
+                .ships
+                .get(txn, &loser.ship_id)?
+                .map(decode_ship_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("captured player ship is missing"))?;
+            let mut loser_player = self
+                .players
+                .get(txn, &encode_identity(&loser.identity))?
+                .map(decode_player_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("captured ship owner is missing"))?;
+            let mut captor_player = self
+                .players
+                .get(txn, &encode_identity(&captor.identity))?
+                .map(decode_player_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("captor is missing"))?;
+            let mut captor_career = self.career_state_in(txn, &captor.identity)?;
+            let unlawful = captor.initiated && !shared.authorized_attack;
+            let stolen = unlawful || captor_career.mode == crate::careers::CombatCareerMode::Pirate;
+            let title = if stolen {
+                crate::wire::ShipTitleKind::StolenRegistry
+            } else {
+                crate::wire::ShipTitleKind::PrizeCustody
+            };
+            let gross = creation::ship_market_catalog()
+                .into_iter()
+                .find(|entry| entry.catalog_id == ship.catalog_id)
+                .map_or(0, |entry| entry.price_credits);
+            let combat_vessel = shared
+                .combat
+                .vessels
+                .iter()
+                .find(|vessel| vessel.vessel_id == ship.ship_id)
+                .ok_or(StoreError::Corrupt("captured combat vessel is missing"))?;
+            let maximum = (combat_vessel.displacement_millitons / 50_000).max(1) as u16;
+            let condition = u8::try_from(
+                (u32::from(combat_vessel.hull_remaining + combat_vessel.structure_remaining) * 100
+                    / u32::from(maximum.saturating_mul(2)))
+                .min(100),
+            )
+            .unwrap_or(0);
+            let law = self
+                .systems
+                .get(txn, &shared.system_id)?
+                .map(decode_stellar_system)
+                .transpose()?
+                .and_then(|system| self.primary_world_in(txn, &system).ok())
+                .map_or(0, |world| world.law_level);
+            let terms_mode =
+                if !stolen && captor_career.mode == crate::careers::CombatCareerMode::Independent {
+                    crate::careers::CombatCareerMode::Privateer
+                } else {
+                    captor_career.mode
+                };
+            let terms = crate::careers::prize_terms(
+                terms_mode,
+                gross,
+                condition,
+                law,
+                crate::ship_condition::mix64(shared.combat.combat_id ^ ship.ship_id),
+            );
+
+            loser_player
+                .managed_ship_ids
+                .retain(|ship_id| *ship_id != ship.ship_id);
+            loser_player.fleet_revision = loser_player.fleet_revision.saturating_add(1);
+            if !captor_player.managed_ship_ids.contains(&ship.ship_id) {
+                captor_player.managed_ship_ids.push(ship.ship_id);
+            }
+            captor_player.fleet_revision = captor_player.fleet_revision.saturating_add(1);
+            ship.command = captor.identity.clone();
+            ship.commanding_person_id = 0;
+            ship.standing_order = crate::wire::ManagedShipOrderKind::Hold;
+            ship.activity = None;
+            ship.revision = ship.revision.saturating_add(1);
+            self.remove_ship_schedules_in(txn, ship.ship_id, false)?;
+            let finance_key = ship_finance_key(ship.ship_id);
+            let mut finance = self
+                .finances
+                .get(txn, &finance_key)?
+                .map(decode_finance_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("captured ship title is missing"))?;
+            finance.title = title;
+            finance.principal_credits = 0;
+            finance.monthly_payment_credits = 0;
+            finance.in_default = false;
+            self.finances
+                .put(txn, &finance_key, &encode_finance_record(&finance))?;
+            let services = self
+                .crew_services
+                .iter(txn)?
+                .map(|entry| {
+                    let (_, bytes) = entry?;
+                    decode_crew_service(bytes)
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?;
+            for mut service in services {
+                if service.ship_id == ship.ship_id && service.command == loser.identity {
+                    service.assigned_slot_ids.clear();
+                    service.availability = CrewAvailability::Detached;
+                    service.available_second =
+                        due_second.saturating_add(30 * crate::simulation::SECONDS_PER_DAY);
+                    service.shore_system_id = shared.system_id;
+                    service.shore_facility_id = shared.system_id;
+                    service.revision = service.revision.saturating_add(1);
+                    self.crew_services.put(
+                        txn,
+                        &service.person_id,
+                        &encode_crew_service(&service)?,
+                    )?;
+                    self.schedule_prisoner_release_in(
+                        txn,
+                        service.person_id,
+                        service.available_second,
+                    )?;
+                }
+            }
+            let prize_id = take_next_id(self.meta, txn, META_NEXT_ENCOUNTER_ID)?;
+            captor_career.prizes.push(crate::careers::PrizeRecord {
+                prize_id,
+                captured_vessel_id: ship.ship_id,
+                captured_person_ids: Vec::new(),
+                catalog_id: ship.catalog_id,
+                name: ship.name.clone(),
+                gross_value_credits: gross,
+                realizable_value_credits: terms.realizable_value_credits,
+                condition_percent: condition,
+                status: if stolen {
+                    crate::careers::PrizeStatus::ReadyToFence
+                } else {
+                    crate::careers::PrizeStatus::Secured
+                },
+                secured_second: due_second,
+                claim_message_id: 0,
+                settlement_credits: terms.settlement_credits,
+                advance_credits: 0,
+            });
+            captor_career.revision = captor_career.revision.saturating_add(1);
+            self.ships
+                .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+            self.players.put(
+                txn,
+                &encode_identity(&loser.identity),
+                &encode_player_record(&loser_player),
+            )?;
+            self.players.put(
+                txn,
+                &encode_identity(&captor.identity),
+                &encode_player_record(&captor_player),
+            )?;
+            self.put_career_state_in(txn, &captor.identity, &captor_career)?;
+            self.dispatch_combat_aftermath_in(
+                txn,
+                due_second,
+                shared.system_id,
+                &loser.identity,
+                &format!("Loss of {}", ship.name),
+                &format!(
+                    "A delayed command report records that {} was surrendered or captured in system {}. Surviving personnel enter the established parole and recovery process.",
+                    ship.name, shared.system_id
+                ),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn remove_ship_schedules_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        ship_id: u64,
+        include_condition: bool,
+    ) -> Result<(), StoreError> {
+        let mut databases = vec![
+            &self.player_events,
+            &self.ship_activity_events,
+            &self.contact_events,
+        ];
+        if include_condition {
+            databases.push(&self.ship_condition_events);
+        }
+        for database in databases {
+            let stale = database
+                .iter(txn)?
+                .filter_map(|entry| match entry {
+                    Ok((key, bytes)) => match decode_scheduled_object(key, bytes) {
+                        Ok((_, _, candidate)) if candidate == ship_id => Some(Ok(key.to_vec())),
+                        Ok(_) => None,
+                        Err(error) => Some(Err(error)),
+                    },
+                    Err(error) => Some(Err(StoreError::Heed(error))),
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?;
+            for key in stale {
+                database.delete(txn, &key)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn dispatch_combat_aftermath_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        current: u64,
+        origin_system_id: u64,
+        recipient: &PlayerIdentity,
+        subject: &str,
+        body: &str,
+    ) -> Result<(), StoreError> {
+        let destinations = self
+            .simulation
+            .systems(txn)?
+            .into_iter()
+            .map(|system| system.system_id)
+            .collect::<Vec<_>>();
+        let (message_id, _) = self.simulation.dispatch_message(
+            txn,
+            current,
+            origin_system_id,
+            crate::simulation::MessageClass::Private,
+            crate::simulation::MessageImportance::Important,
+            subject,
+            body,
+            &destinations,
+        )?;
+        self.private_message_recipients.put(
+            txn,
+            &message_id.to_be_bytes(),
+            &encode_private_message_recipient(&PrivateMessageRecipientRecord {
+                message_id,
+                recipient_kind: crate::wire::PrivateRecipientKind::Captain,
+                destination_system_id: 0,
+                recipient: recipient.clone(),
+                encryption_key_id: (u64::from(recipient.bbs_id) << 32)
+                    | u64::from(recipient.player_id),
+                revoked: false,
+            }),
+        )?;
+        Ok(())
+    }
+
+    fn shared_combat_transitions(
+        &self,
+        combat_id: u64,
+        committed_sequence: u64,
+        revision: u64,
+    ) -> Result<Vec<PlayerTravelTransition>, StoreError> {
+        let txn = self.env.read_txn()?;
+        let Some(shared) = self
+            .shared_combats
+            .get(&txn, &combat_id)?
+            .map(decode_shared_combat_record)
+            .transpose()?
+        else {
+            return Ok(Vec::new());
+        };
+        let mut transitions = Vec::new();
+        for participant in shared
+            .participants
+            .iter()
+            .filter(|participant| participant.directly_commanded)
+        {
+            transitions.push(PlayerTravelTransition {
+                identity: participant.identity.clone(),
+                committed_sequence,
+                revision,
+                phase: self.player_phase_in(&txn, &participant.identity)?,
+                status: self.travel_status_in(&txn, &participant.identity)?,
+            });
+        }
+        Ok(transitions)
+    }
+
     fn relocate_unique_cargo_after_command_loss_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
@@ -10098,9 +11636,18 @@ impl Store {
             .transpose()?
             .ok_or(StoreError::Corrupt("player ship record is missing"))?;
         if ship.command != *identity {
-            return Err(StoreError::Corrupt(
-                "player does not command the recorded ship",
-            ));
+            let terminal_loss = self
+                .encounters
+                .get(txn, &encode_identity(identity))?
+                .map(decode_encounter_record)
+                .transpose()?
+                .and_then(|encounter| encounter.result)
+                .is_some_and(|result| result.terminal);
+            if !terminal_loss {
+                return Err(StoreError::Corrupt(
+                    "player does not command the recorded ship",
+                ));
+            }
         }
         let spec = creation::ship_status_spec(ship.catalog_id)
             .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
@@ -13838,6 +15385,7 @@ impl Store {
                 provision_capacity_person_days: ship.provisions.installed_capacity_person_days,
                 cargo: ship.cargo.clone(),
                 ammunition,
+                online_controlled: false,
             });
         }
         Ok(crate::wire::FleetSnapshot {
@@ -13866,6 +15414,13 @@ impl Store {
         }
         if ship_id == player.ship_id {
             return Ok(RuleResult::Applied(self.fleet_snapshot_in(txn, identity)?));
+        }
+        if self.ship_combats.get(txn, &player.ship_id)?.is_some()
+            || self.ship_combats.get(txn, &ship_id)?.is_some()
+        {
+            return Ok(RuleResult::Rejected(
+                "command cannot be exchanged while either vessel is engaged in combat".into(),
+            ));
         }
         if !player.managed_ship_ids.contains(&ship_id) {
             return Ok(RuleResult::Rejected(
@@ -19111,6 +20666,9 @@ impl Store {
         self.checkpoints.clear(&mut txn)?;
         self.encounters.clear(&mut txn)?;
         self.encounter_events.clear(&mut txn)?;
+        self.shared_combats.clear(&mut txn)?;
+        self.ship_combats.clear(&mut txn)?;
+        self.shared_combat_events.clear(&mut txn)?;
         self.contact_events.clear(&mut txn)?;
         self.simulation.clear(&mut txn)?;
         put_meta_u64(self.meta, &mut txn, META_COVERAGE_REVISION, 0)?;
@@ -19677,6 +21235,11 @@ impl Store {
         person_id: u64,
         due_second: u64,
     ) -> Result<(), StoreError> {
+        if person_id & (PERSON_TREATMENT_EVENT_BIT | PERSON_PRISONER_RELEASE_EVENT_BIT) != 0 {
+            return Err(StoreError::Corrupt(
+                "person identifier overlaps scheduled-person marker",
+            ));
+        }
         let event_id = self.simulation.take_scheduled_event_id(txn)?;
         self.person_training_events.put(
             txn,
@@ -19692,7 +21255,7 @@ impl Store {
         person_id: u64,
         due_second: u64,
     ) -> Result<(), StoreError> {
-        if person_id & PERSON_TREATMENT_EVENT_BIT != 0 {
+        if person_id & (PERSON_TREATMENT_EVENT_BIT | PERSON_PRISONER_RELEASE_EVENT_BIT) != 0 {
             return Err(StoreError::Corrupt(
                 "person identifier overlaps treatment event marker",
             ));
@@ -19702,6 +21265,26 @@ impl Store {
             txn,
             &scheduled_event_key(due_second, event_id),
             &encode_scheduled_object(person_id | PERSON_TREATMENT_EVENT_BIT),
+        )?;
+        Ok(())
+    }
+
+    fn schedule_prisoner_release_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        person_id: u64,
+        due_second: u64,
+    ) -> Result<(), StoreError> {
+        if person_id & (PERSON_TREATMENT_EVENT_BIT | PERSON_PRISONER_RELEASE_EVENT_BIT) != 0 {
+            return Err(StoreError::Corrupt(
+                "person identifier overlaps prisoner-release marker",
+            ));
+        }
+        let event_id = self.simulation.take_scheduled_event_id(txn)?;
+        self.person_training_events.put(
+            txn,
+            &scheduled_event_key(due_second, event_id),
+            &encode_scheduled_object(person_id | PERSON_PRISONER_RELEASE_EVENT_BIT),
         )?;
         Ok(())
     }
@@ -19736,6 +21319,21 @@ impl Store {
         value.extend_from_slice(&encounter_id.to_be_bytes());
         self.encounter_events
             .put(txn, &scheduled_event_key(due_second, event_id), &value)?;
+        Ok(())
+    }
+
+    fn schedule_shared_combat_turn_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        combat_id: u64,
+        due_second: u64,
+    ) -> Result<(), StoreError> {
+        let event_id = self.simulation.take_scheduled_event_id(txn)?;
+        self.shared_combat_events.put(
+            txn,
+            &scheduled_event_key(due_second, event_id),
+            &encode_scheduled_object(combat_id),
+        )?;
         Ok(())
     }
 
@@ -19812,6 +21410,16 @@ impl Store {
                 event_id,
                 identity,
                 encounter_id,
+            });
+        }
+        if let Some((key, due_second, event_id, combat_id)) =
+            first_simple_event(self.shared_combat_events, &txn)?
+        {
+            candidates.push(ScheduledCandidate::SharedCombatTurn {
+                key,
+                due_second,
+                event_id,
+                combat_id,
             });
         }
         if let Some((key, due_second, event_id, ship_id)) =
@@ -19911,6 +21519,19 @@ impl Store {
                     due_second,
                     identity,
                     encounter_id,
+                }
+            }
+            ScheduledCandidate::SharedCombatTurn {
+                key,
+                due_second,
+                event_id,
+                combat_id,
+            } => {
+                self.shared_combat_events.delete(&mut txn, &key)?;
+                ScheduledInput::SharedCombatTurn {
+                    event_id,
+                    due_second,
+                    combat_id,
                 }
             }
             ScheduledCandidate::ContactCheck {
@@ -21713,6 +23334,42 @@ impl Store {
         Ok(())
     }
 
+    fn process_prisoner_release_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        due_second: u64,
+        person_id: u64,
+    ) -> Result<(), StoreError> {
+        let Some(mut service) = self
+            .crew_services
+            .get(txn, &person_id)?
+            .map(decode_crew_service)
+            .transpose()?
+        else {
+            return Ok(());
+        };
+        if service.availability != CrewAvailability::Detached
+            || service.available_second > due_second
+        {
+            return Ok(());
+        }
+        let player = self
+            .players
+            .get(txn, &encode_identity(&service.command))?
+            .map(decode_player_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt(
+                "released prisoner has no player command",
+            ))?;
+        service.ship_id = player.ship_id;
+        service.availability = CrewAvailability::AwaitingRecall;
+        service.available_second = due_second;
+        service.revision = service.revision.saturating_add(1);
+        self.crew_services
+            .put(txn, &person_id, &encode_crew_service(&service)?)?;
+        Ok(())
+    }
+
     fn process_person_recovery_day_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
@@ -23333,9 +24990,7 @@ impl Store {
                     "scheduled admission was overtaken by player input",
                 ));
             }
-            if let Some(transition) = processed_input.player_transition {
-                player_transitions.push(transition);
-            }
+            player_transitions.extend(processed_input.player_transitions);
             match processed_input.category {
                 Some(ProcessedScheduledCategory::PlayerTravel) => {
                     player_travel_events = player_travel_events.saturating_add(1)
@@ -23460,11 +25115,14 @@ impl Store {
             .into_iter()
             .find(|system| system.system_id == ship.system_id)
             .ok_or(StoreError::MissingTrafficSimulationSystem(ship.system_id))?;
+        let mut contacts = crate::traffic::snapshot(&system, game_second)?;
+        contacts.extend(self.player_traffic_contacts_in(&txn, &ship, None, game_second)?);
+        contacts.sort_by_key(|contact| (contact.edge_second, contact.contact_id));
         Ok(Some(crate::traffic::TrafficSnapshot {
             system_id: system.system_id,
             system_name: system.name.clone(),
             observed_second: game_second,
-            contacts: crate::traffic::snapshot(&system, game_second)?,
+            contacts,
         }))
     }
 
@@ -26270,6 +27928,130 @@ fn decode_encounter_record(bytes: &[u8]) -> Result<EncounterRecord, StoreError> 
     })
 }
 
+fn encode_shared_combat_record(value: &SharedCombatRecord) -> Result<Vec<u8>, StoreError> {
+    let mut bytes = vec![1];
+    encode_combat_state(&mut bytes, &value.combat)?;
+    bytes.extend_from_slice(&value.system_id.to_be_bytes());
+    bytes.push(u8::from(value.authorized_attack));
+    bytes.extend_from_slice(
+        &u16::try_from(value.participants.len())
+            .map_err(|_| StoreError::Corrupt("too many shared-combat participants"))?
+            .to_be_bytes(),
+    );
+    for participant in &value.participants {
+        bytes.extend_from_slice(&encode_identity(&participant.identity));
+        bytes.extend_from_slice(&participant.ship_id.to_be_bytes());
+        bytes.extend_from_slice(&participant.side.to_be_bytes());
+        bytes.push(u8::from(participant.directly_commanded));
+        bytes.push(u8::from(participant.initiated));
+    }
+    bytes.extend_from_slice(
+        &u16::try_from(value.orders.len())
+            .map_err(|_| StoreError::Corrupt("too many shared-combat orders"))?
+            .to_be_bytes(),
+    );
+    for order in &value.orders {
+        encode_combat_order_record(&mut bytes, order)?;
+    }
+    bytes.extend_from_slice(
+        &u16::try_from(value.automation_decisions.len())
+            .map_err(|_| StoreError::Corrupt("too many shared-combat decisions"))?
+            .to_be_bytes(),
+    );
+    for decision in &value.automation_decisions {
+        bytes.extend_from_slice(&decision.algorithm_revision.to_be_bytes());
+        bytes.extend_from_slice(&decision.view_revision.to_be_bytes());
+        bytes.push(decision.estimated_success_percent);
+        encode_text(&mut bytes, &decision.branch)?;
+        encode_combat_order_record(&mut bytes, &decision.order)?;
+    }
+    bytes.extend_from_slice(
+        &u16::try_from(value.combat_log.len())
+            .map_err(|_| StoreError::Corrupt("shared combat log too long"))?
+            .to_be_bytes(),
+    );
+    for line in &value.combat_log {
+        encode_text(&mut bytes, line)?;
+    }
+    bytes.extend_from_slice(
+        &u16::try_from(value.pending_interventions.len())
+            .map_err(|_| StoreError::Corrupt("too many shared combat interventions"))?
+            .to_be_bytes(),
+    );
+    for intervention in &value.pending_interventions {
+        bytes.extend_from_slice(&intervention.due_second.to_be_bytes());
+        bytes.extend_from_slice(&intervention.contact_id.to_be_bytes());
+        bytes.extend_from_slice(&intervention.catalog_id.to_be_bytes());
+        bytes.extend_from_slice(&intervention.side.to_be_bytes());
+        encode_text(&mut bytes, &intervention.ship_name)?;
+    }
+    Ok(bytes)
+}
+
+fn decode_shared_combat_record(bytes: &[u8]) -> Result<SharedCombatRecord, StoreError> {
+    let mut d = Decoder::new(bytes);
+    if d.u8()? != 1 {
+        return Err(StoreError::Corrupt("unsupported shared-combat record"));
+    }
+    let combat = decode_combat_state(&mut d)?;
+    let system_id = d.u64()?;
+    let authorized_attack = d.u8()? != 0;
+    let participant_count = d.u16()? as usize;
+    let mut participants = Vec::with_capacity(participant_count);
+    for _ in 0..participant_count {
+        participants.push(SharedCombatParticipant {
+            identity: decode_identity(&mut d)?,
+            ship_id: d.u64()?,
+            side: d.u16()?,
+            directly_commanded: d.u8()? != 0,
+            initiated: d.u8()? != 0,
+        });
+    }
+    let order_count = d.u16()? as usize;
+    let mut orders = Vec::with_capacity(order_count);
+    for _ in 0..order_count {
+        orders.push(decode_combat_order_record(&mut d)?);
+    }
+    let decision_count = d.u16()? as usize;
+    let mut automation_decisions = Vec::with_capacity(decision_count);
+    for _ in 0..decision_count {
+        automation_decisions.push(crate::combat::AutomationDecision {
+            algorithm_revision: d.u16()?,
+            view_revision: d.u64()?,
+            estimated_success_percent: d.u8()?,
+            branch: d.text()?,
+            order: decode_combat_order_record(&mut d)?,
+        });
+    }
+    let log_count = d.u16()? as usize;
+    let mut combat_log = Vec::with_capacity(log_count);
+    for _ in 0..log_count {
+        combat_log.push(d.text()?);
+    }
+    let intervention_count = d.u16()? as usize;
+    let mut pending_interventions = Vec::with_capacity(intervention_count);
+    for _ in 0..intervention_count {
+        pending_interventions.push(PendingCombatIntervention {
+            due_second: d.u64()?,
+            contact_id: d.u64()?,
+            catalog_id: d.u32()?,
+            side: d.u16()?,
+            ship_name: d.text()?,
+        });
+    }
+    d.finish()?;
+    Ok(SharedCombatRecord {
+        combat,
+        system_id,
+        authorized_attack,
+        participants,
+        orders,
+        automation_decisions,
+        combat_log,
+        pending_interventions,
+    })
+}
+
 fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
     let identity = encode_identity(&command.identity);
     let mut bytes = Vec::with_capacity(64 + identity.len());
@@ -27247,6 +29029,16 @@ fn encode_engine_input(input: &EngineInput) -> Result<Vec<u8>, StoreError> {
                     bytes.extend_from_slice(&identity.player_id.to_be_bytes());
                     bytes.extend_from_slice(&encounter_id.to_be_bytes());
                 }
+                ScheduledInput::SharedCombatTurn {
+                    event_id,
+                    due_second,
+                    combat_id,
+                } => {
+                    bytes.push(8);
+                    bytes.extend_from_slice(&event_id.to_be_bytes());
+                    bytes.extend_from_slice(&due_second.to_be_bytes());
+                    bytes.extend_from_slice(&combat_id.to_be_bytes());
+                }
                 ScheduledInput::ContactCheck {
                     event_id,
                     due_second,
@@ -27361,6 +29153,11 @@ fn decode_engine_input(bytes: &[u8]) -> Result<EngineInput, StoreError> {
                     event_id: decoder.u64()?,
                     due_second: decoder.u64()?,
                     assignment_id: decoder.u64()?,
+                },
+                8 => ScheduledInput::SharedCombatTurn {
+                    event_id: decoder.u64()?,
+                    due_second: decoder.u64()?,
+                    combat_id: decoder.u64()?,
                 },
                 _ => return Err(StoreError::Corrupt("unknown scheduled engine input")),
             };
@@ -27771,6 +29568,7 @@ fn decode_fleet(d: &mut Decoder<'_>) -> Result<crate::wire::FleetSnapshot, Store
             provision_capacity_person_days,
             cargo,
             ammunition,
+            online_controlled: false,
         });
     }
     Ok(crate::wire::FleetSnapshot {
@@ -28147,6 +29945,8 @@ fn decode_combat_snapshot_record(
             disposition,
             weapons,
             commanded,
+            player_owned: commanded,
+            online_controlled: false,
         });
     }
     let default_order = decode_wire_combat_order(d)?;
@@ -28216,6 +30016,7 @@ fn encode_traffic_contact_record(
     bytes.push(match contact.movement {
         crate::traffic::TrafficMovementKind::Arrival => 0,
         crate::traffic::TrafficMovementKind::Departure => 1,
+        crate::traffic::TrafficMovementKind::Present => 2,
     });
     bytes.extend_from_slice(&contact.edge_second.to_be_bytes());
     if include_observation {
@@ -28226,12 +30027,14 @@ fn encode_traffic_contact_record(
         });
         bytes.push(contact.confidence_percent);
     }
+    bytes.push(u8::from(contact.player_owned));
     Ok(())
 }
 
 fn decode_traffic_contact_record(
     decoder: &mut Decoder<'_>,
     has_observation: bool,
+    has_control_flags: bool,
 ) -> Result<crate::traffic::TrafficContact, StoreError> {
     let contact_id = decoder.u64()?;
     let catalog_id = decoder.u32()?;
@@ -28246,6 +30049,7 @@ fn decode_traffic_contact_record(
     let movement = match decoder.u8()? {
         0 => crate::traffic::TrafficMovementKind::Arrival,
         1 => crate::traffic::TrafficMovementKind::Departure,
+        2 => crate::traffic::TrafficMovementKind::Present,
         _ => return Err(StoreError::Corrupt("unknown traffic movement")),
     };
     let edge_second = decoder.u64()?;
@@ -28272,6 +30076,7 @@ fn decode_traffic_contact_record(
             crate::traffic::TrafficContactResolution::Identified => 100,
         }
     };
+    let player_owned = has_control_flags && decoder.u8()? != 0;
     Ok(crate::traffic::TrafficContact {
         contact_id,
         catalog_id,
@@ -28287,12 +30092,14 @@ fn decode_traffic_contact_record(
         edge_second,
         resolution,
         confidence_percent,
+        player_owned,
+        online_controlled: false,
     })
 }
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(3);
+    bytes.push(4);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -28504,7 +30311,7 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
 fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
     let mut decoder = Decoder::new(bytes);
     let version = decoder.u8()?;
-    if version != 1 && version != 2 && version != 3 {
+    if version != 1 && version != 2 && version != 3 && version != 4 {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
     let command_id = decoder.array()?;
@@ -28609,14 +30416,22 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
             let count = decoder.u16()? as usize;
             let mut local_contacts = Vec::with_capacity(count);
             for _ in 0..count {
-                local_contacts.push(decode_traffic_contact_record(&mut decoder, version >= 3)?);
+                local_contacts.push(decode_traffic_contact_record(
+                    &mut decoder,
+                    version >= 3,
+                    version >= 4,
+                )?);
             }
             let mut system_contacts = Vec::new();
             if version >= 3 {
                 let count = decoder.u16()? as usize;
                 system_contacts.reserve(count);
                 for _ in 0..count {
-                    system_contacts.push(decode_traffic_contact_record(&mut decoder, true)?);
+                    system_contacts.push(decode_traffic_contact_record(
+                        &mut decoder,
+                        true,
+                        version >= 4,
+                    )?);
                 }
             }
             OutcomeKind::CombatCareer(crate::wire::CombatCareerSnapshot {
@@ -29647,10 +31462,7 @@ fn decode_player_record(bytes: &[u8]) -> Result<PlayerRecord, StoreError> {
     for _ in 0..managed_count {
         managed_ship_ids.push(decoder.u64()?);
     }
-    if managed_ship_ids.is_empty()
-        || !managed_ship_ids.contains(&ship_id)
-        || managed_ship_ids.iter().collect::<HashSet<_>>().len() != managed_ship_ids.len()
-    {
+    if managed_ship_ids.iter().collect::<HashSet<_>>().len() != managed_ship_ids.len() {
         return Err(StoreError::Corrupt("invalid managed vessel roster"));
     }
     let fleet_revision = decoder.u64()?;
@@ -41865,6 +43677,77 @@ mod tests {
     }
 
     #[test]
+    fn player_vessels_share_traffic_pictures_and_enter_shared_combat() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let observer = identity();
+        let other = PlayerIdentity {
+            bbs_id: observer.bbs_id,
+            player_id: observer.player_id + 1,
+        };
+        let template = {
+            let txn = store.env.read_txn().unwrap();
+            store.player_and_ship_in(&txn, &observer).unwrap().1
+        };
+        establish_colocated_player(&store, &other, &template);
+
+        let mut txn = store.env.write_txn().unwrap();
+        let other_ship_id = store.player_and_ship_in(&txn, &other).unwrap().1.ship_id;
+        let snapshot = store.combat_career_snapshot_in(&txn, &observer).unwrap();
+        let system_contact = snapshot
+            .system_contacts
+            .iter()
+            .find(|contact| contact.contact_id == other_ship_id)
+            .expect("the player vessel should appear in traffic control");
+        assert!(system_contact.player_owned);
+        assert!(!system_contact.online_controlled);
+        assert_eq!(
+            system_contact.movement,
+            crate::traffic::TrafficMovementKind::Present
+        );
+        assert_eq!(
+            system_contact.resolution,
+            crate::traffic::TrafficContactResolution::TransponderOnly
+        );
+        let local_contact = snapshot
+            .local_contacts
+            .iter()
+            .find(|contact| contact.contact_id == other_ship_id)
+            .expect("the colocated player vessel should appear on sensors");
+        assert!(local_contact.player_owned);
+
+        let career = store.career_state_in(&txn, &observer).unwrap();
+        let combat = match store
+            .engage_traffic_contact_in(&mut txn, &observer, other_ship_id, career.revision)
+            .unwrap()
+        {
+            RuleResult::Applied(combat) => combat,
+            RuleResult::Rejected(reason) => panic!("player interception was rejected: {reason}"),
+        };
+        assert_eq!(combat.participants.len(), 2);
+        assert!(
+            combat
+                .participants
+                .iter()
+                .any(|participant| participant.vessel_id == other_ship_id)
+        );
+        assert!(
+            combat
+                .participants
+                .iter()
+                .all(|participant| participant.player_owned)
+        );
+        assert!(
+            store
+                .shared_combats
+                .get(&txn, &combat.combat_id)
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
     fn warrant_satisfaction_is_a_second_physically_delivered_instrument() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
@@ -42804,5 +44687,485 @@ mod tests {
             store.live_backup(backups.path(), "field-alpha", &[0x4c; COMMAND_ID_BYTES]),
             Err(StoreError::BackupConflict(_))
         ));
+    }
+
+    #[test]
+    fn player_interception_uses_one_shared_combat_and_accepts_both_orders() {
+        let directory = TempDir::new().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        initialize_player_fixture(&store);
+        let attacker = identity();
+        let defender = PlayerIdentity {
+            bbs_id: attacker.bbs_id,
+            player_id: attacker.player_id + 1,
+        };
+        let attacker_ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &attacker)
+            .unwrap()
+            .1;
+        establish_colocated_player(&store, &defender, &attacker_ship);
+        let defender_ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &defender)
+            .unwrap()
+            .1;
+
+        let mut txn = store.env.write_txn().unwrap();
+        let career_revision = store.career_state_in(&txn, &attacker).unwrap().revision;
+        let attacker_view = match store
+            .engage_traffic_contact_in(&mut txn, &attacker, defender_ship.ship_id, career_revision)
+            .unwrap()
+        {
+            RuleResult::Applied(snapshot) => snapshot,
+            RuleResult::Rejected(reason) => panic!("player intercept rejected: {reason}"),
+        };
+        assert_eq!(attacker_view.participants.len(), 2);
+        assert!(attacker_view.participants.iter().all(|p| p.player_owned));
+        assert!(
+            store
+                .ship_combats
+                .get(&txn, &attacker_ship.ship_id)
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            store
+                .ship_combats
+                .get(&txn, &defender_ship.ship_id)
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(
+            store.player_phase_in(&txn, &defender).unwrap(),
+            PlayerPhase::Encounter
+        );
+
+        let defender_view = store.combat_snapshot_in(&txn, &defender).unwrap().unwrap();
+        assert_eq!(defender_view.combat_id, attacker_view.combat_id);
+        assert!(matches!(
+            store
+                .submit_shared_combat_order_in(
+                    &mut txn,
+                    &attacker,
+                    attacker_view.combat_id,
+                    &attacker_view.default_order,
+                )
+                .unwrap(),
+            RuleResult::Applied(_)
+        ));
+        assert!(matches!(
+            store
+                .submit_shared_combat_order_in(
+                    &mut txn,
+                    &attacker,
+                    attacker_view.combat_id,
+                    &attacker_view.default_order,
+                )
+                .unwrap(),
+            RuleResult::Rejected(_)
+        ));
+        assert!(matches!(
+            store
+                .submit_shared_combat_order_in(
+                    &mut txn,
+                    &defender,
+                    defender_view.combat_id,
+                    &defender_view.default_order,
+                )
+                .unwrap(),
+            RuleResult::Applied(_)
+        ));
+        let before = store
+            .shared_combats
+            .get(&txn, &attacker_view.combat_id)
+            .unwrap()
+            .map(decode_shared_combat_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert_eq!(before.orders.len(), 2);
+        let due = before
+            .combat
+            .round_started_second
+            .saturating_add(crate::combat::COMBAT_TURN_SECONDS);
+        let transitions = store
+            .process_shared_combat_turn_in(&mut txn, due, attacker_view.combat_id)
+            .unwrap();
+        assert_eq!(transitions.len(), 2);
+        let after = store
+            .shared_combats
+            .get(&txn, &attacker_view.combat_id)
+            .unwrap()
+            .map(decode_shared_combat_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert!(after.combat.revision > before.combat.revision);
+        assert!(after.orders.is_empty());
+        txn.commit().unwrap();
+
+        drop(store);
+        let reopened = Store::open(directory.path()).unwrap();
+        assert!(
+            reopened
+                .shared_combats
+                .get(&reopened.env.read_txn().unwrap(), &attacker_view.combat_id)
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn separately_commanded_player_ship_fights_by_policy_without_remote_phase_change() {
+        let directory = TempDir::new().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        initialize_player_fixture(&store);
+        let attacker = identity();
+        let owner = PlayerIdentity {
+            bbs_id: attacker.bbs_id,
+            player_id: attacker.player_id + 2,
+        };
+        let attacker_ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &attacker)
+            .unwrap()
+            .1;
+        establish_colocated_player(&store, &owner, &attacker_ship);
+
+        let managed_ship_id = {
+            let mut txn = store.env.write_txn().unwrap();
+            let mut player = store
+                .players
+                .get(&txn, &encode_identity(&owner))
+                .unwrap()
+                .map(decode_player_record)
+                .transpose()
+                .unwrap()
+                .unwrap();
+            let mut active = store
+                .ships
+                .get(&txn, &player.ship_id)
+                .unwrap()
+                .map(decode_ship_record)
+                .transpose()
+                .unwrap()
+                .unwrap();
+            let managed_ship_id =
+                take_id_range(store.meta, &mut txn, META_NEXT_SHIP_ID, 1).unwrap();
+            let mut managed = active.clone();
+            managed.ship_id = managed_ship_id;
+            managed.name = "Standing Orders".into();
+            managed.commanding_person_id = active.commanding_person_id;
+            active.system_id = active.system_id.saturating_add(1);
+            active.location = ShipLocationRecord::Docked {
+                world_id: active.system_id,
+                facility_id: active.system_id,
+                arrived_second: 0,
+            };
+            active.commanding_person_id = 0;
+            player.managed_ship_ids.push(managed_ship_id);
+            player.fleet_revision = player.fleet_revision.saturating_add(1);
+            let finance = store
+                .finances
+                .get(&txn, &ship_finance_key(player.ship_id))
+                .unwrap()
+                .unwrap()
+                .to_vec();
+            let services = store
+                .crew_services
+                .iter(&txn)
+                .unwrap()
+                .map(|entry| {
+                    let (_, bytes) = entry.unwrap();
+                    decode_crew_service(bytes).unwrap()
+                })
+                .filter(|service| service.command == owner)
+                .collect::<Vec<_>>();
+            for mut service in services {
+                service.ship_id = managed_ship_id;
+                store
+                    .crew_services
+                    .put(
+                        &mut txn,
+                        &service.person_id,
+                        &encode_crew_service(&service).unwrap(),
+                    )
+                    .unwrap();
+            }
+            store
+                .ships
+                .put(
+                    &mut txn,
+                    &active.ship_id,
+                    &encode_ship_record(&active).unwrap(),
+                )
+                .unwrap();
+            store
+                .ships
+                .put(
+                    &mut txn,
+                    &managed_ship_id,
+                    &encode_ship_record(&managed).unwrap(),
+                )
+                .unwrap();
+            store
+                .finances
+                .put(&mut txn, &ship_finance_key(managed_ship_id), &finance)
+                .unwrap();
+            store
+                .players
+                .put(
+                    &mut txn,
+                    &encode_identity(&owner),
+                    &encode_player_record(&player),
+                )
+                .unwrap();
+            txn.commit().unwrap();
+            managed_ship_id
+        };
+
+        let mut txn = store.env.write_txn().unwrap();
+        let revision = store.career_state_in(&txn, &attacker).unwrap().revision;
+        let view = match store
+            .engage_traffic_contact_in(&mut txn, &attacker, managed_ship_id, revision)
+            .unwrap()
+        {
+            RuleResult::Applied(snapshot) => snapshot,
+            RuleResult::Rejected(reason) => panic!("managed ship intercept rejected: {reason}"),
+        };
+        assert_ne!(
+            store.player_phase_in(&txn, &owner).unwrap(),
+            PlayerPhase::Encounter
+        );
+        assert!(store.encounter_in(&txn, &owner).unwrap().is_none());
+        let shared = store
+            .shared_combats
+            .get(&txn, &view.combat_id)
+            .unwrap()
+            .map(decode_shared_combat_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert!(
+            !shared
+                .participants
+                .iter()
+                .find(|participant| participant.ship_id == managed_ship_id)
+                .unwrap()
+                .directly_commanded
+        );
+        let due = shared
+            .combat
+            .round_started_second
+            .saturating_add(crate::combat::COMBAT_TURN_SECONDS);
+        let transitions = store
+            .process_shared_combat_turn_in(&mut txn, due, view.combat_id)
+            .unwrap();
+        assert_eq!(transitions, vec![attacker]);
+        let resolved = store
+            .shared_combats
+            .get(&txn, &view.combat_id)
+            .unwrap()
+            .map(decode_shared_combat_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert!(
+            resolved
+                .automation_decisions
+                .iter()
+                .any(|decision| decision.order.vessel_id == managed_ship_id)
+        );
+    }
+
+    #[test]
+    fn pvp_capture_transfers_the_existing_ship_and_preserves_real_people() {
+        let directory = TempDir::new().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        initialize_player_fixture(&store);
+        let captor = identity();
+        let loser = PlayerIdentity {
+            bbs_id: captor.bbs_id,
+            player_id: captor.player_id + 3,
+        };
+        let captor_ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &captor)
+            .unwrap()
+            .1;
+        establish_colocated_player(&store, &loser, &captor_ship);
+        let loser_ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &loser)
+            .unwrap()
+            .1;
+        let people_before = store
+            .crew_services(loser_ship.ship_id)
+            .unwrap()
+            .into_iter()
+            .map(|service| service.person_id)
+            .collect::<Vec<_>>();
+
+        let mut captor_vessel = crate::combat::materialize_vessel(
+            captor_ship.ship_id,
+            1,
+            captor_ship.name.clone(),
+            captor_ship.catalog_id,
+            12,
+        )
+        .unwrap();
+        let mut loser_vessel = crate::combat::materialize_vessel(
+            loser_ship.ship_id,
+            2,
+            loser_ship.name.clone(),
+            loser_ship.catalog_id,
+            7,
+        )
+        .unwrap();
+        captor_vessel.disposition = crate::combat::VesselDisposition::Active;
+        loser_vessel.disposition = crate::combat::VesselDisposition::Captured;
+        let shared = SharedCombatRecord {
+            combat: crate::combat::CombatState {
+                combat_id: 900_001,
+                revision: 2,
+                round: 2,
+                round_started_second: crate::combat::COMBAT_TURN_SECONDS,
+                range: crate::combat::RangeBand::Adjacent,
+                vessels: vec![captor_vessel, loser_vessel],
+                missiles: Vec::new(),
+                boarding: Vec::new(),
+                complete: true,
+            },
+            system_id: captor_ship.system_id,
+            authorized_attack: false,
+            participants: vec![
+                SharedCombatParticipant {
+                    identity: captor.clone(),
+                    ship_id: captor_ship.ship_id,
+                    side: 1,
+                    directly_commanded: true,
+                    initiated: true,
+                },
+                SharedCombatParticipant {
+                    identity: loser.clone(),
+                    ship_id: loser_ship.ship_id,
+                    side: 2,
+                    directly_commanded: true,
+                    initiated: false,
+                },
+            ],
+            orders: Vec::new(),
+            automation_decisions: Vec::new(),
+            combat_log: Vec::new(),
+            pending_interventions: Vec::new(),
+        };
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .transfer_shared_combat_prize_in(
+                &mut txn,
+                crate::combat::COMBAT_TURN_SECONDS * 2,
+                &shared,
+            )
+            .unwrap();
+        let transferred = store
+            .ships
+            .get(&txn, &loser_ship.ship_id)
+            .unwrap()
+            .map(decode_ship_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert_eq!(transferred.ship_id, loser_ship.ship_id);
+        assert_eq!(transferred.command, captor);
+        assert_eq!(transferred.commanding_person_id, 0);
+        let captor_record = store
+            .players
+            .get(&txn, &encode_identity(&captor))
+            .unwrap()
+            .map(decode_player_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        let loser_record = store
+            .players
+            .get(&txn, &encode_identity(&loser))
+            .unwrap()
+            .map(decode_player_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert!(captor_record.managed_ship_ids.contains(&loser_ship.ship_id));
+        assert!(!loser_record.managed_ship_ids.contains(&loser_ship.ship_id));
+        let finance = store
+            .finances
+            .get(&txn, &ship_finance_key(loser_ship.ship_id))
+            .unwrap()
+            .map(decode_finance_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert_eq!(finance.title, crate::wire::ShipTitleKind::StolenRegistry);
+        assert_eq!(finance.principal_credits, 0);
+        for person_id in people_before {
+            assert!(store.persons.get(&txn, &person_id).unwrap().is_some());
+            let service = store
+                .crew_services
+                .get(&txn, &person_id)
+                .unwrap()
+                .map(decode_crew_service)
+                .transpose()
+                .unwrap()
+                .unwrap();
+            assert_eq!(service.command, loser);
+            assert_eq!(service.availability, CrewAvailability::Detached);
+        }
+    }
+
+    #[test]
+    fn queued_player_interception_notifies_the_other_commanded_captain() {
+        let directory = TempDir::new().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let epoch = initialize_player_fixture(&store);
+        let attacker = identity();
+        let defender = PlayerIdentity {
+            bbs_id: attacker.bbs_id,
+            player_id: attacker.player_id + 4,
+        };
+        let attacker_ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &attacker)
+            .unwrap()
+            .1;
+        establish_colocated_player(&store, &defender, &attacker_ship);
+        let defender_ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &defender)
+            .unwrap()
+            .1;
+        let career_revision = store
+            .career_state_in(&store.env.read_txn().unwrap(), &attacker)
+            .unwrap()
+            .revision;
+        store
+            .enqueue(&QueuedCommand {
+                identity: attacker.clone(),
+                request: request(
+                    epoch,
+                    241,
+                    Command::EngageTrafficContact {
+                        contact_id: defender_ship.ship_id,
+                        expected_career_revision: career_revision,
+                    },
+                ),
+            })
+            .unwrap();
+        let processed = store.process_next_engine_input().unwrap().unwrap();
+        assert!(matches!(
+            processed
+                .delivery
+                .as_ref()
+                .map(|delivery| &delivery.outcome.kind),
+            Some(OutcomeKind::Combat(_))
+        ));
+        assert_eq!(processed.player_transitions.len(), 1);
+        assert_eq!(processed.player_transitions[0].identity, defender);
+        assert_eq!(
+            processed.player_transitions[0].phase,
+            PlayerPhase::Encounter
+        );
     }
 }

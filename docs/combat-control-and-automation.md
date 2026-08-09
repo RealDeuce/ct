@@ -269,6 +269,20 @@ abandonment. It accepts any number of vessel participants. A qualifying real
 traffic contact may receive the incident after a deterministic causal delay
 and join on a later activation boundary; it is not created by the combat.
 
+Direct player-versus-player interception uses that same shared record and turn
+boundary. Every player participant is its actual stored ship and crew. A
+captain directly commanding a participant may submit one joint order per
+revision; missing orders and separately commanded player vessels use their own
+persistent risk-directed policies. One scheduled event resolves the round and
+commits expenditure, damage, casualties, legal evidence, and each participant's
+perspective atomically.
+
+Surrender or successful boarding transfers the actual vessel, cargo, unique
+objects, and prize title rather than materializing a duplicate. Real prisoners
+remain attached to their original identities for parole and recovery. A
+captain commanding a different ship is not pulled into the encounter and
+learns the remote outcome only when a causal private report arrives.
+
 At combat end all battlefield coverage expires. A retained-control ship
 persists a recovery watch ordered by life support, dependencies, maneuver
 drive, jump drive, and weapons. At a capable yard the ordinary proper-repair
@@ -290,6 +304,6 @@ physical result: captor custody, system wreckage, or destruction; destruction
 therefore activates the already-settled universe-reset rule.
 
 Detailed emission classification, player-owned third-party response policy,
-pursuit/rescue aftermath, deception/parole, and the optional Web Push notifier
-remain Milestone 7 expansions. They extend this implementation without
-changing the completed round, queue, or offline-control contract.
+pursuit/rescue aftermath, deception refinements, and the optional Web Push
+notifier remain later Milestone 7 expansions. They extend this implementation
+without changing the shared round, queue, or offline-control contract.

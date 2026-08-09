@@ -333,11 +333,17 @@ automatically attempts feasible repair in the order Life Support, Maneuver
 drive, Jump drive, then weapons. Full semantics are in
 [`combat-control-and-automation.md`](combat-control-and-automation.md).
 
+Co-located player vessels use the same authoritative combat. Every directly
+commanded participant submits against one shared revision; disconnected and
+separately commanded ships use their own staffed persistent policies. Damage,
+casualties, cargo, capture, title, legal evidence, and recovery apply to the
+real stored ships rather than encounter copies.
+
 Other ships may observe and join a combat, but only causally: evidence first
 crosses the separation at light speed, then the responder must fly a real
 intercept. The current engine deterministically admits qualifying real traffic
-on a later combat boundary. Detailed player-owned responder choices and
-offline intervention policy are Milestone 7 work.
+on a later combat boundary. Detailed player-owned third-party responder
+choices and offline intervention policy remain later Milestone 7 work.
 
 The middle of the combat-to-trade spectrum is designed around the privateer:
 a hybrid role combining authorized naval contracts, convoy escort, commerce

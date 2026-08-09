@@ -301,6 +301,24 @@ registry. Class and tonnage are separate sensor estimates, and may be
 approximate or unresolved when the ship has modest or damaged electronics.
 Only contacts still sharing the locus can be intercepted.
 
+Player vessels appear in these same traffic pictures. `[PLAYER]` identifies a
+player-owned ship operating under standing orders; `[ONLINE]` identifies the
+player-owned ship currently under a connected captain's direct control. These
+markers describe control, not the quality of the ship's sensor identification.
+
+A local player vessel can be intercepted under the same physical and legal
+rules as other traffic. If its captain is actively commanding it, both
+captains receive the shared combat turn and may seal orders before the window
+closes. A disconnected captain, a missed deadline, or a vessel commanded
+elsewhere invokes that ship's stored combat policy and actual crew. The server
+does not pause combat for a disconnected player.
+
+PvP acts on the real vessel rather than a disposable encounter copy. Damage,
+ammunition, casualties, cargo loss, surrender, boarding, destruction, warrants,
+and prize custody persist for both sides. Capturing a ship transfers the ship
+and everything physically aboard it; surviving personnel remain real people
+and enter parole or recovery rather than becoming captor-owned crew.
+
 This is distinct from the system traffic-control picture. Traffic control can
 report transponder movements elsewhere in the system, showing that the system
 is active without making those vessels local sensor contacts or viable

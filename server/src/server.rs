@@ -1,6 +1,6 @@
 //! Development TCP adapter and engine actor.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::net::{Shutdown, SocketAddr, TcpStream as StdTcpStream};
 use std::path::PathBuf;
@@ -233,9 +233,52 @@ struct SessionOpening {
 
 struct Observer {
     epoch: u64,
+    active_ship_id: u64,
     system_id: Option<u64>,
     last_second: u64,
     radio_unread_count: u64,
+}
+
+fn online_ship_ids(observers: &HashMap<PlayerIdentity, Observer>) -> HashSet<u64> {
+    observers
+        .values()
+        .filter_map(|observer| (observer.active_ship_id != 0).then_some(observer.active_ship_id))
+        .collect()
+}
+
+fn decorate_traffic_contact(contact: &mut TrafficContact, online: &HashSet<u64>) {
+    contact.online_controlled = contact.player_owned && online.contains(&contact.contact_id);
+}
+
+fn decorate_traffic_snapshot(snapshot: &mut TrafficSnapshot, online: &HashSet<u64>) {
+    for contact in &mut snapshot.contacts {
+        decorate_traffic_contact(contact, online);
+    }
+}
+
+fn decorate_delivery(delivery: &mut Delivery, online: &HashSet<u64>) {
+    match &mut delivery.outcome.kind {
+        wire::OutcomeKind::CombatCareer(snapshot) => {
+            for contact in &mut snapshot.system_contacts {
+                decorate_traffic_contact(contact, online);
+            }
+            for contact in &mut snapshot.local_contacts {
+                decorate_traffic_contact(contact, online);
+            }
+        }
+        wire::OutcomeKind::Fleet(snapshot) => {
+            for ship in &mut snapshot.ships {
+                ship.online_controlled = online.contains(&ship.ship_id);
+            }
+        }
+        wire::OutcomeKind::Combat(snapshot) => {
+            for participant in &mut snapshot.participants {
+                participant.online_controlled =
+                    participant.player_owned && online.contains(&participant.vessel_id);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn emit_best_effort(sender: &mpsc::Sender<EngineEvent>, event: EngineEvent) -> bool {
@@ -370,6 +413,7 @@ fn emit_transition(
         return Ok(false);
     }
     if let Some(observer) = observers.get_mut(&transition.identity) {
+        observer.active_ship_id = engine.active_ship_id(&transition.identity)?.unwrap_or(0);
         let old_system = observer.system_id;
         observer.system_id = match transition.phase {
             wire::PlayerPhase::Docked | wire::PlayerPhase::Interplanetary => {
@@ -383,13 +427,16 @@ fn emit_transition(
         observer.last_second = transition.status.current_game_second;
         if observer.system_id.is_some()
             && observer.system_id != old_system
-            && let Some(snapshot) = engine.traffic_snapshot(&transition.identity)?
+            && let Some(mut snapshot) = engine.traffic_snapshot(&transition.identity)?
             && !emit_best_effort(
                 sender,
                 EngineEvent::TrafficSnapshot {
                     identity: transition.identity,
                     committed_sequence: transition.committed_sequence,
-                    snapshot: Box::new(snapshot),
+                    snapshot: Box::new({
+                        decorate_traffic_snapshot(&mut snapshot, &online_ship_ids(observers));
+                        snapshot
+                    }),
                 },
             )
         {
@@ -690,15 +737,17 @@ fn spawn_engine(
                         EngineMessage::OpenSession { identity, reply } => {
                             match engine.issue_session(&identity) {
                                 Ok((epoch, committed_sequence, phase)) => {
-                                    let traffic_snapshot = engine.traffic_snapshot(&identity)?;
+                                    let mut traffic_snapshot = engine.traffic_snapshot(&identity)?;
                                     let current_second = engine.game_second()?;
                                     let (radio_ship_id, radio_unread_count) = engine
                                         .radio_unread_count(&identity)
                                         .unwrap_or((0, 0));
+                                    let active_ship_id = engine.active_ship_id(&identity)?.unwrap_or(0);
                                     observers.insert(
                                         identity.clone(),
                                         Observer {
                                             epoch,
+                                            active_ship_id,
                                             system_id: traffic_snapshot
                                                 .as_ref()
                                                 .map(|snapshot| snapshot.system_id),
@@ -706,6 +755,9 @@ fn spawn_engine(
                                             radio_unread_count,
                                         },
                                     );
+                                    if let Some(snapshot) = &mut traffic_snapshot {
+                                        decorate_traffic_snapshot(snapshot, &online_ship_ids(&observers));
+                                    }
                                     let _ = reply.send(Ok(SessionOpening {
                                         epoch,
                                         committed_sequence,
@@ -735,7 +787,15 @@ fn spawn_engine(
                             }
                         }
                         EngineMessage::Submit { identity, request } => {
-                            let batch = engine.submit(identity.clone(), request)?;
+                            let mut batch = engine.submit(identity.clone(), request)?;
+                            if let Some(observer) = observers.get_mut(&identity) {
+                                observer.active_ship_id =
+                                    engine.active_ship_id(&identity)?.unwrap_or(0);
+                            }
+                            let online = online_ship_ids(&observers);
+                            for delivery in &mut batch.deliveries {
+                                decorate_delivery(delivery, &online);
+                            }
                             for delivery in batch.deliveries {
                                 if event_sender
                                     .blocking_send(EngineEvent::Delivery(Box::new(delivery)))
@@ -760,13 +820,16 @@ fn spawn_engine(
                                 if new_system != observer.system_id {
                                     observer.system_id = new_system;
                                     observer.last_second = engine.game_second()?;
-                                    if let Some(snapshot) = snapshot
+                                    if let Some(mut snapshot) = snapshot
                                         && !emit_best_effort(
                                             &event_sender,
                                             EngineEvent::TrafficSnapshot {
                                                 identity,
                                                 committed_sequence: engine.committed_sequence()?,
-                                                snapshot: Box::new(snapshot),
+                                                snapshot: Box::new({
+                                                    decorate_traffic_snapshot(&mut snapshot, &online);
+                                                    snapshot
+                                                }),
                                             },
                                         )
                                     {
@@ -2323,6 +2386,55 @@ mod tests {
     use tokio::io::{duplex, split};
 
     use super::*;
+
+    fn traffic_contact(contact_id: u64, player_owned: bool) -> TrafficContact {
+        TrafficContact {
+            contact_id,
+            catalog_id: 1,
+            class_name: "Test class".into(),
+            ship_name: "Test ship".into(),
+            transponder: "CT-TEST".into(),
+            operator_name: "Test registry".into(),
+            role: "test vessel".into(),
+            displacement_millitons: 100_000,
+            origin_system_id: 1,
+            destination_system_id: 1,
+            movement: crate::traffic::TrafficMovementKind::Present,
+            edge_second: 0,
+            resolution: crate::traffic::TrafficContactResolution::Identified,
+            confidence_percent: 100,
+            player_owned,
+            online_controlled: false,
+        }
+    }
+
+    #[test]
+    fn online_control_marks_only_the_live_player_vessel() {
+        let identity = PlayerIdentity {
+            bbs_id: 17,
+            player_id: 42,
+        };
+        let observers = HashMap::from([(
+            identity,
+            Observer {
+                epoch: 1,
+                active_ship_id: 99,
+                system_id: Some(1),
+                last_second: 0,
+                radio_unread_count: 0,
+            },
+        )]);
+        let online = online_ship_ids(&observers);
+        let mut controlled = traffic_contact(99, true);
+        let mut standing_orders = traffic_contact(100, true);
+        let mut generated = traffic_contact(99, false);
+        decorate_traffic_contact(&mut controlled, &online);
+        decorate_traffic_contact(&mut standing_orders, &online);
+        decorate_traffic_contact(&mut generated, &online);
+        assert!(controlled.online_controlled);
+        assert!(!standing_orders.online_controlled);
+        assert!(!generated.online_controlled);
+    }
 
     #[tokio::test]
     async fn framing_round_trips() {

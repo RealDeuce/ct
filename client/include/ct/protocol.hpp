@@ -881,6 +881,7 @@ struct ManagedShipSummary {
    uint64_t provision_capacity_person_days;
    std::vector<CargoLot> cargo;
    std::vector<ShipAmmunitionStatus> ammunition;
+   bool online_controlled;
 };
 
 struct FleetSnapshot {
@@ -1319,6 +1320,8 @@ struct CombatParticipant {
    CombatDisposition disposition;
    std::vector<CombatWeaponMount> weapons;
    bool commanded;
+   bool player_owned;
+   bool online_controlled;
 };
 struct CombatActor {
    uint64_t person_id;
@@ -1670,6 +1673,7 @@ struct MessageManagement {
 enum class TrafficMovementKind {
    Arrival,
    Departure,
+   Present,
 };
 
 enum class TrafficContactResolution {
@@ -1693,6 +1697,8 @@ struct TrafficContact {
    uint64_t edge_second;
    TrafficContactResolution resolution;
    uint8_t confidence_percent;
+   bool player_owned;
+   bool online_controlled;
 };
 
 struct TrafficSnapshot {
