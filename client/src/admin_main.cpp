@@ -177,7 +177,7 @@ int main(int argc, char** argv) {
       try {
          ct::TlsConnection connection(
             options.host, options.port, "admin", std::move(key));
-         ct::exchange_admin_hello(connection, "en");
+         ct::exchange_admin_hello(connection, "en-US");
          if(options.operation == Operation::AddBbs) {
             const auto credential =
                ct::add_bbs(connection, options.bbs_name, command_id, 1);

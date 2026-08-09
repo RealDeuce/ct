@@ -1837,6 +1837,7 @@ async fn handle_connection(
             opening.committed_sequence,
             opening.phase,
             language.tag(),
+            &language.display_formatting(),
         )?)
         .await
         .map_err(|_| {
@@ -2386,6 +2387,17 @@ mod tests {
     use tokio::io::{duplex, split};
 
     use super::*;
+
+    #[test]
+    fn obsolete_client_rejection_requires_an_upgrade() {
+        let reason = localized_version_rejection("CT-RPC", 3, 4).unwrap();
+        assert!(reason.contains("version 3"), "{reason}");
+        assert!(
+            reason.contains("upgrade your Cepheus Trader client"),
+            "{reason}"
+        );
+        assert!(reason.contains("requires version 4"), "{reason}");
+    }
 
     fn traffic_contact(contact_id: u64, player_owned: bool) -> TrafficContact {
         TrafficContact {

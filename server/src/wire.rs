@@ -10,8 +10,9 @@ use crate::ct_rpc_capnp::{
     ErrorCode as SchemaErrorCode, Phase, ShipSubsystemKind as SchemaShipSubsystemKind, envelope,
     person_draft, player_creation, request,
 };
+use crate::i18n::DisplayFormatting;
 
-pub const PROTOCOL_VERSION: u16 = 6;
+pub const PROTOCOL_VERSION: u16 = 4;
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 pub const COMMAND_ID_BYTES: usize = 16;
 pub const MAX_NAME_BYTES: usize = 128;
@@ -3094,6 +3095,7 @@ pub fn encode_server_hello(
     committed_sequence: u64,
     phase: PlayerPhase,
     language_tag: &str,
+    formatting: &DisplayFormatting,
 ) -> Result<Vec<u8>, WireError> {
     let mut message = Builder::new_default();
     let mut envelope = message.init_root::<envelope::Builder>();
@@ -3107,6 +3109,14 @@ pub fn encode_server_hello(
     hello.set_committed_sequence(committed_sequence);
     hello.set_phase(schema_phase(phase));
     hello.set_language_tag(language_tag);
+    let mut wire_formatting = hello.init_formatting();
+    wire_formatting.set_decimal_separator(formatting.decimal_separator);
+    wire_formatting.set_grouping_separator(formatting.grouping_separator);
+    wire_formatting.set_primary_grouping_digits(formatting.primary_grouping_digits);
+    wire_formatting.set_secondary_grouping_digits(formatting.secondary_grouping_digits);
+    wire_formatting.set_game_timestamp_pattern(formatting.game_timestamp_pattern);
+    wire_formatting.set_game_duration_pattern(formatting.game_duration_pattern);
+    wire_formatting.set_real_duration_pattern(formatting.real_duration_pattern);
     finish_message(&message)
 }
 
@@ -6443,6 +6453,51 @@ mod tests {
             decode_client_hello(&frame),
             Err(WireError::UnsupportedVersion(1))
         ));
+    }
+
+    #[test]
+    fn server_hello_carries_the_negotiated_display_formatting() {
+        let identity = PlayerIdentity {
+            bbs_id: 17,
+            player_id: 42,
+        };
+        let language = crate::i18n::negotiate_language("en-GB").unwrap();
+        let formatting = language.display_formatting();
+        let frame = encode_server_hello(
+            &identity,
+            7,
+            9,
+            PlayerPhase::Docked,
+            language.tag(),
+            &formatting,
+        )
+        .unwrap();
+        let message = message_reader(&frame).unwrap();
+        let envelope = message.get_root::<envelope::Reader>().unwrap();
+        assert_eq!(envelope.get_protocol_version(), PROTOCOL_VERSION);
+        let envelope::ServerHello(hello) = envelope.which().unwrap() else {
+            panic!("expected server hello");
+        };
+        let hello = hello.unwrap();
+        assert_eq!(hello.get_language_tag().unwrap().to_str().unwrap(), "en-GB");
+        let formatting = hello.get_formatting().unwrap();
+        assert_eq!(
+            formatting
+                .get_grouping_separator()
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            ","
+        );
+        assert_eq!(formatting.get_primary_grouping_digits(), 3);
+        assert_eq!(
+            formatting
+                .get_game_timestamp_pattern()
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "Day {day}, {hour}:{minute}:{second}"
+        );
     }
 
     #[test]

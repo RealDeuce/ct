@@ -1,5 +1,6 @@
 #include "ct/admin_protocol.hpp"
 
+#include "ct/protocol.hpp"
 #include "ct/tls_connection.hpp"
 #include "ct_admin.capnp.h"
 
@@ -89,7 +90,9 @@ void exchange_admin_hello(TlsConnection& connection,
       throw std::runtime_error("server selected an unsupported administrator protocol version");
    }
    if(!response.isServerHello() ||
-      response.getServerHello().getLanguageTag() != "en") {
+      !language_selection_matches(
+         language_tag,
+         response.getServerHello().getLanguageTag().cStr())) {
       throw std::runtime_error("expected a valid administrator ServerHello");
    }
 }

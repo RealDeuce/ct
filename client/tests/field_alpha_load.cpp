@@ -87,7 +87,7 @@ int main(int argc, char** argv) {
                   .player_id = player_id,
                };
                const auto hello = ct::exchange_hello(
-                  *connection, identity, "ct-field-alpha-load/0.1", "en");
+                  *connection, identity, "ct-field-alpha-load/0.1", "en-US");
                sessions.push_back(HeldSession{
                   .connection = std::move(connection),
                   .identity = identity,

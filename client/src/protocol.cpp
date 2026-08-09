@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstring>
 #include <limits>
 #include <span>
@@ -20,7 +21,7 @@ namespace ct
 namespace
 {
 
-constexpr uint16_t PROTOCOL_VERSION = 6;
+constexpr uint16_t PROTOCOL_VERSION = 4;
 constexpr size_t MAX_FRAME_BYTES = 1024 * 1024;
 
 void send_frame(TlsConnection& connection, const kj::ArrayPtr<const kj::byte> message)
@@ -47,6 +48,33 @@ std::vector<uint8_t> receive_frame_direct(TlsConnection& connection)
 }
 
 }  // namespace
+
+bool language_selection_matches(const std::string_view requested,
+                                const std::string_view selected) noexcept
+{
+   if(requested.empty() || selected.empty()) {
+      return false;
+   }
+   const auto equal_prefix = [](const std::string_view left,
+                                const std::string_view right) {
+      return left.size() <= right.size() &&
+             std::equal(
+                left.begin(), left.end(), right.begin(),
+                [](const char a, const char b) {
+                   return std::tolower(static_cast<unsigned char>(a)) ==
+                          std::tolower(static_cast<unsigned char>(b));
+                });
+   };
+   if(requested.size() == selected.size()) {
+      return equal_prefix(requested, selected);
+   }
+   if(requested.size() < selected.size()) {
+      return selected[requested.size()] == '-' &&
+             equal_prefix(requested, selected);
+   }
+   return requested[selected.size()] == '-' &&
+          equal_prefix(selected, requested);
+}
 
 ServerHello exchange_hello(TlsConnection& connection,
                            const PlayerIdentity& identity,
@@ -96,6 +124,7 @@ ServerHello exchange_hello(TlsConnection& connection,
    }
    const auto server_hello = response.getServerHello();
    const auto server_identity = server_hello.getIdentity();
+   const auto wire_formatting = server_hello.getFormatting();
    ServerHello result{
       .identity =
       {
@@ -129,6 +158,16 @@ ServerHello exchange_hello(TlsConnection& connection,
       }
       }(),
       .language_tag = server_hello.getLanguageTag().cStr(),
+      .formatting =
+      {
+         .decimal_separator = wire_formatting.getDecimalSeparator().cStr(),
+         .grouping_separator = wire_formatting.getGroupingSeparator().cStr(),
+         .primary_grouping_digits = wire_formatting.getPrimaryGroupingDigits(),
+         .secondary_grouping_digits = wire_formatting.getSecondaryGroupingDigits(),
+         .game_timestamp_pattern = wire_formatting.getGameTimestampPattern().cStr(),
+         .game_duration_pattern = wire_formatting.getGameDurationPattern().cStr(),
+         .real_duration_pattern = wire_formatting.getRealDurationPattern().cStr(),
+      },
    };
    if(result.identity != identity) {
       throw std::runtime_error("server hello returned a different player identity");
@@ -137,10 +176,10 @@ ServerHello exchange_hello(TlsConnection& connection,
          response.getSessionEpoch() != result.assigned_epoch) {
       throw std::runtime_error("server hello returned an invalid session epoch");
    }
-   if(result.language_tag != language_tag &&
-         !(language_tag.starts_with(result.language_tag + "-"))) {
+   if(!language_selection_matches(language_tag, result.language_tag)) {
       throw std::runtime_error("server selected an invalid language tag");
    }
+   validate_display_formatting(result.formatting);
    connection.start_dispatch();
    return result;
 }

@@ -44,10 +44,22 @@ struct ServerHello {
   committedSequence @2 :UInt64;
   phase @3 :Phase;
   languageTag @4 :Text;
+  formatting @5 :DisplayFormatting;
 }
 
-# Used only to send and receive an actionable rejection during CT-RPC 2
-# negotiation. Established sessions always use Envelope above.
+struct DisplayFormatting {
+  decimalSeparator @0 :Text;
+  groupingSeparator @1 :Text;
+  primaryGroupingDigits @2 :UInt8;
+  secondaryGroupingDigits @3 :UInt8;
+  gameTimestampPattern @4 :Text;
+  gameDurationPattern @5 :Text;
+  realDurationPattern @6 :Text;
+}
+
+# This wire layout originated in CT-RPC 2 and is now used only to send an
+# actionable rejection to obsolete clients. Established sessions always use
+# Envelope above.
 struct LegacyV2Envelope {
   protocolVersion @0 :UInt16;
   requestId @1 :UInt64;

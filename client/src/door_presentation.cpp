@@ -441,6 +441,15 @@ size_t DoorPresentation::page_content_rows(
    return rows_ > reserved_rows ? rows_ - reserved_rows : 1;
 }
 
+const DisplayFormatting& DoorPresentation::display_formatting() const noexcept {
+   return display_formatting_;
+}
+
+void DoorPresentation::set_display_formatting(DisplayFormatting formatting) {
+   validate_display_formatting(formatting);
+   display_formatting_ = std::move(formatting);
+}
+
 void DoorPresentation::configure_paging(const size_t reserved_rows,
                                         PagePause pause) {
    if(!pause) {
@@ -467,6 +476,11 @@ void DoorPresentation::suppress_paging_until_input() noexcept {
 void DoorPresentation::reset_paging() noexcept {
    row_ = 0;
    paging_suppressed_until_input_ = false;
+}
+
+void DoorPresentation::reset_after_external_input() noexcept {
+   column_ = 0;
+   reset_paging();
 }
 
 void DoorPresentation::erase_prompt(const size_t visible_columns) {
@@ -626,7 +640,10 @@ void DoorPresentation::write(const std::string_view text,
    if(color) {
       emit(role_sequence(role));
    }
-   const auto encoded = encode_text(text, profile_);
+   const auto formatted = role == DoorTextRole::Number
+                          ? format_number_text(text, display_formatting_)
+                          : std::string(text);
+   const auto encoded = encode_text(formatted, profile_);
    emit_encoded(encoded, role, 0);
    if(color) {
       emit("\x1b[0m");
@@ -647,7 +664,10 @@ void DoorPresentation::write_hanging(
    if(color) {
       emit(role_sequence(role));
    }
-   const auto encoded = encode_text(text, profile_);
+   const auto formatted = role == DoorTextRole::Number
+                          ? format_number_text(text, display_formatting_)
+                          : std::string(text);
+   const auto encoded = encode_text(formatted, profile_);
    emit_encoded(encoded, role, continuation_indent);
    if(color) {
       emit("\x1b[0m");

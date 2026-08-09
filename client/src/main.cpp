@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
          connection,
          identity,
          "cepheus-trader-client/" CT_PRODUCT_VERSION,
-         "en");
+         "en-US");
       const auto phase = [&hello] {
          switch(hello.phase) {
             case ct::PlayerPhase::Disconnected:

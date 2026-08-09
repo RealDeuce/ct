@@ -1,6 +1,6 @@
 # RPC and Storage Schema
 
-*Current implementation: player CT-RPC 3, sysop/admin protocols 2, storage format 1, and record codecs 1.*
+*Current implementation: player CT-RPC 4, sysop/admin protocols 2, storage format 1, and record codecs 1.*
 
 ## Authority boundary
 
@@ -21,17 +21,33 @@ explain state, but it is never the machine-readable discriminator.
 
 ## Current protocol
 
-CT-RPC 3 is the only accepted player protocol. The sysop and administrator
+CT-RPC 4 is the only accepted player protocol. The sysop and administrator
 protocols likewise accept only version 2. Each TLS connection begins with a
-hello carrying one BCP 47 language tag. The server validates it with RFC 4647
-lookup and returns the selected supported tag; the current clients request
-`en`, and English is the only installed server language.
+hello carrying one BCP 47 language tag. The server validates the tag and
+returns the selected supported tag. Bare `en` selects the server's `en-US`
+default; an explicit regional English tag such as `en-GB` remains selected.
+The current clients request `en-US`, and English is the only installed server
+language.
+
+The player `ServerHello` also carries the display-formatting profile belonging
+to the selected language. It supplies decimal and grouping separators, primary
+and secondary grouping sizes, and validated named-field patterns for absolute
+game timestamps, game durations, and real durations. Clients apply this
+profile only to typed numeric and temporal values. Identifiers and server prose
+are never scanned for numbers or dates.
 
 Unsupported versions receive a reason-only close encoded in the obsolete
-protocol's wire format. This compatibility path exists only to report the
-required upgrade and cannot establish a session. Current protocols use typed
-close codes, localized detail, and a supported-language list for negotiation
-failure. Established connections never interpret legacy envelopes.
+protocol's wire format. The reason says that the Cepheus Trader client must be
+upgraded and reports both the rejected and required versions. This
+compatibility path exists only to report the required upgrade and cannot
+establish a reduced or degraded session. Current protocols use typed close
+codes, localized detail, and a supported-language list for negotiation failure.
+Established connections never interpret legacy envelopes.
+
+During one release-development cycle, incompatible schema work shares the next
+protocol number. The number advances again only after that contract has shipped
+in a release; intermediate feature commits do not consume additional protocol
+versions.
 
 Both builds generate bindings from `protocol/ct_rpc.capnp`.
 `InitialCrewDraft` contains only the authoritative slot ID, name, and

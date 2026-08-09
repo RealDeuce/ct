@@ -340,6 +340,103 @@ int main() {
          ct::DoorProfile::Cp437);
    check(ct::door_profile_for_capabilities(true, true) ==
          ct::DoorProfile::Cp437Color);
+
+   ct::DisplayFormatting english_formatting{
+      .decimal_separator = ".",
+      .grouping_separator = ",",
+      .primary_grouping_digits = 3,
+      .secondary_grouping_digits = 3,
+      .game_timestamp_pattern = "Day {day}, {hour}:{minute}:{second}",
+      .game_duration_pattern = "{day} d {hour}:{minute}:{second}",
+      .real_duration_pattern = "{hour}:{minute}:{second}",
+   };
+   ct::validate_display_formatting(english_formatting);
+   check(ct::format_number_text("Cr1234567 and 1200000.50", english_formatting) ==
+         "Cr1,234,567 and 1,200,000.50");
+   check(ct::format_game_timestamp(
+            1234ULL * 86400 + 2 * 3600 + 3 * 60 + 4,
+            english_formatting) ==
+         "Day 1234, 02:03:04");
+   check(ct::format_game_duration(
+            1234ULL * 86400 + 2 * 3600 + 3 * 60 + 4,
+            english_formatting) ==
+         "1234 d 02:03:04");
+   check(ct::format_real_duration(
+            1000ULL * 3600 + 2 * 60 + 3,
+            english_formatting) ==
+         "1000:02:03");
+
+   auto continental_formatting = english_formatting;
+   continental_formatting.decimal_separator = ",";
+   continental_formatting.grouping_separator = ".";
+   check(ct::format_number_text("1234567.50", continental_formatting) ==
+         "1.234.567,50");
+   auto indian_grouping = english_formatting;
+   indian_grouping.secondary_grouping_digits = 2;
+   check(ct::format_number_text("12345678", indian_grouping) ==
+         "1,23,45,678");
+
+   auto reordered_time = english_formatting;
+   reordered_time.game_timestamp_pattern =
+      "{hour}:{minute}:{second}, day {day}";
+   check(ct::format_game_timestamp(86400 + 2 * 3600 + 3 * 60 + 4,
+                                   reordered_time) ==
+         "02:03:04, day 1");
+
+   std::string formatted_output;
+   ct::DoorPresentation formatted_presentation(
+      ct::DoorProfile::Iso646,
+      80,
+      24,
+      [&formatted_output](const std::string_view bytes) {
+         formatted_output.append(bytes);
+      });
+   formatted_presentation.set_display_formatting(english_formatting);
+   formatted_presentation.write("Cr1234567", ct::DoorTextRole::Number);
+   formatted_presentation.write(" ID 1234567", ct::DoorTextRole::Identifier);
+   formatted_presentation.write(
+      std::string(" ") + ct::format_game_timestamp(
+              1234ULL * 86400 + 2 * 3600 + 3 * 60 + 4,
+              english_formatting),
+      ct::DoorTextRole::Number);
+   check(formatted_output ==
+         "Cr1,234,567 ID 1234567 Day 1,234, 02:03:04");
+
+   std::string continental_output;
+   ct::DoorPresentation continental_presentation(
+      ct::DoorProfile::Iso646,
+      80,
+      24,
+      [&continental_output](const std::string_view bytes) {
+         continental_output.append(bytes);
+      });
+   continental_presentation.set_display_formatting(continental_formatting);
+   continental_presentation.write(
+      ct::format_game_timestamp(
+         1234ULL * 86400 + 2 * 3600 + 3 * 60 + 4,
+         continental_formatting),
+      ct::DoorTextRole::Number);
+   check(continental_output == "Day 1.234, 02:03:04");
+
+   std::string external_input_output;
+   ct::DoorPresentation external_input(
+      ct::DoorProfile::Iso646,
+      80,
+      24,
+      [&external_input_output](const std::string_view bytes) {
+         external_input_output.append(bytes);
+      });
+   external_input.write(
+      "Offer No. (Q to cancel, ? for help): ",
+      ct::DoorTextRole::Prompt);
+   external_input_output += "1\r\n";
+   external_input.reset_after_external_input();
+   external_input.write(
+      "insufficient uncommitted passenger accommodation\r\n",
+      ct::DoorTextRole::Error);
+   check(external_input_output.find(
+            "1\r\ninsufficient uncommitted passenger accommodation\r\n") !=
+         std::string::npos);
    check(ct::door_single_line_field("ship\r\n\x1b[31m") ==
          "ship  ?[31m");
    check(

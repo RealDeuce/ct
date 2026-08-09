@@ -628,18 +628,8 @@ std::string wall_duration(
       scaled_seconds >= static_cast<long double>(UINT64_MAX)
       ? UINT64_MAX
       : static_cast<uint64_t>(scaled_seconds);
-   const auto hours = total_seconds / 3600;
-   const auto minutes = (total_seconds / 60) % 60;
-   const auto seconds = total_seconds % 60;
-   std::array<char, 32> result{};
-   std::snprintf(
-      result.data(),
-      result.size(),
-      "%02llu:%02llu:%02llu",
-      static_cast<unsigned long long>(hours),
-      static_cast<unsigned long long>(minutes),
-      static_cast<unsigned long long>(seconds));
-   return result.data();
+   return ct::format_real_duration(
+      total_seconds, output().display_formatting());
 }
 
 std::string real_time_until(const ct::TravelStatus& status)
@@ -738,11 +728,13 @@ void render_startup_notice()
    } else {
       door_accent("          An Alternate Cepheus Engine Universe\n\r\n\r");
    }
-   od_printf("This product contains Open Game Content used under the\n\r");
-   od_printf("Open Game License version 1.0a.\n\r\n\r");
-   od_printf("Cepheus Engine and Samardan Press are trademarks of\n\r");
-   od_printf("Jason \"Flynn\" Kemp. Cepheus Trader is not affiliated with\n\r");
-   od_printf("Jason \"Flynn\" Kemp or Samardan Press.\n\r\n\r");
+   door_printf(
+      "This product contains Open Game Content used under the Open Game "
+      "License version 1.0a.\n\r\n\r");
+   door_printf(
+      "Cepheus Engine and Samardan Press are trademarks of Jason \"Flynn\" "
+      "Kemp. Cepheus Trader is not affiliated with Jason \"Flynn\" Kemp or "
+      "Samardan Press.\n\r\n\r");
 }
 
 bool await_startup_choice()
@@ -869,6 +861,21 @@ std::array<uint8_t, 16> random_command_id(ct::CommandIdGenerator& random)
    return random.next();
 }
 
+void door_input_str(char* input,
+                    const INT maximum,
+                    const unsigned char minimum_character,
+                    const unsigned char maximum_character)
+{
+   ::od_input_str(
+      input, maximum, minimum_character, maximum_character);
+   output().reset_after_external_input();
+   output().resume_paging();
+   active_prompt.clear();
+   active_prompt_on_current_line = false;
+}
+
+#define od_input_str(...) door_input_str(__VA_ARGS__)
+
 std::optional<std::string> input_text(const char* prompt,
                                       const std::string& default_value,
                                       const size_t maximum = 128)
@@ -880,8 +887,6 @@ std::optional<std::string> input_text(const char* prompt,
          safe_field(default_value).c_str());
       std::vector<char> input(maximum + 1, '\0');
       od_input_str(input.data(), static_cast<INT>(maximum), 32, 255);
-      output().reset_paging();
-      output().resume_paging();
       if(input[0] == '\0') {
          return default_value;
       }
@@ -911,8 +916,6 @@ std::optional<unsigned> input_number(const char* prompt,
       }
       std::array<char, 16> input{};
       od_input_str(input.data(), static_cast<INT>(input.size() - 1), 32, 255);
-      output().reset_paging();
-      output().resume_paging();
       if(input[0] == '\0' && default_value) {
          return default_value;
       }
@@ -945,8 +948,6 @@ std::optional<uint64_t> input_tonnage(const char* prompt,
          ct::format_tonnage(maximum_millitons).c_str());
       std::array<char, 32> input{};
       od_input_str(input.data(), static_cast<INT>(input.size() - 1), 32, 255);
-      output().reset_paging();
-      output().resume_paging();
       if(input[0] == '?' && input[1] == '\0') {
          show_context_help();
          door_printf("\n\r");
@@ -971,13 +972,9 @@ void print_wrapped(
    const ct::DoorTextRole role = ct::DoorTextRole::Information)
 {
    const auto indent_width = std::strlen(indent);
-   const auto width =
-      output().content_columns() > indent_width
-      ? output().content_columns() - indent_width
-      : size_t{1};
-   for(const auto& line : wrap_text(safe_field(text), width)) {
-      door_write(std::string(indent) + line + "\n\r", role);
-   }
+   door_write(indent, role);
+   output().write_hanging(safe_field(text), indent_width, role);
+   door_write("\n\r", role);
 }
 
 void print_wrapped_field(
@@ -1002,17 +999,8 @@ void show_context_help()
    door_write("\n\r\n\r", ct::DoorTextRole::Normal);
    door_heading("Help - %s\n\r", safe_field(help.title).c_str());
    door_heading("%s\n\r\n\r", std::string(help.title.size() + 7, '=').c_str());
-   const auto width =
-      output().content_columns() > 2
-      ? output().content_columns() - 2
-      : size_t{1};
-   for(const auto& line : wrap_text(help.body, width)) {
-      if(line.empty()) {
-         door_write("\n\r", ct::DoorTextRole::Information);
-      } else {
-         door_information("  %s\n\r", safe_field(line).c_str());
-      }
-   }
+   door_write(help.body, ct::DoorTextRole::Information);
+   door_write("\n\r", ct::DoorTextRole::Information);
    active_prompt.clear();
    active_prompt_on_current_line = false;
    door_prompt("\n\r[Enter] Resume\n\r");
@@ -3020,8 +3008,6 @@ void show_fleet_manager(
       door_prompt("\n\r[Number] Vessel  [Enter] Refresh  [Q] Ship status  [?] Help: ");
       std::array<char, 16> input{};
       od_input_str(input.data(), static_cast<INT>(input.size() - 1), 32, 255);
-      output().reset_paging();
-      output().resume_paging();
       if(input[0] == '\0') {
          fleet = ct::get_fleet(
                     connection, session_epoch, random_command_id(random), request_id++);
@@ -3753,7 +3739,7 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
          door_information("  None\n\r");
       }
       for(const auto& task : ledger.tasks) {
-         door_number("#%llu ", static_cast<unsigned long long>(task.task_id));
+         door_identifier("#%llu ", static_cast<unsigned long long>(task.task_id));
          door_value("%s", safe_field(task.offer.title).c_str());
          door_label(" [");
          door_identifier("%s", task_state_name(task.state));
@@ -5010,36 +4996,14 @@ std::optional<const ct::KnownSystemSummary*> select_known_primary(
 
 std::string course_duration(const uint64_t seconds)
 {
-   const auto days = seconds / (24 * 60 * 60);
-   const auto hours = seconds / (60 * 60) % 24;
-   const auto minutes = seconds / 60 % 60;
-   const auto remainder = seconds % 60;
-   std::array<char, 48> result{};
-   std::snprintf(
-      result.data(),
-      result.size(),
-      "%llu d %02llu:%02llu:%02llu",
-      static_cast<unsigned long long>(days),
-      static_cast<unsigned long long>(hours),
-      static_cast<unsigned long long>(minutes),
-      static_cast<unsigned long long>(remainder));
-   return result.data();
+   return ct::format_game_duration(
+      seconds, output().display_formatting());
 }
 
 std::string game_date(const uint64_t seconds)
 {
-   const auto day = seconds / (24 * 60 * 60);
-   const auto hour = seconds / (60 * 60) % 24;
-   const auto minute = seconds / 60 % 60;
-   const auto second = seconds % 60;
-   std::array<char, 48> result{};
-   std::snprintf(
-      result.data(), result.size(), "Day %llu, %02llu:%02llu:%02llu",
-      static_cast<unsigned long long>(day),
-      static_cast<unsigned long long>(hour),
-      static_cast<unsigned long long>(minute),
-      static_cast<unsigned long long>(second));
-   return result.data();
+   return ct::format_game_timestamp(
+      seconds, output().display_formatting());
 }
 
 const char* course_fuel_source_name(const ct::CourseFuelSource source)
@@ -5321,8 +5285,8 @@ void show_known_universe_manager(
             for(const auto& report : knowledge.observations) {
                door_identifier("%s / %s\n\r", safe_field(report.system_name).c_str(),
                                safe_field(report.commodity_name).c_str());
-               door_label("  observed second ");
-               door_number("%llu", static_cast<unsigned long long>(report.observed_second));
+               door_label("  Observed: ");
+               door_number("%s", game_date(report.observed_second).c_str());
                door_label("; Cr");
                door_number(
                   "%llu-%llu/t",
@@ -5858,7 +5822,7 @@ void show_system_radio(
          door_value("%s", game_date(entry.received_second).c_str());
          if(entry.kind == ct::RadioTransmissionKind::PlayerBroadcast) {
             door_label("  Sender ");
-            door_number("%u:%u", entry.sender.bbs_id, entry.sender.player_id);
+            door_identifier("%u:%u", entry.sender.bbs_id, entry.sender.player_id);
          }
          if(entry.actionable) {
             door_warning("  Action required");
@@ -6177,9 +6141,9 @@ void render_market(const ct::MarketSnapshot& market)
       const auto& work = market.work_assignments[index];
       door_number("%zu", index + 1);
       door_label(". Assignment #");
-      door_number("%llu", static_cast<unsigned long long>(work.assignment_id));
-      door_label("  due second ");
-      door_number("%llu", static_cast<unsigned long long>(work.due_second));
+      door_identifier("%llu", static_cast<unsigned long long>(work.assignment_id));
+      door_label("  Due: ");
+      door_number("%s", game_date(work.due_second).c_str());
       if(!work.result_text.empty()) {
          door_label("  ");
          door_value("%s", safe_field(work.result_text).c_str());
@@ -6901,7 +6865,7 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
       od_clr_scr();
       door_heading("Flight Plan\n\r===========\n\r\n\r");
       door_label("Revision: ");
-      door_number("%llu", static_cast<unsigned long long>(proposal.expected_plan_revision));
+      door_identifier("%llu", static_cast<unsigned long long>(proposal.expected_plan_revision));
       door_label("  Drive: ");
       door_identifier("Jump-%u\n\r\n\r", destinations.jump_rating);
       if(proposal.steps.empty()) {
@@ -7849,7 +7813,7 @@ ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello&
       if(vessel.commanded) {
          for(const auto& mount : vessel.weapons) {
             door_label("  mount ");
-            door_number("%u", mount.mount_id);
+            door_identifier("%u", mount.mount_id);
             door_label(" ");
             door_value("%s", safe_field(mount.label).c_str());
             door_label("  damage ");
@@ -8272,7 +8236,8 @@ int main(int argc, char** argv)
          connection,
          identity,
          "cepheus-trader-door/" CT_PRODUCT_VERSION,
-         "en");
+         "en-US");
+      output().set_display_formatting(hello.formatting);
       event_connection = &connection;
       event_session_epoch = hello.assigned_epoch;
       render_hello(hello, connection);

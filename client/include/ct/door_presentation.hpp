@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ct/display_format.hpp"
+
 #include <cstddef>
 #include <functional>
 #include <initializer_list>
@@ -58,12 +60,15 @@ public:
    size_t content_columns() const noexcept;
    size_t rows() const noexcept;
    size_t page_content_rows(size_t reserved_rows) const noexcept;
+   const DisplayFormatting& display_formatting() const noexcept;
+   void set_display_formatting(DisplayFormatting formatting);
 
    void configure_paging(size_t reserved_rows, PagePause pause);
    void resume_paging() noexcept;
    void suspend_paging() noexcept;
    void suppress_paging_until_input() noexcept;
    void reset_paging() noexcept;
+   void reset_after_external_input() noexcept;
    void erase_prompt(size_t visible_columns);
 
    void clear();
@@ -84,6 +89,7 @@ private:
    void pause_at_page_boundary(DoorTextRole role);
 
    DoorProfile profile_;
+   DisplayFormatting display_formatting_;
    size_t columns_;
    size_t rows_;
    size_t column_ = 0;

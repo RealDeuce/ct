@@ -401,6 +401,25 @@ capnp_generate_cpp(
 )
 
 add_library(
+  ct-display-format
+  STATIC
+  src/display_format.cpp
+)
+target_compile_features(ct-display-format PUBLIC cxx_std_20)
+target_include_directories(
+  ct-display-format
+  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
+)
+target_compile_options(
+  ct-display-format
+  PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Werror
+)
+
+add_library(
   ct-client-core
   SHARED
   src/admin_protocol.cpp
@@ -424,6 +443,7 @@ target_link_libraries(
   ct-client-core
   PRIVATE
     CapnProto::capnp
+    ct-display-format
     ${CT_BOTAN_TARGET}
 )
 if(WIN32)
@@ -474,6 +494,7 @@ target_compile_options(
     -Wpedantic
     -Werror
 )
+target_link_libraries(ct-door-presentation PUBLIC ct-display-format)
 
 add_executable(cepheus-trader-client src/main.cpp)
 target_link_libraries(cepheus-trader-client PRIVATE ct-client-core)
@@ -550,6 +571,27 @@ if(BUILD_TESTING)
   add_test(
     NAME ct-player-identity-registry
     COMMAND ct-player-identity-registry-test
+  )
+
+  add_executable(
+    ct-protocol-test
+    tests/protocol_test.cpp
+  )
+  target_link_libraries(
+    ct-protocol-test
+    PRIVATE ct-client-core
+  )
+  target_compile_options(
+    ct-protocol-test
+    PRIVATE
+      -Wall
+      -Wextra
+      -Wpedantic
+      -Werror
+  )
+  add_test(
+    NAME ct-protocol
+    COMMAND ct-protocol-test
   )
 
   add_executable(

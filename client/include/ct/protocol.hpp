@@ -1,9 +1,12 @@
 #pragma once
 
+#include "ct/display_format.hpp"
+
 #include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace ct
@@ -127,6 +130,7 @@ struct ServerHello {
    uint64_t committed_sequence;
    PlayerPhase phase;
    std::string language_tag;
+   DisplayFormatting formatting;
 };
 
 struct PlayerCreation {
@@ -1741,6 +1745,9 @@ ServerHello exchange_hello(TlsConnection& connection,
                            const PlayerIdentity& identity,
                            const std::string& client_name,
                            const std::string& language_tag);
+
+bool language_selection_matches(std::string_view requested,
+                                std::string_view selected) noexcept;
 
 PlayerCreated create_player(TlsConnection& connection,
                             uint64_t session_epoch,

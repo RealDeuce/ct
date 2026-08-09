@@ -1038,11 +1038,11 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         session.wait_for("No captain is registered");
         session.return_to_bbs();
         let screen = session.finish();
-        let semantic_screen = strip_ecma48(&screen);
+        let semantic_screen = normalized_display_text(&screen);
         assert!(screen.contains("An Alternate Cepheus Engine"), "{screen:?}");
         assert!(screen.contains("Universe"), "{screen:?}");
         assert!(
-            screen.contains("Open Game License version 1.0a"),
+            semantic_screen.contains("Open Game License version 1.0a"),
             "{screen:?}"
         );
         assert!(
@@ -1105,10 +1105,16 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let mut lines = creation_output.trim().lines();
     let hello_line = lines.next().expect("client omitted ServerHello output");
     assert!(
-        hello_line.starts_with("HELLO bbs=1 player=1 epoch=4 committed=")
-            && hello_line.ends_with(" phase=new-user language=en tls=TLS1.3"),
+        hello_line.starts_with("HELLO bbs=1 player=1 epoch=")
+            && hello_line.ends_with(" phase=new-user language=en-US tls=TLS1.3"),
         "{hello_line}"
     );
+    let hello_epoch = hello_line
+        .split(" epoch=")
+        .nth(1)
+        .and_then(|tail| tail.split(' ').next())
+        .and_then(|value| value.parse::<u64>().ok())
+        .expect("ServerHello epoch is not numeric");
     let hello_committed = hello_line
         .split(" committed=")
         .nth(1)
@@ -1370,12 +1376,13 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     services_door.wait_for_occurrences("Return to BBS", final_docked_occurrence);
     services_door.return_to_bbs();
     let services_screen = services_door.finish();
+    let services_semantic = normalized_display_text(&services_screen);
     for expected in ["Message Management", "accepted for physical"] {
-        assert!(services_screen.contains(expected), "{services_screen:?}");
+        assert!(services_semantic.contains(expected), "{services_screen:?}");
     }
     if banking_available {
         assert!(
-            services_screen.contains("Covered through"),
+            services_semantic.contains("Covered through"),
             "{services_screen:?}"
         );
     }
@@ -1879,10 +1886,17 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let reconnect_output = String::from_utf8_lossy(&reconnect.stdout);
     let reconnect_line = reconnect_output.trim();
     assert!(
-        reconnect_line.starts_with("HELLO bbs=1 player=1 epoch=5 committed=")
-            && reconnect_line.ends_with(" phase=docked language=en tls=TLS1.3"),
+        reconnect_line.starts_with("HELLO bbs=1 player=1 epoch=")
+            && reconnect_line.ends_with(" phase=docked language=en-US tls=TLS1.3"),
         "{reconnect_line}"
     );
+    let reconnect_epoch = reconnect_line
+        .split(" epoch=")
+        .nth(1)
+        .and_then(|tail| tail.split(' ').next())
+        .and_then(|value| value.parse::<u64>().ok())
+        .expect("reconnect ServerHello epoch is not numeric");
+    assert!(reconnect_epoch > hello_epoch);
     let reconnect_committed = reconnect_line
         .split(" committed=")
         .nth(1)
@@ -1932,7 +1946,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let post_reset_hello = post_reset_hello.trim();
     assert!(
         post_reset_hello.starts_with("HELLO bbs=1 player=1 epoch=")
-            && post_reset_hello.ends_with(" phase=new-user language=en tls=TLS1.3"),
+            && post_reset_hello.ends_with(" phase=new-user language=en-US tls=TLS1.3"),
         "{post_reset_hello}"
     );
     let post_reset_committed = post_reset_hello
