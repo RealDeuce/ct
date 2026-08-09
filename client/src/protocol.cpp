@@ -230,7 +230,11 @@ rpc::Response::Reader checked_response(
       throw std::runtime_error("CT-RPC response command ID mismatch");
    }
    if(response.isError()) {
-      throw std::runtime_error(response.getError().getMessage().cStr());
+      const auto error = response.getError();
+      if(error.getCode() == rpc::ErrorCode::INVALID_COMMAND) {
+         throw PlayerRequestRejected(error.getMessage().cStr());
+      }
+      throw std::runtime_error(error.getMessage().cStr());
    }
    return response;
 }

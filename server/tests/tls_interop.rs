@@ -1332,7 +1332,10 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     if banking_available {
         services_door.send(b"b");
         services_door.wait_for("Banking and Accounts");
+        services_door.wait_for("Cr350,000");
         services_door.send(b"b");
+        services_door.wait_for("Purchase one year of destination assistance");
+        services_door.send(b"y");
         services_door.wait_for_occurrences("Destination aid:", 2);
         services_door.wait_for("Day 365");
         services_door.send(b"q");

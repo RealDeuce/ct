@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -13,6 +14,11 @@ namespace ct
 {
 
 class TlsConnection;
+
+class PlayerRequestRejected : public std::runtime_error {
+   public:
+      using std::runtime_error::runtime_error;
+};
 
 struct PlayerIdentity {
    uint32_t bbs_id;

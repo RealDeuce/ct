@@ -42671,6 +42671,41 @@ mod tests {
     }
 
     #[test]
+    fn destination_assistance_rejection_does_not_change_the_account() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut player = store.player_record(&identity()).unwrap().unwrap();
+        player.credits = 349_999;
+
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .players
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_player_record(&player),
+            )
+            .unwrap();
+        let rejection = store
+            .purchase_insurance_in(
+                &mut txn,
+                &identity(),
+                crate::wire::InsuranceKind::DestinationAssistance,
+                true,
+            )
+            .unwrap();
+        assert!(matches!(
+            rejection,
+            RuleResult::Rejected(message)
+                if message == "destination assistance requires the Cr350000 annual premium"
+        ));
+        let finance = store.finance_snapshot_in(&mut txn, &identity()).unwrap();
+        assert_eq!(finance.liquid_credits, 349_999);
+        assert!(!finance.destination_assistance_active);
+    }
+
+    #[test]
     fn arrival_filters_hide_routine_copy_but_retain_it_and_survive_reopen() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();

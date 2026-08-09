@@ -3988,6 +3988,8 @@ void show_finance(
    const HelpScope help_scope(ct::DoorHelpTopic::Finance);
    auto finance = ct::get_finance(
                      connection, session_epoch, random_command_id(random), request_id++);
+   const auto destination_assistance_premium = ct::format_number_text(
+      "350000", output().display_formatting());
    while(true) {
       od_clr_scr();
       door_heading("Banking and Accounts\n\r");
@@ -4023,7 +4025,9 @@ void show_finance(
       if(finance.destination_assistance_active) {
          door_prompt("\n\r[C] Cancel destination assistance");
       } else {
-         door_prompt("\n\r[B] Buy one year destination assistance (Cr350000)");
+         door_prompt(
+            "\n\r[B] Buy one year destination assistance (Cr%s)",
+            destination_assistance_premium.c_str());
       }
       if(finance.in_default && finance.principal_credits > 0) {
          door_prompt("  [K] Petition for bankruptcy");
@@ -4072,9 +4076,27 @@ void show_finance(
       const bool disable = key == 'c' || key == 'C';
       if((enable && !finance.destination_assistance_active)
             || (disable && finance.destination_assistance_active)) {
-         finance = ct::purchase_insurance(
-                      connection, session_epoch, ct::InsuranceKind::DestinationAssistance,
-                      enable, random_command_id(random), request_id++);
+         if(enable) {
+            door_prompt(
+               "\n\rPurchase one year of destination assistance for Cr%s? [y/N]: ",
+               destination_assistance_premium.c_str());
+         } else {
+            door_prompt(
+               "\n\rCancel destination assistance without a premium refund? [y/N]: ");
+         }
+         const auto confirmation = od_get_key(TRUE);
+         if(confirmation != 'y' && confirmation != 'Y') {
+            continue;
+         }
+         try {
+            finance = ct::purchase_insurance(
+                         connection, session_epoch,
+                         ct::InsuranceKind::DestinationAssistance,
+                         enable, random_command_id(random), request_id++);
+         } catch(const ct::PlayerRequestRejected& error) {
+            door_error("\n\r%s\n\r", safe_field(error.what()).c_str());
+            wait_for_enter("Banking and Accounts");
+         }
       }
    }
 }
@@ -8241,13 +8263,22 @@ int main(int argc, char** argv)
       event_connection = &connection;
       event_session_epoch = hello.assigned_epoch;
       render_hello(hello, connection);
-      if(hello.phase == ct::PlayerPhase::NewUser) {
-         if(run_player_creation(connection, hello)) {
-            hello.phase = ct::PlayerPhase::Docked;
-            run_operational_loop(connection, hello);
+      bool session_finished = false;
+      while(!session_finished) {
+         try {
+            if(hello.phase == ct::PlayerPhase::NewUser) {
+               if(run_player_creation(connection, hello)) {
+                  hello.phase = ct::PlayerPhase::Docked;
+                  run_operational_loop(connection, hello);
+               }
+            } else {
+               run_operational_loop(connection, hello);
+            }
+            session_finished = true;
+         } catch(const ct::PlayerRequestRejected& error) {
+            door_error("\n\r%s\n\r", safe_field(error.what()).c_str());
+            wait_for_enter("Continue");
          }
-      } else {
-         run_operational_loop(connection, hello);
       }
       event_connection = nullptr;
    } catch(const std::exception& error) {
