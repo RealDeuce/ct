@@ -15,23 +15,27 @@ screens, or layout decisions.
 
 ## Supported profiles
 
-The door exposes three ordered output profiles:
+The door exposes four output profiles formed from two independent terminal
+capabilities: ECMA-48 control support and an eight-bit character path.
 
 | Profile | Text repertoire | ECMA-48 | Presentation |
 |---|---|---|---|
-| Plain | ISO 646 invariant repertoire | none | scrolling text |
-| Colour | ISO 646 invariant repertoire | SGR colour and reset | scrolling text |
+| ISO 646 plain | ISO 646 invariant repertoire | none | scrolling text |
+| ISO 646 colour | ISO 646 invariant repertoire | SGR colour and reset | scrolling text |
+| CP437 plain | CP437 | none | scrolling text |
 | CP437 colour | CP437 | SGR colour and reset | scrolling text |
 
 The ISO 646 profiles use only the portable invariant text repertoire for
-visible content. The colour profile adds rendition controls. The CP437
-profile adds the DOS line, symbol, and accented-character repertoire while
-retaining the same line-oriented interaction.
+visible content. The colour profiles add rendition controls. The CP437
+profiles add the DOS line, symbol, and accented-character repertoire while
+retaining the same line-oriented interaction. ANSI capability does not imply
+an eight-bit path, and an eight-bit path does not imply ANSI capability.
 
-At a page transition, plain ISO 646 emits form feed (`0x0c`). Both enhanced
-profiles emit SGR reset followed by `ESC [ 2 J` and `ESC [ H`. Clear-and-home
-is the only cursor operation in the presentation contract: screens are never
-assembled through coordinates, regions, or incremental redraw.
+At a page transition, either plain profile emits form feed (`0x0c`). Both
+colour profiles emit SGR reset followed by `ESC [ 2 J` and `ESC [ H`.
+Clear-and-home is the only cursor operation in the presentation contract:
+screens are never assembled through coordinates, regions, or incremental
+redraw.
 
 OpenDoors may convert CP437 output bytes to their UTF-8 equivalents for an
 appropriate connection. That changes transport encoding, not the semantic
@@ -138,20 +142,22 @@ The OpenDoors configuration directives are:
 
 ```text
 CTConfig /secure/path/cepheus-trader.conf
-CTProfile iso646|iso646-color|cp437-color
+CTProfile iso646|iso646-color|cp437-plain|cp437-color
 CTColumns 40..255
 CTRows 24..255
 ```
 
 `plain`, `color`/`colour`, and `cp437` are accepted aliases. Without an
-explicit profile, an ANSI-capable OpenDoors session selects `iso646-color`
-and another session selects `iso646`. CP437 is deliberately explicit because
-ANSI capability alone does not attest the terminal character set. Without
-geometry overrides, a credible OpenDoors value is used and then the 80×24
-default. Changing terminal size during a door session is not detected; the
-effective geometry remains stable for that session. OpenDoors owns command-line
-and drop-file parsing; for example, local testing uses `-L -C doors.conf` and
-may use OpenDoors' `-USERNAME` option to provide the account name.
+explicit profile, ANSI capability selects colour independently of whether an
+explicit drop-file framing field identifies an eight-bit path. OpenDoors
+currently obtains that framing from GAP `DOOR.SYS`, `DORINFOx.DEF` (including
+the companion to `EXITINFO.BBS`), and `CHAIN.TXT`. Unknown framing selects the
+safe ISO 646 repertoire. Without geometry overrides, a credible OpenDoors
+value is used and then the 80×24 default. Changing terminal size during a door
+session is not detected; the effective geometry remains stable for that
+session. OpenDoors owns command-line and drop-file parsing; for example, local
+testing uses `-L -C doors.conf` and may use OpenDoors' `-USERNAME` option to
+provide the account name.
 
 ## Content and safety
 
@@ -179,8 +185,8 @@ output in tests.
 `client/tests/door_presentation_test.cpp` provides deterministic equivalent
 assertions for:
 
-- all three profiles at 40×24;
-- all three profiles at 80×24;
+- all four profiles at 40×24;
+- all four profiles at 80×24;
 - long and unrepresentable names;
 - maximum supported credit, coordinate, date, and identifier values;
 - dense ship, crew, market, contract, news, and error records;
@@ -190,7 +196,7 @@ assertions for:
 - printable-key access to every action without arrow or function keys.
 
 `server/tests/tls_interop.rs` separately runs the real door through OpenDoors
-and the authenticated server at all three profiles. It verifies that plain
+and the authenticated server at all four profiles. It verifies that plain
 output uses form feed and contains no ECMA-48 sequence, enhanced output uses
 reset/clear/home, local CP437-to-UTF-8 conversion preserves CP437 line glyphs,
 and the effective-width override produces 40-column wrapping.

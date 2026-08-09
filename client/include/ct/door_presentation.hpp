@@ -11,6 +11,7 @@ namespace ct {
 enum class DoorProfile {
    Iso646,
    Iso646Color,
+   Cp437,
    Cp437Color,
 };
 
@@ -32,7 +33,11 @@ enum class DoorTextRole {
 
 DoorProfile parse_door_profile(std::string_view text);
 const char* door_profile_name(DoorProfile profile);
+DoorProfile door_profile_for_capabilities(bool ansi, bool eight_bit) noexcept;
+bool door_profile_uses_ansi(DoorProfile profile) noexcept;
+bool door_profile_uses_cp437(DoorProfile profile) noexcept;
 std::string door_single_line_field(std::string_view text);
+std::string door_plain_markdown(std::string_view text);
 std::string door_option_prompt(
    std::initializer_list<std::string_view> options,
    size_t columns,

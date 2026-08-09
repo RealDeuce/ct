@@ -69,7 +69,7 @@ voyage, physical mail, all-profile arrival review, dock services, combat-career
 entry, generated traffic, named combat actors, and joint orders. Deterministic
 fixtures carry the longer merchant, naval, privateer, pirate, legal,
 personnel, facility, and succession outcomes across restart. The OpenDoors client
-exposes the implemented operations in all three scrolling terminal profiles. While the
+exposes the implemented operations in all four scrolling terminal profiles. While the
 server is running, one authoritative live clock advances at exactly four game
 weeks per real day; downtime is frozen. Phase changes and seed-derived local
 traffic observations arrive asynchronously without coupling connection
@@ -219,9 +219,9 @@ scheduled transaction processor; uneventful player visits still do not consume
 cargo or move mail, while observations and consequential actions become
 authoritative state.
 
-The OpenDoors player interface has three page-oriented output profiles: ISO 646
-plain text, ISO 646 with ECMA-48 colour, and CP437 with ECMA-48 colour. There
-is no cursor-addressed TUI: plain pages use form feed, and enhanced pages use
+The OpenDoors player interface has four page-oriented output profiles formed
+from independent ISO 646/CP437 and plain/ECMA-48-colour choices. There is no
+cursor-addressed TUI: plain pages use form feed, and colour pages use
 clear-and-home before emitting wrapped lines. Every action must remain usable
 at 40×24, with 80×24 as the normal target. Presentation profiles, responsive
 wrapping, OpenDoors boundaries, and required tests are specified in

@@ -688,8 +688,17 @@ std::vector<std::string> wrap_text(const std::string_view text,
 void show_open_game_license()
 {
    const auto page_lines = output().page_content_rows(5);
-   const auto lines =
-      wrap_text(ct::OPEN_GAME_LICENSE_TEXT, output().content_columns());
+   auto legal_text = ct::door_plain_markdown(ct::OPEN_GAME_LICENSE_TEXT);
+   constexpr std::string_view title =
+      "Open Game License and Copyright Notices";
+   if(legal_text.starts_with(title)) {
+      legal_text.erase(0, title.size());
+      while(!legal_text.empty() &&
+            (legal_text.front() == '\r' || legal_text.front() == '\n')) {
+         legal_text.erase(0, 1);
+      }
+   }
+   const auto lines = wrap_text(legal_text, output().content_columns());
    size_t offset = 0;
    while(offset < lines.size()) {
       od_clr_scr();
@@ -722,7 +731,7 @@ void render_startup_notice()
 {
    od_clr_scr();
    door_heading("\n\r                 Cepheus Trader\n\r");
-   if(output().profile() == ct::DoorProfile::Cp437Color) {
+   if(ct::door_profile_uses_cp437(output().profile())) {
       door_accent(
          "       \u2500\u2500 An Alternate Cepheus Engine Universe "
          "\u2500\u2500\n\r\n\r");
@@ -795,11 +804,13 @@ void initialize_presentation(const ct::BbsConfig& config)
       opendoors_profile || config.terminal_profile != "auto"
       ? ct::parse_door_profile(
            opendoors_profile.value_or(config.terminal_profile))
-      : (
-         od_control.user_ansi ? ct::DoorProfile::Iso646Color
-         : ct::DoorProfile::Iso646);
+      : ct::door_profile_for_capabilities(
+           od_control.user_ansi != FALSE,
+           od_control.user_8bit != FALSE);
    od_control.user_ansi =
-      selected_profile == ct::DoorProfile::Iso646 ? FALSE : TRUE;
+      ct::door_profile_uses_ansi(selected_profile) ? TRUE : FALSE;
+   od_control.user_8bit =
+      ct::door_profile_uses_cp437(selected_profile) ? TRUE : FALSE;
    const auto reported_columns =
       od_control.user_screenwidth >= 40
       ? static_cast<size_t>(od_control.user_screenwidth)

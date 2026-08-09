@@ -117,6 +117,14 @@ static void ODInitPartTwo(void);
 static BOOL ODInitReadSFDoorsDAT(void);
 static void ODInitPartTwo(void);
 
+/* Whether a drop-file framing field explicitly specifies eight data bits. */
+static BOOL ODFramingIsEightBit(const char *framing)
+{
+   while(isspace((unsigned char)*framing))
+      ++framing;
+   return framing[0] == '8' || strstr(framing, ",8,") != NULL;
+}
+
 
 /* Private variables. */
 static BYTE btRAStatusToSet = 0;
@@ -706,6 +714,7 @@ read_dorinfox:
 #endif
 
           if(fgets((char *)apszDropFileInfo[1],80,pfDropFile)==NULL) goto DropFileFail;
+          od_control.user_8bit = ODFramingIsEightBit(apszDropFileInfo[1]);
 
                                           /* get user's first name */
           if(fgets(szIFTemp,255,pfDropFile)==NULL) goto DropFileFail;
@@ -823,6 +832,7 @@ read_dorinfox:
           if(fgets((char *)apszDropFileInfo[10],80,pfDropFile)==NULL) goto DropFileFail;
           if(fgets((char *)apszDropFileInfo[11],80,pfDropFile)==NULL) goto DropFileFail;
           if(fgets((char *)apszDropFileInfo[12],80,pfDropFile)==NULL) goto DropFileFail;
+          od_control.user_8bit = ODFramingIsEightBit(apszDropFileInfo[12]);
 
           fclose(pfDropFile);
        }
@@ -880,6 +890,7 @@ read_dorinfox:
 
              /* Read line 3. */
              if(fgets((char *)apszDropFileInfo[1],80,pfDropFile)==NULL) goto DropFileFail;
+             od_control.user_8bit = ODFramingIsEightBit(apszDropFileInfo[1]);
 
              /* Read line 4. */
              if(fgets(szIFTemp, 255, pfDropFile) == NULL) goto DropFileFail;

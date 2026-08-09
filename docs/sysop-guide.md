@@ -219,20 +219,26 @@ library:
 | `TRIBBS.SYS` | TriBBS | No |
 
 Cepheus Trader uses the account name, optional BBS user-record number, ANSI
-capability, and terminal dimensions that OpenDoors obtains at startup. The
-following table records what the current OpenDoors parser obtains from each
-format:
+capability, data width/framing, and terminal dimensions that OpenDoors obtains
+at startup. The following table records what the current OpenDoors parser
+obtains from each format:
 
-| Drop file | Real name | Handle | User-record number | ANSI | Terminal dimensions |
-| --- | --- | --- | --- | --- | --- |
-| `DOOR32.SYS` | Yes | Yes | Yes | Yes | None |
-| `DOOR.SYS` | Yes | Wildcat! extended format only | GAP/PCBoard and Wildcat! only | Yes | Rows in GAP/PCBoard and Wildcat!; no columns |
-| `DORINFOx.DEF` | Yes | No | No | Yes | None |
-| `EXITINFO.BBS` | Yes | RemoteAccess 1.x extended and 2.x only | RemoteAccess 2.x only | Yes | Columns in RemoteAccess 1.x extended and 2.x; no rows |
-| `CHAIN.TXT` | Yes | Yes | Yes | Yes | Columns and rows |
-| `SFDOORS.DAT` and the other Spitfire entry files | Yes | No | Yes | Yes | None |
-| `CALLINFO.BBS` | Yes | No | No | Yes | Rows only |
-| `TRIBBS.SYS` | Yes | Yes | Yes | Yes | None |
+| Drop file | Real name | Handle | User-record number | ANSI | Data width/framing | Terminal dimensions |
+| --- | --- | --- | --- | --- | --- | --- |
+| `DOOR32.SYS` | Yes | Yes | Yes | Yes | Not supplied | None |
+| `DOOR.SYS` | Yes | Wildcat! extended format only | GAP/PCBoard and Wildcat! only | Yes | GAP/PCBoard data-bits field; not supplied by other variants | Rows in GAP/PCBoard and Wildcat!; no columns |
+| `DORINFOx.DEF` | Yes | No | No | Yes | Baud/parity/data/stop field | None |
+| `EXITINFO.BBS` | Yes | RemoteAccess 1.x extended and 2.x only | RemoteAccess 2.x only | Yes | From the companion `DORINFO1.DEF` | Columns in RemoteAccess 1.x extended and 2.x; no rows |
+| `CHAIN.TXT` | Yes | Yes | Yes | Yes | Data/parity/stop field | Columns and rows |
+| `SFDOORS.DAT` and the other Spitfire entry files | Yes | No | Yes | Yes | Not supplied | None |
+| `CALLINFO.BBS` | Yes | No | No | Yes | Not supplied | Rows only |
+| `TRIBBS.SYS` | Yes | Yes | Yes | Yes | Not supplied | None |
+
+ANSI and data width are independent. ANSI says the caller can process
+ECMA-48 control sequences; an explicit eight-data-bit framing value says the
+path can carry CP437 bytes. When a format supplies neither data width nor
+framing, automatic selection keeps the ISO 646 repertoire even if ANSI is
+available.
 
 The generated configuration defaults to `identity-name=real-name`, which works
 with every supported format. Set `identity-name=handle` only when the selected
@@ -256,9 +262,10 @@ CTColumns 132
 CTRows 50
 ```
 
-and pass it with `-C`. `CTProfile iso646`, `CTProfile iso646-color`, or
-`CTProfile cp437-color` can similarly override an incorrect ANSI/profile
-report for that call; `terminal-profile` supplies a fixed BBS-wide override.
+and pass it with `-C`. `CTProfile iso646`, `CTProfile iso646-color`,
+`CTProfile cp437-plain`, or `CTProfile cp437-color` can override the detected
+combination for that call; `terminal-profile` supplies a fixed BBS-wide
+override.
 
 When the BBS passes the caller's raw Telnet socket directly to the door, it
 must generate `DOOR32.SYS` with communication type `2` and launch the door with

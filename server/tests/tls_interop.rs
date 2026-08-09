@@ -488,8 +488,8 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
             claimed = true;
             page_number += 1;
         } else {
-            // Exercise all three arrival-packet arrow actions across the
-            // terminal profiles using the ANSI sequences a caller sends.
+            // Exercise all three arrival-packet arrow actions across
+            // representative profiles using the sequences a caller sends.
             session.send(packet_key);
             page_number += 1;
         }
@@ -1030,6 +1030,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     for (profile, columns) in [
         ("iso646", "40"),
         ("iso646-color", "80"),
+        ("cp437-plain", "80"),
         ("cp437-color", "40"),
     ] {
         let mut session = DoorSession::spawn(&door, data.path(), profile, columns);
@@ -1056,7 +1057,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
             semantic_screen.contains("No captain is registered"),
             "{screen:?}"
         );
-        if profile == "iso646" {
+        if !profile.ends_with("-color") {
             assert!(screen.contains('\u{c}'), "{screen:?}");
             assert!(!screen.contains('\u{1b}'), "{screen:?}");
         } else {
@@ -1071,7 +1072,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
                 "{screen:?}"
             );
         }
-        if profile == "cp437-color" {
+        if profile.starts_with("cp437") {
             assert!(
                 screen.contains("── An Alternate Cepheus Engine"),
                 "{screen:?}"
@@ -1690,9 +1691,9 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         );
     }
 
-    // Save an unpresented arrival state for each terminal profile. Each copy
-    // uses the real TLS server and OpenDoors executable, while preserving the
-    // canonical voyage for the final docking/fuel/sale continuation.
+    // Save an unpresented arrival state for representative terminal profiles.
+    // Each copy uses the real TLS server and OpenDoors executable, while
+    // preserving the canonical voyage for the final continuation.
     let profile_root = tempfile::tempdir().unwrap();
     let profile_cases = [
         ("iso646", "40"),

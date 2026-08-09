@@ -166,7 +166,7 @@ between battlefield patches and real work described in
 
 ## First Implementation Order
 
-1. Implement the docked landing page across all three terminal profiles.
+1. Implement the docked landing page across all four terminal profiles.
    **Done.**
 2. Persist ship location and derive phase from it. **Done for docked,
    departure, Jump, arrival approach, and destination docking.**

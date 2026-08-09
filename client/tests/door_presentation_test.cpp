@@ -69,7 +69,7 @@ void check_profile_and_width(const ct::DoorProfile profile,
       "12345678901234567890 credits at coordinates "
       "-123456789.125/+987654321.875/-444444444.500.");
    check(maximum_visible_width(output) < columns);
-   if(profile == ct::DoorProfile::Iso646) {
+   if(!ct::door_profile_uses_ansi(profile)) {
       check(!output.empty() && output.front() == '\f');
       check(output.find('\x1b') == std::string::npos);
    } else {
@@ -125,6 +125,7 @@ int main() {
    constexpr std::array profiles{
       ct::DoorProfile::Iso646,
       ct::DoorProfile::Iso646Color,
+      ct::DoorProfile::Cp437,
       ct::DoorProfile::Cp437Color,
    };
    for(const auto profile : profiles) {
@@ -329,9 +330,22 @@ int main() {
 
    check(ct::parse_door_profile("plain") == ct::DoorProfile::Iso646);
    check(ct::parse_door_profile("color") == ct::DoorProfile::Iso646Color);
+   check(ct::parse_door_profile("cp437-plain") == ct::DoorProfile::Cp437);
    check(ct::parse_door_profile("cp437") == ct::DoorProfile::Cp437Color);
+   check(ct::door_profile_for_capabilities(false, false) ==
+         ct::DoorProfile::Iso646);
+   check(ct::door_profile_for_capabilities(true, false) ==
+         ct::DoorProfile::Iso646Color);
+   check(ct::door_profile_for_capabilities(false, true) ==
+         ct::DoorProfile::Cp437);
+   check(ct::door_profile_for_capabilities(true, true) ==
+         ct::DoorProfile::Cp437Color);
    check(ct::door_single_line_field("ship\r\n\x1b[31m") ==
          "ship  ?[31m");
+   check(
+      ct::door_plain_markdown(
+         "# License\n\n## Designation\nSee [LICENSE.md](LICENSE.md).") ==
+      "License\n\nDesignation\nSee LICENSE.md.");
    const auto wide_options =
       ct::door_option_prompt(
          {"[Letter] Docked service",

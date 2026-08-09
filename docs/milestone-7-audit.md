@@ -62,7 +62,7 @@ via `identity-rename`, `identity-reindex`, or `identity-retire`. Retirement
 requires the literal `RETIRE` confirmation.
 
 The `tls_interop.rs` integration test exercises the full OpenDoors startup
-path with three terminal profiles and player creation through the C++ door.
+path with four terminal profiles and player creation through the C++ door.
 
 ### 2. Reconnect and Presentation in Remote Terminal Sessions
 

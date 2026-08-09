@@ -449,7 +449,8 @@ BbsConfig read_bbs_config(const std::string& path) {
    }
    const auto profile = require_value(terminal_profile, "terminal-profile");
    if(profile != "auto" && profile != "iso646" &&
-      profile != "iso646-color" && profile != "cp437-color") {
+      profile != "iso646-color" && profile != "cp437-plain" &&
+      profile != "cp437-color") {
       throw std::runtime_error(
          "BBS configuration 'terminal-profile' has an invalid value");
    }

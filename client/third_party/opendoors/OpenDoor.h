@@ -678,6 +678,7 @@ typedef struct
    char          user_logonpassword[16];
    BYTE          user_wantchat;
    BYTE          user_ansi;
+   BYTE          user_8bit;
    INT16         user_deducted_time;
    char          user_menustack[50][9];
    BYTE          user_menustackpointer;

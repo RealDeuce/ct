@@ -87,7 +87,7 @@ The completed foundation includes:
 - normalized shipbuilding rules, the active OGC ship catalog, design families,
   upgrade paths, starting-offer matrix, licensing, and provenance records;
 - the complete new-player captain, ship, and crew creation transaction;
-- all three scrolling terminal profiles at 40×24 and 80×24;
+- all four scrolling terminal profiles at 40×24 and 80×24;
 - universal Crew and read-only Ship managers, plus the initial Known Universe
   repository;
 - durable systems, daily jobs, ordinary traffic ships, messages, envelopes,
@@ -170,7 +170,7 @@ Acceptance:
 - restart cannot duplicate custody, delivery, stipend, or visibility;
 - old information can arrive after newer local events without being silently
   rewritten as current; and
-- the door can ignore, mark, inspect, and act on arrival items using all three
+- the door can ignore, mark, inspect, and act on arrival items using all four
   output profiles.
 
 This milestone completes the first **playable merchant prototype**: create a

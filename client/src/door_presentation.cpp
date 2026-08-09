@@ -207,7 +207,7 @@ std::string encode_text(const std::string_view text,
       } else if(value < 0x20 || value == 0x7f) {
          result.push_back('?');
       } else {
-         result += profile == DoorProfile::Cp437Color
+         result += door_profile_uses_cp437(profile)
                       ? cp437_text(value)
                       : iso646_text(value);
       }
@@ -259,11 +259,14 @@ DoorProfile parse_door_profile(const std::string_view text) {
    if(text == "iso646-color" || text == "color" || text == "colour") {
       return DoorProfile::Iso646Color;
    }
+   if(text == "cp437-plain") {
+      return DoorProfile::Cp437;
+   }
    if(text == "cp437-color" || text == "cp437") {
       return DoorProfile::Cp437Color;
    }
    throw std::invalid_argument(
-      "profile must be iso646, iso646-color, or cp437-color");
+      "profile must be iso646, iso646-color, cp437-plain, or cp437-color");
 }
 
 const char* door_profile_name(const DoorProfile profile) {
@@ -272,10 +275,31 @@ const char* door_profile_name(const DoorProfile profile) {
          return "iso646";
       case DoorProfile::Iso646Color:
          return "iso646-color";
+      case DoorProfile::Cp437:
+         return "cp437-plain";
       case DoorProfile::Cp437Color:
          return "cp437-color";
    }
    return "iso646";
+}
+
+DoorProfile door_profile_for_capabilities(const bool ansi,
+                                           const bool eight_bit) noexcept {
+   if(ansi) {
+      return eight_bit ? DoorProfile::Cp437Color
+                       : DoorProfile::Iso646Color;
+   }
+   return eight_bit ? DoorProfile::Cp437 : DoorProfile::Iso646;
+}
+
+bool door_profile_uses_ansi(const DoorProfile profile) noexcept {
+   return profile == DoorProfile::Iso646Color ||
+          profile == DoorProfile::Cp437Color;
+}
+
+bool door_profile_uses_cp437(const DoorProfile profile) noexcept {
+   return profile == DoorProfile::Cp437 ||
+          profile == DoorProfile::Cp437Color;
 }
 
 std::string door_single_line_field(const std::string_view text) {
@@ -289,6 +313,53 @@ std::string door_single_line_field(const std::string_view text) {
       } else {
          result.push_back(static_cast<char>(byte));
       }
+   }
+   return result;
+}
+
+std::string door_plain_markdown(const std::string_view text) {
+   std::string result;
+   size_t line_start = 0;
+   while(line_start < text.size()) {
+      const auto newline = text.find('\n', line_start);
+      const auto line_end = newline == std::string_view::npos
+                            ? text.size()
+                            : newline;
+      auto line = text.substr(line_start, line_end - line_start);
+      if(!line.empty() && line.back() == '\r') {
+         line.remove_suffix(1);
+      }
+      size_t content_start = 0;
+      while(content_start < line.size() && line[content_start] == '#') {
+         ++content_start;
+      }
+      if(content_start == 0 || content_start >= line.size() ||
+         line[content_start] != ' ') {
+         content_start = 0;
+      } else {
+         ++content_start;
+      }
+      for(size_t index = content_start; index < line.size();) {
+         if(line[index] == '[') {
+            const auto label_end = line.find(']', index + 1);
+            if(label_end != std::string_view::npos &&
+               label_end + 1 < line.size() && line[label_end + 1] == '(') {
+               const auto target_end = line.find(')', label_end + 2);
+               if(target_end != std::string_view::npos) {
+                  result.append(line.substr(index + 1, label_end - index - 1));
+                  index = target_end + 1;
+                  continue;
+               }
+            }
+         }
+         result.push_back(line[index]);
+         ++index;
+      }
+      if(newline == std::string_view::npos) {
+         break;
+      }
+      result.push_back('\n');
+      line_start = newline + 1;
    }
    return result;
 }
@@ -421,7 +492,7 @@ void DoorPresentation::flush() {
 void DoorPresentation::clear() {
    column_ = 0;
    row_ = 0;
-   if(profile_ == DoorProfile::Iso646) {
+   if(!door_profile_uses_ansi(profile_)) {
       emit("\f");
    } else {
       emit("\x1b[0m\x1b[2J\x1b[H");
@@ -466,7 +537,7 @@ void DoorPresentation::pause_at_page_boundary(const DoorTextRole role) {
    handling_page_pause_ = false;
    paging_active_ = static_cast<bool>(page_pause_) &&
                     !paging_suppressed_until_input_;
-   if(profile_ != DoorProfile::Iso646) {
+   if(door_profile_uses_ansi(profile_)) {
       emit(role_sequence(role));
    }
 }
@@ -551,7 +622,7 @@ void DoorPresentation::emit_encoded(const std::string_view bytes,
 
 void DoorPresentation::write(const std::string_view text,
                              const DoorTextRole role) {
-   const bool color = profile_ != DoorProfile::Iso646;
+   const bool color = door_profile_uses_ansi(profile_);
    if(color) {
       emit(role_sequence(role));
    }
@@ -572,7 +643,7 @@ void DoorPresentation::write_hanging(
       throw std::invalid_argument(
          "continuation indent must leave room for text");
    }
-   const bool color = profile_ != DoorProfile::Iso646;
+   const bool color = door_profile_uses_ansi(profile_);
    if(color) {
       emit(role_sequence(role));
    }
