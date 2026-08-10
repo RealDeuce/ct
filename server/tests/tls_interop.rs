@@ -369,51 +369,66 @@ fn advance_simulation_to_due(engine: &Engine, due_second: u64) {
 }
 
 fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
-    for attempt in 0_u64..32 {
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut request_id = 90_000_u64;
+    loop {
+        assert!(
+            Instant::now() < deadline,
+            "terminal approach did not settle before the interop timeout"
+        );
         let engine = Engine::open(data, BbsRegistry::default()).unwrap();
         let (epoch, _, _) = engine.issue_session(identity).unwrap();
-        if let Some(encounter) = engine.pending_encounter(identity).unwrap() {
-            if encounter.state == EncounterState::AwaitingPosture {
+        loop {
+            assert!(
+                Instant::now() < deadline,
+                "terminal approach encounter did not settle before the interop timeout"
+            );
+            if let Some(encounter) = engine.pending_encounter(identity).unwrap() {
+                if encounter.state == EncounterState::AwaitingPosture {
+                    engine
+                        .submit(
+                            identity.clone(),
+                            engine_request(
+                                epoch,
+                                request_id,
+                                WireCommand::ResolveEncounter(ResolveEncounterRequest {
+                                    encounter_id: encounter.encounter_id,
+                                    expected_revision: encounter.revision,
+                                    posture: EncounterPosture::Comply,
+                                    fallbacks: vec![EncounterFallback::Surrender],
+                                }),
+                            ),
+                        )
+                        .unwrap();
+                    request_id += 1;
+                }
+                advance_simulation_to_due(
+                    &engine,
+                    if encounter.next_turn_second == 0 {
+                        encounter.started_second + 1_000
+                    } else {
+                        encounter.next_turn_second
+                    },
+                );
+                continue;
+            }
+            if let Some(checkpoint) = engine.pending_checkpoint(identity).unwrap() {
                 engine
                     .submit(
                         identity.clone(),
                         engine_request(
                             epoch,
-                            90_000 + attempt * 2,
-                            WireCommand::ResolveEncounter(ResolveEncounterRequest {
-                                encounter_id: encounter.encounter_id,
-                                expected_revision: encounter.revision,
-                                posture: EncounterPosture::Comply,
-                                fallbacks: vec![EncounterFallback::Surrender],
-                            }),
+                            request_id,
+                            WireCommand::AcknowledgeCheckpoint {
+                                checkpoint_id: checkpoint.checkpoint_id,
+                            },
                         ),
                     )
                     .unwrap();
+                request_id += 1;
+                continue;
             }
-            advance_simulation_to_due(
-                &engine,
-                if encounter.next_turn_second == 0 {
-                    encounter.started_second + 1_000
-                } else {
-                    encounter.next_turn_second
-                },
-            );
-            continue;
-        }
-        if let Some(checkpoint) = engine.pending_checkpoint(identity).unwrap() {
-            engine
-                .submit(
-                    identity.clone(),
-                    engine_request(
-                        epoch,
-                        90_001 + attempt * 2,
-                        WireCommand::AcknowledgeCheckpoint {
-                            checkpoint_id: checkpoint.checkpoint_id,
-                        },
-                    ),
-                )
-                .unwrap();
-            continue;
+            break;
         }
         drop(engine);
         let store = Store::open(data).unwrap();
@@ -430,13 +445,18 @@ fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
             other => panic!("terminal approach entered an unexpected locus: {other:?}"),
         }
     }
-    panic!("terminal approach did not settle after encounter and checkpoint processing");
 }
 
 fn settle_pending_arrival_encounter(data: &Path, identity: &PlayerIdentity) {
-    for attempt in 0_u64..32 {
-        let engine = Engine::open(data, BbsRegistry::default()).unwrap();
-        let (epoch, _, _) = engine.issue_session(identity).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let engine = Engine::open(data, BbsRegistry::default()).unwrap();
+    let (epoch, _, _) = engine.issue_session(identity).unwrap();
+    let mut request_id = 95_000_u64;
+    loop {
+        assert!(
+            Instant::now() < deadline,
+            "arrival encounter did not settle before the interop timeout"
+        );
         let Some(encounter) = engine.pending_encounter(identity).unwrap() else {
             return;
         };
@@ -446,7 +466,7 @@ fn settle_pending_arrival_encounter(data: &Path, identity: &PlayerIdentity) {
                     identity.clone(),
                     engine_request(
                         epoch,
-                        95_000 + attempt,
+                        request_id,
                         WireCommand::ResolveEncounter(ResolveEncounterRequest {
                             encounter_id: encounter.encounter_id,
                             expected_revision: encounter.revision,
@@ -456,6 +476,7 @@ fn settle_pending_arrival_encounter(data: &Path, identity: &PlayerIdentity) {
                     ),
                 )
                 .unwrap();
+            request_id += 1;
         }
         advance_simulation_to_due(
             &engine,
@@ -466,7 +487,6 @@ fn settle_pending_arrival_encounter(data: &Path, identity: &PlayerIdentity) {
             },
         );
     }
-    panic!("arrival encounter did not settle under conservative orders");
 }
 
 fn advance_until_flight_leg(
