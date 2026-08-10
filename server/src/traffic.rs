@@ -318,8 +318,7 @@ fn pair_design_weight(
         return 0;
     }
     origin_weight
-        .checked_mul(destination_weight)
-        .unwrap_or(u64::MAX)
+        .saturating_mul(destination_weight)
         .checked_div(1 << 16)
         .unwrap_or(0)
         .max(1)
