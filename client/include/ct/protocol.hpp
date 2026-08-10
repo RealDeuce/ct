@@ -651,6 +651,11 @@ struct CargoLot {
    uint64_t destination_system_id;
 };
 
+struct CargoSaleQuote {
+   uint64_t cargo_lot_id;
+   uint64_t price_per_ton;
+};
+
 enum class TaskKind {
    Freight,
    Passenger,
@@ -1000,6 +1005,7 @@ struct MarketSnapshot {
    std::vector<WorkAssignment> work_assignments;
    std::vector<MarketLead> leads;
    std::vector<MarketEvent> events;
+   std::vector<CargoSaleQuote> cargo_sale_quotes;
    uint64_t committed_sequence;
    uint64_t revision;
    PlayerPhase phase;

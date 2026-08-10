@@ -14,8 +14,12 @@ Each system/day derives finite stock from the system seed, starport, primary
 world, and trade codes. Player purchases persist shared consumption; reads do
 not reroll or reserve stock. Quotes also depend on the captain's Broker skill
 and Charisma. Purchase outcomes use 80%, 90%, 100%, or 120% of base price;
-sale outcomes use 30%, 15%, 2%, or 0% markup. Generated local tariffs are
-shown in basis points and included in both sides of the displayed quote.
+sale outcomes use 30%, 15%, 2%, or 0% markup over base price. Generated local
+tariffs are shown in basis points and included in both sides of the quote. The
+ordinary local bid is capped below the local ask whenever the exchange also
+has that commodity in stock, so loading and immediately unloading cargo cannot
+create money. A named reserved buyer is a separate negotiated transaction and
+may cross the public spread.
 Prohibited goods cannot be bought through the open exchange; restricted goods
 remain identifiable for deeper permit enforcement.
 

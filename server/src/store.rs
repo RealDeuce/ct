@@ -50,9 +50,9 @@ use crate::universe::{
     stellar_component_density_per_cubic_parsec,
 };
 use crate::wire::{
-    ArrivalPacket, COMMAND_ID_BYTES, CargoLot, CargoTitle, CheckpointKind, CheckpointSnapshot,
-    Command, CommandPersistence, CommandRequest, CommitFlightPlanRequest, CommodityLegality,
-    CourseFuelSource, CoursePlan, CoursePlot, CourseWaypoint, DockedFuelService,
+    ArrivalPacket, COMMAND_ID_BYTES, CargoLot, CargoSaleQuote, CargoTitle, CheckpointKind,
+    CheckpointSnapshot, Command, CommandPersistence, CommandRequest, CommitFlightPlanRequest,
+    CommodityLegality, CourseFuelSource, CoursePlan, CoursePlot, CourseWaypoint, DockedFuelService,
     DockedFuelServiceKind, DockedRepairService, DockedServiceOrderKind, DockedServices,
     DockedSnapshot, EncounterContact, EncounterFallback, EncounterKind, EncounterPolicy,
     EncounterPosture, EncounterResult, EncounterSnapshot, EncounterState, ErrorCode, FlightLocus,
@@ -14072,13 +14072,18 @@ impl Store {
                         false,
                     )
                 });
+                let purchase_price = price_with_import_tariff(purchase, tariff_basis_points);
+                let sale_price = non_crossing_market_bid(
+                    price_after_export_tariff(sale, tariff_basis_points),
+                    purchase_price,
+                );
                 MarketOffer {
                     offer_id: quote.offer_id,
                     commodity_id: quote.commodity.id,
                     commodity_name: quote.commodity.name.into(),
                     base_price_per_ton: quote.commodity.base_price_per_ton,
-                    purchase_price_per_ton: price_with_import_tariff(purchase, tariff_basis_points),
-                    sale_price_per_ton: price_after_export_tariff(sale, tariff_basis_points),
+                    purchase_price_per_ton: purchase_price,
+                    sale_price_per_ton: sale_price,
                     available_millitons: quote
                         .available_millitons
                         .saturating_mul(stock_multiplier)
@@ -14121,6 +14126,49 @@ impl Store {
                 });
             }
         }
+        let mut cargo_sale_quotes = Vec::new();
+        for lot in &ship.cargo {
+            let price_per_ton = match lot.title {
+                CargoTitle::PlayerOwned => {
+                    let item = commodity(lot.commodity_id)
+                        .ok_or(StoreError::Corrupt("cargo commodity is unknown"))?;
+                    let raw_price = negotiated_sale_price(
+                        system.generation_seed,
+                        game_day,
+                        identity,
+                        lot.cargo_lot_id,
+                        broker_level,
+                        captain.person.characteristics.charisma,
+                        item,
+                        &world,
+                    )?;
+                    let event_price = events
+                        .iter()
+                        .find(|event| event.commodity_id == lot.commodity_id)
+                        .map_or(raw_price, |event| {
+                            shift_price_tier(
+                                item.base_price_per_ton,
+                                raw_price,
+                                event.sale_tier_delta,
+                                false,
+                            )
+                        });
+                    let bid = price_after_export_tariff(event_price, tariff_basis_points);
+                    offers
+                        .iter()
+                        .find(|offer| offer.commodity_id == lot.commodity_id)
+                        .map_or(bid, |offer| {
+                            non_crossing_market_bid(bid, offer.purchase_price_per_ton)
+                        })
+                }
+                CargoTitle::UniqueObject => 1_000,
+                CargoTitle::Freight | CargoTitle::Contract => continue,
+            };
+            cargo_sale_quotes.push(CargoSaleQuote {
+                cargo_lot_id: lot.cargo_lot_id,
+                price_per_ton,
+            });
+        }
         let spec = creation::ship_status_spec(ship.catalog_id)
             .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
         let cargo_used_millitons = ship.cargo.iter().map(|lot| lot.quantity_millitons).sum();
@@ -14160,6 +14208,7 @@ impl Store {
             work_assignments,
             leads,
             events,
+            cargo_sale_quotes,
         })
     }
 
@@ -18453,24 +18502,7 @@ impl Store {
                 .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
             return Ok(RuleResult::Applied(self.market_snapshot_in(txn, identity)?));
         }
-        if lot.origin_system_id == snapshot.system_id {
-            return Ok(RuleResult::Rejected(
-                "speculative cargo cannot be resold in its origin system".into(),
-            ));
-        }
-        let (player_before, ship_before) = self.player_and_ship_in(txn, identity)?;
-        let captain = self
-            .persons
-            .get(txn, &player_before.captain_person_id)?
-            .map(decode_person_record)
-            .transpose()?
-            .ok_or(StoreError::Corrupt("captain person is missing"))?;
-        let broker_level = captain
-            .person
-            .skills
-            .iter()
-            .find(|rating| rating.skill == crate::wire::SkillId::Broker)
-            .map_or(-3, |rating| rating.level);
+        let (_, ship_before) = self.player_and_ship_in(txn, identity)?;
         let system = self
             .systems
             .get(txn, &ship_before.system_id)?
@@ -18480,8 +18512,6 @@ impl Store {
         let world = self.primary_world_in(txn, &system)?;
         let game_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
         let game_day = game_second / crate::simulation::SECONDS_PER_DAY;
-        let item =
-            commodity(lot.commodity_id).ok_or(StoreError::Corrupt("cargo commodity is unknown"))?;
         let mut buyer_lead = if buyer_lead_id == 0 {
             None
         } else {
@@ -18508,23 +18538,19 @@ impl Store {
             }
             Some(stored)
         };
-        let sale_price = buyer_lead.as_ref().map_or_else(
-            || {
-                negotiated_sale_price(
-                    system.generation_seed,
-                    game_day,
-                    identity,
-                    cargo_lot_id,
-                    lot.purchase_price_per_ton,
-                    broker_level,
-                    captain.person.characteristics.charisma,
-                    item,
-                    &world,
-                )
-            },
-            |stored| Ok(stored.lead.price_per_ton),
-        )?;
-        let sale_price = price_after_export_tariff(sale_price, market_tariff_basis_points(&world));
+        let sale_price = if let Some(stored) = &buyer_lead {
+            price_after_export_tariff(
+                stored.lead.price_per_ton,
+                market_tariff_basis_points(&world),
+            )
+        } else {
+            snapshot
+                .cargo_sale_quotes
+                .iter()
+                .find(|quote| quote.cargo_lot_id == cargo_lot_id)
+                .map(|quote| quote.price_per_ton)
+                .ok_or(StoreError::Corrupt("ordinary cargo sale quote is missing"))?
+        };
         let proceeds = sale_proceeds_credits(sale_price, quantity_millitons)
             .ok_or(StoreError::Corrupt("cargo sale price overflow"))?;
         let (mut player, mut ship) = self.player_and_ship_in(txn, identity)?;
@@ -28169,6 +28195,10 @@ fn price_after_export_tariff(price: u64, basis_points: u16) -> u64 {
     u64::try_from(u128::from(price) * u128::from(retained) / 10_000).unwrap_or(u64::MAX)
 }
 
+fn non_crossing_market_bid(bid: u64, ask: u64) -> u64 {
+    bid.min(ask.saturating_sub(1))
+}
+
 fn market_claim_key(kind: u8, id: u64) -> [u8; 9] {
     let mut key = [0_u8; 9];
     key[0] = kind;
@@ -31889,7 +31919,7 @@ fn decode_traffic_contact_record(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(7);
+    bytes.push(8);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -32127,6 +32157,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 5
         && version != 6
         && version != 7
+        && version != 8
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -32171,7 +32202,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         10 => OutcomeKind::ShipStatus(decode_ship_status(&mut decoder)?),
         11 => OutcomeKind::DockedSnapshot(decode_docked_snapshot(&mut decoder)?),
         12 => OutcomeKind::KnownDestinations(decode_known_destinations(&mut decoder, version)?),
-        13 => OutcomeKind::Market(decode_market_snapshot(&mut decoder)?),
+        13 => OutcomeKind::Market(decode_market_snapshot(&mut decoder, version)?),
         14 => OutcomeKind::TravelStatus(decode_travel_status(&mut decoder)?),
         15 => OutcomeKind::CoursePlot(decode_course_plot(&mut decoder, version >= 2)?),
         16 => OutcomeKind::ArrivalPacket(decode_arrival_packet(&mut decoder)?),
@@ -36112,10 +36143,18 @@ fn encode_market_snapshot_into(
         bytes.extend_from_slice(&(encoded.len() as u32).to_be_bytes());
         bytes.extend_from_slice(&encoded);
     }
+    bytes.extend_from_slice(&(snapshot.cargo_sale_quotes.len() as u16).to_be_bytes());
+    for quote in &snapshot.cargo_sale_quotes {
+        bytes.extend_from_slice(&quote.cargo_lot_id.to_be_bytes());
+        bytes.extend_from_slice(&quote.price_per_ton.to_be_bytes());
+    }
     Ok(())
 }
 
-fn decode_market_snapshot(decoder: &mut Decoder<'_>) -> Result<MarketSnapshot, StoreError> {
+fn decode_market_snapshot(
+    decoder: &mut Decoder<'_>,
+    outcome_version: u8,
+) -> Result<MarketSnapshot, StoreError> {
     let market_revision = decoder.u64()?;
     let system_id = decoder.u64()?;
     let world_name = decoder.text()?;
@@ -36216,6 +36255,17 @@ fn decode_market_snapshot(decoder: &mut Decoder<'_>) -> Result<MarketSnapshot, S
         let length = decoder.u32()? as usize;
         events.push(decode_market_event(decoder.take(length)?)?);
     }
+    let mut cargo_sale_quotes = if outcome_version >= 8 {
+        Vec::with_capacity(decoder.u16()? as usize)
+    } else {
+        Vec::new()
+    };
+    for _ in 0..cargo_sale_quotes.capacity() {
+        cargo_sale_quotes.push(CargoSaleQuote {
+            cargo_lot_id: decoder.u64()?,
+            price_per_ton: decoder.u64()?,
+        });
+    }
     Ok(MarketSnapshot {
         market_revision,
         system_id,
@@ -36232,6 +36282,7 @@ fn decode_market_snapshot(decoder: &mut Decoder<'_>) -> Result<MarketSnapshot, S
         work_assignments,
         leads,
         events,
+        cargo_sale_quotes,
     })
 }
 
@@ -41294,6 +41345,77 @@ mod tests {
         assert_eq!(jump.installed_second, 0);
         assert_eq!(jump.calendar_age_months, 1);
         assert_eq!(jump.neglect_damage_hits, 1);
+    }
+
+    #[test]
+    fn local_cargo_resale_uses_the_displayed_non_crossing_bid() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let epoch = initialize_player_fixture(&store);
+        const QUANTITY: u64 = MILLITONS_PER_TON + 1;
+
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(epoch, 190, Command::GetMarket),
+            })
+            .unwrap();
+        let market = match store.process_next().unwrap().unwrap().outcome.kind {
+            OutcomeKind::Market(snapshot) => snapshot,
+            other => panic!("expected market snapshot, got {other:?}"),
+        };
+        let offer = market.offers[0].clone();
+
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(
+                    epoch,
+                    191,
+                    Command::BuyCargo {
+                        market_revision: market.market_revision,
+                        offer_id: offer.offer_id,
+                        quantity_millitons: QUANTITY,
+                    },
+                ),
+            })
+            .unwrap();
+        let loaded = match store.process_next().unwrap().unwrap().outcome.kind {
+            OutcomeKind::Market(snapshot) => snapshot,
+            other => panic!("expected loaded market, got {other:?}"),
+        };
+        let lot = &loaded.cargo[0];
+        let quote = loaded
+            .cargo_sale_quotes
+            .iter()
+            .find(|quote| quote.cargo_lot_id == lot.cargo_lot_id)
+            .expect("player-owned cargo has an ordinary local bid");
+        assert!(quote.price_per_ton < offer.purchase_price_per_ton);
+
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(
+                    epoch,
+                    192,
+                    Command::SellCargo {
+                        market_revision: loaded.market_revision,
+                        cargo_lot_id: lot.cargo_lot_id,
+                        quantity_millitons: QUANTITY,
+                        buyer_lead_id: 0,
+                    },
+                ),
+            })
+            .unwrap();
+        let sold = match store.process_next().unwrap().unwrap().outcome.kind {
+            OutcomeKind::Market(snapshot) => snapshot,
+            other => panic!("expected market after sale, got {other:?}"),
+        };
+        let purchase_cost = purchase_cost_credits(offer.purchase_price_per_ton, QUANTITY).unwrap();
+        let sale_proceeds = sale_proceeds_credits(quote.price_per_ton, QUANTITY).unwrap();
+        assert!(sold.cargo.is_empty());
+        assert_eq!(sold.credits, market.credits - purchase_cost + sale_proceeds);
+        assert!(sold.credits < market.credits);
     }
 
     #[test]

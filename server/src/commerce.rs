@@ -739,8 +739,10 @@ pub fn quote_market_goods(
             let sale_effect = task_effect(&mut price_random, skill_dm + i16::from(sale_dm), -2)?;
             let purchase_price =
                 percentage(item.base_price_per_ton, purchase_percent(purchase_effect));
-            let indicative_sale =
-                percentage(purchase_price, 100 + sale_markup_percent(sale_effect));
+            let indicative_sale = percentage(
+                item.base_price_per_ton,
+                100 + sale_markup_percent(sale_effect),
+            );
             Ok(MarketQuote {
                 offer_id: market_offer_id(system_id, game_day, item.id),
                 commodity: item,
@@ -758,7 +760,6 @@ pub fn negotiated_sale_price(
     game_day: u64,
     identity: &PlayerIdentity,
     cargo_lot_id: u64,
-    purchase_price_per_ton: u64,
     broker_level: i8,
     charisma: u8,
     item: CommodityDefinition,
@@ -777,7 +778,7 @@ pub fn negotiated_sale_price(
         + i16::from(strongest_modifier(&item.sale_modifiers, &codes));
     let effect = task_effect(&mut random, dm, -2)?;
     Ok(percentage(
-        purchase_price_per_ton,
+        item.base_price_per_ton,
         100 + sale_markup_percent(effect),
     ))
 }
@@ -904,6 +905,9 @@ mod tests {
         assert!(first.iter().all(|line| {
             [80, 90, 100, 120]
                 .contains(&(line.purchase_price_per_ton * 100 / line.commodity.base_price_per_ton))
+                && [100, 102, 115, 130].contains(
+                    &(line.indicative_sale_price_per_ton * 100 / line.commodity.base_price_per_ton),
+                )
                 && line.available_millitons % MILLITONS_PER_TON == 0
         }));
     }

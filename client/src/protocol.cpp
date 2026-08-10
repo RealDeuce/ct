@@ -1487,6 +1487,7 @@ MarketSnapshot decode_market(const rpc::Response::Reader response)
       .work_assignments = {},
       .leads = {},
       .events = {},
+      .cargo_sale_quotes = {},
       .committed_sequence = response.getCommittedSequence(),
       .revision = response.getRevision(),
       .phase = decode_response_phase(response.getPhase()),
@@ -1517,6 +1518,12 @@ MarketSnapshot decode_market(const rpc::Response::Reader response)
          .unique_object_id = lot.getUniqueObjectId(),
          .condition_percent = lot.getConditionPercent(),
          .destination_system_id = lot.getDestinationSystemId(),
+      });
+   }
+   for(const auto quote : source.getCargoSaleQuotes()) {
+      result.cargo_sale_quotes.push_back({
+         .cargo_lot_id = quote.getCargoLotId(),
+         .price_per_ton = quote.getPricePerTon(),
       });
    }
    for(const auto assignment : source.getWorkAssignments()) {

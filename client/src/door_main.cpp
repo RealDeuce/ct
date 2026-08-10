@@ -6589,8 +6589,6 @@ void render_market(const ct::MarketSnapshot& market)
       door_value("%s\n\r", safe_field(offer.commodity_name).c_str());
       door_label("   Buy Cr");
       door_number("%llu", static_cast<unsigned long long>(offer.purchase_price_per_ton));
-      door_label("/t  Sell Cr");
-      door_number("%llu", static_cast<unsigned long long>(offer.sale_price_per_ton));
       door_label("/t  Available ");
       print_millitons(offer.available_millitons);
       od_printf("\n\r");
@@ -6607,8 +6605,21 @@ void render_market(const ct::MarketSnapshot& market)
       door_label("  ");
       print_millitons(lot.quantity_millitons);
       door_label("  paid Cr");
-      door_number("%llu/t\n\r",
+      door_number("%llu/t",
                   static_cast<unsigned long long>(lot.purchase_price_per_ton));
+      const auto quote = std::find_if(
+                            market.cargo_sale_quotes.begin(),
+                            market.cargo_sale_quotes.end(),
+                            [&lot](const auto& candidate) {
+         return candidate.cargo_lot_id == lot.cargo_lot_id;
+      });
+      if(quote == market.cargo_sale_quotes.end()) {
+         door_information("  not for sale\n\r");
+      } else {
+         door_label("  Local bid Cr");
+         door_number("%llu/t\n\r",
+                     static_cast<unsigned long long>(quote->price_per_ton));
+      }
    }
    door_identifier("\n\rPort research\n\r");
    if(market.work_assignments.empty()) {
@@ -6936,9 +6947,14 @@ void run_cargo_exchange(
             continue;
          }
          const auto& lot = market.cargo[*choice - 1];
-         if(lot.origin_system_id == market.system_id) {
-            door_warning(
-               "That speculative lot must be carried to another system before sale.\n\r");
+         const auto quote = std::find_if(
+                               market.cargo_sale_quotes.begin(),
+                               market.cargo_sale_quotes.end(),
+                               [&lot](const auto& candidate) {
+            return candidate.cargo_lot_id == lot.cargo_lot_id;
+         });
+         if(quote == market.cargo_sale_quotes.end()) {
+            door_warning("That cargo is not available for an ordinary market sale.\n\r");
             wait_for_enter();
             continue;
          }

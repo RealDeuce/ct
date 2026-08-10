@@ -168,8 +168,10 @@ constexpr std::array<DoorHelp, static_cast<size_t>(DoorHelpTopic::Count)> HELP{{
       "The exchange distinguishes speculative cargo you own from entrusted freight that belongs to "
       "a task or other principal. Only cargo you own can normally be sold. Capacity, lot identity, "
       "local legality, market depth, brokerage, and available cash all constrain a transaction.\n\n"
-      "Market reports are dated. A quoted price can change before a remote captain arrives, and a "
-      "different port may prohibit or confiscate the same goods.\n\n"
+      "Local offers show the price to load cargo. Cargo aboard shows the exact ordinary local bid; "
+      "the public bid remains below the public ask, while a reserved private buyer is a separate "
+      "deal. Market reports are dated, and a different port may prohibit or confiscate the same "
+      "goods.\n\n"
       "Buying reserves real hold capacity and credits immediately. Review tonnes, unit price, total "
       "cost, ownership, and destination before confirming.",
    },

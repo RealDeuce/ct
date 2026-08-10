@@ -165,14 +165,17 @@ instantaneously known across systems.
 
 ### Cargo and local markets
 
-Market inventory is shared, finite, and persistent. Quotes depend on the
-captain, cargo, world, and current market state. Buying consumes credits and
-hold capacity; selling removes the selected quantity from the ship. Splitting
-or repeating a request does not create duplicate cargo or money.
+Market inventory is shared, finite, and persistent. Local offers show the
+price to load stock from the exchange. Cargo aboard shows the current local
+bid for each player-owned lot; that is the price an ordinary sale will use.
+Buying consumes credits and hold capacity, while selling removes the selected
+quantity from the ship. The ordinary bid remains below the local ask, but a
+reserved private buyer may offer more. Splitting or repeating a request does
+not create duplicate cargo or money.
 
-Speculative cargo must be carried away from its origin before it can be sold.
-Market reports are observations made at a particular place and time, not a
-promise that stock or prices will be unchanged when you arrive.
+Speculative cargo may be sold in its origin system, normally at an immediate
+loss. Market reports are observations made at a particular place and time,
+not a promise that stock or prices will be unchanged when you arrive.
 
 ### Jobs, custody, and deadlines
 

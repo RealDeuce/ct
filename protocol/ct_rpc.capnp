@@ -860,6 +860,11 @@ struct CargoLot {
   destinationSystemId @11 :UInt64;
 }
 
+struct CargoSaleQuote {
+  cargoLotId @0 :UInt64;
+  pricePerTon @1 :UInt64;
+}
+
 struct MarketSnapshot {
   marketRevision @0 :UInt64;
   systemId @1 :UInt64;
@@ -876,6 +881,7 @@ struct MarketSnapshot {
   workAssignments @12 :List(WorkAssignment);
   leads @13 :List(MarketLead);
   events @14 :List(MarketEvent);
+  cargoSaleQuotes @15 :List(CargoSaleQuote);
 }
 
 enum MarketLeadSide { supplier @0; buyer @1; }

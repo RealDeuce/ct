@@ -865,6 +865,12 @@ pub struct CargoLot {
     pub destination_system_id: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CargoSaleQuote {
+    pub cargo_lot_id: u64,
+    pub price_per_ton: u64,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MarketSnapshot {
     pub market_revision: u64,
@@ -882,6 +888,7 @@ pub struct MarketSnapshot {
     pub work_assignments: Vec<WorkAssignment>,
     pub leads: Vec<MarketLead>,
     pub events: Vec<MarketEvent>,
+    pub cargo_sale_quotes: Vec<CargoSaleQuote>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -5275,6 +5282,14 @@ fn set_market(
         item.set_unique_object_id(lot.unique_object_id);
         item.set_condition_percent(lot.condition_percent);
         item.set_destination_system_id(lot.destination_system_id);
+    }
+    let quote_count = u32::try_from(snapshot.cargo_sale_quotes.len())
+        .map_err(|_| WireError::Expected("fewer cargo sale quotes"))?;
+    let mut quotes = builder.reborrow().init_cargo_sale_quotes(quote_count);
+    for (index, quote) in snapshot.cargo_sale_quotes.iter().enumerate() {
+        let mut item = quotes.reborrow().get(index as u32);
+        item.set_cargo_lot_id(quote.cargo_lot_id);
+        item.set_price_per_ton(quote.price_per_ton);
     }
     let code_count = u32::try_from(snapshot.trade_codes.len())
         .map_err(|_| WireError::Expected("fewer trade codes"))?;
