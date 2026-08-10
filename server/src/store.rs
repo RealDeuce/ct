@@ -9500,7 +9500,7 @@ impl Store {
                     .get(txn, &encode_identity(&target.command))?
                     .map(decode_flight_plan_snapshot)
                     .transpose()?
-                    .map_or(true, |plan| plan.policy.comply_with_inspection)
+                    .is_none_or(|plan| plan.policy.comply_with_inspection)
             } else {
                 let hunter_power = catalog_combat_power(ship.catalog_id).max(1);
                 let target_power = catalog_combat_power(target.catalog_id).max(1);
@@ -9516,7 +9516,7 @@ impl Store {
                         .get(txn, &encode_identity(&target.command))?
                         .map(decode_flight_plan_snapshot)
                         .transpose()?
-                        .map_or(true, |plan| plan.policy.comply_with_inspection)
+                        .is_none_or(|plan| plan.policy.comply_with_inspection)
                 } else {
                     true
                 }
