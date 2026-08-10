@@ -6,6 +6,27 @@ use crate::simulation::{SECONDS_PER_DAY, SimulationSystem, traffic_rate_hundredt
 pub const TRAFFIC_ORDER_VERSION: u16 = 1;
 pub const CONTACT_VISIBILITY_SECONDS: u64 = 60 * 60;
 
+pub fn transponder_for_id(id: u64) -> String {
+    let public_code =
+        crate::ship_condition::mix64(id ^ 0x5452_414e_5350_4f4e) & 0x0000_ffff_ffff_ffff;
+    format!(
+        "CT-{:04X}-{:04X}-{:04X}",
+        (public_code >> 32) & 0xffff,
+        (public_code >> 16) & 0xffff,
+        public_code & 0xffff
+    )
+}
+
+pub fn registered_ship_name(id: u64, catalog_id: u32) -> String {
+    let path_id = TRAFFIC_DESIGNS
+        .iter()
+        .find(|design| design.catalog_id == catalog_id)
+        .map_or(2, |design| design.path_id);
+    let names = TRAFFIC_NAMES[usize::from(path_id.saturating_sub(1).min(8))];
+    let entropy = crate::ship_condition::mix64(id ^ u64::from(catalog_id).rotate_left(23));
+    names[entropy as usize % names.len()].to_owned()
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct TrafficDesign {
     pub catalog_id: u32,
@@ -128,7 +149,6 @@ fn day_contacts(system: &SimulationSystem, day: u64) -> Result<Vec<TrafficContac
         let contact_id = random.next_u64()?;
         let name_pool = TRAFFIC_NAMES[usize::from(design.path_id.saturating_sub(1).min(8))];
         let base_name = name_pool[random.next_u64()? as usize % name_pool.len()];
-        let suffix = contact_id % 10_000;
         let (origin_system_id, destination_system_id) = match movement {
             TrafficMovementKind::Arrival => (neighbor, system.system_id),
             TrafficMovementKind::Departure => (system.system_id, neighbor),
@@ -138,8 +158,8 @@ fn day_contacts(system: &SimulationSystem, day: u64) -> Result<Vec<TrafficContac
             contact_id,
             catalog_id: design.catalog_id,
             class_name: design.class_name.into(),
-            ship_name: format!("{base_name} {suffix:04}"),
-            transponder: format!("CT-{contact_id:016X}"),
+            ship_name: base_name.to_owned(),
+            transponder: transponder_for_id(contact_id),
             operator_name: format!(
                 "{} {} Operations",
                 system.name,
@@ -237,5 +257,17 @@ mod tests {
             snapshot(&system(9), current).unwrap(),
             snapshot(&system(9), current).unwrap()
         );
+    }
+
+    #[test]
+    fn public_ship_labels_do_not_expose_internal_ids() {
+        let id = 0x1234_5678_9abc_def0;
+        let transponder = transponder_for_id(id);
+        let name = registered_ship_name(id, 72);
+
+        assert!(transponder.starts_with("CT-"));
+        assert!(!transponder.contains("123456789ABCDEF0"));
+        assert!(!name.contains(&id.to_string()));
+        assert!(!name.is_empty());
     }
 }

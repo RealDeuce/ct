@@ -18,6 +18,7 @@ extern "C" {
 #include <array>
 #include <charconv>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdarg>
 #include <cstdint>
@@ -429,6 +430,96 @@ void door_option_prompt(
    const auto prompt =
       ct::door_option_prompt(options, output().columns(), leading_newline);
    door_prompt("%s", prompt.c_str());
+}
+
+void render_combat_countdown_prompt(const uint64_t remaining_seconds)
+{
+   if(active_prompt_on_current_line && !active_prompt.empty()) {
+      output().erase_prompt(active_prompt.size());
+      active_prompt.clear();
+      active_prompt_on_current_line = false;
+   }
+   const auto minutes = remaining_seconds / 60;
+   const auto seconds = remaining_seconds % 60;
+   door_live_prompt(
+      "Orders take effect in %02llu:%02llu  Command: ",
+      static_cast<unsigned long long>(minutes),
+      static_cast<unsigned long long>(seconds));
+}
+
+int door_get_combat_countdown_key(
+   const std::chrono::steady_clock::time_point deadline)
+{
+   std::optional<uint64_t> rendered_seconds;
+   const auto initial_phase_generation = phase_event_generation;
+   for(;;) {
+      collect_player_events();
+      flush_player_events();
+      if(phase_event_generation != initial_phase_generation) {
+         return 0;
+      }
+
+      const auto now = std::chrono::steady_clock::now();
+      const auto remaining_milliseconds = now < deadline
+         ? static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+              deadline - now).count())
+         : 0;
+      const auto remaining_seconds = (remaining_milliseconds + 999) / 1000;
+      if(rendered_seconds != remaining_seconds) {
+         render_combat_countdown_prompt(remaining_seconds);
+         rendered_seconds = remaining_seconds;
+      }
+
+      const auto until_next_tick = remaining_milliseconds == 0
+         ? uint64_t{500}
+         : std::max<uint64_t>(
+              1,
+              remaining_milliseconds - (remaining_seconds - 1) * 1000);
+      tODInputEvent event{};
+      if(!::od_get_input(
+            &event,
+            static_cast<tODMilliSec>(std::min<uint64_t>(until_next_tick, 1000)),
+            GETIN_NORMAL)) {
+         if(remaining_milliseconds == 0) {
+            return 0;
+         }
+         continue;
+      }
+      const auto key = static_cast<unsigned char>(event.chKeyPress);
+      if(key == '\n') {
+         continue;
+      }
+      output().reset_paging();
+      output().resume_paging();
+      if(key == '?') {
+         echo_prompt_key(key, true);
+         show_context_help();
+         rendered_seconds.reset();
+         continue;
+      }
+      echo_prompt_key(key, false);
+      return key;
+   }
+}
+
+std::chrono::steady_clock::time_point combat_order_deadline(
+   const ct::CombatSnapshot& combat,
+   const uint64_t current_game_second)
+{
+   const auto turn_game_seconds = combat.order_due_second > combat.round_started_second
+      ? combat.order_due_second - combat.round_started_second
+      : uint64_t{0};
+   const auto remaining_game_seconds = std::min(
+      turn_game_seconds,
+      combat.order_due_second > current_game_second
+         ? combat.order_due_second - current_game_second
+         : uint64_t{0});
+   const auto remaining_real_milliseconds = turn_game_seconds == 0
+      ? uint64_t{0}
+      : (combat.order_window_real_milliseconds * remaining_game_seconds
+         + turn_game_seconds - 1) / turn_game_seconds;
+   return std::chrono::steady_clock::now()
+          + std::chrono::milliseconds(remaining_real_milliseconds);
 }
 
 void door_error(const char* format, ...)
@@ -5952,9 +6043,7 @@ void show_system_radio(
       od_clr_scr();
       door_heading("System Common Radio\n\r");
       door_heading("===================\n\r\n\r");
-      door_label("Receiving ship: ");
-      door_identifier("CT-%016llX", static_cast<unsigned long long>(snapshot.ship_id));
-      door_label("  Unread: ");
+      door_label("Unread receptions: ");
       door_number("%zu\n\r", snapshot.entries.size());
       if(!snapshot.can_transmit) {
          door_warning("%s\n\r", safe_field(snapshot.unavailable_reason).c_str());
@@ -7950,11 +8039,14 @@ ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello&
    door_number("%.1f real seconds\n\r", combat.order_window_real_milliseconds / 1000.0);
    for(const auto& vessel : combat.participants) {
       if(vessel.commanded) {
-         door_identifier("Your command: ");
+         door_identifier("Your ship: ");
       } else {
          door_warning("Contact: ");
       }
       door_value("%s", safe_field(vessel.name).c_str());
+      if(vessel.commanded) {
+         door_success(" [YOUR SHIP]");
+      }
       if(vessel.online_controlled) {
          door_success(" [ONLINE]");
       } else if(vessel.player_owned) {
@@ -8017,7 +8109,7 @@ ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello&
       wait_for_enter();
       return combat.phase;
    }
-   door_option_prompt({
+   auto option_lines = ct::door_option_prompt({
       "[D] Conservative defaults",
       "[T] Tactical computer",
       "[E] Edit joint orders",
@@ -8029,8 +8121,21 @@ ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello&
       "[Enter] Refresh",
       "[Q] Console",
       "[?] Help",
-   });
-   const auto key = static_cast<char>(std::toupper(static_cast<unsigned char>(door_get_live_key())));
+   }, output().columns(), true);
+   if(option_lines.ends_with(": ")) {
+      option_lines.resize(option_lines.size() - 2);
+   }
+   door_write(option_lines, ct::DoorTextRole::Prompt);
+   door_write("\n\r", ct::DoorTextRole::Prompt);
+   const auto timing = ct::get_ship_status(
+      connection, hello.assigned_epoch, random_command_id(random), request_id++);
+   const auto key_value = door_get_combat_countdown_key(
+      combat_order_deadline(combat, timing.current_game_second));
+   if(key_value == 0) {
+      return combat.phase;
+   }
+   const auto key = static_cast<char>(
+      std::toupper(static_cast<unsigned char>(key_value)));
    if(key == '\r' || key == '\n') {
       return combat.phase;
    }

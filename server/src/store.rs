@@ -1735,7 +1735,10 @@ fn combat_snapshot(
         },
         player_order_submitted: submitted,
         complete: combat.complete,
-        log: log.to_vec(),
+        log: log
+            .iter()
+            .map(|line| combat_log_text_for_snapshot(combat, line))
+            .collect(),
         actors,
     }
 }
@@ -2127,23 +2130,57 @@ fn combat_person_task_dm(
         .saturating_add(condition_dm)
 }
 
-fn combat_event_text(event: &crate::combat::CombatEvent) -> String {
+fn combat_vessel_name(combat: &crate::combat::CombatState, vessel_id: u64) -> &str {
+    combat
+        .vessels
+        .iter()
+        .find(|vessel| vessel.vessel_id == vessel_id)
+        .map_or("Unknown vessel", |vessel| vessel.name.as_str())
+}
+
+fn combat_log_text_for_snapshot(combat: &crate::combat::CombatState, text: &str) -> String {
+    // Active encounters created by older servers may still contain the former
+    // "Vessel <u64>" prose. Translate those lines while presenting the snapshot
+    // so an in-progress fight becomes readable immediately after an upgrade.
+    combat.vessels.iter().fold(text.to_owned(), |line, vessel| {
+        line.replace(
+            &format!("Vessel {}", vessel.vessel_id),
+            vessel.name.as_str(),
+        )
+        .replace(
+            &format!("vessel {}", vessel.vessel_id),
+            vessel.name.as_str(),
+        )
+    })
+}
+
+fn combat_event_text(
+    combat: &crate::combat::CombatState,
+    event: &crate::combat::CombatEvent,
+) -> String {
+    let vessel = |vessel_id| combat_vessel_name(combat, vessel_id);
     match event {
         crate::combat::CombatEvent::Action {
             vessel_id,
             description,
-        } => format!("Vessel {vessel_id}: {description}."),
+        } => format!("{}: {description}.", vessel(*vessel_id)),
         crate::combat::CombatEvent::AttackMissed {
             vessel_id,
             target_id,
             mount_id,
-        } => format!("Vessel {vessel_id} mount {mount_id} misses vessel {target_id}."),
+        } => format!(
+            "{} mount {mount_id} misses {}.",
+            vessel(*vessel_id),
+            vessel(*target_id)
+        ),
         crate::combat::CombatEvent::MissileLaunched {
             vessel_id,
             target_id,
             impact_round,
         } => format!(
-            "Vessel {vessel_id} launches missiles at vessel {target_id}; predicted impact is round {impact_round}."
+            "{} launches missiles at {}; predicted impact is round {impact_round}.",
+            vessel(*vessel_id),
+            vessel(*target_id)
         ),
         crate::combat::CombatEvent::Damage {
             vessel_id,
@@ -2151,23 +2188,37 @@ fn combat_event_text(event: &crate::combat::CombatEvent) -> String {
             damage,
             hits,
         } => format!(
-            "Vessel {vessel_id} penetrates vessel {target_id} for {damage} damage and {hits} system hit(s)."
+            "{} penetrates {} for {damage} damage and {hits} system hit(s).",
+            vessel(*vessel_id),
+            vessel(*target_id)
         ),
         crate::combat::CombatEvent::Withdrawal { vessel_id } => {
-            format!("Vessel {vessel_id} breaks contact.")
+            format!("{} breaks contact.", vessel(*vessel_id))
         }
         crate::combat::CombatEvent::SurrenderOffered {
             vessel_id,
             to_vessel_id,
-        } => format!("Vessel {vessel_id} offers surrender to vessel {to_vessel_id}."),
+        } => format!(
+            "{} offers surrender to {}.",
+            vessel(*vessel_id),
+            vessel(*to_vessel_id)
+        ),
         crate::combat::CombatEvent::SurrenderAccepted {
             vessel_id,
             by_vessel_id,
-        } => format!("Vessel {by_vessel_id} accepts vessel {vessel_id}'s surrender."),
+        } => format!(
+            "{} accepts {}'s surrender.",
+            vessel(*by_vessel_id),
+            vessel(*vessel_id)
+        ),
         crate::combat::CombatEvent::BoardingStarted {
             attacker_id,
             defender_id,
-        } => format!("Vessel {attacker_id} begins boarding vessel {defender_id}."),
+        } => format!(
+            "{} begins boarding {}.",
+            vessel(*attacker_id),
+            vessel(*defender_id)
+        ),
         crate::combat::CombatEvent::BattlefieldRepair { vessel_id, targets } => {
             let targets = targets
                 .iter()
@@ -2185,16 +2236,21 @@ fn combat_event_text(event: &crate::combat::CombatEvent) -> String {
                 })
                 .collect::<Vec<String>>()
                 .join(", ");
-            format!("Vessel {vessel_id} establishes battlefield coverage on {targets}.")
+            format!(
+                "{} establishes battlefield coverage on {targets}.",
+                vessel(*vessel_id)
+            )
         }
         crate::combat::CombatEvent::InspectionCompleted {
             vessel_id,
             target_id,
         } => format!(
-            "Vessel {vessel_id} completes and seals a sensor inspection of vessel {target_id}."
+            "{} completes and seals a sensor inspection of {}.",
+            vessel(*vessel_id),
+            vessel(*target_id)
         ),
         crate::combat::CombatEvent::VesselDestroyed { vessel_id } => {
-            format!("Vessel {vessel_id} is destroyed.")
+            format!("{} is destroyed.", vessel(*vessel_id))
         }
     }
 }
@@ -7946,7 +8002,7 @@ impl Store {
                 catalog_id: candidate.catalog_id,
                 class_name: design.class_name.clone(),
                 ship_name: candidate.name,
-                transponder: format!("CT-{:016X}", candidate.ship_id),
+                transponder: crate::traffic::transponder_for_id(candidate.ship_id),
                 operator_name: format!("{} registry", registry.settings.bbs_name),
                 role: role.into(),
                 displacement_millitons: design.displacement_millitons,
@@ -8485,7 +8541,7 @@ impl Store {
                                     || "Unclassified vessel".into(),
                                     |entry| entry.class_name,
                                 ),
-                            transponder: format!("CT-{:016X}", ship.ship_id),
+                            transponder: crate::traffic::transponder_for_id(ship.ship_id),
                             role: "armed interceptor".into(),
                             range: "short".into(),
                             confidence_percent: 100,
@@ -9812,7 +9868,7 @@ impl Store {
             let resolution = crate::combat::resolve_round(&combat, &orders)
                 .map_err(|_| StoreError::Corrupt("stored combat order failed resolution"))?;
             for event in &resolution.events {
-                record.combat_log.push(combat_event_text(event));
+                record.combat_log.push(combat_event_text(&combat, event));
             }
             let ordered_target_id = record.snapshot.contact.contact_id | (1_u64 << 63);
             if resolution.events.iter().any(|event| {
@@ -10622,7 +10678,9 @@ impl Store {
         let resolution = crate::combat::resolve_round(&shared.combat, &orders)
             .map_err(|_| StoreError::Corrupt("shared combat order failed resolution"))?;
         for event in &resolution.events {
-            shared.combat_log.push(combat_event_text(event));
+            shared
+                .combat_log
+                .push(combat_event_text(&shared.combat, event));
         }
         let mut next_state = resolution.state;
         let mut waiting = Vec::new();
@@ -14941,7 +14999,7 @@ impl Store {
             system_id: ship.system_id,
             sender_ship_id: ship.ship_id,
             sender_ship_name: ship.name.clone(),
-            sender_transponder: format!("CT-{:016X}", ship.ship_id),
+            sender_transponder: crate::traffic::transponder_for_id(ship.ship_id),
             sender: identity.clone(),
             emitted_second: current,
             source_position_bits: source.map(f64::to_bits),
@@ -16886,12 +16944,7 @@ impl Store {
             name: if trade_in {
                 old_ship.name.clone()
             } else {
-                let class_name = creation::ship_market_catalog()
-                    .into_iter()
-                    .find(|entry| entry.catalog_id == offer.catalog_id)
-                    .map(|entry| entry.class_name)
-                    .ok_or(StoreError::Corrupt("ship-market class name is missing"))?;
-                format!("{} {}", class_name, ship_id)
+                crate::traffic::registered_ship_name(ship_id, offer.catalog_id)
             },
             career: old_ship.career,
             command: identity.clone(),
@@ -35851,6 +35904,48 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    #[test]
+    fn combat_log_uses_ship_names_instead_of_internal_vessel_ids() {
+        let own_id = 9_223_372_036_854_775_900;
+        let contact_id = 18_446_744_073_709_551_000;
+        let own = crate::combat::materialize_vessel(own_id, 1, "Resolute", 72, 10).unwrap();
+        let contact =
+            crate::combat::materialize_vessel(contact_id, 2, "Wayward Sun", 72, 8).unwrap();
+        let combat = crate::combat::CombatState {
+            combat_id: 1,
+            revision: 1,
+            round: 1,
+            round_started_second: 0,
+            range: crate::combat::RangeBand::Short,
+            vessels: vec![own, contact],
+            missiles: Vec::new(),
+            boarding: Vec::new(),
+            complete: false,
+        };
+        let text = combat_event_text(
+            &combat,
+            &crate::combat::CombatEvent::Damage {
+                vessel_id: own_id,
+                target_id: contact_id,
+                damage: 4,
+                hits: 1,
+            },
+        );
+
+        assert_eq!(
+            text,
+            "Resolute penetrates Wayward Sun for 4 damage and 1 system hit(s)."
+        );
+        assert!(!text.contains(&own_id.to_string()));
+        assert!(!text.contains(&contact_id.to_string()));
+
+        let legacy = format!("Vessel {own_id} offers surrender to vessel {contact_id}.");
+        assert_eq!(
+            combat_log_text_for_snapshot(&combat, &legacy),
+            "Resolute offers surrender to Wayward Sun."
+        );
+    }
 
     #[test]
     fn course_plot_outcome_encoding_preserves_clock_and_reads_version_one() {
