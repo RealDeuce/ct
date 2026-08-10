@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace ct {
 namespace {
@@ -28,6 +29,39 @@ constexpr std::array<char32_t, 128> CP437_HIGH{
    U'\u2261', U'\u00b1', U'\u2265', U'\u2264', U'\u2320', U'\u2321', U'\u00f7', U'\u2248',
    U'\u00b0', U'\u2219', U'\u00b7', U'\u221a', U'\u207f', U'\u00b2', U'\u25a0', U'\u00a0',
 };
+
+std::string option_shortcut_sort_key(const std::string_view option) {
+   // Sort on the shortcut between brackets, never on the translated label or
+   // source-code order. A localized client can therefore choose its displayed
+   // shortcuts first and get the appropriate order without English collation.
+   // Help remains the conventional final choice.
+   const auto opening = option.find('[');
+   const auto closing = opening == std::string_view::npos
+      ? std::string_view::npos
+      : option.find(']', opening + 1);
+   const auto shortcut = closing == std::string_view::npos
+      ? option
+      : option.substr(opening + 1, closing - opening - 1);
+   std::string key;
+   key.reserve(shortcut.size() + 1);
+   const auto first = shortcut.empty() ? '\0' : shortcut.front();
+   if(first >= '0' && first <= '9') {
+      key.push_back('0');
+   } else if((first >= 'A' && first <= 'Z') ||
+             (first >= 'a' && first <= 'z')) {
+      key.push_back('2');
+   } else if(first == '?') {
+      key.push_back('3');
+   } else {
+      key.push_back('1');
+   }
+   for(const auto character : shortcut) {
+      key.push_back(character >= 'a' && character <= 'z'
+         ? static_cast<char>(character - 'a' + 'A')
+         : character);
+   }
+   return key;
+}
 
 bool is_iso646_invariant(const char32_t value) {
    if((value >= U'0' && value <= U'9') ||
@@ -365,7 +399,7 @@ std::string door_plain_markdown(const std::string_view text) {
 }
 
 std::string door_option_prompt(
-   const std::initializer_list<std::string_view> options,
+   const std::span<const std::string_view> options,
    const size_t columns,
    const bool leading_newline)
 {
@@ -382,8 +416,14 @@ std::string door_option_prompt(
    if(leading_newline) {
       prompt += "\n\r";
    }
+   std::vector<std::string_view> sorted_options(options.begin(), options.end());
+   std::stable_sort(
+      sorted_options.begin(), sorted_options.end(),
+      [](const auto left, const auto right) {
+         return option_shortcut_sort_key(left) < option_shortcut_sort_key(right);
+      });
    size_t line_width = 0;
-   for(const auto option : options) {
+   for(const auto option : sorted_options) {
       if(option.empty()) {
          continue;
       }
@@ -401,6 +441,17 @@ std::string door_option_prompt(
    }
    prompt += ": ";
    return prompt;
+}
+
+std::string door_option_prompt(
+   const std::initializer_list<std::string_view> options,
+   const size_t columns,
+   const bool leading_newline)
+{
+   return door_option_prompt(
+      std::span<const std::string_view>(options.begin(), options.size()),
+      columns,
+      leading_newline);
 }
 
 DoorPresentation::DoorPresentation(const DoorProfile profile,

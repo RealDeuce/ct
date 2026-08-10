@@ -218,6 +218,11 @@ must not silently jump several menus or submit a partial proposal. Once a
 state-changing command has been submitted, show its result rather than
 pretending that local cancellation can retract it.
 
+Menu options are ordered by the shortcut actually displayed to the player,
+not by English labels or source-code order. Shortcut selection and translation
+therefore happen before layout and sorting; numbered and symbolic selectors
+precede alphabetic shortcuts, and `?` help remains last.
+
 ### Licensing boundary
 
 Keep `LICENSE.md`, `OPEN_GAME_LICENSE.md`,

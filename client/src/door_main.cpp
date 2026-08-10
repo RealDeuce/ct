@@ -432,6 +432,17 @@ void door_option_prompt(
    door_prompt("%s", prompt.c_str());
 }
 
+void door_option_prompt(
+   const std::vector<std::string_view>& options,
+   const bool leading_newline = true)
+{
+   const auto prompt = ct::door_option_prompt(
+      std::span<const std::string_view>(options),
+      output().columns(),
+      leading_newline);
+   door_prompt("%s", prompt.c_str());
+}
+
 void render_combat_countdown_prompt(const uint64_t remaining_seconds)
 {
    if(active_prompt_on_current_line && !active_prompt.empty()) {
@@ -662,8 +673,8 @@ const char* ship_activity_name(const ct::ShipActivityKind kind)
 
 bool confirm_return_to_bbs()
 {
-   door_prompt(
-      "\n\rReturn to the BBS?  [Y] Yes  [N/Enter] Stay  [?] Help: ");
+   door_prompt("\n\rReturn to the BBS?\n\r");
+   door_option_prompt({"[Y] Yes", "[N/Enter] Stay", "[?] Help"}, false);
    while(true) {
       const auto key = static_cast<char>(
          std::toupper(static_cast<unsigned char>(door_get_key(TRUE))));
@@ -791,7 +802,7 @@ void show_open_game_license()
          od_printf("%s\n\r", lines[offset].c_str());
       }
       if(offset < lines.size()) {
-         door_prompt("\n\r[Space] Next page  [Q] Return\n\r");
+         door_option_prompt({"[Space] Next page", "[Q] Return"});
          while(true) {
             const auto key = od_get_key(TRUE);
             if(key == 'q' || key == 'Q') {
@@ -832,8 +843,7 @@ bool await_startup_choice()
 {
    const HelpScope help_scope(ct::DoorHelpTopic::General);
    render_startup_notice();
-   door_prompt(
-      "[Enter] Continue  [L] License  [Q] Exit  [?] Help\n\r");
+   door_option_prompt({"[Enter] Continue", "[L] License", "[Q] Exit", "[?] Help"}, false);
    while(true) {
       const auto key = door_get_key(TRUE);
       if(key == 'q' || key == 'Q') {
@@ -842,8 +852,8 @@ bool await_startup_choice()
       if(key == 'l' || key == 'L') {
          show_open_game_license();
          render_startup_notice();
-         door_prompt(
-            "[Enter] Continue  [L] License  [Q] Exit  [?] Help\n\r");
+         door_option_prompt(
+            {"[Enter] Continue", "[L] License", "[Q] Exit", "[?] Help"}, false);
       } else if(key == '\r' || key == '\n') {
          return true;
       }
@@ -1866,7 +1876,11 @@ void render_crew_roster(
          "[0] Back",
       });
    } else {
-      door_prompt("\n\r[Letter] Inspect/rename  [Enter] Accept  [0] Back\n\r");
+      door_option_prompt({
+         "[Letter] Inspect/rename",
+         "[Enter] Accept",
+         "[0] Back",
+      });
    }
 }
 
@@ -1992,8 +2006,8 @@ bool run_player_creation(ct::TlsConnection& connection,
 {
    const HelpScope help_scope(ct::DoorHelpTopic::PlayerRegistration);
    while(true) {
-      door_prompt(
-         "\n\r  [Enter] Register captain  [Q] Return to BBS  [?] Help\n\r");
+      door_option_prompt({
+         "[Enter] Register captain", "[Q] Return to BBS", "[?] Help"});
       const auto opening = od_get_key(TRUE);
       if(opening == '\r' || opening == '\n') {
          break;
@@ -2071,8 +2085,8 @@ bool run_player_creation(ct::TlsConnection& connection,
       bool return_to_offers = false;
       while(!return_to_offers) {
          render_ship_detail(ship_options);
-         door_prompt(
-            "\n\r[Enter] Name ship  [Q] Starting offers  [?] Help\n\r");
+         door_option_prompt({
+            "[Enter] Name ship", "[Q] Starting offers", "[?] Help"});
          while(true) {
             const auto key = od_get_key(TRUE);
             if(key == 'q' || key == 'Q') {
@@ -2722,8 +2736,8 @@ void show_crew_member(
             }
             target_ship_id = *ship;
          } else if(key == 'd' || key == 'D') {
-            door_prompt(
-               "Discharge this crewmember? [D] Confirm  [Q] Keep  [?] Help: ");
+            door_prompt("Discharge this crewmember?\n\r");
+            door_option_prompt({"[D] Confirm", "[Q] Keep", "[?] Help"}, false);
             const auto confirm = od_get_key(TRUE);
             od_printf("\n\r");
             if(confirm != 'd' && confirm != 'D') {
@@ -3051,7 +3065,12 @@ void transfer_fleet_stores(
    const auto destination_index = destinations[*destination_choice - 1];
    const auto& source = fleet.ships[source_index];
    const auto& destination = fleet.ships[destination_index];
-   door_prompt("\n\r[1] Cargo  [2] Fuel  [3] Ammunition  [4] Provisions\n\r");
+   door_option_prompt({
+      "[1] Cargo",
+      "[2] Fuel",
+      "[3] Ammunition",
+      "[4] Provisions",
+   });
    const auto kind_choice = input_number("Stores", 1, 4);
    if(!kind_choice) {
       return;
@@ -3193,7 +3212,12 @@ void show_fleet_manager(
                     safe_field(ship.location).c_str(),
                     safe_field(ship.commanding_person_name).c_str());
       }
-      door_prompt("\n\r[Number] Vessel  [Enter] Refresh  [Q] Ship status  [?] Help: ");
+      door_option_prompt({
+         "[Number] Vessel",
+         "[Enter] Refresh",
+         "[Q] Ship status",
+         "[?] Help",
+      });
       std::array<char, 16> input{};
       od_input_str(input.data(), static_cast<INT>(input.size() - 1), 32, 255);
       if(input[0] == '\0') {
@@ -3250,11 +3274,16 @@ void show_fleet_manager(
          door_label(" / ");
          print_millitons(ship.cargo_capacity_millitons);
          od_printf("\n\r");
-         door_prompt("\n\r");
+         std::vector<std::string_view> options;
          if(!ship.active) {
-            door_prompt("[C] Assume command  [A] Assign captain  ");
+            options.emplace_back("[C] Assume command");
+            options.emplace_back("[A] Assign captain");
          }
-         door_prompt("[T] Transfer stores  [Enter] Refresh  [Q] Roster  [?] Help\n\r");
+         options.emplace_back("[T] Transfer stores");
+         options.emplace_back("[Enter] Refresh");
+         options.emplace_back("[Q] Roster");
+         options.emplace_back("[?] Help");
+         door_option_prompt(options);
          const auto key = od_get_key(TRUE);
          if(key == '\r' || key == '\n') {
             fleet = ct::get_fleet(
@@ -3762,7 +3791,11 @@ void show_task_offer_detail(const ct::TaskOffer& offer,
          door_warning("  - %s\n\r", safe_field(reason).c_str());
       }
    }
-   door_prompt("\n\r[Enter] Refresh  [Q] Task ledger  [?] Help\n\r");
+   door_option_prompt({
+      "[Enter] Refresh",
+      "[Q] Task ledger",
+      "[?] Help",
+   });
    const auto key = od_get_key(TRUE);
    if(key == 'q' || key == 'Q') {
       return;
@@ -4061,9 +4094,14 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
             continue;
          }
          const auto& task = ledger.tasks[*selected - 1];
-         door_prompt(
-            "[C] Cancel  [R] Return custody  [D] Declare default\n\r"
-            "[W] Withdraw pending claim  [F] File dispute  [Q] Keep task: ");
+         door_option_prompt({
+            "[C] Cancel",
+            "[R] Return custody",
+            "[D] Declare default",
+            "[W] Withdraw pending claim",
+            "[F] File dispute",
+            "[Q] Keep task",
+         }, false);
          const auto action_key = od_get_key(TRUE);
          od_printf("\n\r");
          ct::TaskActionKind action;
@@ -4216,20 +4254,27 @@ void show_finance(
       } else {
          door_success("%s\n\r", safe_field(finance.credit_status).c_str());
       }
+      std::string assistance_option;
       if(finance.destination_assistance_active) {
-         door_prompt("\n\r[C] Cancel destination assistance");
+         assistance_option = "[C] Cancel destination assistance";
       } else {
-         door_prompt(
-            "\n\r[B] Buy one year destination assistance (Cr%s)",
-            destination_assistance_premium.c_str());
+         assistance_option =
+            "[B] Buy one year destination assistance (Cr" +
+            destination_assistance_premium + ")";
       }
+      std::vector<std::string_view> options{
+         assistance_option,
+      };
       if(finance.in_default && finance.principal_credits > 0) {
-         door_prompt("  [K] Petition for bankruptcy");
+         options.emplace_back("[K] Petition for bankruptcy");
       }
       if(finance.title == ct::ShipTitleKind::InstitutionOwned && finance.restricted_credits != 0) {
-         door_prompt("  [F] Forge expense receipt");
+         options.emplace_back("[F] Forge expense receipt");
       }
-      door_prompt("  [Enter] Refresh  [Q] Console  [?] Help\n\r");
+      options.emplace_back("[Enter] Refresh");
+      options.emplace_back("[Q] Console");
+      options.emplace_back("[?] Help");
+      door_option_prompt(options);
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
          finance = ct::get_finance(
@@ -4354,7 +4399,12 @@ void run_shipyard_market(ct::TlsConnection& connection, const uint64_t epoch,
          }
          door_label("\n\r");
       }
-      door_prompt("\n\r[B] Buy with trade-in  [Enter] Refresh  [Q] Port  [?] Help\n\r");
+      door_option_prompt({
+         "[B] Buy with trade-in",
+         "[Enter] Refresh",
+         "[Q] Port",
+         "[?] Help",
+      });
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
          continue;
@@ -4535,7 +4585,12 @@ std::optional<ct::MessageActionKind> show_message_detail(const ct::MessageItem& 
    od_printf("\n\r");
    print_wrapped(item.body, "");
    if(item.offer_available && item.offer_id.has_value()) {
-      door_prompt("\n\r[A] Claim signed offer  [Enter] Refresh  [Q] Messages  [?] Help\n\r");
+      door_option_prompt({
+         "[A] Claim signed offer",
+         "[Enter] Refresh",
+         "[Q] Messages",
+         "[?] Help",
+      });
       const auto key = od_get_key(TRUE);
       if(key == 'a' || key == 'A') {
          return ct::MessageActionKind::ClaimOffer;
@@ -4548,20 +4603,24 @@ std::optional<ct::MessageActionKind> show_message_detail(const ct::MessageItem& 
    const auto action = item.action_kind;
    switch(action) {
    case ct::MessageActionKind::ReviewTask:
-      door_prompt("\n\r[T] Open task ledger  [Enter] Refresh  [Q] Messages  [?] Help\n\r");
+      door_option_prompt({
+         "[T] Open task ledger", "[Enter] Refresh", "[Q] Messages", "[?] Help"});
       break;
    case ct::MessageActionKind::ReviewFinance:
-      door_prompt("\n\r[B] Open accounts ledger  [Enter] Refresh  [Q] Messages  [?] Help\n\r");
+      door_option_prompt({
+         "[B] Open accounts ledger", "[Enter] Refresh", "[Q] Messages", "[?] Help"});
       break;
    case ct::MessageActionKind::ReviewOperations:
-      door_prompt("\n\r[O] Open operations ledger  [Enter] Refresh  [Q] Messages  [?] Help\n\r");
+      door_option_prompt({
+         "[O] Open operations ledger", "[Enter] Refresh", "[Q] Messages", "[?] Help"});
       break;
    case ct::MessageActionKind::ReviewMapping:
-      door_prompt("\n\r[K] Open carried charts  [Enter] Refresh  [Q] Messages  [?] Help\n\r");
+      door_option_prompt({
+         "[K] Open carried charts", "[Enter] Refresh", "[Q] Messages", "[?] Help"});
       break;
    case ct::MessageActionKind::ClaimOffer:
    case ct::MessageActionKind::None:
-      door_prompt("\n\r[Enter] Refresh  [Q] Messages  [?] Help\n\r");
+      door_option_prompt({"[Enter] Refresh", "[Q] Messages", "[?] Help"});
       break;
    }
    const auto key = od_get_key(TRUE);
@@ -4673,7 +4732,12 @@ void configure_message_filters(
          door_label(" at least ");
          door_value("%s\n\r", message_importance_name(filter.minimum_importance));
       }
-      door_prompt("\n\r[1-5] Change service  [Enter] Refresh  [Q] Messages  [?] Help\n\r");
+      door_option_prompt({
+         "[1-5] Change service",
+         "[Enter] Refresh",
+         "[Q] Messages",
+         "[?] Help",
+      });
       const auto selected = od_get_key(TRUE);
       if(selected == 'q' || selected == 'Q') {
          return;
@@ -4685,7 +4749,14 @@ void configure_message_filters(
       if(selected < '1' || selected > '5' || index >= snapshot.filters.size()) {
          continue;
       }
-      door_prompt("Minimum: [R]outine [N]otable [I]mportant [H]eadline [Q] Cancel: ");
+      door_label("Minimum importance\n\r");
+      door_option_prompt({
+         "[R] Routine",
+         "[N] Notable",
+         "[I] Important",
+         "[H] Headline",
+         "[Q] Cancel",
+      }, false);
       const auto key = od_get_key(TRUE);
       std::optional<ct::MessageImportance> importance;
       if(key == 'r' || key == 'R') {
@@ -4718,8 +4789,9 @@ void compose_private_message(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
-   door_prompt(
-      "Recipient: [S]ystem office  [C]aptain  [Q] Cancel  [?] Help: ");
+   door_label("Recipient\n\r");
+   door_option_prompt({
+      "[S] System office", "[C] Captain", "[Q] Cancel", "[?] Help"}, false);
    const auto kind = od_get_key(TRUE);
    od_printf("\n\r");
    if(kind == 'q' || kind == 'Q') {
@@ -5114,7 +5186,11 @@ void show_planning_system_dossier(
    door_information(
       "\n\rPort, population, technical, and gas-giant records may have "
       "changed since this chart was received.\n\r");
-   door_prompt("\n\r[Enter] Refresh  [Q] Destination list  [?] Help\n\r");
+   door_option_prompt({
+      "[Enter] Refresh",
+      "[Q] Destination list",
+      "[?] Help",
+   });
    const auto key = od_get_key(TRUE);
    if(key == 'q' || key == 'Q') {
       return;
@@ -5379,7 +5455,11 @@ void run_course_plotter(
    door_number("P");
    door_label(". ");
    door_identifier("Known primary to known primary\n\r");
-   door_prompt("\n\r[C/P] Plot type  [Enter/Q] Charts  [?] Help\n\r");
+   door_option_prompt({
+      "[C/P] Plot type",
+      "[Enter/Q] Charts",
+      "[?] Help",
+   });
    const auto mode = od_get_key(TRUE);
    if(mode == '\r' || mode == '\n' || mode == 'q' || mode == 'Q') {
       return;
@@ -5541,7 +5621,7 @@ void show_known_universe_manager(
                door_label("; confidence ");
                door_number("%u%%\n\r", report.confidence_percent);
             }
-            door_prompt("\n\r[Enter] Refresh  [Q] Charts  [?] Help\n\r");
+            door_option_prompt({"[Enter] Refresh", "[Q] Charts", "[?] Help"});
             const auto report_key = od_get_key(TRUE);
             if(report_key == 'q' || report_key == 'Q') {
                break;
@@ -5608,9 +5688,12 @@ void show_known_universe_manager(
          "may have changed since this chart was received.\n\r");
       const bool secret = system.knowledge_source ==
          ct::SystemKnowledgeSource::SecretChart;
-      door_prompt(secret
-                  ? "\n\r[S] Remove from Secret Systems  [Enter] Refresh  [Q] Return  [?] Help\n\r"
-                  : "\n\r[S] Add to Secret Systems  [Enter] Refresh  [Q] Return  [?] Help\n\r");
+      door_option_prompt({
+         secret ? "[S] Remove from Secret Systems" : "[S] Add to Secret Systems",
+         "[Enter] Refresh",
+         "[Q] Return",
+         "[?] Help",
+      });
       const auto detail_key = od_get_key(TRUE);
       if(detail_key == 'q' || detail_key == 'Q') {
          break;
@@ -5901,7 +5984,7 @@ std::optional<ct::PlayerPhase> show_combat_operations(
                   }
                }
                door_warning("An armed intercept is an irreversible act.\n\r");
-               door_prompt("[I] Confirm intercept  [Q] Cancel: ");
+               door_option_prompt({"[I] Confirm intercept", "[Q] Cancel"}, false);
                const auto confirm = static_cast<char>(std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
                od_printf("\n\r");
                if(confirm == 'I') {
@@ -5916,9 +5999,15 @@ std::optional<ct::PlayerPhase> show_combat_operations(
             if(!selected) {
                continue;
             }
-            door_prompt(
-               "[F] File claim  [A] Take advance  [C] Court sale\n\r"
-               "[K] Keep awarded vessel  [S] Sell to fence  [L] Launder registry  [Q] Cancel: ");
+            door_option_prompt({
+               "[F] File claim",
+               "[A] Take advance",
+               "[C] Court sale",
+               "[K] Keep awarded vessel",
+               "[S] Sell to fence",
+               "[L] Launder registry",
+               "[Q] Cancel",
+            }, false);
             const auto action = static_cast<char>(std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
             od_printf("\n\r");
             if(action == 'Q') {
@@ -5969,8 +6058,13 @@ std::optional<ct::PlayerPhase> show_combat_operations(
             snapshot = ct::set_pirate_cruise(connection, epoch, cruise, random_command_id(random),
                                              request_id++);
          } else if(key == 'M') {
-            door_prompt(
-               "[I] Independent  [N] Naval service  [P] Privateer  [R] Pirate  [Q] Cancel: ");
+            door_option_prompt({
+               "[I] Independent",
+               "[N] Naval service",
+               "[P] Privateer",
+               "[R] Pirate",
+               "[Q] Cancel",
+            }, false);
             const auto choice = static_cast<char>(std::toupper(
                static_cast<unsigned char>(od_get_key(TRUE))));
             od_printf("\n\r");
@@ -5989,7 +6083,7 @@ std::optional<ct::PlayerPhase> show_combat_operations(
             if(mode == ct::CombatCareerMode::Pirate && snapshot.mode == ct::CombatCareerMode::Navy) {
                door_warning(
                   "Taking an issued command outside naval authority is mutiny and ship theft.\n\r");
-               door_prompt("[R] Confirm mutiny  [Q] Cancel: ");
+               door_option_prompt({"[R] Confirm mutiny", "[Q] Cancel"}, false);
                const auto confirm = static_cast<char>(std::toupper(
                   static_cast<unsigned char>(od_get_key(TRUE))));
                od_printf("\n\r");
@@ -6206,7 +6300,7 @@ void render_command_console(const ct::ServerHello& hello)
    door_label(". ");
    door_identifier("Operations Ledger\n\r");
    door_option_prompt({
-      "[C/S/T/M/R/K/O] Manager",
+      "[C/K/M/O/R/S/T] Manager",
       "[Enter] Refresh",
       "[X] Operational view",
       "[Q] Return to BBS",
@@ -6541,9 +6635,14 @@ void run_cargo_exchange(
          if(!selected) {
             continue;
          }
-         door_prompt(
-            "Method: [P] Port canvass  [O] Data exchange  "
-            "[B] Private introduction  [H] Hired broker  [Q] Cancel: ");
+         door_label("Method\n\r");
+         door_option_prompt({
+            "[P] Port canvass",
+            "[O] Data exchange",
+            "[B] Private introduction",
+            "[H] Hired broker",
+            "[Q] Cancel",
+         }, false);
          const auto method_key = od_get_key(TRUE);
          od_printf("\n\r");
          if(method_key == 'q' || method_key == 'Q') {
@@ -6750,14 +6849,19 @@ std::optional<ct::TravelStatus> run_fuel_service(
                static_cast<unsigned long long>(services.provisions.capacity_person_days));
    door_label("Magazine lots: ");
    door_number("%zu\n\r", services.ammunition.size());
-   door_prompt("\n\r[F] Fuel source");
+   std::vector<std::string_view> options{
+      "[F] Fuel source",
+   };
    if(services.provisions_available) {
-      door_prompt("  [P] Provisions");
+      options.emplace_back("[P] Provisions");
    }
    if(services.ammunition_available) {
-      door_prompt("  [A] Ammunition");
+      options.emplace_back("[A] Ammunition");
    }
-   door_prompt("\n\r[Enter] Refresh  [Q] Docked operations  [?] Help\n\r");
+   options.emplace_back("[Enter] Refresh");
+   options.emplace_back("[Q] Docked operations");
+   options.emplace_back("[?] Help");
+   door_option_prompt(options);
    const auto key = static_cast<char>(
                        std::toupper(static_cast<unsigned char>(door_get_live_key())));
    if(key == '\r' || key == '\n') {
@@ -7023,7 +7127,11 @@ ct::FlightPlanStep coordinate_jump_step(
 
 bool configure_jump_navigation(ct::FlightPlanAction& action)
 {
-   door_prompt("[O] Plot aboard  [T] Buy fresh course tape  [Q] Cancel: ");
+   door_option_prompt({
+      "[O] Plot aboard",
+      "[T] Buy fresh course tape",
+      "[Q] Cancel",
+   }, false);
    const auto method = static_cast<char>(
                           std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
    od_printf("\n\r");
@@ -7033,9 +7141,12 @@ bool configure_jump_navigation(ct::FlightPlanAction& action)
    action.jump_navigation = method == 'T'
                             ? ct::JumpNavigationMethod::CommercialTape
                             : ct::JumpNavigationMethod::Onboard;
-   door_prompt(
-      "If the computer identifies a bad plot: [R] Replot  [P] Proceed "
-      "despite certain misjump  [Q] Cancel: ");
+   door_information("If the computer identifies a bad plot:\n\r");
+   door_option_prompt({
+      "[R] Replot",
+      "[P] Proceed despite certain misjump",
+      "[Q] Cancel",
+   }, false);
    const auto risk = static_cast<char>(
                         std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
    od_printf("\n\r");
@@ -7128,12 +7239,19 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
          door_value("%s", waypoint_authority_name(step.authority));
          door_label("]\n\r");
       }
-      door_prompt(
-         "\n\r[A] Add charted leg  [C] Import plotted course\n\r"
-         "[J] Add task destination  [G] Add frontier fuel stop\n\r"
-         "[X] Explore coordinates\n\r"
-         "[D] Delete last leg  [T] Last authority\n\r"
-         "[P] Preview and file  [Enter] Refresh  [Q] Keep existing plan  [?] Help\n\r");
+      door_option_prompt({
+         "[A] Add charted leg",
+         "[C] Import plotted course",
+         "[J] Add task destination",
+         "[G] Add frontier fuel stop",
+         "[X] Explore coordinates",
+         "[D] Delete last leg",
+         "[T] Last authority",
+         "[P] Preview and file",
+         "[Enter] Refresh",
+         "[Q] Keep existing plan",
+         "[?] Help",
+      });
       const auto key = static_cast<char>(
                           std::toupper(static_cast<unsigned char>(door_get_live_key())));
       if(key == '\r' || key == '\n') {
@@ -7180,7 +7298,11 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
             const auto plot = ct::plot_course(
                                  connection, session_epoch, destinations.current_system_id,
                                  (*selected)->system_id, true, random_command_id(random), request_id++);
-            door_prompt("[F] Fastest course  [C] Cheapest course  [Q] Cancel: ");
+            door_option_prompt({
+               "[F] Fastest course",
+               "[C] Cheapest course",
+               "[Q] Cancel",
+            }, false);
             const auto choice = static_cast<char>(
                                    std::toupper(static_cast<unsigned char>(door_get_live_key())));
             od_printf("\n\r");
@@ -7478,8 +7600,8 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
                      ct::DoorTextRole::Warning);
                }
             }
-            door_prompt(
-               "\n\r[F] File this plan  [Q/Enter] Revise  [?] Help\n\r");
+            door_option_prompt({
+               "[F] File this plan", "[Q/Enter] Revise", "[?] Help"});
             const auto confirm = static_cast<char>(
                                     std::toupper(static_cast<unsigned char>(door_get_live_key())));
             if(confirm != 'F') {
@@ -7717,8 +7839,12 @@ ct::PlayerPhase run_arrival_checkpoint(ct::TlsConnection& connection, const ct::
       door_information("The ship is holding clear of its destination until the captain takes the arrival watch.\n\r");
       door_label("Ready since: ");
       door_number("%s\n\r", game_date(latest_checkpoint->ready_second).c_str());
-      door_prompt(
-         "\n\r[A] Take arrival watch  [Enter] Refresh  [Q] Leave ship holding  [?] Help\n\r");
+      door_option_prompt({
+         "[A] Take arrival watch",
+         "[Enter] Refresh",
+         "[Q] Leave ship holding",
+         "[?] Help",
+      });
       const auto key = static_cast<char>(
          std::toupper(static_cast<unsigned char>(door_get_live_key())));
       if(key == '\r' || key == '\n') {
@@ -8147,7 +8273,13 @@ ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello&
       if(!threshold) {
          return combat.phase;
       }
-      door_prompt("Objective: [S] Survive [W] Withdraw [D] Defeat [C] Capture: ");
+      door_label("Objective\n\r");
+      door_option_prompt({
+         "[S] Survive",
+         "[W] Withdraw",
+         "[D] Defeat",
+         "[C] Capture",
+      }, false);
       const auto objective_key = static_cast<char>(std::toupper(static_cast<unsigned char>
          (door_get_live_key())));
       od_printf("\n\r");
@@ -8390,9 +8522,11 @@ void run_operational_loop(ct::TlsConnection& connection, ct::ServerHello& hello)
          door_information(
             "A surviving captain remains the same person through rescue, custody, or parole. "
             "Only a recorded death opens the estate to a successor.\n\r");
-         door_prompt(
-            "\n\r[R] Review recovery or succession  [Enter] Refresh  "
-            "[Q] Leave game: ");
+         door_option_prompt({
+            "[R] Review recovery or succession",
+            "[Enter] Refresh",
+            "[Q] Leave game",
+         });
          const auto action = static_cast<char>(std::toupper(
             static_cast<unsigned char>(od_get_key(TRUE))));
          if(action == 'Q') {
@@ -8527,23 +8661,22 @@ int main(int argc, char** argv)
       render_error(error);
       result = 1;
       if(presentation) {
-         door_prompt(
-            "\n\r  [L] License and copyright notices  [Q] Return to BBS\n\r");
+         door_option_prompt({
+            "[L] License and copyright notices", "[Q] Return to BBS"});
          while(true) {
             const auto key = od_get_key(TRUE);
             if(key == 'l' || key == 'L') {
                show_open_game_license();
                render_error(error);
-               door_prompt(
-                  "\n\r  [L] License and copyright notices  [Q] Return to BBS\n\r");
+               door_option_prompt({
+                  "[L] License and copyright notices", "[Q] Return to BBS"});
             } else if((key == 'q' || key == 'Q') &&
                       confirm_return_to_bbs()) {
                break;
             } else if(key == 'q' || key == 'Q') {
                render_error(error);
-               door_prompt(
-                  "\n\r  [L] License and copyright notices  "
-                  "[Q] Return to BBS\n\r");
+               door_option_prompt({
+                  "[L] License and copyright notices", "[Q] Return to BBS"});
             }
          }
       }

@@ -454,8 +454,8 @@ int main() {
          80);
    check(
       wide_options ==
-      "\n\r[Letter] Docked service  [U] Universal managers  [L] License  "
-      "[Enter] Refresh\n\r[Q] Return to BBS  [?] Help: ");
+      "\n\r[Enter] Refresh  [L] License  [Letter] Docked service  "
+      "[Q] Return to BBS\n\r[U] Universal managers  [?] Help: ");
    check(maximum_visible_width(wide_options) < 80);
    check(
       ct::door_option_prompt(
@@ -466,8 +466,17 @@ int main() {
           "[Q] Return to BBS",
           "[?] Help"},
          40) ==
-      "\n\r[Letter] Docked service\n\r"
-      "[U] Universal managers  [L] License\n\r"
-      "[Enter] Refresh  [Q] Return to BBS\n\r"
-      "[?] Help: ");
+      "\n\r[Enter] Refresh  [L] License\n\r"
+      "[Letter] Docked service\n\r"
+      "[Q] Return to BBS\n\r"
+      "[U] Universal managers  [?] Help: ");
+   check(
+      ct::door_option_prompt(
+         {"[Z] Alpha label", "[A] Zulu label", "[?] Hilfe"}, 80) ==
+      "\n\r[A] Zulu label  [Z] Alpha label  [?] Hilfe: ");
+   check(
+      ct::door_option_prompt(
+         {"[Q] Quit", "[B] Beta", "[?] Help", "[2] Two", "[< >] Page", "[A] Alpha"},
+         80) ==
+      "\n\r[2] Two  [< >] Page  [A] Alpha  [B] Beta  [Q] Quit  [?] Help: ");
 }

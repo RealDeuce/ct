@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <functional>
 #include <initializer_list>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -40,6 +41,10 @@ bool door_profile_uses_ansi(DoorProfile profile) noexcept;
 bool door_profile_uses_cp437(DoorProfile profile) noexcept;
 std::string door_single_line_field(std::string_view text);
 std::string door_plain_markdown(std::string_view text);
+std::string door_option_prompt(
+   std::span<const std::string_view> options,
+   size_t columns,
+   bool leading_newline = true);
 std::string door_option_prompt(
    std::initializer_list<std::string_view> options,
    size_t columns,
