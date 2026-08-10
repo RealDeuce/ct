@@ -96,6 +96,21 @@ uint64_t displayed_phase_event_generation = 0;
 std::string active_prompt;
 bool active_prompt_on_current_line = false;
 ct::DoorHelpTopic active_help_topic = ct::DoorHelpTopic::General;
+ct::HelpLevel default_help_level = ct::HelpLevel::Beginner;
+std::optional<ct::HelpLevel> active_help_level;
+std::string local_identity_registry_path;
+uint32_t local_identity_bbs_id = 0;
+uint32_t local_identity_player_id = 0;
+bool local_orientation_shown = false;
+
+enum class HelpPageCommand {
+   None,
+   Beginner,
+   Expert,
+   Quit,
+};
+
+HelpPageCommand help_page_command = HelpPageCommand::None;
 
 class HelpScope {
 public:
@@ -126,6 +141,8 @@ const char* phase_name(ct::PlayerPhase phase);
 void wait_for_enter(const char* destination = "Previous menu");
 bool confirm_return_to_bbs();
 void show_context_help();
+void show_help_browser(ct::HelpLevel& level);
+void show_player_preferences();
 int door_get_key(BOOL wait);
 
 ct::DoorPresentation& output()
@@ -925,20 +942,38 @@ void initialize_presentation(const ct::BbsConfig& config)
       od_disp_emu(terminated.c_str(), TRUE);
    });
    presentation->configure_paging(1, [] {
-      constexpr std::string_view prompt =
+      constexpr std::string_view normal_prompt =
          "[Enter/Space] Continue  [C] Continuous";
+      constexpr std::string_view help_prompt =
+         "[Enter/Sp] [B]eg [C]ont [Q]uit [X]pert";
+      const auto prompt = active_help_level ? help_prompt : normal_prompt;
       output().write(prompt, ct::DoorTextRole::Prompt);
       while(true) {
-         const auto key = od_get_key(TRUE);
+         const auto key = ::od_get_key(TRUE);
          if(key == '\r' || key == '\n' || key == ' ') {
-            break;
+            output().erase_prompt(prompt.size());
+            return ct::DoorPresentation::PagePauseAction::Continue;
          }
          if(key == 'c' || key == 'C') {
-            output().suppress_paging_until_input();
-            break;
+            output().erase_prompt(prompt.size());
+            return ct::DoorPresentation::PagePauseAction::Continuous;
+         }
+         if(active_help_level && (key == 'b' || key == 'B')) {
+            help_page_command = HelpPageCommand::Beginner;
+            output().erase_prompt(prompt.size());
+            return ct::DoorPresentation::PagePauseAction::Abort;
+         }
+         if(active_help_level && (key == 'x' || key == 'X')) {
+            help_page_command = HelpPageCommand::Expert;
+            output().erase_prompt(prompt.size());
+            return ct::DoorPresentation::PagePauseAction::Abort;
+         }
+         if(active_help_level && (key == 'q' || key == 'Q')) {
+            help_page_command = HelpPageCommand::Quit;
+            output().erase_prompt(prompt.size());
+            return ct::DoorPresentation::PagePauseAction::Abort;
          }
       }
-      output().erase_prompt(prompt.size());
    });
 }
 
@@ -1116,31 +1151,302 @@ void print_wrapped_field(
    door_write("\n\r", role);
 }
 
-void show_context_help()
+enum class HelpTopicResult {
+   Resume,
+   Browse,
+   Quit,
+};
+
+bool apply_help_page_command(ct::HelpLevel& level)
 {
-   const auto saved_prompt = active_prompt;
-   const auto saved_prompt_on_current_line = active_prompt_on_current_line;
-   const auto& help = ct::door_help(active_help_topic);
-   active_prompt.clear();
-   active_prompt_on_current_line = false;
+   if(help_page_command == HelpPageCommand::Beginner) {
+      level = ct::HelpLevel::Beginner;
+   } else if(help_page_command == HelpPageCommand::Expert) {
+      level = ct::HelpLevel::Expert;
+   } else if(help_page_command == HelpPageCommand::Quit) {
+      return false;
+   }
+   help_page_command = HelpPageCommand::None;
+   output().reset_paging();
    output().resume_paging();
-   door_write("\n\r\n\r", ct::DoorTextRole::Normal);
-   door_heading("Help - %s\n\r", safe_field(help.title).c_str());
-   door_heading("%s\n\r\n\r", std::string(help.title.size() + 7, '=').c_str());
-   door_write(help.body, ct::DoorTextRole::Information);
-   door_write("\n\r", ct::DoorTextRole::Information);
-   active_prompt.clear();
-   active_prompt_on_current_line = false;
-   door_prompt("\n\r[Enter] Resume\n\r");
+   return true;
+}
+
+HelpTopicResult show_help_topic(const ct::DoorHelpTopic topic,
+                                ct::HelpLevel& level,
+                                const bool from_browser)
+{
    while(true) {
-      const auto key = ::od_get_key(TRUE);
-      if(key == '\r' || key == '\n') {
-         output().reset_paging();
-         output().resume_paging();
-         echo_prompt_key(key, false);
-         break;
+      active_help_level = level;
+      help_page_command = HelpPageCommand::None;
+      output().reset_paging();
+      output().resume_paging();
+      const auto& help = ct::door_help(topic);
+      const auto mode = level == ct::HelpLevel::Beginner ? "Beginner" : "Expert";
+      if(!output().write("\n\r\n\r", ct::DoorTextRole::Normal) ||
+         !output().write(
+            "Help - " + safe_field(help.title) + " (" + mode + ")\n\r",
+            ct::DoorTextRole::Heading) ||
+         !output().write(
+            std::string(
+               std::min(output().content_columns(),
+                        help.title.size() + std::strlen(mode) + 9),
+               '=') + "\n\r\n\r",
+            ct::DoorTextRole::Heading) ||
+         !output().write(ct::door_help_body(help, level), ct::DoorTextRole::Information) ||
+         !output().write("\n\r", ct::DoorTextRole::Information)) {
+         if(!apply_help_page_command(level)) {
+            return HelpTopicResult::Quit;
+         }
+         continue;
+      }
+
+      output().suspend_paging();
+      active_prompt.clear();
+      active_prompt_on_current_line = false;
+      if(from_browser) {
+         door_option_prompt({
+            "[B] Beginner", "[Enter] Topics", "[X] Expert"});
+      } else {
+         door_option_prompt({
+            "[B] Beginner", "[H] Help browser", "[Enter] Resume", "[X] Expert"});
+      }
+      while(true) {
+         const auto key = ::od_get_key(TRUE);
+         if(key == 'b' || key == 'B') {
+            echo_prompt_key(key, false);
+            level = ct::HelpLevel::Beginner;
+            break;
+         }
+         if(key == 'x' || key == 'X') {
+            echo_prompt_key(key, false);
+            level = ct::HelpLevel::Expert;
+            break;
+         }
+         if(!from_browser && (key == 'h' || key == 'H')) {
+            echo_prompt_key(key, false);
+            return HelpTopicResult::Browse;
+         }
+         if(key == '\r' || key == '\n') {
+            echo_prompt_key(key, false);
+            return HelpTopicResult::Resume;
+         }
       }
    }
+}
+
+std::optional<unsigned> read_help_browser_number(const char* label,
+                                                 const unsigned maximum,
+                                                 const bool allow_default)
+{
+   while(true) {
+      if(allow_default) {
+         door_prompt("%s No. (D default, Q back): ", label);
+      } else {
+         door_prompt("%s No. (Q back): ", label);
+      }
+      std::array<char, 16> input{};
+      ::od_input_str(input.data(), static_cast<INT>(input.size() - 1), 32, 127);
+      output().reset_after_external_input();
+      output().resume_paging();
+      active_prompt.clear();
+      active_prompt_on_current_line = false;
+      if((input[0] == 'q' || input[0] == 'Q') && input[1] == '\0') {
+         return std::nullopt;
+      }
+      if(allow_default && (input[0] == 'd' || input[0] == 'D') && input[1] == '\0') {
+         return maximum + 1;
+      }
+      unsigned value = 0;
+      const auto length = std::strlen(input.data());
+      const auto [end, error] =
+         std::from_chars(input.data(), input.data() + length, value);
+      if(error == std::errc() && end == input.data() + length &&
+         value >= 1 && value <= maximum) {
+         return value;
+      }
+      door_error("Enter a displayed number or Q.\n\r");
+   }
+}
+
+void persist_help_level(const ct::HelpLevel level)
+{
+   try {
+      ct::set_player_help_level(
+         local_identity_registry_path,
+         local_identity_bbs_id,
+         local_identity_player_id,
+         level);
+      default_help_level = level;
+      door_success("Default help is now %s.\n\r",
+                   level == ct::HelpLevel::Beginner ? "Beginner" : "Expert");
+   } catch(const std::exception& error) {
+      door_error("The help preference could not be saved: %s\n\r",
+                 safe_field(error.what()).c_str());
+   }
+}
+
+void edit_help_level(ct::HelpLevel* visit_level)
+{
+   output().suspend_paging();
+   door_heading("\n\rDefault Help Level\n\r");
+   door_heading("==================\n\r\n\r");
+   door_label("Current default: ");
+   door_identifier("%s\n\r",
+      default_help_level == ct::HelpLevel::Beginner ? "Beginner" : "Expert");
+   door_information(
+      "Beginner help introduces the game concepts behind a screen. Expert help "
+      "is a shorter operational reference.\n\r");
+   door_option_prompt({
+      "[B] Beginner", "[Q/Enter] Keep", "[X] Expert", "[?] Help"});
+   while(true) {
+      const auto key = ::od_get_key(TRUE);
+      if(key == 'b' || key == 'B') {
+         echo_prompt_key(key, false);
+         persist_help_level(ct::HelpLevel::Beginner);
+         if(visit_level != nullptr) {
+            *visit_level = default_help_level;
+         }
+         return;
+      }
+      if(key == 'x' || key == 'X') {
+         echo_prompt_key(key, false);
+         persist_help_level(ct::HelpLevel::Expert);
+         if(visit_level != nullptr) {
+            *visit_level = default_help_level;
+         }
+         return;
+      }
+      if(key == '?') {
+         echo_prompt_key(key, true);
+         const HelpScope help_scope(ct::DoorHelpTopic::PlayerPreferences);
+         show_context_help();
+         continue;
+      }
+      if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
+         echo_prompt_key(key, false);
+         return;
+      }
+   }
+}
+
+bool render_help_browser_list(const std::string_view title,
+                              const std::vector<std::string>& entries,
+                              ct::HelpLevel& level,
+                              const std::string_view extra = {})
+{
+   active_help_level = level;
+   help_page_command = HelpPageCommand::None;
+   output().reset_paging();
+   output().resume_paging();
+   if(!output().write("\n\rHelp Browser - " + std::string(title) + "\n\r",
+                      ct::DoorTextRole::Heading) ||
+      !output().write(
+         std::string(std::min(output().content_columns(), title.size() + 15), '=') +
+            "\n\r\n\r",
+                      ct::DoorTextRole::Heading)) {
+      static_cast<void>(apply_help_page_command(level));
+      return false;
+   }
+   if(!extra.empty() &&
+      !output().write(std::string(extra) + "\n\r\n\r", ct::DoorTextRole::Information)) {
+      static_cast<void>(apply_help_page_command(level));
+      return false;
+   }
+   for(size_t index = 0; index < entries.size(); ++index) {
+      if(!output().write(std::to_string(index + 1), ct::DoorTextRole::Number) ||
+         !output().write(". " + entries[index] + "\n\r", ct::DoorTextRole::Identifier)) {
+         static_cast<void>(apply_help_page_command(level));
+         return false;
+      }
+   }
+   output().suspend_paging();
+   return true;
+}
+
+void show_help_browser(ct::HelpLevel& level)
+{
+   while(true) {
+      std::vector<std::string> categories;
+      for(size_t index = 0; index < static_cast<size_t>(ct::DoorHelpCategory::Count); ++index) {
+         categories.emplace_back(ct::door_help_category_name(
+            static_cast<ct::DoorHelpCategory>(index)));
+      }
+      const auto summary = std::string("Viewing: ") +
+         (level == ct::HelpLevel::Beginner ? "Beginner" : "Expert") +
+         "   Default: " +
+         (default_help_level == ct::HelpLevel::Beginner ? "Beginner" : "Expert");
+      if(!render_help_browser_list("Root", categories, level, summary)) {
+         if(help_page_command == HelpPageCommand::Quit) {
+            return;
+         }
+         continue;
+      }
+      const auto category_number = read_help_browser_number(
+         "Category", static_cast<unsigned>(categories.size()), true);
+      if(!category_number) {
+         return;
+      }
+      if(*category_number == categories.size() + 1) {
+         edit_help_level(&level);
+         continue;
+      }
+      const auto category = static_cast<ct::DoorHelpCategory>(*category_number - 1);
+      while(true) {
+         std::vector<std::string> groups;
+         for(const auto& help : ct::all_door_help()) {
+            if(help.category == category &&
+               std::find(groups.begin(), groups.end(), help.group) == groups.end()) {
+               groups.emplace_back(help.group);
+            }
+         }
+         if(!render_help_browser_list(
+               ct::door_help_category_name(category), groups, level)) {
+            if(help_page_command == HelpPageCommand::Quit) {
+               return;
+            }
+            continue;
+         }
+         const auto group_number = read_help_browser_number(
+            "Branch", static_cast<unsigned>(groups.size()), false);
+         if(!group_number) {
+            break;
+         }
+         const auto& selected_group = groups[*group_number - 1];
+         while(true) {
+            std::vector<ct::DoorHelpTopic> topics;
+            std::vector<std::string> titles;
+            const auto all = ct::all_door_help();
+            for(size_t index = 0; index < all.size(); ++index) {
+               if(all[index].category == category && all[index].group == selected_group) {
+                  topics.push_back(static_cast<ct::DoorHelpTopic>(index));
+                  titles.emplace_back(all[index].title);
+               }
+            }
+            if(!render_help_browser_list(selected_group, titles, level)) {
+               if(help_page_command == HelpPageCommand::Quit) {
+                  return;
+               }
+               continue;
+            }
+            const auto topic_number = read_help_browser_number(
+               "Topic", static_cast<unsigned>(topics.size()), false);
+            if(!topic_number) {
+               break;
+            }
+            if(show_help_topic(topics[*topic_number - 1], level, true) ==
+               HelpTopicResult::Quit) {
+               return;
+            }
+         }
+      }
+   }
+}
+
+void restore_help_caller_prompt(const std::string& saved_prompt,
+                                const bool saved_prompt_on_current_line)
+{
+   active_help_level.reset();
    active_prompt.clear();
    active_prompt_on_current_line = false;
    active_prompt = saved_prompt;
@@ -1149,6 +1455,64 @@ void show_context_help()
       active_prompt_on_current_line = saved_prompt_on_current_line;
    }
    output().suspend_paging();
+}
+
+void show_context_help()
+{
+   const auto saved_prompt = active_prompt;
+   const auto saved_prompt_on_current_line = active_prompt_on_current_line;
+   active_prompt.clear();
+   active_prompt_on_current_line = false;
+   auto level = default_help_level;
+   const auto result = show_help_topic(active_help_topic, level, false);
+   if(result == HelpTopicResult::Browse) {
+      show_help_browser(level);
+   }
+   restore_help_caller_prompt(saved_prompt, saved_prompt_on_current_line);
+}
+
+void show_help_browser_direct()
+{
+   const auto saved_prompt = active_prompt;
+   const auto saved_prompt_on_current_line = active_prompt_on_current_line;
+   active_prompt.clear();
+   active_prompt_on_current_line = false;
+   auto level = default_help_level;
+   active_help_level = level;
+   show_help_browser(level);
+   restore_help_caller_prompt(saved_prompt, saved_prompt_on_current_line);
+}
+
+void show_player_preferences()
+{
+   const HelpScope help_scope(ct::DoorHelpTopic::PlayerPreferences);
+   edit_help_level(nullptr);
+}
+
+void show_new_player_orientation()
+{
+   if(local_orientation_shown) {
+      return;
+   }
+   try {
+      ct::mark_player_orientation_shown(
+         local_identity_registry_path,
+         local_identity_bbs_id,
+         local_identity_player_id);
+      local_orientation_shown = true;
+   } catch(const std::exception& error) {
+      door_error("The orientation marker could not be saved: %s\n\r",
+                 safe_field(error.what()).c_str());
+   }
+   auto level = default_help_level;
+   active_help_level = level;
+   if(show_help_topic(ct::DoorHelpTopic::Orientation, level, false) ==
+      HelpTopicResult::Browse) {
+      show_help_browser(level);
+   }
+   active_help_level.reset();
+   output().reset_paging();
+   output().resume_paging();
 }
 
 int door_get_key(const BOOL wait)
@@ -1517,6 +1881,7 @@ void edit_training_target(
    ct::PersonDraft& person,
    const std::vector<ct::SkillDefinition>& definitions)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::SkillsTraining);
    std::vector<const ct::SkillRating*> trainable;
    for(const auto& rating : person.skills) {
       if(rating.skill != ct::SkillId::JackOfAllTrades) {
@@ -1552,6 +1917,7 @@ void edit_training_target(
 void edit_skill_slots(ct::PersonDraft& person,
                       const std::vector<ct::SkillDefinition>& definitions)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::SkillsTraining);
    const auto original_skills = person.skills;
    std::vector<int8_t> levels;
    levels.reserve(person.skills.size());
@@ -1890,7 +2256,7 @@ void edit_crew_member(
    const std::vector<ct::SkillDefinition>& definitions,
    const char menu_key)
 {
-   const HelpScope help_scope(ct::DoorHelpTopic::Crew);
+   const HelpScope help_scope(ct::DoorHelpTopic::StartingCrew);
    const auto naming =
       ct::describe_crew_naming(slot.role_kind, slot.role, slot.represented_positions);
    while(true) {
@@ -1939,7 +2305,7 @@ std::optional<std::vector<ct::InitialCrewDraft>> edit_crew_roster(
    const std::vector<ct::SkillDefinition>& definitions,
    std::vector<ct::InitialCrewDraft> drafts = {})
 {
-   const HelpScope help_scope(ct::DoorHelpTopic::Crew);
+   const HelpScope help_scope(ct::DoorHelpTopic::StartingCrew);
    if(plan.slots.size() > 26) {
       throw std::runtime_error(
          "server returned more than 26 named starting crew roles");
@@ -2052,6 +2418,7 @@ bool run_player_creation(ct::TlsConnection& connection,
       throw std::runtime_error("server returned inconsistent starting offers");
    }
    while(true) {
+      active_help_topic = ct::DoorHelpTopic::StartingShip;
       render_offer_comparison(offers);
       const auto selection = input_number("Choose offer", 1, 3);
       if(!selection) {
@@ -2084,6 +2451,7 @@ bool run_player_creation(ct::TlsConnection& connection,
       std::vector<uint32_t> refit_option_ids;
       bool return_to_offers = false;
       while(!return_to_offers) {
+         active_help_topic = ct::DoorHelpTopic::StartingFit;
          render_ship_detail(ship_options);
          door_option_prompt({
             "[Enter] Name ship", "[Q] Starting offers", "[?] Help"});
@@ -2146,6 +2514,8 @@ bool run_player_creation(ct::TlsConnection& connection,
                .refit_option_ids = refit_option_ids,
             };
             od_clr_scr();
+            const HelpScope confirmation_help(
+               ct::DoorHelpTopic::RegistrationConfirmation);
             door_heading("Confirm New Command\n\r");
             door_heading("===================\n\r\n\r");
             door_label("Captain: ");
@@ -2559,6 +2929,7 @@ void show_crew_member(
    ct::CrewManagementSnapshot& snapshot,
    size_t index)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::CrewMember);
    const std::vector<ct::SkillDefinition> definitions;
    while(true) {
       const auto& member = snapshot.members[index];
@@ -2846,7 +3217,7 @@ void show_ship_subsystem(
    ct::ShipStatusSnapshot& snapshot,
    const uint16_t subsystem_id)
 {
-   const HelpScope help_scope(ct::DoorHelpTopic::Ship);
+   const HelpScope help_scope(ct::DoorHelpTopic::ShipSubsystems);
    while(true) {
       const auto found = std::find_if(
          snapshot.subsystems.begin(), snapshot.subsystems.end(),
@@ -2922,7 +3293,7 @@ void show_ship_subsystems(
    uint64_t& request_id,
    ct::ShipStatusSnapshot& snapshot)
 {
-   const HelpScope help_scope(ct::DoorHelpTopic::Ship);
+   const HelpScope help_scope(ct::DoorHelpTopic::ShipSubsystems);
    const size_t reserved_rows = 7;
    const size_t available_rows =
       output().rows() > reserved_rows ? output().rows() - reserved_rows : 1;
@@ -3181,7 +3552,7 @@ void show_fleet_manager(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
-   const HelpScope help_scope(ct::DoorHelpTopic::Ship);
+   const HelpScope help_scope(ct::DoorHelpTopic::Fleet);
    auto fleet = ct::get_fleet(
                    connection,
                    session_epoch,
@@ -3733,7 +4104,7 @@ void show_task_offer_detail(const ct::TaskOffer& offer,
                             const PickupSlack& slack,
                             const std::vector<std::string>& unavailable_reasons)
 {
-   const HelpScope help_scope(ct::DoorHelpTopic::Tasks);
+   const HelpScope help_scope(ct::DoorHelpTopic::TaskOffer);
    while(true) {
    od_clr_scr();
    door_heading("Signed Offer Instrument\n\r=======================\n\r\n\r");
@@ -4557,7 +4928,7 @@ void show_known_universe_manager(
 
 std::optional<ct::MessageActionKind> show_message_detail(const ct::MessageItem& item)
 {
-   const HelpScope help_scope(ct::DoorHelpTopic::Messages);
+   const HelpScope help_scope(ct::DoorHelpTopic::MessageDetail);
    while(true) {
    od_clr_scr();
    door_heading("Communications Record\n\r");
@@ -4966,7 +5337,7 @@ void show_arrival_packet(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
-   const HelpScope help_scope(ct::DoorHelpTopic::Arrival);
+   const HelpScope help_scope(ct::DoorHelpTopic::ArrivalPacket);
    const auto packet = ct::open_arrival_packet(
                           connection,
                           session_epoch,
@@ -5146,6 +5517,7 @@ void show_planning_system_dossier(
    const ct::KnownSystemSummary& system,
    const double distance_parsecs)
 {
+   const HelpScope help_scope(ct::DoorHelpTopic::SystemDossier);
    while(true) {
    od_clr_scr();
    door_heading("System Dossier - ");
@@ -5445,7 +5817,7 @@ void run_course_plotter(
    uint64_t& request_id,
    const ct::KnownDestinations& snapshot)
 {
-   const HelpScope help_scope(ct::DoorHelpTopic::FlightPlan);
+   const HelpScope help_scope(ct::DoorHelpTopic::CoursePlotter);
    od_clr_scr();
    door_heading("Navigation Course Plotter\n\r");
    door_heading("=========================\n\r\n\r");
@@ -5764,7 +6136,7 @@ std::optional<ct::PlayerPhase> show_combat_operations(
    ct::TlsConnection& connection, const uint64_t epoch,
    ct::CommandIdGenerator& random, uint64_t& request_id)
 {
-   const HelpScope help_scope(ct::DoorHelpTopic::Operations);
+   const HelpScope help_scope(ct::DoorHelpTopic::LocalContacts);
    auto snapshot = ct::get_combat_career(connection, epoch, random_command_id(random), request_id++);
    auto charts = ct::get_known_destinations(
       connection, epoch, random_command_id(random), request_id++);
@@ -6040,6 +6412,7 @@ std::optional<ct::PlayerPhase> show_combat_operations(
                   request_id++);
             }
          } else if(key == 'I' && !snapshot.local_contacts.empty()) {
+            const HelpScope intercept_help(ct::DoorHelpTopic::Pickets);
             const auto selected = input_number("Contact", 1,
                                                static_cast<unsigned>(snapshot.local_contacts.size()));
             if(selected) {
@@ -6120,6 +6493,7 @@ std::optional<ct::PlayerPhase> show_combat_operations(
                }
             }
          } else if(key == 'S') {
+            const HelpScope picket_help(ct::DoorHelpTopic::Pickets);
             std::vector<const ct::TrafficContact*> classes;
             const auto add_class = [&classes](const ct::TrafficContact& contact) {
                if(contact.catalog_id != 0 && std::none_of(
@@ -6223,6 +6597,7 @@ std::optional<ct::PlayerPhase> show_combat_operations(
                                                 snapshot.known_warrants.end(), [](const auto& warrant) {
                return warrant.custody == ct::BountyCustodyState::HeldAboard;
             }))) {
+            const HelpScope warrant_help(ct::DoorHelpTopic::Warrants);
             std::vector<uint64_t> court_entries;
             for(const auto& warrant : snapshot.warrants) {
                court_entries.push_back(warrant.warrant_id);
@@ -6549,6 +6924,9 @@ void render_command_console(const ct::ServerHello& hello)
    door_number("C");
    door_label(". ");
    door_identifier("Crew Management\n\r");
+   door_number("H");
+   door_label(". ");
+   door_identifier("Help Browser\n\r");
    door_number("K");
    door_label(". ");
    door_identifier("Known Universe\n\r");
@@ -6558,6 +6936,9 @@ void render_command_console(const ct::ServerHello& hello)
    door_number("O");
    door_label(". ");
    door_identifier("Operations Ledger\n\r");
+   door_number("P");
+   door_label(". ");
+   door_identifier("Player Preferences\n\r");
    door_number("R");
    door_label(". ");
    door_identifier("System Common Radio\n\r");
@@ -6570,6 +6951,8 @@ void render_command_console(const ct::ServerHello& hello)
    door_option_prompt({
       "[A] Abandon captain",
       "[C/K/M/O/R/S/T] Manager",
+      "[H] Help browser",
+      "[P] Preferences",
       "[Enter] Refresh",
       "[X] Operational view",
       "[Q] Return to BBS",
@@ -6597,6 +6980,12 @@ bool run_command_console(
             hello.assigned_epoch,
             random,
             request_id);
+         render_command_console(hello);
+      } else if(key == 'h' || key == 'H') {
+         show_help_browser_direct();
+         render_command_console(hello);
+      } else if(key == 'p' || key == 'P') {
+         show_player_preferences();
          render_command_console(hello);
       } else if(key == 'a' || key == 'A') {
          if(abandon_captain(connection, hello, random, request_id)) {
@@ -7862,6 +8251,7 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
                      ? ct::WaypointAuthority::Through
                      : ct::WaypointAuthority::Hold;
       } else if(key == 'P') {
+         const HelpScope preview_help(ct::DoorHelpTopic::FlightPlanPreview);
          if(proposal.steps.empty()) {
             door_warning("A filed plan must contain at least one waypoint.\n\r");
             wait_for_enter();
@@ -8919,11 +9309,17 @@ int main(int argc, char** argv)
          od_control.user_num == 0
             ? std::nullopt
             : std::optional<uint32_t>(od_control.user_num);
-      const auto player_id = ct::resolve_player_identity(
+      const auto local_identity = ct::resolve_player_identity(
          config.identity_registry_path,
          credential.bbs_id,
          account_name,
          record_index);
+      const auto player_id = local_identity.player_id;
+      local_identity_registry_path = config.identity_registry_path;
+      local_identity_bbs_id = credential.bbs_id;
+      local_identity_player_id = player_id;
+      default_help_level = local_identity.help_level;
+      local_orientation_shown = local_identity.orientation_shown;
       ct::TlsConnection connection(
          config.server,
          config.game_port,
@@ -8946,6 +9342,7 @@ int main(int argc, char** argv)
       while(!session_finished) {
          try {
             if(hello.phase == ct::PlayerPhase::NewUser) {
+               show_new_player_orientation();
                if(run_player_creation(connection, hello)) {
                   hello.phase = ct::PlayerPhase::Docked;
                   run_operational_loop(connection, hello);

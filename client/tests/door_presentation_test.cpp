@@ -138,17 +138,21 @@ int main() {
          static_cast<size_t>(ct::DoorHelpTopic::Count));
    for(const auto& help : help_topics) {
       check(!help.title.empty());
-      check(!help.body.empty());
-      for(const auto columns : {size_t{40}, size_t{80}}) {
-         const auto help_output = render(
-            ct::DoorProfile::Iso646,
-            columns,
-            24,
-            std::string("Help - ") + std::string(help.title) + "\r\n\r\n" +
-               std::string(help.body),
-            ct::DoorTextRole::Information);
-         check(help_output.find("Help - ") != std::string::npos);
-         check(maximum_visible_width(help_output) < columns);
+      check(!help.group.empty());
+      check(!help.beginner_body.empty());
+      check(!help.expert_body.empty());
+      for(const auto body : {help.beginner_body, help.expert_body}) {
+         for(const auto columns : {size_t{40}, size_t{80}}) {
+            const auto help_output = render(
+               ct::DoorProfile::Iso646,
+               columns,
+               24,
+               std::string("Help - ") + std::string(help.title) + "\r\n\r\n" +
+                  std::string(body),
+               ct::DoorTextRole::Information);
+            check(help_output.find("Help - ") != std::string::npos);
+            check(maximum_visible_width(help_output) < columns);
+         }
       }
    }
    bool rejected_help_topic = false;
@@ -257,6 +261,7 @@ int main() {
       ++pauses;
       pager.write("[Enter/Space] Continue", ct::DoorTextRole::Prompt);
       pager.erase_prompt(22);
+      return ct::DoorPresentation::PagePauseAction::Continue;
    });
    pager.resume_paging();
    pager.clear();
@@ -295,9 +300,9 @@ int main() {
       });
    continuous_pager.configure_paging(
       1,
-      [&continuous_pager, &continuous_pauses] {
+      [&continuous_pauses] {
          ++continuous_pauses;
-         continuous_pager.suppress_paging_until_input();
+         return ct::DoorPresentation::PagePauseAction::Continuous;
       });
    continuous_pager.resume_paging();
    for(unsigned line = 0; line < 80; ++line) {
@@ -312,6 +317,25 @@ int main() {
    }
    check(continuous_pauses == 2);
 
+   std::string aborted_page;
+   unsigned abort_pauses = 0;
+   ct::DoorPresentation aborting_pager(
+      ct::DoorProfile::Iso646,
+      40,
+      24,
+      [&aborted_page](const std::string_view bytes) {
+         aborted_page.append(bytes);
+      });
+   aborting_pager.configure_paging(1, [&abort_pauses] {
+      ++abort_pauses;
+      return ct::DoorPresentation::PagePauseAction::Abort;
+   });
+   aborting_pager.resume_paging();
+   const auto completed = aborting_pager.write(std::string(40 * 30, 'a'));
+   check(!completed);
+   check(abort_pauses == 1);
+   check(aborted_page.size() < 40 * 30);
+
    std::string wrapped_page;
    unsigned wrapped_pauses = 0;
    ct::DoorPresentation wrapped_pager(
@@ -321,7 +345,10 @@ int main() {
       [&wrapped_page](const std::string_view bytes) {
          wrapped_page.append(bytes);
       });
-   wrapped_pager.configure_paging(1, [&wrapped_pauses] { ++wrapped_pauses; });
+   wrapped_pager.configure_paging(1, [&wrapped_pauses] {
+      ++wrapped_pauses;
+      return ct::DoorPresentation::PagePauseAction::Continue;
+   });
    wrapped_pager.resume_paging();
    wrapped_pager.clear();
    wrapped_pager.write(std::string(40 * 24, 'x'));

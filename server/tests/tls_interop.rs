@@ -163,6 +163,13 @@ impl DoorSession {
     }
 
     fn return_to_bbs(&mut self) {
+        if normalized_display_text(&self.output()).contains("Ship status: Unregistered") {
+            let (state, _) = self.wait_for_any_without_paging(&["Enter/Sp)", "Register captain"]);
+            if state == 0 {
+                self.send(b"q");
+                self.wait_for("Register captain");
+            }
+        }
         self.send_through_page_prompt(b"q", "Return to the BBS?", "Return to the BBS?");
         self.send(b"y");
     }
@@ -174,7 +181,8 @@ impl DoorSession {
     fn acknowledge_page_prompts(&mut self, semantic: &str) {
         const PAGE_PROMPT: &str = "[Enter/Space] Continue  [C] Continuous";
         let erased_page_prompt = format!("\r{}\r", " ".repeat(PAGE_PROMPT.len()));
-        let page_prompts = semantic.matches("Enter/Space").count();
+        let page_prompts =
+            semantic.matches("Enter/Space").count() + semantic.matches("Enter/Sp)").count();
         let erased_page_prompts = self
             .output
             .lock()
@@ -249,6 +257,26 @@ impl DoorSession {
             let output = self.output();
             let semantic = normalized_display_text(&output);
             self.acknowledge_page_prompts(&semantic);
+            if let Some(index) = expected.iter().position(|text| semantic.contains(text)) {
+                return (index, output);
+            }
+            assert!(
+                Instant::now() < deadline,
+                "door did not render any of {texts:?}; output: {output:?}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    fn wait_for_any_without_paging(&self, texts: &[&str]) -> (usize, String) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let expected = texts
+            .iter()
+            .map(|text| normalized_display_text(text))
+            .collect::<Vec<_>>();
+        loop {
+            let output = self.output();
+            let semantic = normalized_display_text(&output);
             if let Some(index) = expected.iter().position(|text| semantic.contains(text)) {
                 return (index, output);
             }
@@ -1038,15 +1066,18 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         std::fs::set_permissions(&credential_file, std::fs::Permissions::from_mode(0o600)).unwrap();
     }
     let door = build.path().join("cepheus-trader-door");
-    for (profile, columns) in [
+    for (profile_index, (profile, columns)) in [
         ("iso646", "40"),
         ("iso646-color", "80"),
         ("cp437-plain", "80"),
         ("cp437-color", "40"),
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         let mut session = DoorSession::spawn(&door, data.path(), profile, columns);
         session.send(b"\r");
-        session.wait_for("No captain is registered");
+        session.wait_for_any_without_paging(&["No captain is registered"]);
         session.return_to_bbs();
         let screen = session.finish();
         let semantic_screen = normalized_display_text(&screen);
@@ -1067,6 +1098,11 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         assert!(
             semantic_screen.contains("No captain is registered"),
             "{screen:?}"
+        );
+        assert_eq!(
+            semantic_screen.contains("Help - Welcome to the Marches"),
+            profile_index == 0,
+            "the new-player orientation must appear once: {screen:?}"
         );
         if !profile.ends_with("-color") {
             assert!(screen.contains('\u{c}'), "{screen:?}");
@@ -1330,7 +1366,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     help_door.wait_for_occurrences("Return to BBS", 2);
     help_door.return_to_bbs();
     let help_screen = normalized_display_text(&help_door.finish());
-    assert!(help_screen.contains("services actually present at this port"));
+    assert!(help_screen.contains("services actually available here"));
     assert!(help_screen.contains("(?) Help"));
 
     // Exercise the Milestone 5 correspondence controls through the real door

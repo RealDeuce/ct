@@ -558,7 +558,7 @@ if(BUILD_TESTING)
   )
   target_link_libraries(
     ct-player-identity-registry-test
-    PRIVATE ct-client-core
+    PRIVATE ct-client-core ${CT_BOTAN_TARGET}
   )
   target_compile_options(
     ct-player-identity-registry-test

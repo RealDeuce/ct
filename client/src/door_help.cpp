@@ -6,297 +6,255 @@
 namespace ct {
 namespace {
 
+using Category = DoorHelpCategory;
+
 constexpr std::array<DoorHelp, static_cast<size_t>(DoorHelpTopic::Count)> HELP{{
-   {
-      "Cepheus Trader help",
-      "Press ? at an advertised prompt for help about the screen or decision in front of you. "
-      "Help explains known rules and consequences; it does not reveal facts your captain has "
-      "not learned.\n\n"
-      "The main areas are captain creation, ships and crew, cargo and contracts, messages and "
-      "mail, navigation and fuel, and encounters and combat. The Captain's Command Console is "
-      "the in-game help index and remains available while docked or travelling.\n\n"
-      "Enter usually accepts, refreshes, or returns to the preceding screen. Q cancels a pending "
-      "choice. Leaving the game requires a separate confirmation.",
-   },
-   {
-      "Registering a captain",
-      "A BBS account may register one captain. Registration creates the persistent identity used "
-      "for ships, money, mail, obligations, discoveries, service, and legal records.\n\n"
-      "You will choose characteristics and skills, select a career-backed starting ship package, "
-      "and review its crew. Starting packages differ in ownership, debt, operating authority, "
-      "cargo capacity, jump capability, armament, and required crew.\n\n"
-      "Nothing is committed until the final registration confirmation. Return to earlier screens "
-      "to compare packages before accepting one.",
-   },
-   {
-      "Characteristics and skills",
-      "STR, DEX, END, INT, EDU, and CHA describe the captain. Every three points change the usual "
-      "task modifier by one. The point-buy screen must finish with exactly the displayed budget "
-      "spent.\n\n"
-      "Skills provide training for particular tasks. A zero rating is trained competence; positive "
-      "ratings provide increasing expertise. Jack of All Trades reduces penalties for untrained "
-      "work but does not replace a required professional qualification.\n\n"
-      "Training targets progress in whole training weeks while the person remains eligible to train.",
-   },
-   {
-      "Starting careers",
-      "A career determines the authority and financial structure of the offered command. Trader "
-      "packages emphasize commerce, privateer packages combine commerce with licensed force, and "
-      "naval packages place a ship under service authority.\n\n"
-      "Career is not merely a difficulty label. Read the package description, title and authority, "
-      "starting reserve, debt or bond, operating costs, and exit terms before selecting it.\n\n"
-      "Changing later may require paying obligations, returning an issued vessel, acquiring title, "
-      "or accepting legal consequences.",
-   },
-   {
-      "Starting ship offers",
-      "Jump rating limits the distance of one jump, not the length of a multi-jump course. Thrust "
-      "affects in-system travel and tactical movement. Cargo capacity is what remains after the "
-      "ship's installed systems, small craft, crew spaces, and stores.\n\n"
-      "Inspect an offer for its title, authority, debt, fuel, ammunition, crew, passenger space, and "
-      "maintenance burden. A more powerful vessel can be much more expensive to operate and repair.\n\n"
-      "The course plotter can later include fuel purchases and lawful frontier collection, but a "
-      "ship still needs enough tankage and money to execute those stops.",
-   },
-   {
-      "Crew and personnel",
-      "A ship needs qualified people for its watches and specialist work. The roster shows skills, "
-      "assignment, condition, morale, pay, and training. Unfilled or incapacitated positions can "
-      "make actions slower, harder, or unavailable.\n\n"
-      "Awake crew and passengers consume provisions. Low-berth passengers do not consume normal "
-      "provisions while berthed. Payroll, arrears, medical care, shore leave, transfer, discharge, "
-      "and training all persist.\n\n"
-      "Discharge and reassignment can leave the ship without a legal or competent watch, so review "
-      "coverage before confirming them.",
-   },
-   {
-      "Captain's Command Console",
-      "This is the help index and the universal entrance to seven managers. Crew covers people and "
-      "training; Ship covers condition, stores, and fleet custody; Tasks covers offers and accepted "
-      "obligations; Messages covers physical correspondence; Known Universe covers charts and route "
-      "planning; Operations covers service, traffic, and combat activity; System Common carries "
-      "transient in-system radio.\n\n"
-      "The managers are available while docked and during scheduled travel, although particular "
-      "actions depend on location, facilities, authority, and current ship state.\n\n"
-      "Press the manager's letter, Enter to return to the operational screen, or Q to request leaving "
-      "the game. A permanently abandons the captain and entire estate only after an exact typed phrase "
-      "and a second confirmation. It erases all player assets and history, then opens new-captain "
-      "registration for the same BBS account.",
-   },
-   {
-      "Ship management",
-      "Ship management reports title, command, location, fuel, cargo, ammunition, provisions, crew "
-      "capacity, installed systems, damage, repairs, and other vessels in the fleet.\n\n"
-      "Damage and temporary battlefield loss are distinct. Field recovery may restore disabled "
-      "capability; proper repair restores lasting condition and needs suitable facilities, parts, "
-      "money, and time.\n\n"
-      "Transferring stores or command changes real custody. Verify source, destination, capacity, "
-      "captain assignment, and title before confirming a fleet action.",
-   },
-   {
-      "Tasks, charters, and obligations",
-      "An offer received through mail may already be stale. Claiming it signs a response and reserves "
-      "the displayed collateral or capacity while that response physically travels to the issuing "
-      "office. A claim is not yet an award.\n\n"
-      "The first valid claim accepted by the issuer wins. The winner receives confirmation and may "
-      "take custody of the consignment at the origin. Losing claims receive a decline that releases "
-      "their reserves. Your captain carries a signed claim personally when travelling, so the captain "
-      "cannot arrive before that claim.\n\n"
-      "Delivery, deadline, default, abandonment, collateral, and liability terms remain binding once "
-      "the award is accepted.",
-   },
-   {
-      "Messages and physical mail",
-      "Messages are dated knowledge carried between systems. Delivery is not instantaneous, and a "
-      "remote office or market may act before its reply reaches you. Old local copies can therefore "
-      "show offers, warrants, prices, or closures that are no longer current at their source.\n\n"
-      "A ship can carry ordinary mailbags. Private instruments such as claims, awards, warrants, and "
-      "settlements have explicit origins, destinations, custody, and delivery records. The captain "
-      "will hand-deliver personally carried instruments on arrival even without an ordinary mailbag.\n\n"
-      "Ignoring a message changes its presentation, not the underlying obligation or event.",
-   },
-   {
-      "System Common radio",
-      "System Common is the single public in-system radio channel. Player broadcasts and real "
-      "inspection, boarding, or surrender hails propagate at light speed from the transmitting "
-      "ship. There are no private frequencies or ambient computer chatter. Jump space cannot "
-      "send or receive system radio.\n\n"
-      "The inbox belongs to the receiving ship and continues working while its captain is offline. "
-      "Opening a reception displays it once and removes that ship's unread copy; save anything you "
-      "want to keep outside the game. Unread receptions expire after 196 game days.\n\n"
-      "Broadcasts identify their ship and transponder, accept up to 500 printable ASCII characters, "
-      "and are limited to one every 15 real seconds. Muting a captain suppresses that captain's "
-      "ordinary future broadcasts, but cannot suppress authoritative gameplay hails.",
-   },
-   {
-      "Known Universe and charts",
-      "Charts contain only knowledge available to this captain. System names, coordinates, ports, "
-      "fuel sources, market reports, and routes can be incomplete or dated. Mapping and disclosure "
-      "move through physical records and mail.\n\n"
-      "Use filters and pages to inspect known systems, then open a system for details or route "
-      "planning. A missing route can mean insufficient jump rating, unavailable lawful fuel, "
-      "insufficient funds, or simply missing chart knowledge.\n\n"
-      "The fastest and cheapest plots may choose different fuel sources and stopping points.",
-   },
-   {
-      "Operations and service",
-      "Operations covers local contacts, naval or private authority, orders, reports, warrants, and "
-      "combat-related activity. Local contacts contain only vessels sharing the ship's present "
-      "traffic locus, such as a port, Jump locus, or frontier-fuel body. Ordinary interplanetary "
-      "flight and Jump space normally have no local contacts.\n\n"
-      "Civilian identity and registry details come from transponders. Hull classification and "
-      "tonnage are sensor observations whose confidence depends on the fitted electronics and "
-      "sensor damage. System-wide traffic-control reports are a separate transponder picture; they "
-      "do not imply that a reported ship is locally detectable or interceptable. Player-owned "
-      "ships are marked [PLAYER] while operating under standing orders and [ONLINE] while a "
-      "connected captain directly controls them.\n\n"
-      "Delivered warrants are filed automatically. [WARRANT] marks a vessel associated with the "
-      "named person, but an old association is not proof the person remains aboard. Arrest issues "
-      "a lawful demand and, when necessary, a boarding search. Search skill and party size oppose "
-      "concealment. A captured subject remains aboard until Warrant court delivers the prisoner "
-      "to a port authority and pays the bounty.\n\n"
-      "Interception, piracy, mutiny, and misuse of an issued command can create durable legal and "
-      "career consequences. Read the displayed authority and confirmation text before proceeding.\n\n"
-      "Service orders and reports are instruments that may need physical delivery before another "
-      "office recognizes them.",
-   },
-   {
-      "Docked operations",
-      "The docked menu lists services actually present at this port. Cargo, fuel, repairs, crew, "
-      "banking, and authorities can be absent or limited by port class, technology, law, damage, "
-      "title, and local policy.\n\n"
-      "Berthing and service work can consume money and game time. Depart opens the flight-plan editor; "
-      "it does not launch until you review and file an executable plan. Universal managers remain "
-      "available through U.\n\n"
-      "Enter refreshes the port snapshot. Q asks for confirmation before returning to the BBS.",
-   },
-   {
-      "Cargo exchange",
-      "The exchange distinguishes speculative cargo you own from entrusted freight that belongs to "
-      "a task or other principal. Only cargo you own can normally be sold. Capacity, lot identity, "
-      "local legality, market depth, brokerage, and available cash all constrain a transaction.\n\n"
-      "Local offers show the price to load cargo. Cargo aboard shows the exact ordinary local bid; "
-      "the public bid remains below the public ask, while a reserved private buyer is a separate "
-      "deal. Market reports are dated, and a different port may prohibit or confiscate the same "
-      "goods.\n\n"
-      "Buying reserves real hold capacity and credits immediately. Review tonnes, unit price, total "
-      "cost, ownership, and destination before confirming.",
-   },
-   {
-      "Fuel and supplies",
-      "Refined and unrefined fuel both power jumps, but unrefined fuel may increase operational risk "
-      "or affect warranty and maintenance. Port availability depends on local facilities. Frontier "
-      "collection requires a charted lawful source, suitable ship capability, and game time.\n\n"
-      "The route plotter can include purchases of refined or unrefined port fuel and lawful gas-giant "
-      "or wilderness collection. Importing a course creates those fuel steps as real planned actions.\n\n"
-      "Crew and awake passengers consume provisions. Ammunition and provisions use physical storage "
-      "and must be replenished where the relevant service exists.",
-   },
-   {
-      "Flight plans and route plotting",
-      "A course may contain several jumps, in-system legs, waits, fuel purchases, and frontier fuel "
-      "operations. Jump rating limits each edge. Tank capacity, current fuel, money, chart knowledge, "
-      "lawful sources, and port services determine whether the whole course is executable.\n\n"
-      "Fastest minimizes elapsed travel; cheapest weighs known monetary costs and may take longer. "
-      "A purchased course tape uses knowledge sold at the current port and may differ from the plot "
-      "available aboard.\n\n"
-      "The charted-leg destination list shows distance from that leg's origin, primary-world port, "
-      "population and technology codes, and charted gas giants. Open its dossier for chart age, "
-      "source, and coordinates before selecting a destination.\n\n"
-      "Preview shows the committed sequence. Filing is the consequential step. If a future purchase "
-      "cannot be completed, the ship holds that plan rather than inventing fuel or skipping the stop.",
-   },
-   {
-      "Banking and accounts",
-      "Accounts show cash, debt, arrears, collateral, insurance or assistance, and other financial "
-      "commitments recognized at this office. Recognition can be delayed when records must travel "
-      "between systems.\n\n"
-      "A naval service account is restricted institutional credit. Authorized ship costs such as "
-      "berthing, fuel, stores, ammunition, treatment, and yard work draw it before the captain's "
-      "personal cash. It cannot ordinarily pay private or commercial obligations.\n\n"
-      "A naval captain may forge a ship-expense receipt to convert service credit into personal "
-      "funds. The next accounts audit may detect it. Larger and repeated forgeries, especially "
-      "when they dominate that month's ship expenses, carry more risk, but detection is never "
-      "certain. A detected forgery creates a finding that travels "
-      "through the mail before remote authorities can act.\n\n"
-      "Destination assistance and similar services have explicit prices and coverage periods. "
-      "Bankruptcy is an irrevocable legal process that can liquidate the fleet and create a successor "
-      "career; it is not a free debt reset.\n\n"
-      "Reserved collateral may still appear in your balance but cannot support another obligation.",
-   },
-   {
-      "Shipyard and repairs",
-      "A shipyard can sell vessels, accept trade-ins, replace components, refit systems, and perform "
-      "proper repairs only within its local capability. Quotes depend on the exact vessel, damage, "
-      "parts, title, market, and required work time.\n\n"
-      "Field recovery after battle is not a substitute for proper repair. Destroyed or permanently "
-      "damaged components may need replacement; temporary loss may instead be recoverable by qualified "
-      "crew.\n\n"
-      "A trade-in transfers a real titled vessel and its remaining stores and obligations according "
-      "to the displayed terms.",
-   },
-   {
-      "Personnel services",
-      "The local exchange lists people actually available for hire and services actually present. "
-      "Skills, pay, morale, condition, legal status, and berth requirements matter beyond the hiring "
-      "price.\n\n"
-      "The roster supports assignment, transfer, treatment, shore leave, training, and discharge. "
-      "Some actions take time or require a qualified practitioner and suitable facility.\n\n"
-      "Before removing or moving someone, verify that every active vessel retains a legal captain and "
-      "the watchkeepers needed for its intended operation.",
-   },
-   {
-      "Arrival checkpoint and packet",
-      "The arrival packet contains messages, offers, market reports, notices, and other records made "
-      "available during the voyage. I or Left ignores the current message, M or Right marks it for "
-      "later, and N or Down advances to the next message. The printable keys work on terminals that "
-      "cannot send arrow-key sequences. A displayed offer is still subject to physical claim and award "
-      "rules.\n\n"
-      "At the checkpoint the ship waits until the captain takes the arrival watch. Taking the watch "
-      "can expose an encounter or complete docking. Leaving the ship holding postpones that transition.\n\n"
-      "The communications receipt records which mailbags and personally carried instruments arrived.",
-   },
-   {
-      "Voyage status",
-      "Voyages advance through scheduled physical stages such as departure clearance, in-system "
-      "travel, jump, arrival, and docking. The next-event time is authoritative; the real-time display "
-      "is a convenience derived from the current game clock rate.\n\n"
-      "Universal managers remain available during travel. Some work can proceed aboard, while port, "
-      "bank, authority, personnel, and shipyard actions require the corresponding location or facility.\n\n"
-      "Revising a flight plan changes future executable legs; it does not teleport the ship or undo "
-      "already completed travel.",
-   },
-   {
-      "Encounters",
-      "An encounter requires a posture: fight, run, comply, surrender, or board when available. The "
-      "choice affects initiative, legal consequences, objectives, and what orders can follow.\n\n"
-      "Running depends on relative performance and circumstances. Complying follows the contact's "
-      "demand without granting immunity from inspection or law. Surrender prioritizes survival but may "
-      "transfer cargo, custody, command, or title. Boarding is close action and may expose crew directly.\n\n"
-      "Review the identified contact, authority, and stakes before choosing; no posture guarantees a "
-      "safe outcome.",
-   },
-   {
-      "Vessel combat",
-      "Combat resolves physical ships, people, ammunition, components, position, detection, command, "
-      "and legal authority. Damage persists after battle. Ammunition expended is gone, casualties remain "
-      "people, and captured cargo or vessels retain real custody and title questions.\n\n"
-      "Survive, withdraw, defeat, and capture are different objectives. A standing policy tells the "
-      "crew how to act when detailed orders cannot be followed, but it does not guarantee success.\n\n"
-      "After action, qualified crew may perform field recovery. Proper repair, medical care, settlement, "
-      "prize adjudication, and warrants can continue long after firing stops.",
-   },
-   {
-      "Combat orders",
-      "Orders assign an actor, target, weapon or system, and objective for the current activation. "
-      "Only conscious, assigned, and sufficiently qualified people can perform some actions. Weapons "
-      "need a functioning mount, ammunition or power, a valid target, and an applicable firing solution.\n\n"
-      "Defensive, engineering, medical, maneuver, command, and boarding work compete for people and "
-      "time. Recovery priority determines what the crew attempts to restore first when several systems "
-      "are impaired.\n\n"
-      "Review the complete joint order set before sealing it. Sealed orders are consequential for that "
-      "activation and cannot be treated as a harmless preview.",
-   },
+   {"Cepheus Trader help", "Getting started", Category::GettingStarted,
+    "Cepheus Trader is a persistent game about commanding a person, a crew, and a starship in a shared far-future universe. Time and distance matter: ships take days to travel, news moves with ships, and another captain may act while your reply is still in the mail. You do not need prior knowledge of Traveller or the Cepheus Engine.\n\nPress ? wherever it is offered to learn the idea behind the current screen, what the displayed choices do, and what a sensible first step might be. The help browser also contains concept articles and a glossary. Nothing in help reveals information your captain has not learned in play.\n\nBeginner help introduces the ideas before the controls. Expert help is a compact screen reference. You can switch for one visit at any help pager prompt, or change your normal default in Player Preferences.",
+    "Press ? at an advertised prompt for context help. The browser groups screen references, game concepts, and glossary entries. Beginner mode supplies conceptual background; Expert mode summarizes the screen, actions, and consequences. B and X switch modes for the current visit. The durable default is changed in Player Preferences or at the browser root."},
+
+   {"Welcome to the Marches", "Getting started", Category::GettingStarted,
+    "The papers on the desk carry your name. Beyond the port glass, ships are lifting for worlds whose news has not arrived here yet. Some carry cargo, some carry warrants, and some carry guns. One of them can become your command.\n\nYou are creating a captain, not solving an entrance examination. The offered defaults are competent and every starting command is playable. Your choices decide what sort of problems you want: trade and debt, licensed private force, or naval duty and authority. You will be able to inspect every offer before anything becomes permanent.\n\nThe universe continues while you are away. Travel consumes game time, messages move only as fast as beacon signals and ships can carry them, crews need pay and provisions, and damage remains until repaired. The door will always show the choices that are legal here and now. Press ? whenever a term or decision is unclear. Q normally backs out; final, irreversible acts ask twice.\n\nTake a breath, Captain. First we make the person. Then we find the ship worthy of the trouble ahead.",
+    "Create a captain, select one of the three career-backed commands, name and fit the vessel, review the crew, and confirm the complete estate. Defaults are valid and nothing is committed before final confirmation. Use ? for screen help and Q to return to the preceding choice."},
+
+   {"Door controls and paging", "Getting started", Category::GettingStarted,
+    "The options printed at the bottom of a screen are the controls for that screen. Letters are not case-sensitive. Enter usually accepts the displayed default, refreshes current information, or returns to the previous view. Q usually cancels or goes back; leaving the game requires confirmation.\n\nLong output pauses before text can scroll away. Enter or Space advances one page. C makes the rest of that output continuous until the next keyboard input. In help, B restarts the topic with beginner explanations, X restarts it in expert mode, and Q stops help immediately.\n\nAngle-bracket keys move between list pages where shown. Some screens also accept arrow keys, but printable alternatives are always provided for terminals that cannot send arrow sequences.",
+    "Options are case-insensitive. Enter accepts, refreshes, or returns as displayed; Q cancels or backs out. Pager controls are Enter/Space for one page and C for continuous output. Help additionally uses B/X to restart in beginner/expert mode and Q to stop. Printable navigation alternatives accompany terminal-specific keys."},
+
+   {"A useful first watch", "Getting started", Category::GettingStarted,
+    "After registration your ship begins docked. Start by opening the Command Console and looking at Crew and Ship Management. Notice your fuel, provisions, free cargo space, crew coverage, money, title, debt, and any service obligations. These are the limits within which every voyage is planned.\n\nNext inspect Tasks and Messages. An offer is not automatically a job you have won: signed claims and confirmations propagate through the mail network. In-system beacon transfers travel at light speed; crossing a Jump boundary requires a ship to carry the data. Then open Known Universe, read the dossier for a nearby system, and plot a course.\n\nThere is no prize for launching immediately. A cheap, well-crewed, fuelled ship with a feasible plan is safer than a grand vessel sent out on an assumption.",
+    "Inspect Crew, Ship, Tasks, Messages, and Known Universe before departure. Verify duty coverage, fuel, provisions, cash, obligations, destination knowledge, and deadline slack. Plot, preview, then file an executable flight plan."},
+
+   {"Help browser", "Getting started", Category::GettingStarted,
+    "The browser is a map of the manual. Getting Started offers a guided entrance; Menus and Screens explains things you can see and operate; Concepts explains how the universe works; the Glossary gives short definitions.\n\nChoose a numbered branch or topic. Q moves to the parent branch and eventually returns to the game. B and X change the reading level for this browser visit. D changes the level future ? requests use for this BBS account.",
+    "Choose a numbered category, group, or topic. Q moves upward or exits. B/X select the mode for this visit; D edits the durable default. Topic completion returns to the current browser branch."},
+
+   {"Player preferences", "Getting started", Category::GettingStarted,
+    "Your default help level controls what appears when you press ?. Beginner mode first explains the game idea behind a screen. Expert mode assumes those ideas are familiar and concentrates on fields, actions, and consequences. Both describe the same rules.\n\nChanging the default affects this local BBS identity on later calls. It does not change your captain, the difficulty, or what the server permits. B and X inside a help page are temporary; this preference screen is where the durable choice is made.",
+    "Select Beginner or Expert as the durable default for context help on this BBS identity. The setting is local to the client and has no gameplay effect. In-topic B/X choices remain temporary."},
+
+   {"Registering a captain", "Captain creation", Category::MenusScreens,
+    "A BBS account commands one persistent captain at a time. Registration creates the person whose money, ships, mail, discoveries, obligations, service record, and legal history survive between calls.\n\nCreation proceeds in stages: shape the captain, compare three career-backed commands, name and fit the chosen ship, review its crew, and confirm the whole package. The displayed defaults are legal and playable. Q returns to an earlier stage so you can compare without losing an existing captain--because no captain exists until final confirmation.",
+    "Registration creates the persistent captain and estate for this BBS identity. Review the captain, starting command, fit, ship name, and crew. Nothing is committed until final confirmation."},
+
+   {"Characteristics", "Captain creation", Category::MenusScreens,
+    "STR, DEX, END, INT, EDU, and CHA describe physical strength, coordination, endurance, reasoning, education, and social presence. They are not percentages. Most rules turn each band of three points into a task modifier, so crossing a band matters more than moving within one.\n\nThis screen uses a fixed point budget. Raising one characteristic means lowering another, and the complete budget must be spent. A balanced default is safe. Specializing is useful when you know which work the captain will personally perform, but the crew can supply many specialist skills.",
+    "Redistribute the fixed characteristic budget among STR, DEX, END, INT, EDU, and CHA. Every three score points normally change the characteristic task modifier by one. The complete budget must be spent."},
+
+   {"Skills and training", "Captain creation", Category::MenusScreens,
+    "A skill is training in a kind of work. Skill 0 means the person is trained; higher ratings add expertise. Having no rating is different from having 0 and usually carries an untrained penalty. Jack of All Trades reduces that penalty but is not a professional qualification.\n\nThe creation slots choose useful starting training. The training target is what the person studies later over whole training weeks; it is not another instant skill. Your captain need not cover every shipboard job personally because qualified crew members can act.",
+    "Assign the permitted skill slots and a continuing training target. Rating 0 is trained competence; positive ratings improve applicable tasks. Training progresses in whole eligible weeks."},
+
+   {"Starting careers", "Captain creation", Category::MenusScreens,
+    "Career determines why the captain has a ship and who has claims on it. A trader emphasizes independent commerce and debt. A privateer combines trade with licensed force and legal restrictions. A naval officer commands public property under orders and uses restricted service funds for authorized expenses.\n\nCareer is not a difficulty selector. It changes ownership, authority, obligations, acceptable conduct, and the terms for leaving. Read those terms rather than choosing only the largest hull or strongest weapon.",
+    "Trader, privateer, and naval offers establish different title, debt, authority, finance, and exit structures. Compare the complete terms; career is not merely a difficulty label."},
+
+   {"Starting ship offers", "Captain creation", Category::MenusScreens,
+    "Each offer is a complete command, not a free ship. Jump rating is the maximum distance of one jump; thrust governs in-system and tactical movement. Cargo capacity is space left after installed systems, crew areas, stores, fuel, and small craft. A large armed ship can have little commercial capacity and very high running costs.\n\nCompare title, debt or bond, liquid reserve, restricted funds, fuel, ammunition, crew, passenger accommodation, maintenance, and authority. The description explains what the vessel is for. Q lets you revise the captain and return without accepting anything.",
+    "Compare title, authority, debt, reserves, Jump, thrust, cargo and passenger capacity, armament, crew, stores, maintenance, and exit terms. Selection opens details; final registration remains uncommitted."},
+
+   {"Starting fit and ship name", "Captain creation", Category::MenusScreens,
+    "A fit choice selects which equipment arrangement is installed before play. It changes what the ship can do; it is not bonus cash. The first choice in each group is a usable default. Read whether an option trades cargo, sensors, weapons, boats, accommodation, or endurance.\n\nThe ship name is public identity and will appear in traffic, messages, and encounters. It does not alter performance and can be chosen for character rather than optimization.",
+    "Name the vessel and choose one option from each refit group. The first option is the default. Fits can alter installed capability and remaining capacity."},
+
+   {"Starting crew", "Captain creation", Category::MenusScreens,
+    "A starship is not flown by the captain alone. Officers and senior specialists are named individually; an appointment may also represent several supporting crew. The roster shows the effective people filling required watches and jobs.\n\nYou may rename named crew and choose training targets. Before changing assignments, look for missing command, bridge, engineering, medical, gunnery, steward, or other coverage required by the ship. The supplied roster can operate the starting vessel, so leaving it unchanged is safe.",
+    "Review named appointments, represented supporting strength, duty coverage, and training targets. The supplied plan is operational. Changes must retain the qualifications needed by the selected vessel."},
+
+   {"Final registration", "Captain creation", Category::MenusScreens,
+    "This is the first point at which the game can create anything. Review the captain, command, ship name, fit, crew, money, title, and obligations together. Answering Yes creates all of them as one durable estate.\n\nIf something is unclear, answer No and return to the earlier screens. There is no cost for reviewing. Later abandonment destroys the entire captain and estate, so it is not a normal character-editing tool.",
+    "Final confirmation atomically creates the captain, vessel, fit, crew, finances, and obligations. No returns to review; Yes commits the complete estate."},
+
+   {"Crew management", "Universal managers", Category::MenusScreens,
+    "Crew Management answers two questions: who is aboard, and can they perform the work the ship requires? Named appointments can include supporting positions, so compare current strength with established strength rather than counting only names. Casualties reduce the current number and make short-handed appointments visible.\n\nCondition, fatigue, morale, pay, assignment, skills, and training all matter. Moving or discharging one person can uncover a watch or remove a legal captain. Treatment, leave, payroll, and training consume time or money and persist after you leave.",
+    "Inspect roster strength, assignment, skills, condition, fatigue, morale, pay, and training. Transfer, treatment, leave, training, reassignment, and discharge are constrained by custody, facilities, and required duty coverage."},
+
+   {"Crew member detail", "Universal managers", Category::MenusScreens,
+    "This view is one real person or represented appointment. Characteristics describe basic capability; skills show trained work; physical condition and fatigue show whether the person can act now. Assignment identifies the shipboard duty they are expected to cover.\n\nActions here can affect the whole vessel. Training takes eligible weeks, treatment needs suitable care, and transfer or discharge can leave a position empty. Check the roster again after a change.",
+    "Review characteristics, skills, current condition, fatigue, morale, appointment strength, assignment, pay, and training. Available personnel actions depend on location, custody, facilities, and fleet coverage."},
+
+   {"Captain's Command Console", "Universal managers", Category::MenusScreens,
+    "The Command Console is the doorway to information and management that remains available while docked or travelling. Crew covers people; Ship covers vessels and stores; Tasks covers opportunities and obligations; Messages covers delayed electronic correspondence; Known Universe covers charts and routes; Operations covers traffic, authority, warrants, and fighting; System Common is public local radio.\n\nH opens the full help browser and P changes player preferences. X returns to the operational view. Q asks before leaving the game. Permanently abandoning the captain is deliberately separate and requires an exact phrase plus another confirmation.",
+    "Open any universal manager, the help browser, or player preferences. X returns to the operational screen; Q confirms return to the BBS. Abandon Captain permanently deletes the complete estate after two confirmations."},
+
+   {"Ship management", "Universal managers", Category::MenusScreens,
+    "A vessel is a physical asset with an owner or issuing authority, a current commander, a location, installed systems, fuel, stores, cargo, damage, and crew requirements. Ship Management gathers those facts and lets a captain manage every vessel in the estate.\n\nDo not confuse being assigned a ship with owning it. Transfers change real custody. Damage can disable a system temporarily or require proper yard repair. Fuel, ammunition, provisions, and cargo all occupy or depend on finite capacity.",
+    "Review title, command, location, activity, capacity, fuel, cargo, ammunition, provisions, complement, installed systems, damage, maintenance, and fleet custody. Actions apply to the selected physical vessel."},
+
+   {"Ship systems and damage", "Universal managers", Category::MenusScreens,
+    "Installed systems are the machinery that gives the hull its abilities: drives, power, sensors, weapons, accommodation, boats, and support equipment. Damage can reduce or remove one of those abilities even though the ship still exists.\n\nBattlefield recovery may restore something disabled for the moment; proper repair restores lasting condition and may require parts, skill, facilities, credits, and game time. The detail view distinguishes present capability from the undamaged design.",
+    "Inspect installed capability, current condition, temporary loss, permanent damage, and repair requirements. Field recovery and proper yard repair are distinct operations."},
+
+   {"Fleet management", "Universal managers", Category::MenusScreens,
+    "An estate can contain the active command, owned ships, institutionally assigned ships, and prizes held pending judgment. Only one bridge receives the player's direct commands, but other vessels remain real and can act under standing orders.\n\nChanging command or moving stores is not a menu shortcut between abstract inventories. The vessels must be in compatible locations, have capacity, and retain legal command and crew. Verify title and custody before confirming.",
+    "Manage the active command, other owned or assigned vessels, and prizes. Transfers require compatible location and capacity. Command changes must preserve title, custody, captaincy, and operational coverage."},
+
+   {"Task management", "Universal managers", Category::MenusScreens,
+    "Tasks include offers you might pursue and obligations already attached to the captain or ship. The normal list hides offers the current situation cannot perform and tells you how many were hidden. The unavailable list explains why--for example cargo space, passenger staff, deadline, fuel, or even the cash needed to leave the berth.\n\nUnavailable does not mean forbidden. You may accept one if you intend to change ships, hire crew, refit, or otherwise solve the problem. Read the reason and the contract terms before reserving money or capacity.",
+    "Browse feasible offers, explicitly inspect unavailable offers with reasons, and manage accepted obligations. Unavailable offers remain claimable. Refresh after changing ship, crew, funds, location, or schedule."},
+
+   {"Offer and claim detail", "Universal managers", Category::MenusScreens,
+    "Receiving an offer is not the same as winning it. Claiming writes a response and reserves the displayed bond or capacity while that response travels to the issuing office. The first valid claim accepted there wins. The winner later receives confirmation; losing claimants receive a release.\n\nYour captain personally carries a claim when travelling, so you cannot arrive before your own acceptance. Only after confirmation can the consignment be collected. Check pickup location, cargo or passenger needs, deadline slack, bond, payment, and what happens on failure.",
+    "Review issuer, origin, destination, requirements, deadline and slack, bond, payment, liability, and availability reason. Claiming reserves resources and dispatches a signed electronic response; it is not an immediate award."},
+
+   {"Message management", "Universal managers", Category::MenusScreens,
+    "Messages are the captain's dated knowledge, not an all-knowing network. News, market reports, offers, warrants, confirmations, and settlements move between systems with ships. A message can therefore be true when written and stale when read.\n\nIgnoring changes how an item is presented, not whether its event happened. Marking for later preserves attention, not time. Read origins and dates whenever a decision depends on current conditions elsewhere.",
+    "Browse dated electronic correspondence by class and importance. Ignore and mark-later affect presentation only. Source, observation time, propagation path, and delivery delay determine how current the information is."},
+
+   {"Message detail", "Universal managers", Category::MenusScreens,
+    "The heading tells you who created this record, where, and when. The body may report an event, offer an action, or carry an instrument with legal or financial effect. Separate what the sender knew at the written time from what may have happened since.\n\nIf an action is offered, its confirmation explains what is reserved or sent. Returning without acting leaves the underlying world unchanged.",
+    "Inspect source, class, importance, creation and observation times, delivery context, body, and any attached action. Treat remote facts as dated."},
+
+   {"System Common radio", "Universal managers", Category::MenusScreens,
+    "System Common is one public channel shared by ships in the same star system. Radio waves travel at light speed, so a message reaches different locations at different game and real times. Jump space cannot send or receive it. This is where players broadcast and where naval inspections or pirate demands arrive.\n\nA received copy belongs to the ship. Reading it removes that unread copy, so retain anything important outside the game. Ordinary player transmissions may be muted; authoritative hails cannot. Broadcasts identify the transmitting ship and transponder.",
+    "Read or send public in-system broadcasts. Propagation is light-speed and location-dependent; Jump space is excluded. Read copies are consumed. Rate limits, printable-text limits, mutes, transponder identity, and authoritative hails apply."},
+
+   {"Known Universe", "Universal managers", Category::MenusScreens,
+    "The map contains only what this captain has learned. Names, coordinates, ports, fuel sources, markets, and routes can be incomplete or old. Missing information is not proof that nothing exists. Charts and reports move through sale, observation, disclosure, and mail.\n\nUse filters and pages to find systems, then open a dossier before planning. A route can fail because of ship range, fuel, money, law, or missing chart knowledge.",
+    "Filter and page the captain's known systems, open dossiers, and start route planning. Entries are dated knowledge. Missing systems, services, fuel sources, or edges may be unknown rather than absent."},
+
+   {"System dossier", "Universal managers", Category::MenusScreens,
+    "A system dossier combines astronomical position with what is known about its main world and services. Port class describes broad starport capability. Population, technology, and law codes summarize the society rather than giving exact inventories. Gas giants matter because suitably equipped ships may collect unrefined fuel there.\n\nCheck the observation date and source. A famous Class A port report from years ago may still be less useful than a recent modest report.",
+    "Review coordinates, distance, chart age and source, primary-world port, population, technology, law, and charted gas giants. These are dated observations used by planning, not guaranteed live services."},
+
+   {"Course plotter", "Universal managers", Category::MenusScreens,
+    "The course plotter searches known space for an executable chain of jumps and fuel stops. Jump rating limits each jump, not the total trip. The search tracks current fuel, tank size, known port sales, lawful gas-giant or wilderness collection, money, and elapsed time.\n\nFastest and cheapest can choose different paths. Current time, trip time, wall-clock estimate, and ETA let you compare the result with deadlines. Importing copies the steps into the editable flight plan; it does not launch the ship.",
+    "Plot fastest or cheapest executable courses using known routes, Jump rating, tankage, current fuel, lawful collection, port purchases, and funds. Compare current time, elapsed time, real-time duration, ETA, and deadline warnings before import."},
+
+   {"Operations ledger", "Universal managers", Category::MenusScreens,
+    "Operations is where the captain deals with ships and authorities rather than cargo and accounts. It separates system-wide transponder traffic from local contacts your own sensors can detect. It also holds standing orders, interception and picket work, service reports, warrants, arrest, boarding, and combat activity.\n\nAuthority and evidence matter. A warrant association is a lead, not proof that a person remains aboard. A report may need physical delivery before a remote office recognizes it.",
+    "Manage local contacts, system traffic, standing orders, pickets, interception, inspection, warrants, arrests, reports, and combat activity. Sensor knowledge, legal authority, evidence, location, and physical delivery constrain actions."},
+
+   {"Local contacts and traffic", "Universal managers", Category::MenusScreens,
+    "Two pictures of traffic exist. Traffic control can report cooperative transponders across the system. Local contacts are ships at the same port, Jump point, gas giant, frontier site, or other traffic locus that your ship can actually detect. A transponder supplies claimed civilian identity; sensors estimate hull and condition with limited confidence.\n\nPLAYER marks a player-owned ship under automation. ONLINE means a connected captain is directly controlling it. Neither marker gives magical sensor detail or makes a distant ship interceptable.",
+    "Distinguish system transponder reports from sensor-local contacts. Identity may be transponder data; class, tonnage, and condition are observations with confidence. Only compatible local contacts can be selected for immediate interaction."},
+
+   {"Warrants and arrest", "Universal managers", Category::MenusScreens,
+    "Delivered warrants are filed automatically. A warrant can name a captain or crew member and attach investigative associations to ships where that person served. The association helps find them but does not prove they remain aboard.\n\nArrest begins with a lawful demand. A ship may surrender the subject, claim they are absent, run, or resist according to its orders. Search skill, party size, concealment, and local enforcement determine what a boarding search finds. A captured subject must be delivered to Warrant court before a bounty is paid.",
+    "Review warrant subject, authority, bounty, evidence, associations, and delivery status. Arrest may proceed through demand, surrender, search, flight, or resistance. Captives require court delivery."},
+
+   {"Interception and pickets", "Universal managers", Category::MenusScreens,
+    "Interception means arranging to meet a moving ship at a real place. A ship in a berth cannot attack another berth without first departing and paying what departure requires. A picket waits at a traffic locus for all craft or selected types, like customs at a Jump point or pirates near a fuel source.\n\nInspection pickets demand boarding first and fight only if policy and refusal lead there. Standing orders decide what an offline crew does: comply, hide someone, run, summon support, surrender, or fight. Relative strength and the wider authority behind a naval demand both matter.",
+    "Configure target criteria, locus, demand, and offline response policy for interception or picket duty. Docked and landed ships must depart; frontier-fuelling ships can be met during operations. Inspection can escalate after refusal."},
+
+   {"Docked operations", "Dock services", Category::MenusScreens,
+    "Docked means secured in a berth, not hovering freely beside every ship at the port. The menu lists services actually available here: cargo, fuel, repairs, people, banking, authorities, and ship sales vary with port, technology, law, damage, and local policy.\n\nBerthing and service work can cost credits and game time. Depart opens the flight-plan editor; the ship does not leave until an executable plan is reviewed and filed. Enter refreshes the snapshot. Q confirms before returning to the BBS.",
+    "Use services present at this berth. Availability depends on port, technology, law, local policy, ship state, title, and funds. Depart edits a plan; filing launches it. Enter refreshes and Q confirms return to the BBS."},
+
+   {"Cargo exchange", "Dock services", Category::MenusScreens,
+    "Speculative cargo is merchandise you own and hope to resell. Entrusted freight belongs to a charter or other principal and normally cannot be sold. The exchange's buy price is what you pay to load; the sell price is the actual local bid for cargo aboard. The ordinary bid stays below the ordinary ask, so unloading immediately is not free profit.\n\nCapacity, lot size, legality, market depth, brokerage, and cash constrain trades. Prices and reports are local and dated. Review tonnes, unit price, total, ownership, and remaining hold before confirming.",
+    "Buy owned speculative lots or sell eligible cargo at the exact local bid. Hold capacity, lot identity, ownership, legality, depth, brokerage, cash, and dated market observations apply."},
+
+   {"Fuel and supplies", "Dock services", Category::MenusScreens,
+    "Jump drives consume large amounts of fuel. Refined fuel is safer; unrefined fuel can carry normal misjump or maintenance penalties. Ports may sell either, neither, or limited quantities. A suitable ship can instead spend time collecting unrefined fuel at a charted lawful gas giant or wilderness source.\n\nFuel, provisions, and ammunition are physical stores. Awake crew and passengers eat provisions, ammunition once fired is gone, and every purchase must fit the vessel. The route planner can schedule future fuel purchases and collection stops.",
+    "Purchase available refined or unrefined fuel and stores within capacity and funds. Frontier collection requires chart knowledge, lawful access, equipment, and time. Unrefined-fuel penalties and physical storage apply."},
+
+   {"Flight-plan editor", "Travel", Category::MenusScreens,
+    "A flight plan is the sequence the ship will actually attempt: in-system travel, jumps, waits, purchases, and frontier fuel operations. Adding a destination does not automatically promise that later fuel or money will exist. The editor shows distances and system facts so each leg can be judged.\n\nCompare projected arrival times with accepted-offer deadlines. Warnings identify missed deadlines, risky fuel, unattended encounters, or impossible steps. Q revises or backs out; only filing makes the reviewed plan consequential.",
+    "Add, remove, and inspect legs and actions. Validate distance, Jump range, fuel, funds, system services, gas giants, ETAs, and accepted-offer deadline warnings. The plan remains provisional until filed."},
+
+   {"Flight-plan preview", "Travel", Category::MenusScreens,
+    "Preview is the last whole-voyage check. Estimated time includes every planned movement and operation, not merely days spent in Jump. Fuel is the total required by the listed steps. Red warnings call out consequences such as unattended encounters, unrefined fuel, or a missed task deadline.\n\nRead beyond the first summary line. Filing commits this exact sequence; revising returns without launching.",
+    "Review the complete ordered plan, elapsed time, wall time, ETA, fuel, purchases, collection, warnings, and deadline outcomes. File commits it; Revise returns to editing."},
+
+   {"Banking and accounts", "Dock services", Category::MenusScreens,
+    "Accounts distinguish spendable personal cash from debts, reserved collateral, arrears, insurance, assistance, and restricted institutional credit. A number in the ledger may therefore not be available for a private purchase. Records at a remote office can also lag behind events still travelling by mail.\n\nNaval restricted credit pays authorized ship expenses before personal cash. Forging a receipt can turn it into personal money, but audits weigh both the fraudulent amount and its share of monthly expenses. Detection creates real service and legal consequences.",
+    "Inspect liquid credits, debt, tax arrears, collateral, assistance, insurance, and restricted service credit. Office knowledge may be delayed. Authorized naval costs draw restricted funds; forged personal conversion risks later audit findings."},
+
+   {"Shipyard and repairs", "Dock services", Category::MenusScreens,
+    "Shipyards sell and trade vessels, replace machinery, refit systems, and repair lasting damage--but only within local technical and industrial ability. Quotes depend on this exact hull, its title, damage, required parts, and time.\n\nA disabled system recovered after battle is not necessarily repaired. Trade-in transfers a real vessel with whatever stores, custody, and obligations the displayed terms include.",
+    "Review vessel sales, trade-ins, component replacement, refits, and proper repairs available at this yard. Capability, parts, title, damage, quote, and work time constrain orders."},
+
+   {"Personnel services", "Dock services", Category::MenusScreens,
+    "The exchange lists people actually seeking work here and care or training actually available here. A candidate's skills matter, but so do pay, morale, health, legal status, and the berth they will occupy.\n\nHire to fill real coverage rather than merely increasing the name count. Treatment, training, shore leave, transfer, and discharge can consume time or leave another vessel short-handed.",
+    "Hire locally available people and use available personnel services. Evaluate skill, appointment strength, pay, morale, condition, legality, accommodation, and resulting duty coverage."},
+
+   {"Arrival checkpoint", "Travel", Category::MenusScreens,
+    "After a voyage the ship can receive mail, market reports, offers, notices, and legal instruments before completing the final arrival watch. The packet is what reached this ship, not everything that happened in the universe. Use I/Left to ignore, M/Right to mark for later, and N/Down to advance.\n\nThe checkpoint holds the physical transition until the captain takes the watch. Taking it can expose an encounter or complete docking. Leaving the ship holding postpones that transition.",
+    "Review the arrival packet, receipt, and pending transition. I/Left ignores, M/Right marks later, N/Down advances. Take Watch can expose an encounter or finish arrival; Hold postpones it."},
+
+   {"Arrival packet", "Travel", Category::MenusScreens,
+    "This packet is the data received with your arrival: downloaded mail bundles, signed claims or reports retained aboard, market observations, and notices. A captain-carried instrument uploads on arrival even if the ship declined a general beacon mail bundle.\n\nDates and sources remain important. A newly received report can still describe an old observation.",
+    "Inspect delivered mail bundles, captain-carried instruments, reports, notices, and their receipt. Delivery time and observation time are distinct."},
+
+   {"Voyage status", "Travel", Category::MenusScreens,
+    "A voyage advances through scheduled physical stages: clearance, in-system movement, Jump, arrival, and docking or landing. Ship time is the game clock at the vessel. Next event is when the current stage resolves; the value in parentheses is the real wait at the server's present clock rate.\n\nManagers remain available while time passes, but a port service still requires a port. Revising the plan changes future steps and cannot undo distance already travelled.",
+    "Monitor current stage, origin, destination, ship time, next event and real-time wait, fuel, notices, and pending contacts. Managers remain available. Plan revision affects only future executable steps."},
+
+   {"Encounters", "Combat", Category::MenusScreens,
+    "An encounter is a meeting that requires a posture: fight, run, comply, surrender, permit boarding, or another choice justified by the situation. The other vessel may be a pirate, authority, bounty hunter, merchant, or player. Claimed identity and actual strength may be uncertain.\n\nPosture affects initiative, law, objectives, and what orders become possible. Compliance follows the demand but is not immunity; surrender prioritizes survival but can transfer cargo, people, command, or title. Read the authority and stakes before choosing.",
+    "Choose an available posture after reviewing contact identity, sensor confidence, demand, authority, relative capability, and stakes. Fight, run, comply, surrender, and board have distinct tactical and legal effects."},
+
+   {"Vessel combat", "Combat", Category::MenusScreens,
+    "Combat uses real ships, named people, supporting crew, ammunition, installed systems, position, sensors, and orders. The display names vessels and marks your command so internal database numbers never become the tactical language. Damage, casualties, and ammunition expenditure persist afterward.\n\nThe countdown shows when sealed or standing orders take effect. Survival, withdrawal, defeat, capture, inspection, and boarding are different objectives. Winning the exchange of fire may still create repair bills, warrants, or a prize that needs legal judgment.",
+    "Review named combatants, player marker, detection, range, position, condition, activation countdown, objectives, and sealed orders. Damage, casualties, ammunition, custody, and legal consequences persist."},
+
+   {"Combat orders", "Combat", Category::MenusScreens,
+    "An order assigns a person or team to a target and job for the next activation. Gunnery competes with engineering, medicine, maneuver, command, damage control, and boarding for conscious qualified people and time. A weapon also needs a working mount, ammunition or power, detection, and a valid target.\n\nReview the complete joint order set before sealing. A standing policy guides the crew when no connected captain supplies detail, but it cannot guarantee that the preferred action is possible or successful.",
+    "Assign eligible actors, targets, weapons or systems, and objectives. Validate consciousness, assignment, skill, mount condition, ammunition or power, detection, and target applicability. Sealing commits the activation's joint orders."},
+
+   {"After combat", "Combat", Category::MenusScreens,
+    "When firing stops, the consequences do not. First aid and field recovery can stabilize people or restore temporarily disabled machinery. Proper treatment and repair may still require a port, parts, money, and weeks. Captured cargo, prisoners, and vessels have custody and title questions; reports, prize judgments, and warrants may travel long after the battle.\n\nInspect crew strength, stores, fuel, ammunition, and every damaged subsystem before planning the next leg.",
+    "After action, review casualties, appointment strength, field recovery, lasting damage, stores, ammunition, custody, prizes, reports, warrants, treatment, and repair requirements."},
+
+   {"A persistent, delayed universe", "World and time", Category::Concepts,
+    "Cepheus Trader has one shared universe that keeps advancing while players are offline. There is no instant interstellar network. Ships carry mail, contracts, reports, warrants, and market knowledge, so two captains can honestly possess different information about the same place.\n\nGame time describes events in the universe. Real time is how long the server makes you wait for that interval. Always compare an observation date or ETA with the game clock, especially when money, deadlines, or danger depend on it.",
+    "The universe persists offline. Interstellar information moves physically, so knowledge is observer-specific and dated. Distinguish game timestamps and durations from scaled real-time waits."},
+
+   {"Characteristics, skills, and task checks", "People and work", Category::Concepts,
+    "When an outcome is uncertain, the game resolves a task using a relevant characteristic, skill, difficulty, circumstances, tools, help, condition, and time. A modifier--often called a DM--moves the result but does not turn skill into certainty.\n\nSkill 0 is trained. No skill usually means an untrained penalty. The best person for a job may be a crew specialist rather than the captain, and injury, fatigue, morale, missing equipment, or too few helpers can change the attempt.",
+    "Tasks combine characteristic and skill DMs with difficulty, circumstances, equipment, assistance, condition, and time. Skill 0 is trained; absent skill is normally untrained. Actors and supporting teams are physical people."},
+
+   {"Ships, capacity, and crews", "Ships", Category::Concepts,
+    "A ship's displacement tonnage is the volume of its hull, not cargo weight. Drives, tanks, cabins, weapons, boats, and machinery consume that volume before the remaining cargo and stores are counted. Performance therefore comes from trade-offs rather than a single power score.\n\nThe crew supplies continuous watches and specialist work. Named leaders may stand for appointments containing several people. Ownership, command, physical custody, and legal authority are separate: a naval captain can command a ship the captain does not own.",
+    "Hull displacement is allocated among installed systems, tankage, accommodation, craft, cargo, and stores. Crew appointments provide watches and specialist work. Title, command, custody, and authority are distinct."},
+
+   {"Systems, travel, Jump, and fuel", "Travel", Category::Concepts,
+    "A star system contains separated places: the main world and port, Jump arrival loci, gas giants, downports, and wilderness sites. Ships spend real game time travelling between them, and even radio is delayed by light speed.\n\nJump rating is the maximum parsecs crossed in one Jump. Each Jump normally takes about a week of game time and consumes fuel based on the ship and rating. A longer course chains jumps through systems where fuel can be bought or collected. Thrust controls travel and maneuver outside Jump.",
+    "Travel consists of in-system legs and week-scale Jumps. Jump rating limits each edge; thrust affects normal-space movement. Fuel, tankage, known sources, law, money, and elapsed time constrain courses."},
+
+   {"Trade, offers, and contracts", "Commerce", Category::Concepts,
+    "Speculative trade means buying cargo with your own money and risking where to sell it. Freight, passengers, and charters instead belong to agreements with capacity, skill, deadline, bond, and liability terms. A high payment can hide a difficult pickup, expensive berth, missing steward, or impossible schedule.\n\nOffers and acceptances travel. Claiming can reserve resources before the issuer confirms that you won. Read who owns the goods, what must happen, when, and what is lost on failure.",
+    "Distinguish owned speculative cargo from entrusted freight, passengers, and charters. Evaluate capacity, qualifications, pickup, delivery, deadline, bond, payment, liability, and claim/award propagation delay."},
+
+   {"Mail, reports, and knowledge", "Information", Category::Concepts,
+    "Mail is electronic store-and-forward data. Within a system, mail beacons broadcast or relay it at light speed. Across a Jump boundary, a beacon downloads an electronic bundle to a departing ship and the destination beacon accepts the upload on arrival.\n\nA captain can retain a signed claim or report aboard even without accepting a general beacon bundle. A report still has separate observation, creation, and receipt times; recent delivery does not make an old observation current.",
+    "In-system electronic mail propagates between beacons at light speed. Interstellar hops require ship-carried data bundles. Separate observation, creation, departure, and receipt times; captain-carried instruments and general beacon bundles are distinct."},
+
+   {"Sensors, transponders, and traffic", "Information", Category::Concepts,
+    "Civilian ships normally transmit a transponder claiming a name, registry, and type. Traffic authorities can repeat those claims across a system. Your own sensors only detect local objects and estimate physical details according to equipment, range, damage, and circumstances.\n\nNeither source is magical. A transponder can identify something too distant to attack; a local sensor contact can be physically present while withholding identity. Confidence and source matter.",
+    "Transponders provide claimed identity and system traffic reports. Local sensors provide range-limited observations with confidence. System traffic is not automatically local, detectable, or interceptable."},
+
+   {"Law, authority, and warrants", "Law", Category::Concepts,
+    "Systems have different laws and enforcement. Authority can come from local government, naval service, a privateer commission, a warrant, or immediate necessity, and each permits different acts. Powerful weapons do not themselves make an inspection or arrest lawful.\n\nWarrants move by mail and name people, while ship associations are investigative clues. Demands, searches, arrests, seizures, reports, courts, and bounties form a chain; skipping the evidence or delivery step can turn enforcement into piracy.",
+    "Authority is jurisdictional and action-specific. Warrants and reports propagate physically. Person warrants, ship associations, demands, searches, custody, court delivery, and bounty payment remain distinct stages."},
+
+   {"Combat, boarding, and standing orders", "Combat", Category::Concepts,
+    "Space combat is expensive even for the winner. Ammunition, casualties, damaged drives, lost cargo, repair time, law, and retaliation can matter more than the immediate score. Boarding puts people directly at risk and can be used for inspection, arrest, surrender, or capture as well as piracy.\n\nBecause the universe continues while players are away, standing orders tell crews how to react. They can distinguish authority, demands, odds, targets, and escape chances, but they still operate with the crew's knowledge and ability.",
+    "Combat has persistent material, human, legal, and custody outcomes. Boarding supports inspection, arrest, surrender, and capture. Standing orders govern offline choices without granting information or capability."},
+
+   {"Glossary A-F", "A-F", Category::Glossary,
+    "Berth: A secured place where a ship is docked; departure may incur a fee.\n\nBond: Credits reserved as security for promised performance.\n\nBBS: Bulletin Board System, the service through which this door identifies the local player.\n\nCaptain: The persistent player character and commander, not automatically the owner of the ship.\n\nCharacteristic: STR, DEX, END, INT, EDU, or CHA; a basic personal capability.\n\nClaim: A response seeking an offered job; it is not an award until the issuer confirms it.\n\nCr: Credits, the standard money unit.\n\nDM: Dice modifier, a bonus or penalty applied to a task.\n\nDisplacement ton: A ship-volume measure, not a tonne of cargo weight.\n\nEntrusted cargo: Goods carried for another party rather than owned for resale.\n\nETA: Estimated game time of arrival.",
+    "Berth: A secured docking place. Bond: Reserved performance security. BBS: Bulletin Board System. Captain: Persistent player character and commander. Characteristic: One of STR, DEX, END, INT, EDU, or CHA. Claim: A response seeking an offer, before award. Cr: Credits. DM: Dice modifier. Displacement ton: Ship-volume measure. Entrusted cargo: Goods owned by a principal. ETA: Estimated time of arrival."},
+
+   {"Glossary G-L", "G-L", Category::Glossary,
+    "Gas giant: A large planet where a suitably equipped ship may collect unrefined fuel.\n\nGame time: Time inside the simulated universe.\n\nInterplanetary: Normal-space travel between locations in one star system.\n\nJump: Faster-than-light travel between star systems, normally taking about one game week.\n\nJump rating or J-number: The maximum parsecs a ship can cross in one Jump.\n\nLaw level: A broad indication of local restrictions and enforcement.\n\nLight-speed delay: The time a radio transmission needs to cross in-system distance.\n\nLocus: A modeled local place where ships can meet, such as a port, Jump point, or gas giant.\n\nLow berth: Suspended passenger accommodation whose occupant does not consume ordinary provisions while berthed.",
+    "Gas giant: A possible unrefined-fuel source. Game time: Simulated-universe time. Interplanetary: Normal-space in-system travel. Jump: Interstellar FTL travel. Jump rating: Maximum parsecs per Jump. Law level: Local restriction/enforcement code. Light-speed delay: Radio propagation time. Locus: Modeled meeting place. Low berth: Suspended passenger accommodation."},
+
+   {"Glossary M-R", "M-R", Category::Glossary,
+    "Mailbag: The game's name for an electronic bundle downloaded from a beacon to a ship for one interstellar hop.\n\nParsec: The distance unit used by Jump routes, about 3.26 light years.\n\nPicket: A ship waiting at a locus to intercept craft matching standing criteria.\n\nPort class: A broad A-through-E or minimal rating of primary-world starport capability.\n\nRefined fuel: Processed fuel that avoids the normal risks attached to unrefined fuel.\n\nRestricted credits: Institutional funds usable for authorized service expenses, not ordinary personal cash.\n\nRoster strength: The number of people currently represented by an appointment compared with its established complement.",
+    "Mailbag: An electronic beacon-to-ship data bundle for one interstellar hop. Parsec: Jump-route distance unit. Picket: A ship waiting to intercept matching traffic. Port class: Broad starport capability rating. Refined fuel: Processed low-risk fuel. Restricted credits: Institutional service funds. Roster strength: Current versus established appointment headcount."},
+
+   {"Glossary S-Z", "S-Z", Category::Glossary,
+    "Skill: Training in a category of work; rating 0 is trained competence.\n\nStanding orders: Policy used by a crew when the player is not supplying immediate decisions.\n\nSteward: Crew qualification needed to care for higher-class passengers.\n\nSystem Common: The shared public, light-speed radio channel within one system.\n\nTech level: A broad code for local technological capability.\n\nThrust: A ship's normal-space acceleration and maneuver performance.\n\nTransponder: A broadcast claiming a ship's civilian identity and registry.\n\nUnrefined fuel: Collected or minimally processed fuel carrying normal operational penalties.\n\nWarrant: A legal instrument authorizing pursuit or arrest of a named subject.\n\nWall time: The real-world wait corresponding to a game duration at the current clock rate.",
+    "Skill: Trained work category; 0 is trained. Standing orders: Offline crew policy. Steward: Passenger-service qualification. System Common: Public in-system radio. Tech level: Local technology code. Thrust: Normal-space performance. Transponder: Broadcast claimed identity. Unrefined fuel: Risk-bearing untreated fuel. Warrant: Arrest authority for a subject. Wall time: Real wait for a game duration."},
+}};
+
+constexpr std::array<std::string_view, static_cast<size_t>(Category::Count)> CATEGORY_NAMES{{
+   "Getting Started",
+   "Menus and Screens",
+   "Concepts",
+   "Glossary",
 }};
 
 }  // namespace
@@ -310,9 +268,23 @@ const DoorHelp& door_help(const DoorHelpTopic topic)
    return HELP[index];
 }
 
+std::string_view door_help_body(const DoorHelp& help, const HelpLevel level)
+{
+   return level == HelpLevel::Beginner ? help.beginner_body : help.expert_body;
+}
+
 std::span<const DoorHelp> all_door_help()
 {
    return HELP;
+}
+
+std::string_view door_help_category_name(const DoorHelpCategory category)
+{
+   const auto index = static_cast<size_t>(category);
+   if(index >= CATEGORY_NAMES.size()) {
+      throw std::out_of_range("invalid door help category");
+   }
+   return CATEGORY_NAMES[index];
 }
 
 }  // namespace ct

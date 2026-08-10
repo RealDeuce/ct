@@ -65,7 +65,7 @@ ordinary freight/passenger/mail declarations, task records, scheduled
 supplier/buyer research, dated market knowledge, secured finance, and finite
 ship and crew exchanges. The 2026-08-02 playability audit has been closed
 through Milestone 6. The real TLS/OpenDoors scenario exercises the merchant
-voyage, physical mail, all-profile arrival review, dock services, combat-career
+voyage, carrier-borne electronic mail, all-profile arrival review, dock services, combat-career
 entry, generated traffic, named combat actors, and joint orders. Deterministic
 fixtures carry the longer merchant, naval, privateer, pirate, legal,
 personnel, facility, and succession outcomes across restart. The OpenDoors client
@@ -189,8 +189,9 @@ Paired course tapes, reliability, timing, and the Jump-1-versus-Jump-2
 economic trade-off are specified in
 [`interstellar-jump-operations.md`](interstellar-jump-operations.md).
 
-There is no ansible. Electronic FTL communication is data physically carried
-between systems aboard ordinary ships. Standard beacons at maintained Jump
+There is no ansible. Within a system, electronic mail is broadcast or relayed
+between mail beacons at light speed. Crossing a Jump boundary requires its data
+to be carried aboard an ordinary ship. Standard beacons at maintained Jump
 loci offer small route-dependent stipends, transfer destination mailbags to
 departing ships, accept them automatically on arrival, and issue local payment.
 Busy polity routes obtain daily or better service from existing traffic;
@@ -388,7 +389,7 @@ affect detection, enforcement, permissions, and penalties and should be
 auditable, without directly granting player resources or changing combat
 outcomes.
 
-Cross-polity crime records and warrants travel by physical mail. A fugitive's
+Cross-polity crime records and warrants travel by carrier-borne electronic mail. A fugitive's
 destination may have stale or incomplete information, and local enforcement
 considers the issuing polity's authority, diplomatic relationship, local
 corruption, and possible payoffs. Interstellar banking will make travel and

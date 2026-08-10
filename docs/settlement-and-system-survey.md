@@ -140,7 +140,7 @@ adjudication. The claimant need not return and may continue exploring while
 the filing travels. Earth credits the claimant's Federation account or creates
 a payable claim there; it does not create instantly spendable funds aboard a
 distant ship. The award decision, receipt, and any requested banking transfer
-return through physical mail and ordinary interstellar clearing.
+return through store-and-forward electronic mail and ordinary interstellar clearing.
 
 A public notification begins its free public-service propagation from the
 ship's current system and continues whether or not it later earns an award. A

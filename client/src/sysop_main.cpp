@@ -521,7 +521,11 @@ int main(int argc, char** argv) {
                } else {
                   std::cout << "none";
                }
-               std::cout << '\t' << entry.name << '\n';
+               std::cout << '\t'
+                         << (entry.help_level == ct::HelpLevel::Beginner
+                                ? "beginner"
+                                : "expert")
+                         << '\t' << entry.name << '\n';
             }
             return 0;
          }

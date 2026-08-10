@@ -253,7 +253,7 @@ forcible extraction is a hostile operation and is not offered as an ordinary
 “cheapest route” fueling stop.
 
 The current bootstrap vector records the systems known at creation. New
-knowledge subsequently arrives through physical mail and mapping disclosure;
+knowledge subsequently arrives through store-and-forward mail and mapping disclosure;
 future per-attribute observations and market intelligence must live in their
 own knowledge records rather than expanding the player row.
 

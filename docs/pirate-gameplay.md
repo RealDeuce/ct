@@ -212,7 +212,7 @@ When a player acts on it:
 The server projects leads and optional commissions from current seed-derived
 traffic; every target ID must still be present when the captain attempts the
 intercept. Free predation uses the same local-contact list and immediately
-creates physical-mail evidence and warrants when not authorized. A captured
+creates delayed electronic evidence and warrants when not authorized. A captured
 ship is valued from its catalog price and surviving condition, then realizes a
 deterministic 10–30 percent at a fence. Successful commissions and fenced
 prizes improve underworld standing and relieve crew pressure.

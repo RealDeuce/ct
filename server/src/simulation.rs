@@ -1,4 +1,4 @@
-//! Durable scheduled simulation, ordinary traffic, and physical mail carriage.
+//! Durable scheduled simulation, ordinary traffic, and ship-carried electronic mail.
 //!
 //! This is deliberately a small first calibration model.  It persists the
 //! things whose identity matters -- messages, delivery envelopes, traffic

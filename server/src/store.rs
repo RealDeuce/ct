@@ -42042,7 +42042,7 @@ mod tests {
     }
 
     #[test]
-    fn polity_policy_changes_take_effect_only_after_physical_mail_arrives() {
+    fn polity_policy_changes_take_effect_only_after_the_mail_notice_arrives() {
         let directory = TempDir::new().unwrap();
         let store = Store::open(directory.path()).unwrap();
         store
@@ -43351,7 +43351,7 @@ mod tests {
                     &encode_stored_task(&claim).unwrap(),
                 )
                 .unwrap();
-            // This fixture proves physical mail custody and payment.  A
+            // This fixture proves electronic-mail bundle custody and payment. A
             // terminal contact would correctly wait for the captain and is
             // tested by the encounter/flight-plan fixtures instead.
             store.contact_events.clear(&mut txn).unwrap();
@@ -43583,7 +43583,7 @@ mod tests {
     }
 
     #[test]
-    fn mapping_disclosure_is_durable_and_dispatches_through_physical_mail() {
+    fn mapping_disclosure_is_durable_and_dispatches_through_store_and_forward_mail() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
         let epoch = initialize_player_fixture(&store);
@@ -45913,7 +45913,7 @@ mod tests {
     }
 
     #[test]
-    fn remote_settlement_waits_for_both_physical_mail_legs() {
+    fn remote_settlement_waits_for_both_interstellar_mail_legs() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
         initialize_player_fixture(&store);
@@ -48445,7 +48445,7 @@ mod tests {
     }
 
     #[test]
-    fn warrant_satisfaction_is_a_second_physically_delivered_instrument() {
+    fn warrant_satisfaction_is_a_second_delivered_electronic_instrument() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
         initialize_player_fixture(&store);

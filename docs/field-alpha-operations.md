@@ -32,7 +32,7 @@ separately because only the BBS knows when an account was deleted.
 
 Tax and naval demotion are in-world official instruments, not instantaneous
 remote mutation. The home authority emits a private signed message into the
-normal physical mail network. The assessment takes effect when that copy
+normal store-and-forward mail network. The assessment takes effect when that copy
 reaches the captain. Tax takes available cash, records the remainder as
 non-interest-bearing arrears, and sends receipts to an unspendable polity
 fiscal ledger. Demotion lowers the grade, clamps service points below the next

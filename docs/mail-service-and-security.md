@@ -1,9 +1,13 @@
 # Electronic Mail Service and Key Security
 
-## Physical Service
+## Store-and-Forward Service
 
-Electronic interstellar mail is store-and-forward data physically carried by
-ships. There is no live directory lookup, cancellation, delivery receipt, key
+Electronic mail is digital. Within a system, mail beacons broadcast or relay
+it at light speed. To cross a Jump boundary, a beacon downloads an electronic
+mailbag to a departing ship and the destination beacon accepts the upload on
+arrival. The bundle consumes negligible cargo capacity; physical letters and
+parcels are cargo instead. There is no live interstellar directory lookup,
+cancellation, delivery receipt, key
 revocation, or balance update across a Jump boundary. Beacons and relays use
 the persistent due-time event queue and ordinary carrier capacity described in
 the simulation design.
@@ -207,7 +211,7 @@ revocation. Encryption does not erase this operational risk.
 
 When the compromise becomes known to a competent issuer or law-enforcement
 authority, it emits a signed public-key revocation as free public-key/public-
-service traffic. Revocation propagates through physical mail. Each system,
+service traffic. Revocation propagates through the same store-and-forward mail. Each system,
 bank, beacon, or authority stops trusting the key only when it receives a
 valid revocation under its local policy; frontier systems may accept the
 compromised credential for weeks or months longer.

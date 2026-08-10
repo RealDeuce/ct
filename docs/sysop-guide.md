@@ -318,8 +318,12 @@ bin/cepheus-trader-sysop identity-list
 ```
 
 Each line reports the numeric player ID, active or retired state, BBS record
-index (or `none`), and account name. If a BBS account is renamed or its record
-number changes, update the existing mapping:
+index (or `none`), default help level, and account name. Help preference and
+the one-time orientation marker are stored per local player in this registry.
+Older registries are read without manual conversion; their records begin in
+Beginner help mode and are rewritten in the current format when changed. If a
+BBS account is renamed or its record number changes, update the existing
+mapping:
 
 ```console
 bin/cepheus-trader-sysop identity-rename PLAYER_ID "New Name"

@@ -108,8 +108,9 @@ offer's original regional scope. Each remote copy remains actionable until
 that notice arrives, so another captain may file against a stale local copy and
 later receive a decline. The captain retains their own signed filing, so
 reaching the issuing office makes the claim available there no later than the
-ship's arrival; a separately carried copy may arrive first. This hand delivery
-does not depend on accepting an ordinary beacon mailbag. Institutional filings
+ship's arrival; a separately carried copy may arrive first. Uploading the
+captain-retained copy on arrival does not depend on accepting an ordinary
+beacon mailbag. Institutional filings
 are not misclassified as mail addressed to every captain at their destination.
 
 The Task manager has revision-checked transactions to withdraw an unresolved
@@ -117,7 +118,7 @@ claim, cancel before custody, return custody at the origin, declare default,
 or file a sealed dispute with the issuing office. Default forfeits reserved
 collateral and assesses the stated failure penalty and non-delivery liability,
 capped by available credits. A dispute keeps the obligation and its reserves
-in place while its physical filing is in transit. Recurring supply commitments
+in place while its signed electronic filing is propagating. Recurring supply commitments
 schedule and settle each performance independently. No path may duplicate
 payment, cargo, capacity, or collateral after restart.
 

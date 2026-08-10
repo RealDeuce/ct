@@ -29,7 +29,7 @@ namespace ct {
 namespace {
 
 constexpr std::array<uint8_t, 8> MAGIC = {'C', 'T', 'I', 'D', 'M', 'A', 'P', 0};
-constexpr uint16_t FORMAT_VERSION = 1;
+constexpr uint16_t FORMAT_VERSION = 2;
 constexpr size_t DIGEST_BYTES = 32;
 constexpr size_t MAX_NAME_BYTES = 255;
 constexpr size_t MAX_RECORDS = 1'000'000;
@@ -82,6 +82,8 @@ std::vector<uint8_t> encode(const Registry& registry) {
    for(const auto& entry : registry.entries) {
       bytes.push_back(entry.retired ? 1 : 0);
       bytes.push_back(entry.record_index.has_value() ? 1 : 0);
+      bytes.push_back(entry.help_level == HelpLevel::Expert ? 1 : 0);
+      bytes.push_back(entry.orientation_shown ? 1 : 0);
       put_u16(bytes, static_cast<uint16_t>(entry.name.size()));
       put_u32(bytes, entry.player_id);
       put_u32(bytes, entry.record_index.value_or(0));
@@ -110,7 +112,8 @@ Registry decode(const std::vector<uint8_t>& bytes, const uint32_t bbs_id) {
       throw std::runtime_error("player identity registry has invalid magic");
    }
    size_t offset = MAGIC.size();
-   if(get_u16(payload, offset) != FORMAT_VERSION || get_u16(payload, offset) != 0) {
+   const auto version = get_u16(payload, offset);
+   if((version != 1 && version != FORMAT_VERSION) || get_u16(payload, offset) != 0) {
       throw std::runtime_error("unsupported player identity registry format");
    }
    Registry result{
@@ -128,11 +131,24 @@ Registry decode(const std::vector<uint8_t>& bytes, const uint32_t bbs_id) {
    }
    result.entries.reserve(count);
    for(uint32_t index = 0; index < count; ++index) {
-      if(offset + 12 > payload.size()) {
+      if(offset + (version == 1 ? 12 : 14) > payload.size()) {
          throw std::runtime_error("truncated player identity registry entry");
       }
       const bool retired = payload[offset++] != 0;
       const bool has_index = payload[offset++] != 0;
+      HelpLevel help_level = HelpLevel::Beginner;
+      bool orientation_shown = false;
+      if(version >= 2) {
+         const auto encoded_help_level = payload[offset++];
+         const auto encoded_orientation = payload[offset++];
+         if(encoded_help_level > 1 || encoded_orientation > 1) {
+            throw std::runtime_error("player identity registry entry is invalid");
+         }
+         help_level = encoded_help_level == 0
+            ? HelpLevel::Beginner
+            : HelpLevel::Expert;
+         orientation_shown = encoded_orientation != 0;
+      }
       const auto name_size = get_u16(payload, offset);
       const auto player_id = get_u32(payload, offset);
       const auto record_index = get_u32(payload, offset);
@@ -146,6 +162,8 @@ Registry decode(const std::vector<uint8_t>& bytes, const uint32_t bbs_id) {
                              name_size),
          .record_index = has_index ? std::optional(record_index) : std::nullopt,
          .retired = retired,
+         .help_level = help_level,
+         .orientation_shown = orientation_shown,
       });
       offset += name_size;
    }
@@ -511,17 +529,18 @@ void create_player_identity_registry(const std::string& path,
    }));
 }
 
-uint32_t resolve_player_identity(const std::string& path,
-                                 const uint32_t bbs_id,
-                                 const std::string& name,
-                                 const std::optional<uint32_t> record_index) {
+LocalPlayerIdentity resolve_player_identity(
+   const std::string& path,
+   const uint32_t bbs_id,
+   const std::string& name,
+   const std::optional<uint32_t> record_index) {
    validate_name(name);
    LockedFile file(path, false);
    auto registry = load(file, bbs_id);
    for(const auto& entry : registry.entries) {
       if(!entry.retired && entry.name == name &&
          entry.record_index == record_index) {
-         return entry.player_id;
+         return entry;
       }
    }
    for(const auto& entry : registry.entries) {
@@ -546,9 +565,12 @@ uint32_t resolve_player_identity(const std::string& path,
       .name = name,
       .record_index = record_index,
       .retired = false,
+      .help_level = HelpLevel::Beginner,
+      .orientation_shown = false,
    });
+   const auto created = registry.entries.back();
    file.replace(encode(registry));
-   return player_id;
+   return created;
 }
 
 std::vector<LocalPlayerIdentity> list_player_identities(
@@ -589,6 +611,25 @@ void retire_player_identity(const std::string& path,
    LockedFile file(path, false);
    auto registry = load(file, bbs_id);
    active_by_id(registry, player_id).retired = true;
+   file.replace(encode(registry));
+}
+
+void set_player_help_level(const std::string& path,
+                           const uint32_t bbs_id,
+                           const uint32_t player_id,
+                           const HelpLevel help_level) {
+   LockedFile file(path, false);
+   auto registry = load(file, bbs_id);
+   active_by_id(registry, player_id).help_level = help_level;
+   file.replace(encode(registry));
+}
+
+void mark_player_orientation_shown(const std::string& path,
+                                   const uint32_t bbs_id,
+                                   const uint32_t player_id) {
+   LockedFile file(path, false);
+   auto registry = load(file, bbs_id);
+   active_by_id(registry, player_id).orientation_shown = true;
    file.replace(encode(registry));
 }
 

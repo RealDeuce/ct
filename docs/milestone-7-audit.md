@@ -107,7 +107,7 @@ Implemented commands:
   returns an error with the current revision for retry. Trade/combat (0-100)
   and chaos/order (0-100) orientation axes are effective polity state, not
   metadata. Configuration changes originate a signed public-service order at
-  the capital; other systems apply the change only when the physical mail
+  the capital; other systems apply the change only when the electronic notice
   copy arrives. Later revisions supersede older copies.
 
 - **suspend-player / resume-player / remove-player**: Three-state access
@@ -133,14 +133,14 @@ checking, and player suspension/resumption.
 Store tests cover:
 `player_removal_is_persistent_and_irreversible`,
 `sysop_tax_is_mail_delayed_and_creates_non_interest_arrears`,
-`polity_policy_changes_take_effect_only_after_physical_mail_arrives`.
+`polity_policy_changes_take_effect_only_after_the_mail_notice_arrives`.
 
 ### 4. BBS Founding Announcements and Inter-Polity Discovery
 
 **Verdict: Complete. No gaps.**
 
 These are implemented as engine-internal operations generating in-world
-physical mail, not as separate wire protocol message types.
+in-world store-and-forward mail, not as separate wire protocol message types.
 
 - **BBS founding**: `dispatch_bbs_founding_announcement_in()` (store.rs line
   21942) creates a public `AgencyNews`/`Headline` message containing the
@@ -272,7 +272,7 @@ tools work" and "the acceptance test has been run and passed."
 
 | Item | Explanation |
 |------|-------------|
-| BBS founding announcements not in wire protocol | Correctly implemented as engine-internal operations generating in-world physical mail. Not a protocol-level message. |
+| BBS founding announcements not in wire protocol | Correctly implemented as engine-internal operations generating in-world store-and-forward mail. Not a protocol-level message. |
 | Session capacity not reported to clients | Server-side enforcement only. Clients see TLS/protocol errors at capacity. Consistent with the doc's description of server-side caps. |
 | Load driver uses CYCLES instead of "reconnect-count" | Functionally identical; the parameter is a superset of the documented 2-cycle pattern. |
 | Admin port 7324 vs sysop port 7325 | These are two different listeners. Admin defaults to every supported address for loopback-only `localhost:7324`; sysop defaults to every supported address for `localhost:7325`. Both match their respective documented defaults. |

@@ -20,9 +20,16 @@ screen. Letter choices are case-insensitive.
 - `Q` normally cancels the current action or backs out. At a command console
   or the docked menu it offers to return to the BBS; you must confirm with
   `Y` before the game exits.
-- `?` opens help for the screen or decision in front of you. Help pages like
-  other long output; press Enter at the resume prompt to return to the same
-  menu or input prompt.
+- `?` opens help for the screen or decision in front of you. **Beginner** help
+  introduces the game concept before explaining the screen; **Expert** help is
+  a shorter operational reference. Each BBS player has a durable default.
+- During help paging, Enter or Space advances, `C` continues without more page
+  pauses, `B` restarts the topic in Beginner mode, `X` restarts it in Expert
+  mode, and `Q` stops help. The B/X choice lasts for that help visit only.
+- At the end of a help topic, `H` opens the Help Browser. Its tree contains
+  Getting Started, Menus and Screens, Concepts, and an alphabetical Glossary.
+  `Q` moves toward the root and then returns to the game. The browser's `D`
+  action changes the durable default.
 - `<` and `>` move between pages where shown. Some packet screens also accept
   the corresponding arrow keys and display letter alternatives.
 - A full page pauses at an `[Enter/Space] Continue  [C] Continuous` prompt.
@@ -37,6 +44,12 @@ reason and refresh the relevant screen rather than assuming that the displayed
 proposal took effect.
 
 ## Create your first command
+
+The first time an unregistered local player reaches captain creation, the door
+opens a short orientation. It introduces the setting and the shape of the
+decisions ahead; it is not required reading. Press `Q` at any of its pager
+prompts to skip the rest. The orientation is shown only once for that local
+BBS identity.
 
 New players create a captain and choose one of three starting commands. Every
 screen begins with workable defaults, so you can safely accept them on a first
@@ -393,7 +406,7 @@ player-owned ship operating under standing orders; `[ONLINE]` identifies the
 player-owned ship currently under a connected captain's direct control. These
 markers describe control, not the quality of the ship's sensor identification.
 
-Warrants arrive as ordinary physical mail and are entered into the Operations
+Warrants arrive through the store-and-forward electronic mail network and are entered into the Operations
 Ledger automatically; there is no bounty to accept. A `[WARRANT]` marker means
 that a locally received warrant names a person associated with that vessel.
 The association is dated evidence, not proof that the person is still aboard.

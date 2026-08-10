@@ -53,7 +53,12 @@ std::string door_option_prompt(
 class DoorPresentation {
 public:
    using Sink = std::function<void(std::string_view)>;
-   using PagePause = std::function<void()>;
+   enum class PagePauseAction {
+      Continue,
+      Continuous,
+      Abort,
+   };
+   using PagePause = std::function<PagePauseAction()>;
 
    DoorPresentation(DoorProfile profile,
                     size_t columns,
@@ -77,9 +82,9 @@ public:
    void erase_prompt(size_t visible_columns);
 
    void clear();
-   void write(std::string_view text,
+   bool write(std::string_view text,
               DoorTextRole role = DoorTextRole::Normal);
-   void write_hanging(std::string_view text,
+   bool write_hanging(std::string_view text,
                       size_t continuation_indent,
                       DoorTextRole role = DoorTextRole::Normal);
 
@@ -104,6 +109,7 @@ private:
    bool paging_active_ = false;
    bool paging_suppressed_until_input_ = false;
    bool handling_page_pause_ = false;
+   bool write_aborted_ = false;
    Sink sink_;
    std::string pending_;
 };
