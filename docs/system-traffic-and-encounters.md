@@ -528,27 +528,30 @@ Cross-system consequences are new scheduled inputs rather than direct mutation
 of another system in the middle of a daily job.
 
 Background mail remains governed by the persistent due-time delivery queue
-specified in the message-store design. A daily system job assembles bags from
-mail awaiting departures that exist for non-mail reasons; it does not scan
-every message in flight or create traffic to satisfy a service target. A
-committed carrier pickup schedules its exact arrival event, and delivery is
-not postponed until a player next opens the market.
+specified in the message-store design. Daily system work generates traffic
+from source/destination economic profiles, selects an area-appropriate vessel,
+and commits a complete itinerary that its Jump drive and tankage can execute.
+Only then does each departure assemble a bag from mail for which that next stop
+is a valid forward hop. A committed carrier pickup schedules its exact arrival
+event, and delivery is not postponed until a player next opens the market.
 
 Ordinary traffic is the only electronic-mail capacity. A beacon advertises the
-same token handling payment for every hop, signs custody when a configured ship
-already bound for that destination downloads a mailbag, accepts it
+same token handling payment for every hop, signs custody when a configured
+ship's next stop advances an envelope toward its destination, accepts it
 automatically at arrival, and issues local payment. Mail data consumes
-negligible cargo capacity. No ship departs, diverts, or chooses a route merely
-to carry electronic mail, and there are no frequency guarantees, mail-route
-subsidies, or dedicated electronic-mail vessels. Urgent physical objects or
-passengers are cargo, passage, or contracts rather than this mail service.
-Physical parcels remain cargo and do not use the electronic-data capacity.
+negligible cargo capacity. No ship departs, diverts, selects a destination or
+route, or changes vessel merely to carry electronic mail, and there are no
+frequency guarantees, mail-route subsidies, or dedicated electronic-mail
+vessels. Urgent physical objects or passengers are cargo, passage, or
+contracts rather than this mail service. Physical parcels remain cargo and do
+not use the electronic-data capacity.
 
 “Free data capacity” does not make every message free to its sender. News
 accepted by an agency, admitted public-service broadcasts, and public-key
 distribution carry no sender charge. Private and other non-public-service mail
 has a small TTL- and route-dependent charge. Fixed-system mail purchases one
-exact path; mobile-address mail purchases a replicated hold sphere. Complete
+destination envelope priced from a quoted network distance; mobile-address
+mail purchases a replicated hold sphere. Complete
 tariff, retention, encryption, and delayed-revocation semantics are in
 [`mail-service-and-security.md`](mail-service-and-security.md).
 

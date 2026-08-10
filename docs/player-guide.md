@@ -223,6 +223,11 @@ listed problems before performance. The classification is refreshed with the
 ledger, so selling cargo, hiring crew, or otherwise correcting a stated problem
 can make an offer appear in the normal list.
 
+The issuing market screens destinations against traffic vessels that could
+actually perform the route. Work needing extended tankage or other specialist
+Jump capability is progressively less common and carries a progressively
+higher payment than ordinary refuel-each-stop J-2 work.
+
 After successful delivery, the task remains awaiting settlement while the
 delivery filing travels back to the issuing office. Payment and release of the
 posted collateral take effect when the remittance reaches you.

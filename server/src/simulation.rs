@@ -187,12 +187,16 @@ pub enum TrafficShipStatus {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SimulatedTrafficShip {
     pub traffic_ship_id: u64,
+    pub catalog_id: u32,
     pub origin_system_id: u64,
     pub destination_system_id: u64,
     pub departure_second: u64,
     pub arrival_second: u64,
     pub status: TrafficShipStatus,
     pub mailbag_id: Option<u64>,
+    pub itinerary: Vec<u64>,
+    /// Index of the destination of the current or most recently completed leg.
+    pub itinerary_index: u16,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -284,6 +288,9 @@ enum EventKind {
         traffic_ship_id: u64,
         mailbag_id: Option<u64>,
         carrier_leg_id: Option<u64>,
+    },
+    TrafficContinuation {
+        traffic_ship_id: u64,
     },
 }
 
@@ -604,6 +611,11 @@ impl SimulationDatabases {
                     carrier_leg_id,
                 )?;
                 (system_id, SimulationEventKind::TrafficArrival, summary)
+            }
+            EventKind::TrafficContinuation { traffic_ship_id } => {
+                let (system_id, summary) =
+                    self.process_traffic_continuation(txn, event.due_second, traffic_ship_id)?;
+                (system_id, SimulationEventKind::TrafficDeparture, summary)
             }
         };
         Ok(ProcessedEvent {
@@ -1016,9 +1028,9 @@ impl SimulationDatabases {
         Ok(())
     }
 
-    /// Originate one server-authored message and route a physical envelope to
-    /// each requested destination. The immutable origin copy is available
-    /// immediately; every remote copy still has to traverse its stored route.
+    /// Originate one server-authored message and queue an electronic envelope
+    /// for each requested destination. The immutable origin copy is available
+    /// immediately; remote copies wait for independently generated traffic.
     pub fn dispatch_message(
         &self,
         txn: &mut RwTxn<'_>,
@@ -1065,7 +1077,7 @@ impl SimulationDatabases {
             if destination_system_id == origin_system_id {
                 continue;
             }
-            let Some(route) = shortest_route(&systems, origin_system_id, destination_system_id)
+            let Some(_route) = shortest_route(&systems, origin_system_id, destination_system_id)
             else {
                 // Broadcasts cover the physically connected mail graph. A
                 // disconnected materialized island cannot receive an
@@ -1077,7 +1089,7 @@ impl SimulationDatabases {
                 envelope_id,
                 message_id,
                 destination_system_id,
-                route,
+                route: vec![origin_system_id, destination_system_id],
                 route_index: 0,
                 status: EnvelopeStatus::Waiting,
             };
@@ -1122,11 +1134,11 @@ impl SimulationDatabases {
             let leg = decode_carrier_leg(key_id(key)?, value)?;
             let ship = self.get_traffic_ship(txn, leg.traffic_ship_id)?;
             let bag = self.get_mailbag(txn, leg.mailbag_id)?;
-            if ship.mailbag_id != Some(bag.mailbag_id)
-                || ship.origin_system_id != leg.origin_system_id
-                || ship.destination_system_id != leg.destination_system_id
-                || ship.departure_second != leg.custody_second
-                || ship.arrival_second != leg.due_second
+            if !ship
+                .itinerary
+                .windows(2)
+                .any(|pair| pair == [leg.origin_system_id, leg.destination_system_id])
+                || leg.due_second != leg.custody_second.saturating_add(STANDARD_JUMP_SECONDS)
                 || bag.origin_system_id != leg.origin_system_id
                 || bag.destination_system_id != leg.destination_system_id
                 || bag.sealed_second != leg.custody_second
@@ -1176,6 +1188,7 @@ impl SimulationDatabases {
         let mut random = SeedStream::new(seed);
         let departures = sample_hundredths(traffic_rate_hundredths(&system), &mut random)?;
         let systems = self.connected_polity_systems(txn, &system)?;
+        let traffic_systems = self.systems(txn)?;
 
         let rates = [
             (MessageClass::AgencyNews, u64::from(system.population) * 12),
@@ -1216,11 +1229,16 @@ impl SimulationDatabases {
             }
         }
 
-        if !system.jump_two_neighbors.is_empty() {
+        if traffic_systems.len() > 1 {
             let mut destinations = Vec::with_capacity(departures as usize);
             for _ in 0..departures {
-                let neighbor_index = random.next_u64()? as usize % system.jump_two_neighbors.len();
-                destinations.push(system.jump_two_neighbors[neighbor_index]);
+                if let Some(destination) = crate::traffic::departure_destination(
+                    &system,
+                    &traffic_systems,
+                    random.next_u64()?,
+                ) {
+                    destinations.push(destination);
+                }
             }
             self.schedule_departure_plan(txn, now, system_id, destinations)?;
         }
@@ -1341,14 +1359,15 @@ impl SimulationDatabases {
 
         let mut created = 0_u64;
         for route in candidate_routes {
+            let destination_system_id = *route
+                .last()
+                .ok_or(SimulationError::Corrupt("empty delivery route"))?;
             let envelope_id = self.take_id(txn, META_NEXT_ENVELOPE)?;
             let envelope = DeliveryEnvelope {
                 envelope_id,
                 message_id,
-                destination_system_id: *route
-                    .last()
-                    .ok_or(SimulationError::Corrupt("empty delivery route"))?,
-                route,
+                destination_system_id,
+                route: vec![origin.system_id, destination_system_id],
                 route_index: 0,
                 status: EnvelopeStatus::Waiting,
             };
@@ -1367,6 +1386,78 @@ impl SimulationDatabases {
         destination_system_id: u64,
     ) -> Result<String, SimulationError> {
         let traffic_ship_id = self.take_id(txn, META_NEXT_TRAFFIC_SHIP)?;
+        let systems = self.systems(txn)?;
+        let itinerary = crate::traffic::generated_itinerary(
+            &systems,
+            origin_system_id,
+            destination_system_id,
+            traffic_ship_id ^ now.rotate_left(17),
+        )
+        .ok_or(SimulationError::Corrupt(
+            "scheduled traffic has no executable itinerary",
+        ))?;
+        if itinerary.system_ids.len() < 2
+            || itinerary.system_ids.first() != Some(&origin_system_id)
+            || itinerary.system_ids.last() != Some(&destination_system_id)
+        {
+            return Err(SimulationError::Corrupt(
+                "invalid generated traffic itinerary",
+            ));
+        }
+        let ship = SimulatedTrafficShip {
+            traffic_ship_id,
+            catalog_id: itinerary.catalog_id,
+            origin_system_id,
+            destination_system_id: origin_system_id,
+            departure_second: now,
+            arrival_second: now,
+            status: TrafficShipStatus::Arrived,
+            mailbag_id: None,
+            itinerary: itinerary.system_ids,
+            itinerary_index: 0,
+        };
+        self.launch_traffic_leg(txn, now, ship, 1)
+    }
+
+    fn process_traffic_continuation(
+        &self,
+        txn: &mut RwTxn<'_>,
+        now: u64,
+        traffic_ship_id: u64,
+    ) -> Result<(u64, String), SimulationError> {
+        let ship = self.get_traffic_ship(txn, traffic_ship_id)?;
+        if ship.status != TrafficShipStatus::Arrived {
+            return Err(SimulationError::Corrupt(
+                "traffic continuation before arrival",
+            ));
+        }
+        let next_index = ship
+            .itinerary_index
+            .checked_add(1)
+            .ok_or(SimulationError::Corrupt("traffic itinerary index overflow"))?;
+        let system_id = ship.destination_system_id;
+        let summary = self.launch_traffic_leg(txn, now, ship, next_index)?;
+        Ok((system_id, summary))
+    }
+
+    fn launch_traffic_leg(
+        &self,
+        txn: &mut RwTxn<'_>,
+        now: u64,
+        mut ship: SimulatedTrafficShip,
+        next_index: u16,
+    ) -> Result<String, SimulationError> {
+        let index = usize::from(next_index);
+        let origin_system_id =
+            *ship
+                .itinerary
+                .get(index.saturating_sub(1))
+                .ok_or(SimulationError::Corrupt(
+                    "traffic itinerary origin is missing",
+                ))?;
+        let destination_system_id = *ship.itinerary.get(index).ok_or(SimulationError::Corrupt(
+            "traffic itinerary destination is missing",
+        ))?;
         let arrival_second = now
             .checked_add(STANDARD_JUMP_SECONDS)
             .ok_or(SimulationError::Corrupt("traffic arrival overflow"))?;
@@ -1389,7 +1480,7 @@ impl SimulationDatabases {
             let leg = CarrierLeg {
                 carrier_leg_id,
                 mailbag_id,
-                traffic_ship_id,
+                traffic_ship_id: ship.traffic_ship_id,
                 origin_system_id,
                 destination_system_id,
                 custody_second: now,
@@ -1408,32 +1499,36 @@ impl SimulationDatabases {
             )?;
             (Some(mailbag_id), Some(carrier_leg_id))
         };
-        let ship = SimulatedTrafficShip {
-            traffic_ship_id,
-            origin_system_id,
-            destination_system_id,
-            departure_second: now,
-            arrival_second,
-            status: TrafficShipStatus::InTransit,
-            mailbag_id,
-        };
+        ship.origin_system_id = origin_system_id;
+        ship.destination_system_id = destination_system_id;
+        ship.departure_second = now;
+        ship.arrival_second = arrival_second;
+        ship.status = TrafficShipStatus::InTransit;
+        ship.mailbag_id = mailbag_id;
+        ship.itinerary_index = next_index;
         self.records.put(
             txn,
-            &record_key(RECORD_TRAFFIC_SHIP, traffic_ship_id),
+            &record_key(RECORD_TRAFFIC_SHIP, ship.traffic_ship_id),
             &encode_traffic_ship(&ship),
         )?;
         self.schedule(
             txn,
             arrival_second,
-            traffic_ship_id,
+            ship.traffic_ship_id,
             EventKind::TrafficArrival {
-                traffic_ship_id,
+                traffic_ship_id: ship.traffic_ship_id,
                 mailbag_id,
                 carrier_leg_id,
             },
         )?;
         Ok(format!(
-            "TrafficDeparture ship={traffic_ship_id} {origin_system_id}->{destination_system_id} mailbag={} envelopes={}",
+            "TrafficDeparture ship={} catalog={} {origin_system_id}->{destination_system_id} final={} mailbag={} envelopes={}",
+            ship.traffic_ship_id,
+            ship.catalog_id,
+            ship.itinerary
+                .last()
+                .copied()
+                .unwrap_or(destination_system_id),
             mailbag_id.unwrap_or(0),
             mailbag_id
                 .map(|id| self.get_mailbag(txn, id).map(|bag| bag.envelope_ids.len()))
@@ -1487,6 +1582,14 @@ impl SimulationDatabases {
         } else if carrier_leg_id.is_some() {
             return Err(SimulationError::Corrupt("carrier leg without mailbag"));
         }
+        if usize::from(ship.itinerary_index) + 1 < ship.itinerary.len() {
+            self.schedule(
+                txn,
+                now.saturating_add(SECONDS_PER_DAY),
+                traffic_ship_id,
+                EventKind::TrafficContinuation { traffic_ship_id },
+            )?;
+        }
         Ok((
             ship.destination_system_id,
             format!(
@@ -1527,14 +1630,15 @@ impl SimulationDatabases {
         &self,
         txn: &mut RwTxn<'_>,
         origin_system_id: u64,
-        destination_system_id: u64,
+        next_system_id: u64,
         now: u64,
     ) -> Result<Vec<u64>, SimulationError> {
-        let prefix = queue_prefix(origin_system_id, destination_system_id);
+        let systems = self.systems(txn)?;
+        let mut prefix = vec![RECORD_QUEUE];
+        prefix.extend_from_slice(&origin_system_id.to_be_bytes());
         let queued = self
             .records
             .prefix_iter(txn, &prefix)?
-            .take(MAILBAG_ENVELOPE_LIMIT)
             .map(|entry| {
                 let (key, _) = entry?;
                 Ok((key.to_vec(), key_id(key)?))
@@ -1543,6 +1647,16 @@ impl SimulationDatabases {
         let mut envelope_ids = Vec::new();
         for (key, envelope_id) in queued {
             let mut envelope = self.get_envelope(txn, envelope_id)?;
+            let advances_toward_destination = crate::traffic::operational_route(
+                &systems,
+                origin_system_id,
+                envelope.destination_system_id,
+            )
+            .and_then(|route| route.system_ids.get(1).copied())
+                == Some(next_system_id);
+            if !advances_toward_destination || envelope_ids.len() >= MAILBAG_ENVELOPE_LIMIT {
+                continue;
+            }
             let message = self.get_message(txn, envelope.message_id)?;
             self.records.delete(txn, &key)?;
             if now >= message.expires_second {
@@ -1586,29 +1700,20 @@ impl SimulationDatabases {
                 envelope.status = EnvelopeStatus::Expired;
                 expired += 1;
             } else {
-                envelope.route_index = envelope
-                    .route_index
-                    .checked_add(1)
-                    .ok_or(SimulationError::Corrupt("route index overflow"))?;
-                let current = *envelope
-                    .route
-                    .get(envelope.route_index as usize)
-                    .ok_or(SimulationError::Corrupt("carrier left delivery route"))?;
-                if current != destination_system_id {
-                    return Err(SimulationError::Corrupt("carrier arrived off route"));
-                }
-                if current == envelope.destination_system_id {
+                if destination_system_id == envelope.destination_system_id {
                     envelope.status = EnvelopeStatus::Delivered;
                     self.create_delivery(
                         txn,
                         Some(envelope.envelope_id),
                         envelope.message_id,
-                        current,
+                        destination_system_id,
                         now,
                     )?;
                     delivered += 1;
                 } else {
                     envelope.status = EnvelopeStatus::Waiting;
+                    envelope.route[0] = destination_system_id;
+                    envelope.route_index = 0;
                     self.queue_envelope(txn, &envelope)?;
                     forwarded += 1;
                 }
@@ -1625,12 +1730,8 @@ impl SimulationDatabases {
         destination_system_id: u64,
         envelope_count: u16,
     ) -> Result<u64, SimulationError> {
-        let origin = self.get_system(txn, origin_system_id)?;
-        if !origin.jump_two_neighbors.contains(&destination_system_id) {
-            return Err(SimulationError::Corrupt(
-                "mailbag route is not a direct beacon hop",
-            ));
-        }
+        self.get_system(txn, origin_system_id)?;
+        self.get_system(txn, destination_system_id)?;
         // The initial provisional tariff never causes or redirects a voyage.
         // Every direct hop pays the same token handling amount to a ship
         // already making that transit, plus the same amount per envelope.
@@ -1671,10 +1772,7 @@ impl SimulationDatabases {
         let current = *envelope.route.get(index).ok_or(SimulationError::Corrupt(
             "delivery route index out of bounds",
         ))?;
-        let next = *envelope
-            .route
-            .get(index + 1)
-            .ok_or(SimulationError::Corrupt("queued delivery has no next hop"))?;
+        let next = envelope.destination_system_id;
         self.records
             .put(txn, &queue_key(current, next, envelope.envelope_id), &[])?;
         Ok(())
@@ -2269,22 +2367,30 @@ fn decode_envelope(id: u64, bytes: &[u8]) -> Result<DeliveryEnvelope, Simulation
 }
 
 fn encode_traffic_ship(ship: &SimulatedTrafficShip) -> Vec<u8> {
-    let mut bytes = vec![2];
+    let mut bytes = vec![3];
+    bytes.extend_from_slice(&ship.catalog_id.to_be_bytes());
     bytes.extend_from_slice(&ship.origin_system_id.to_be_bytes());
     bytes.extend_from_slice(&ship.destination_system_id.to_be_bytes());
     bytes.extend_from_slice(&ship.departure_second.to_be_bytes());
     bytes.extend_from_slice(&ship.arrival_second.to_be_bytes());
     bytes.push(ship.status as u8);
     bytes.extend_from_slice(&ship.mailbag_id.unwrap_or(0).to_be_bytes());
+    bytes.extend_from_slice(&ship.itinerary_index.to_be_bytes());
+    bytes.extend_from_slice(&(ship.itinerary.len() as u16).to_be_bytes());
+    for system_id in &ship.itinerary {
+        bytes.extend_from_slice(&system_id.to_be_bytes());
+    }
     bytes
 }
 
 fn decode_traffic_ship(id: u64, bytes: &[u8]) -> Result<SimulatedTrafficShip, SimulationError> {
     let mut decoder = Decoder::new(bytes);
-    if decoder.u8()? != 2 {
+    let version = decoder.u8()?;
+    if !matches!(version, 2 | 3) {
         return Err(SimulationError::Corrupt("unsupported traffic ship"));
     }
     let traffic_ship_id = id;
+    let catalog_id = if version == 3 { decoder.u32()? } else { 0 };
     let origin_system_id = decoder.u64()?;
     let destination_system_id = decoder.u64()?;
     let departure_second = decoder.u64()?;
@@ -2298,15 +2404,32 @@ fn decode_traffic_ship(id: u64, bytes: &[u8]) -> Result<SimulatedTrafficShip, Si
         0 => None,
         id => Some(id),
     };
+    let (itinerary_index, itinerary) = if version == 3 {
+        let itinerary_index = decoder.u16()?;
+        let count = decoder.u16()? as usize;
+        let mut itinerary = Vec::with_capacity(count);
+        for _ in 0..count {
+            itinerary.push(decoder.u64()?);
+        }
+        if itinerary.is_empty() || usize::from(itinerary_index) >= itinerary.len() {
+            return Err(SimulationError::Corrupt("invalid traffic itinerary"));
+        }
+        (itinerary_index, itinerary)
+    } else {
+        (1, vec![origin_system_id, destination_system_id])
+    };
     decoder.finish()?;
     Ok(SimulatedTrafficShip {
         traffic_ship_id,
+        catalog_id,
         origin_system_id,
         destination_system_id,
         departure_second,
         arrival_second,
         status,
         mailbag_id,
+        itinerary,
+        itinerary_index,
     })
 }
 
@@ -2528,6 +2651,10 @@ fn encode_event_kind(event: &ScheduledEvent) -> Vec<u8> {
             bytes.extend_from_slice(&mailbag_id.unwrap_or(0).to_be_bytes());
             bytes.extend_from_slice(&carrier_leg_id.unwrap_or(0).to_be_bytes());
         }
+        EventKind::TrafficContinuation { traffic_ship_id } => {
+            debug_assert_eq!(traffic_ship_id, event.entity_id);
+            bytes.push(4);
+        }
     }
     bytes
 }
@@ -2609,6 +2736,9 @@ fn decode_event_parts(
                 destinations,
             }
         }
+        4 => EventKind::TrafficContinuation {
+            traffic_ship_id: entity_id,
+        },
         _ => return Err(SimulationError::Corrupt("unknown scheduled event")),
     };
     decoder.finish()?;
@@ -2654,6 +2784,23 @@ impl QueuedSimulationEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use heed::EnvOpenOptions;
+    use tempfile::TempDir;
+
+    fn test_system(system_id: u64, x: f64) -> SimulationSystem {
+        SimulationSystem {
+            system_id,
+            name: format!("Test {system_id}"),
+            position_parsecs: [x, 0.0, 0.0],
+            polity_id: 1,
+            generation_seed: [system_id as u8; 32],
+            population: 8,
+            tech_level: 15,
+            starport: crate::universe::Starport::A as u8,
+            next_system_day: 0,
+            jump_two_neighbors: Vec::new(),
+        }
+    }
 
     #[test]
     fn shortest_route_is_stable_and_uses_sorted_neighbors() {
@@ -2708,5 +2855,173 @@ mod tests {
             jump_two_neighbor_lists(&systems),
             vec![vec![2, 3, 5], vec![1, 4], vec![1], vec![2], vec![1]]
         );
+    }
+
+    #[test]
+    fn traffic_ship_and_continuation_codecs_preserve_itinerary() {
+        let ship = SimulatedTrafficShip {
+            traffic_ship_id: 19,
+            catalog_id: 72,
+            origin_system_id: 2,
+            destination_system_id: 3,
+            departure_second: 100,
+            arrival_second: 200,
+            status: TrafficShipStatus::InTransit,
+            mailbag_id: Some(31),
+            itinerary: vec![1, 2, 3, 4],
+            itinerary_index: 2,
+        };
+        assert_eq!(
+            decode_traffic_ship(19, &encode_traffic_ship(&ship)).unwrap(),
+            ship
+        );
+
+        let event = ScheduledEvent {
+            event_id: 23,
+            due_second: 400,
+            entity_id: 19,
+            kind: EventKind::TrafficContinuation {
+                traffic_ship_id: 19,
+            },
+        };
+        let decoded = decode_event(
+            &event_key(event.due_second, event.event_id),
+            &encode_event(&event),
+        )
+        .unwrap();
+        assert_eq!(decoded, event);
+    }
+
+    #[test]
+    fn mail_rides_each_useful_leg_without_selecting_the_traffic_itinerary() {
+        let directory = TempDir::new().unwrap();
+        // SAFETY: this test owns the temporary directory and opens it once.
+        let env = unsafe {
+            EnvOpenOptions::new()
+                .map_size(16 * 1024 * 1024)
+                .max_dbs(4)
+                .open(directory.path())
+                .unwrap()
+        };
+        let mut txn = env.write_txn().unwrap();
+        let simulation = SimulationDatabases::create(&env, &mut txn).unwrap();
+        simulation
+            .initialize(
+                &mut txn,
+                vec![
+                    test_system(1, 0.0),
+                    test_system(2, 1.5),
+                    test_system(3, 3.0),
+                    test_system(4, 4.5),
+                ],
+            )
+            .unwrap();
+        let (message_id, envelopes) = simulation
+            .dispatch_message(
+                &mut txn,
+                0,
+                1,
+                MessageClass::Private,
+                MessageImportance::Important,
+                "Test dispatch",
+                "The traffic exists independently of this dispatch.",
+                &[3, 4],
+            )
+            .unwrap();
+        assert_eq!(envelopes, 2);
+        let waiting = simulation.report(&txn, 0).unwrap();
+        assert_eq!(waiting.traffic_ships, 0);
+        assert_eq!(waiting.envelopes_waiting, 2);
+
+        simulation.process_departure(&mut txn, 0, 1, 3).unwrap();
+        let first_ship = simulation.get_traffic_ship(&txn, 1).unwrap();
+        assert_eq!(first_ship.itinerary, vec![1, 2, 3]);
+        assert_eq!(first_ship.destination_system_id, 2);
+        let first_leg = simulation
+            .recent_carrier_legs(&txn, 1)
+            .unwrap()
+            .pop()
+            .unwrap();
+        simulation
+            .process_arrival(
+                &mut txn,
+                STANDARD_JUMP_SECONDS,
+                first_ship.traffic_ship_id,
+                Some(first_leg.mailbag_id),
+                Some(first_leg.carrier_leg_id),
+            )
+            .unwrap();
+        let at_intermediate = simulation.report(&txn, STANDARD_JUMP_SECONDS).unwrap();
+        assert_eq!(at_intermediate.envelopes_waiting, 2);
+        assert_eq!(at_intermediate.envelopes_delivered, 0);
+
+        let continuation_second = STANDARD_JUMP_SECONDS + SECONDS_PER_DAY;
+        simulation
+            .process_traffic_continuation(&mut txn, continuation_second, first_ship.traffic_ship_id)
+            .unwrap();
+        let second_ship = simulation.get_traffic_ship(&txn, 1).unwrap();
+        assert_eq!(second_ship.origin_system_id, 2);
+        assert_eq!(second_ship.destination_system_id, 3);
+        let second_leg = simulation
+            .recent_carrier_legs(&txn, 1)
+            .unwrap()
+            .pop()
+            .unwrap();
+        let final_arrival = continuation_second + STANDARD_JUMP_SECONDS;
+        simulation
+            .process_arrival(
+                &mut txn,
+                final_arrival,
+                second_ship.traffic_ship_id,
+                Some(second_leg.mailbag_id),
+                Some(second_leg.carrier_leg_id),
+            )
+            .unwrap();
+
+        let delivered = simulation
+            .available_messages(&txn, 3, final_arrival, false)
+            .unwrap();
+        assert!(
+            delivered
+                .iter()
+                .any(|message| message.message.message_id == message_id)
+        );
+        let report = simulation.report(&txn, final_arrival).unwrap();
+        assert_eq!(report.envelopes_delivered, 1);
+        assert_eq!(report.envelopes_waiting, 1);
+
+        // The first ship stops at system 3. The system-4 envelope nevertheless
+        // rode both useful legs, then waits for unrelated onward traffic.
+        simulation
+            .process_departure(&mut txn, final_arrival, 3, 4)
+            .unwrap();
+        let onward_ship = simulation.get_traffic_ship(&txn, 2).unwrap();
+        let onward_leg = simulation
+            .recent_carrier_legs(&txn, 1)
+            .unwrap()
+            .pop()
+            .unwrap();
+        let onward_arrival = final_arrival + STANDARD_JUMP_SECONDS;
+        simulation
+            .process_arrival(
+                &mut txn,
+                onward_arrival,
+                onward_ship.traffic_ship_id,
+                Some(onward_leg.mailbag_id),
+                Some(onward_leg.carrier_leg_id),
+            )
+            .unwrap();
+        let delivered_onward = simulation
+            .available_messages(&txn, 4, onward_arrival, false)
+            .unwrap();
+        assert!(
+            delivered_onward
+                .iter()
+                .any(|message| message.message.message_id == message_id)
+        );
+        let final_report = simulation.report(&txn, onward_arrival).unwrap();
+        assert_eq!(final_report.envelopes_delivered, 2);
+        assert_eq!(simulation.audit_mail_custody(&txn).unwrap(), 3);
+        txn.commit().unwrap();
     }
 }

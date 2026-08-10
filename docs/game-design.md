@@ -309,10 +309,14 @@ names are collision-checked across the complete materialized universe. The
 rules and compatibility boundary are in
 [`place-naming.md`](place-naming.md).
 
-The first authoritative background simulation slice now schedules one daily
-job per system and persists ordinary traffic ships physically carrying sealed
-mailbags over exact J-2 route legs. Immutable messages fan out through delivery
-envelopes, beacon queues, custody records, arrival delivery, and expiry. The
+The authoritative background simulation schedules one daily job per system
+and persists ordinary traffic ships with catalog designs and complete,
+fuel-executable itineraries selected from endpoint economic profiles. At each
+departure, queued electronic mail for which that leg is a valid forward hop
+may enter a sealed mailbag as a side effect; mail never creates or redirects
+the traffic.
+Immutable messages fan out through destination envelopes, beacon queues,
+custody records, arrival delivery, and expiry. The
 non-interactive tour audits recovery and custody and reports message volume,
 thread CPU per system, and whole-universe progression ceilings without
 aggregating the underlying events. Its implemented and remaining boundary is

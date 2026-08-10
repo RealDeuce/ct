@@ -20,14 +20,14 @@ retained after expiry; TTL ends routing, holding, acceptance, or delivery. It
 is never a hop counter.
 
 The initial fixed-system simulation substrate now implements immutable
-messages, route-specific envelopes, beacon queues, ordinary simulated carrier
-ships, bounded mailbags, named custody legs, one-week Jump arrivals,
-multi-hop forwarding, final delivery, absolute-time expiry, deterministic
-recovery, and a custody audit. Player ships use the same exact-hop queues: a
-departure can seal one eligible bag into the ship record, arrival hands it off
-and pays the recorded stipend atomically, and replay cannot deliver or pay it
-twice. Arrival receipts and per-captain readership/classification are separate
-from institutional availability.
+messages, destination envelopes, beacon queues, ordinary simulated carrier
+ships with complete itineraries, bounded mailbags, named custody legs,
+one-week Jump arrivals, multi-leg forwarding, final delivery, absolute-time
+expiry, deterministic recovery, and a custody audit. Player ships use the same
+beacon queues: a departure can seal one eligible bag into the ship record,
+arrival hands it off and pays the recorded stipend atomically, and replay
+cannot deliver or pay it twice. Arrival receipts and per-captain
+readership/classification are separate from institutional availability.
 
 Each captain's arrival packet applies a durable minimum importance per service
 class. The default suppresses routine public-service and traffic copy while
@@ -64,8 +64,8 @@ The initial electronic-data tariff has four classes:
 3. **Public-key distribution:** public encryption/signature keys, bindings,
    rotations, and revocations use a constrained free distribution format.
 4. **Private or other non-public-service mail:** the sender pays a small
-   dispatch charge based on payload class, the purchased TTL, and the actual
-   delivery plan. Contents are end-to-end encrypted.
+   dispatch charge based on payload class, the purchased TTL, and the quoted
+   network distance. Contents are end-to-end encrypted.
 
 The first three services are free to the sender, not costless to the
 simulation. Carrier stipends, institutional subsidies, and relay capacity are
@@ -100,22 +100,24 @@ universal, but it does not erase its immutable archive or completed custody
 history.
 
 The exact credit tariff remains a balance decision. A dispatch quote must be
-deterministic from the sender's current delayed route knowledge and disclose
-the absolute expiry, covered routes or systems, number of paid branch copies,
-and maximum charge before submission. Later delivery failure does not turn a
-free quote into a debt or silently expand the purchased scope.
+deterministic from the sender's current delayed network knowledge and disclose
+the absolute expiry, covered destinations or systems, number of paid branch
+copies, and maximum charge before submission. Later delivery failure does not
+turn a free quote into a debt or silently expand the purchased scope.
 
 ## Fixed-System Addressing
 
-A private message addressed to a system follows one exact known route selected
-at dispatch. The sender pays the per-hop amount only for that route, adjusted
-for the chosen TTL and payload class. Relays may batch it into ordinary
-mailbags, but may not branch the logical message into unpaid alternate routes.
+A private message addressed to a system purchases one destination envelope.
+The sender's current network knowledge supplies the quoted hop count, adjusted
+for the chosen TTL and payload class, but that estimate neither selects nor
+reserves traffic. The envelope waits at each beacon until an independently
+generated ship's next stop advances it toward its destination. It may then
+transfer to different traffic at that stop. Relays may batch it into ordinary
+mailbags but may not branch the logical message into unpaid alternate copies.
 
-If the selected route cannot complete before expiry, the quote must warn or
-reject it. A later disruption may stall or expire the message. Rerouting beyond
-the purchased plan requires an authorized contingency in the original quote
-or a new dispatch; it is not silently billed after the fact.
+If no known network path can complete before expiry, the quote must warn or
+reject it. Later traffic scarcity may still stall or expire the message; that
+does not change the committed charge.
 
 ## Mobile Addressees
 
@@ -255,10 +257,11 @@ Secret**. Neither creates a mail message.
 ## Settled initial private-message tariff
 
 Private point-to-point mail is charged at Cr1 per started KiB of payload, per
-route hop, per started TTL week. Public news, public-service broadcasts, and
-public-key distribution remain free. The route and retention period are
-quoted before the filing commits; mail traffic never induces a dedicated
-carrier voyage.
+quoted network hop, per started TTL week. Public news, public-service
+broadcasts, and public-key distribution remain free. The quote does not reserve
+or generate a ship: electronic envelopes wait at mail beacons and board only
+independently generated traffic whose next stop is a valid forward hop toward
+their destination.
 
 ## Open Decisions
 

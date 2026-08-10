@@ -20,11 +20,11 @@ The server now persists:
 - one next `SystemDay` event for every materialized system;
 - immutable messages with origin system, creation time, class, subject, and
   absolute expiry time;
-- route-specific delivery envelopes, allowing one news or public-service
+- destination-specific delivery envelopes, allowing one news or public-service
   message to fan out without copying its immutable content;
-- beacon queues keyed by current system and exact next hop;
-- ordinary simulated traffic ships with origin, destination, departure,
-  arrival, status, and optional mailbag;
+- beacon queues keyed by current system and final destination;
+- ordinary simulated traffic ships with a selected catalog design, complete
+  executable itinerary, current leg, status, and optional mailbag;
 - sealed mailbags containing bounded lists of delivery envelopes;
 - carrier custody legs naming the specific ship, bag, endpoints, custody time,
   due time, and delivery time;
@@ -33,12 +33,19 @@ The server now persists:
   system-mapping disclosure; and
 - local message deliveries, including immediate availability at the origin.
 
-Every background departure is a real persistent traffic-ship record. It takes
-up to 512 eligible envelopes from the beacon queue for its exact route, seals
-a bag, and signs a custody leg. Its arrival is a separately scheduled event
-one standard Jump week later. Arrival either delivers an envelope at its final
-system, queues it for the next route hop, or records expiry. Empty ordinary
-ships still travel but do not create fictional mailbags.
+Traffic is generated from economic demand between the source and destination,
+not from queued mail. Vessel selection favors locally appropriate roles and
+less expensive designs while retaining rarer specialist traffic. The complete
+itinerary must be executable with that design's Jump rating and tankage; a ship
+may cross a system without fuel only when it retains enough fuel to leave.
+
+At each departure, the persistent traffic ship takes up to 512 electronic
+envelopes for which its next independently chosen stop is a valid forward hop,
+seals a bag, and signs a custody leg. Arrival one standard Jump week later
+delivers final-destination envelopes and returns the others to beacon custody
+for any later traffic continuing in the useful direction. Mail that matches no
+departing leg waits; it never creates, selects, or redirects traffic. Empty
+ordinary ships still travel but do not create fictional mailbags.
 
 The custody audit checks every carrier leg against its ship and mailbag,
 including endpoints and all three times. Messages and expired envelopes remain

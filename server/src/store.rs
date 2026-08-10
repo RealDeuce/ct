@@ -24532,7 +24532,20 @@ impl Store {
         // Offers are local commerce, not galaxy-spanning quests. Keeping the
         // candidate set to nearby settled systems also prevents a lucky hash
         // from producing an absurd first contract.
-        destinations.truncate(12);
+        destinations.truncate(24);
+        let simulation_systems = self.simulation.systems(txn)?;
+        let destinations = destinations
+            .into_iter()
+            .filter_map(|(distance, system)| {
+                let route = crate::traffic::operational_route(
+                    &simulation_systems,
+                    origin_system_id,
+                    system.id,
+                )?;
+                Some((distance, system, route))
+            })
+            .take(12)
+            .collect::<Vec<_>>();
         if destinations.is_empty() {
             return Ok(());
         }
@@ -24546,8 +24559,27 @@ impl Store {
             }
             let entropy =
                 crate::ship_condition::mix64(message.message_id ^ origin_system_id.rotate_left(23));
-            let (distance, destination) = &destinations[(entropy as usize) % destinations.len()];
-            let hops = ((*distance / 2.0).ceil() as u64).max(1);
+            let total_weight = destinations
+                .iter()
+                .map(|(_, _, route)| {
+                    crate::traffic::contract_service_weight(route.capability_level)
+                })
+                .sum::<u64>();
+            let mut draw = entropy % total_weight.max(1);
+            let selected = destinations
+                .iter()
+                .find(|(_, _, route)| {
+                    let weight = crate::traffic::contract_service_weight(route.capability_level);
+                    if draw < weight {
+                        true
+                    } else {
+                        draw -= weight;
+                        false
+                    }
+                })
+                .unwrap_or(&destinations[0]);
+            let (_, destination, route) = selected;
+            let hops = route.system_ids.len().saturating_sub(1).max(1) as u64;
             let tons = 5 + ((entropy >> 8) % 26);
             let quantity_millitons = tons * 1_000;
             let passengers = 1 + ((entropy >> 16) % 6) as u16;
@@ -24660,6 +24692,9 @@ impl Store {
                     ),
                     crate::wire::TaskKind::DiscoveryBounty => unreachable!(),
                 };
+            let scarcity_premium_basis_points =
+                crate::traffic::contract_payment_basis_points(route.capability_level);
+            payment = payment.saturating_mul(scarcity_premium_basis_points) / 10_000;
             let event_prefix = origin_system_id.to_be_bytes();
             for event in self.market_events.prefix_iter(txn, &event_prefix)? {
                 let (_, value) = event?;
