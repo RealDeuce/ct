@@ -1049,6 +1049,27 @@ pub enum ShipLocationRecord {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum InterceptionWatchFilter {
+    NamedVessel { ship_id: u64 },
+    CraftClass { catalog_id: u32 },
+    AllCraft,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct InterceptionWatchRecord {
+    hunter_ship_id: u64,
+    locus: ShipLocusRecord,
+    started_second: u64,
+    filter: InterceptionWatchFilter,
+    target_ship_name: String,
+}
+
+enum InterceptionStart {
+    Combat(crate::wire::CombatSnapshot),
+    Watch(crate::wire::CombatCareerSnapshot),
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct MarketStateRecord {
     revision: u64,
@@ -2791,6 +2812,7 @@ pub struct Store {
     ship_combats: UniverseDatabase,
     shared_combat_events: Database<Bytes, Bytes>,
     contact_events: Database<Bytes, Bytes>,
+    interception_watches: UniverseDatabase,
     simulation: SimulationDatabases,
 }
 
@@ -2895,6 +2917,7 @@ impl Store {
         let shared_combat_events =
             env.create_database(&mut txn, Some("shared-combat-turn-events"))?;
         let contact_events = env.create_database(&mut txn, Some("contact-check-events"))?;
+        let interception_watches = env.create_database(&mut txn, Some("interception-watches"))?;
         let simulation = SimulationDatabases::create(&env, &mut txn)?;
         match get_meta_u64(meta, &txn, META_STORAGE_FORMAT_VERSION)? {
             Some(actual) if actual != STORAGE_FORMAT_VERSION => {
@@ -2984,6 +3007,7 @@ impl Store {
             ship_combats,
             shared_combat_events,
             contact_events,
+            interception_watches,
             simulation,
         })
     }
@@ -3348,19 +3372,28 @@ impl Store {
                     return Ok(None);
                 };
                 let player_transitions = if !delivery.outcome.replayed
-                    && matches!(queued.request.command, Command::EngageTrafficContact { .. })
+                    && delivery.outcome.phase == PlayerPhase::Encounter
                 {
-                    match &delivery.outcome.kind {
-                        OutcomeKind::Combat(snapshot) => self
-                            .shared_combat_transitions(
-                                snapshot.combat_id,
-                                delivery.outbox_sequence,
-                                delivery.outcome.revision,
-                            )?
-                            .into_iter()
-                            .filter(|transition| transition.identity != queued.identity)
-                            .collect(),
-                        _ => Vec::new(),
+                    let combat_id = {
+                        let txn = self.env.read_txn()?;
+                        self.player_and_ship_in(&txn, &queued.identity)
+                            .ok()
+                            .and_then(|(_, ship)| self.ship_combats.get(&txn, &ship.ship_id).ok())
+                            .flatten()
+                            .map(decode_u64)
+                            .transpose()?
+                    };
+                    if let Some(combat_id) = combat_id {
+                        self.shared_combat_transitions(
+                            combat_id,
+                            delivery.outbox_sequence,
+                            delivery.outcome.revision,
+                        )?
+                        .into_iter()
+                        .filter(|transition| transition.identity != queued.identity)
+                        .collect()
+                    } else {
+                        Vec::new()
                     }
                 } else {
                     Vec::new()
@@ -3488,12 +3521,26 @@ impl Store {
                 let phase = self.player_phase_in(&txn, &identity)?;
                 let status = self.travel_status_in(&txn, &identity)?;
                 player_transitions.push(PlayerTravelTransition {
-                    identity,
+                    identity: identity.clone(),
                     committed_sequence: sequence,
                     revision,
                     phase,
                     status,
                 });
+                let combat_id = self
+                    .player_and_ship_in(&txn, &identity)
+                    .ok()
+                    .and_then(|(_, ship)| self.ship_combats.get(&txn, &ship.ship_id).ok())
+                    .flatten()
+                    .map(decode_u64)
+                    .transpose()?;
+                if let Some(combat_id) = combat_id {
+                    player_transitions.extend(
+                        self.shared_combat_transitions_in(&txn, combat_id, sequence, revision)?
+                            .into_iter()
+                            .filter(|transition| transition.identity != identity),
+                    );
+                }
                 category = Some(ProcessedScheduledCategory::PlayerTravel);
                 encode_player_travel_event_journal(due_second, system_id, stage)
             }
@@ -4158,7 +4205,21 @@ impl Store {
                     contact_id,
                     expected_career_revision,
                 )? {
-                    RuleResult::Applied(snapshot) => OutcomeKind::Combat(snapshot),
+                    RuleResult::Applied(InterceptionStart::Combat(snapshot)) => {
+                        OutcomeKind::Combat(snapshot)
+                    }
+                    RuleResult::Applied(InterceptionStart::Watch(snapshot)) => {
+                        OutcomeKind::CombatCareer(snapshot)
+                    }
+                    RuleResult::Rejected(message) => OutcomeKind::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message,
+                    },
+                }
+            }
+            Command::SetInterceptionWatch(request) => {
+                match self.set_interception_watch_in(txn, &queued.identity, &request)? {
+                    RuleResult::Applied(snapshot) => OutcomeKind::CombatCareer(snapshot),
                     RuleResult::Rejected(message) => OutcomeKind::Error {
                         code: ErrorCode::InvalidCommand,
                         message,
@@ -7813,6 +7874,7 @@ impl Store {
             },
             system_contacts,
             local_contacts,
+            interception_watch: self.interception_watch_status_in(txn, ship.ship_id)?,
         })
     }
 
@@ -7874,6 +7936,67 @@ impl Store {
             }) if locus == destination => Some(locus),
             _ => None,
         }
+    }
+
+    fn ship_traffic_attachment(ship: &ShipRecord) -> crate::traffic::TrafficAttachment {
+        match ship.location {
+            ShipLocationRecord::Docked { .. } => crate::traffic::TrafficAttachment::Berthed,
+            ShipLocationRecord::InFlight(FlightLegRecord {
+                purpose: FlightLegPurpose::ProcessFrontierFuel { .. },
+                ..
+            }) if ship.activity.as_ref().is_some_and(|activity| {
+                matches!(activity.kind, ShipActivityKind::WildernessWater { .. })
+            }) =>
+            {
+                crate::traffic::TrafficAttachment::Landed
+            }
+            _ => crate::traffic::TrafficAttachment::Spaceborne,
+        }
+    }
+
+    fn interception_watch_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        hunter_ship_id: u64,
+    ) -> Result<Option<InterceptionWatchRecord>, StoreError> {
+        self.interception_watches
+            .get(txn, &hunter_ship_id)?
+            .map(decode_interception_watch)
+            .transpose()
+    }
+
+    fn interception_watch_status_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        hunter_ship_id: u64,
+    ) -> Result<Option<crate::wire::InterceptionWatchStatus>, StoreError> {
+        Ok(self
+            .interception_watch_in(txn, hunter_ship_id)?
+            .map(|watch| {
+                let (filter, target_contact_id, target_catalog_id) = match watch.filter {
+                    InterceptionWatchFilter::NamedVessel { ship_id } => (
+                        crate::wire::InterceptionWatchFilterKind::NamedVessel,
+                        ship_id,
+                        0,
+                    ),
+                    InterceptionWatchFilter::CraftClass { catalog_id } => (
+                        crate::wire::InterceptionWatchFilterKind::CraftClass,
+                        0,
+                        catalog_id,
+                    ),
+                    InterceptionWatchFilter::AllCraft => {
+                        (crate::wire::InterceptionWatchFilterKind::AllCraft, 0, 0)
+                    }
+                };
+                crate::wire::InterceptionWatchStatus {
+                    started_second: watch.started_second,
+                    target_contact_id,
+                    target_catalog_id,
+                    target_ship_name: watch.target_ship_name,
+                    filter,
+                    locus: flight_locus_status(watch.locus),
+                }
+            }))
     }
 
     fn local_traffic_contacts_in(
@@ -8001,7 +8124,7 @@ impl Store {
                 contact_id: candidate.ship_id,
                 catalog_id: candidate.catalog_id,
                 class_name: design.class_name.clone(),
-                ship_name: candidate.name,
+                ship_name: candidate.name.clone(),
                 transponder: crate::traffic::transponder_for_id(candidate.ship_id),
                 operator_name: format!("{} registry", registry.settings.bbs_name),
                 role: role.into(),
@@ -8014,6 +8137,7 @@ impl Store {
                 confidence_percent: 100,
                 player_owned: true,
                 online_controlled: false,
+                attachment: Self::ship_traffic_attachment(&candidate),
             });
         }
         Ok(contacts)
@@ -8264,13 +8388,365 @@ impl Store {
         ))
     }
 
+    fn release_berth_for_interception_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+    ) -> Result<RuleResult<(ShipRecord, ShipLocusRecord)>, StoreError> {
+        let (mut player, mut ship) = self.player_and_ship_in(txn, identity)?;
+        let ShipLocationRecord::Docked {
+            world_id,
+            facility_id,
+            arrived_second,
+        } = ship.location
+        else {
+            return Ok(RuleResult::Rejected(
+                "the ship is not occupying a berth".into(),
+            ));
+        };
+        if ship.activity.is_some() {
+            return Ok(RuleResult::Rejected(
+                "the ship must finish its dockside activity before clearing the berth".into(),
+            ));
+        }
+        if ship.provisions.person_days_remaining == 0 {
+            return Ok(RuleResult::Rejected(
+                "the ship cannot clear the berth without life-support stores".into(),
+            ));
+        }
+        let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        let berth_fee = crate::ship_condition::berth_fee_credits(arrived_second, current);
+        if !self.charge_operating_account_in(txn, &mut player, ship.ship_id, berth_fee)? {
+            return Ok(RuleResult::Rejected(format!(
+                "clearing the berth for interception requires Cr{berth_fee}; the operating account is short"
+            )));
+        }
+        let locus = ShipLocusRecord::Port {
+            system_id: ship.system_id,
+            world_id,
+            facility_id,
+        };
+        ship.location = ShipLocationRecord::Holding {
+            locus,
+            arrived_second: current,
+        };
+        ship.revision = ship.revision.saturating_add(1);
+        self.players.put(
+            txn,
+            &encode_identity(identity),
+            &encode_player_record(&player),
+        )?;
+        self.ships
+            .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+        Ok(RuleResult::Applied((ship, locus)))
+    }
+
+    fn stable_interception_locus_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+    ) -> Result<RuleResult<(ShipRecord, ShipLocusRecord)>, StoreError> {
+        let (_, ship) = self.player_and_ship_in(txn, identity)?;
+        if ship.activity.is_some() {
+            return Ok(RuleResult::Rejected(
+                "the ship must finish or cancel its current operation before setting a watch"
+                    .into(),
+            ));
+        }
+        match ship.location {
+            ShipLocationRecord::Docked { .. } => {
+                self.release_berth_for_interception_in(txn, identity)
+            }
+            ShipLocationRecord::Holding {
+                locus:
+                    locus @ (ShipLocusRecord::Port { .. }
+                    | ShipLocusRecord::JumpLocus { .. }
+                    | ShipLocusRecord::Body { .. }),
+                ..
+            } => Ok(RuleResult::Applied((ship, locus))),
+            ShipLocationRecord::Holding {
+                locus: ShipLocusRecord::DeepSpace { .. },
+                ..
+            } => Ok(RuleResult::Rejected(
+                "there is no modeled traffic locus at these deep-space coordinates".into(),
+            )),
+            ShipLocationRecord::InFlight(_) => Ok(RuleResult::Rejected(
+                "the ship must reach and hold at a traffic locus before setting a watch".into(),
+            )),
+        }
+    }
+
+    fn put_interception_watch_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        watch: &InterceptionWatchRecord,
+    ) -> Result<(), StoreError> {
+        self.interception_watches.put(
+            txn,
+            &watch.hunter_ship_id,
+            &encode_interception_watch(watch)?,
+        )?;
+        self.remove_contact_schedules_in(txn, watch.hunter_ship_id)?;
+        self.schedule_next_interception_watch_in(txn, watch, watch.started_second)?;
+        Ok(())
+    }
+
+    fn establish_named_interception_watch_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        target: &crate::traffic::TrafficContact,
+        mut career: crate::careers::CareerState,
+    ) -> Result<RuleResult<crate::wire::CombatCareerSnapshot>, StoreError> {
+        let (_, current_ship) = self.player_and_ship_in(txn, identity)?;
+        for entry in self.interception_watches.iter(txn)? {
+            let (_, bytes) = entry?;
+            let watch = decode_interception_watch(bytes)?;
+            if watch.hunter_ship_id != current_ship.ship_id
+                && matches!(
+                    watch.filter,
+                    InterceptionWatchFilter::NamedVessel { ship_id }
+                        if ship_id == target.contact_id
+                )
+            {
+                return Ok(RuleResult::Rejected(
+                    "another command already has a specific departure watch on that vessel".into(),
+                ));
+            }
+        }
+        let (ship, locus) = match self.stable_interception_locus_in(txn, identity)? {
+            RuleResult::Applied(value) => value,
+            RuleResult::Rejected(message) => return Ok(RuleResult::Rejected(message)),
+        };
+        let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        let watch = InterceptionWatchRecord {
+            hunter_ship_id: ship.ship_id,
+            locus,
+            started_second: current,
+            filter: InterceptionWatchFilter::NamedVessel {
+                ship_id: target.contact_id,
+            },
+            target_ship_name: target.ship_name.clone(),
+        };
+        self.put_interception_watch_in(txn, &watch)?;
+        career.revision = career.revision.saturating_add(1);
+        self.put_career_state_in(txn, identity, &career)?;
+        Ok(RuleResult::Applied(
+            self.combat_career_snapshot_in(txn, identity)?,
+        ))
+    }
+
+    fn set_interception_watch_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        request: &crate::wire::InterceptionWatchRequest,
+    ) -> Result<RuleResult<crate::wire::CombatCareerSnapshot>, StoreError> {
+        let mut career = self.career_state_in(txn, identity)?;
+        let expected_revision = match *request {
+            crate::wire::InterceptionWatchRequest::Cancel { expected_revision }
+            | crate::wire::InterceptionWatchRequest::AllCraft { expected_revision }
+            | crate::wire::InterceptionWatchRequest::CraftClass {
+                expected_revision, ..
+            } => expected_revision,
+        };
+        if career.revision != expected_revision {
+            return Ok(RuleResult::Rejected(
+                "the career ledger revision is stale".into(),
+            ));
+        }
+        let (_, mut ship) = self.player_and_ship_in(txn, identity)?;
+        if matches!(
+            request,
+            crate::wire::InterceptionWatchRequest::Cancel { .. }
+        ) {
+            let Some(watch) = self.interception_watch_in(txn, ship.ship_id)? else {
+                return Ok(RuleResult::Rejected(
+                    "the ship has no interception watch to cancel".into(),
+                ));
+            };
+            if self.ship_combats.get(txn, &ship.ship_id)?.is_some() {
+                return Ok(RuleResult::Rejected(
+                    "an interception watch cannot be cancelled during combat".into(),
+                ));
+            }
+            self.interception_watches.delete(txn, &ship.ship_id)?;
+            self.remove_contact_schedules_in(txn, ship.ship_id)?;
+            if let ShipLocationRecord::Holding { locus, .. } = ship.location {
+                if locus == watch.locus {
+                    if let ShipLocusRecord::Port {
+                        world_id,
+                        facility_id,
+                        ..
+                    } = watch.locus
+                    {
+                        let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+                        ship.location = ShipLocationRecord::Docked {
+                            world_id,
+                            facility_id,
+                            arrived_second: current,
+                        };
+                        ship.revision = ship.revision.saturating_add(1);
+                        self.ships
+                            .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+                    }
+                }
+            }
+        } else {
+            let (ship, locus) = match self.stable_interception_locus_in(txn, identity)? {
+                RuleResult::Applied(value) => value,
+                RuleResult::Rejected(message) => return Ok(RuleResult::Rejected(message)),
+            };
+            let (filter, target_ship_name) = match *request {
+                crate::wire::InterceptionWatchRequest::AllCraft { .. } => {
+                    (InterceptionWatchFilter::AllCraft, "all craft".into())
+                }
+                crate::wire::InterceptionWatchRequest::CraftClass { catalog_id, .. } => {
+                    let class_name = creation::ship_market_catalog()
+                        .into_iter()
+                        .find(|entry| entry.catalog_id == catalog_id)
+                        .map(|entry| entry.class_name)
+                        .ok_or(StoreError::Corrupt(
+                            "interception-watch catalog class is missing",
+                        ))?;
+                    (
+                        InterceptionWatchFilter::CraftClass { catalog_id },
+                        class_name,
+                    )
+                }
+                crate::wire::InterceptionWatchRequest::Cancel { .. } => unreachable!(),
+            };
+            let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+            self.put_interception_watch_in(
+                txn,
+                &InterceptionWatchRecord {
+                    hunter_ship_id: ship.ship_id,
+                    locus,
+                    started_second: current,
+                    filter,
+                    target_ship_name,
+                },
+            )?;
+        }
+        career.revision = career.revision.saturating_add(1);
+        self.put_career_state_in(txn, identity, &career)?;
+        Ok(RuleResult::Applied(
+            self.combat_career_snapshot_in(txn, identity)?,
+        ))
+    }
+
+    fn trigger_interception_watches_at_locus_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        departing_ship: &mut ShipRecord,
+        departure_locus: ShipLocusRecord,
+        include_named_watch: bool,
+    ) -> Result<Option<u64>, StoreError> {
+        let mut matching = Vec::new();
+        for entry in self.interception_watches.iter(txn)? {
+            let (_, bytes) = entry?;
+            let watch = decode_interception_watch(bytes)?;
+            if watch.hunter_ship_id == departing_ship.ship_id || watch.locus != departure_locus {
+                continue;
+            }
+            let Some(hunter) = self
+                .ships
+                .get(txn, &watch.hunter_ship_id)?
+                .map(decode_ship_record)
+                .transpose()?
+            else {
+                continue;
+            };
+            if Self::ship_traffic_locus(&hunter) != Some(watch.locus)
+                || self.ship_combats.get(txn, &hunter.ship_id)?.is_some()
+            {
+                continue;
+            }
+            let matches = match watch.filter {
+                InterceptionWatchFilter::NamedVessel { ship_id } => {
+                    include_named_watch && ship_id == departing_ship.ship_id
+                }
+                InterceptionWatchFilter::CraftClass { catalog_id } => {
+                    catalog_id == departing_ship.catalog_id
+                }
+                InterceptionWatchFilter::AllCraft => true,
+            };
+            if matches {
+                matching.push(watch);
+            }
+        }
+        matching.sort_by_key(|watch| {
+            (
+                !matches!(watch.filter, InterceptionWatchFilter::NamedVessel { .. }),
+                watch.started_second,
+                watch.hunter_ship_id,
+            )
+        });
+        let Some(watch) = matching.into_iter().next() else {
+            return Ok(None);
+        };
+        let desired_location = departing_ship.location;
+        let desired_revision = departing_ship.revision;
+        departing_ship.location = ShipLocationRecord::Holding {
+            locus: departure_locus,
+            arrived_second: get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0),
+        };
+        self.ships.put(
+            txn,
+            &departing_ship.ship_id,
+            &encode_ship_record(departing_ship)?,
+        )?;
+        let hunter = self
+            .ships
+            .get(txn, &watch.hunter_ship_id)?
+            .map(decode_ship_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("interception-watch hunter disappeared"))?;
+        let career = self.career_state_in(txn, &hunter.command)?;
+        let named_departure_watch =
+            matches!(watch.filter, InterceptionWatchFilter::NamedVessel { .. });
+        let combat_id = match self.engage_traffic_contact_in(
+            txn,
+            &hunter.command,
+            departing_ship.ship_id,
+            career.revision,
+        )? {
+            RuleResult::Applied(InterceptionStart::Combat(snapshot)) => Some(snapshot.combat_id),
+            RuleResult::Applied(InterceptionStart::Watch(_)) => {
+                return Err(StoreError::Corrupt(
+                    "departing vessel produced another interception watch",
+                ));
+            }
+            RuleResult::Rejected(_) => None,
+        };
+        if named_departure_watch {
+            self.interception_watches
+                .delete(txn, &watch.hunter_ship_id)?;
+            self.remove_contact_schedules_in(txn, watch.hunter_ship_id)?;
+        }
+        let mut stored = self
+            .ships
+            .get(txn, &departing_ship.ship_id)?
+            .map(decode_ship_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt(
+                "departing interception target disappeared",
+            ))?;
+        stored.location = desired_location;
+        stored.revision = stored.revision.max(desired_revision);
+        self.ships
+            .put(txn, &stored.ship_id, &encode_ship_record(&stored)?)?;
+        *departing_ship = stored;
+        Ok(combat_id)
+    }
+
     fn engage_traffic_contact_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
         identity: &PlayerIdentity,
         contact_id: u64,
         expected_revision: u64,
-    ) -> Result<RuleResult<crate::wire::CombatSnapshot>, StoreError> {
+    ) -> Result<RuleResult<InterceptionStart>, StoreError> {
         if self.player_phase_in(txn, identity)? == PlayerPhase::Encounter {
             return Ok(RuleResult::Rejected(
                 "the command is already engaged".into(),
@@ -8293,6 +8769,40 @@ impl Store {
                 "the named traffic contact is no longer at this locus".into(),
             ));
         };
+        if contact.attachment != crate::traffic::TrafficAttachment::Spaceborne {
+            if !contact.player_owned {
+                return Ok(RuleResult::Rejected(
+                    "attached background traffic cannot be selected for an armed intercept".into(),
+                ));
+            }
+            return Ok(
+                match self.establish_named_interception_watch_in(txn, identity, &contact, career)? {
+                    RuleResult::Applied(snapshot) => {
+                        RuleResult::Applied(InterceptionStart::Watch(snapshot))
+                    }
+                    RuleResult::Rejected(message) => RuleResult::Rejected(message),
+                },
+            );
+        }
+        if matches!(ship.location, ShipLocationRecord::Docked { .. }) {
+            let released = match self.release_berth_for_interception_in(txn, identity)? {
+                RuleResult::Applied((released, _)) => released,
+                RuleResult::Rejected(message) => return Ok(RuleResult::Rejected(message)),
+            };
+            ship = released;
+        } else if Self::ship_traffic_attachment(&ship)
+            != crate::traffic::TrafficAttachment::Spaceborne
+        {
+            return Ok(RuleResult::Rejected(
+                "the ship must lift or undock before attempting an intercept".into(),
+            ));
+        }
+        if ship.activity.is_some() {
+            return Ok(RuleResult::Rejected(
+                "the ship must finish or cancel its current operation before intercepting traffic"
+                    .into(),
+            ));
+        }
         if self.ship_combats.get(txn, &ship.ship_id)?.is_some() {
             return Ok(RuleResult::Rejected(
                 "the command is already engaged in combat".into(),
@@ -8591,14 +9101,16 @@ impl Store {
                     StoreError::Corrupt("commanded vessel is absent from shared combat")
                 })?;
             let actors = self.combat_actors_in(txn, identity, ship.ship_id)?;
-            return Ok(RuleResult::Applied(combat_snapshot(
-                &combat,
-                &ship,
-                &default,
-                actors,
-                false,
-                &shared.combat_log,
-                &[ship.ship_id, target_ship.ship_id],
+            return Ok(RuleResult::Applied(InterceptionStart::Combat(
+                combat_snapshot(
+                    &combat,
+                    &ship,
+                    &default,
+                    actors,
+                    false,
+                    &shared.combat_log,
+                    &[ship.ship_id, target_ship.ship_id],
+                ),
             )));
         }
         let opponent_id = contact.contact_id | (1_u64 << 63);
@@ -8674,14 +9186,16 @@ impl Store {
             record.snapshot.next_turn_second,
         )?;
         let actors = self.combat_actors_in(txn, identity, ship.ship_id)?;
-        Ok(RuleResult::Applied(combat_snapshot(
-            &combat,
-            &ship,
-            &default,
-            actors,
-            false,
-            &record.combat_log,
-            &[ship.ship_id],
+        Ok(RuleResult::Applied(InterceptionStart::Combat(
+            combat_snapshot(
+                &combat,
+                &ship,
+                &default,
+                actors,
+                false,
+                &record.combat_log,
+                &[ship.ship_id],
+            ),
         )))
     }
 
@@ -9737,6 +10251,7 @@ impl Store {
             self.ships.delete(txn, liquidated_ship_id)?;
             self.finances
                 .delete(txn, &ship_finance_key(*liquidated_ship_id))?;
+            self.interception_watches.delete(txn, liquidated_ship_id)?;
         }
         if bankruptcy {
             if let Some(mut unique) = self
@@ -10169,6 +10684,14 @@ impl Store {
                 }
                 self.ships
                     .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+                if let Some(watch) = self.interception_watch_in(txn, ship.ship_id)? {
+                    self.remove_contact_schedules_in(txn, ship.ship_id)?;
+                    if !command_lost && Self::ship_traffic_locus(&ship) == Some(watch.locus) {
+                        self.schedule_next_interception_watch_in(txn, &watch, due_second)?;
+                    } else {
+                        self.interception_watches.delete(txn, &ship.ship_id)?;
+                    }
+                }
             } else {
                 record.snapshot.summary = format!(
                     "Combat round {} is complete. Fresh joint orders are required.",
@@ -10765,6 +11288,37 @@ impl Store {
             self.finish_shared_combat_in(txn, due_second, &mut shared)?;
             for participant in &participants {
                 self.ship_combats.delete(txn, &participant.ship_id)?;
+                if let Some(watch) = self.interception_watch_in(txn, participant.ship_id)? {
+                    let ship = self
+                        .ships
+                        .get(txn, &participant.ship_id)?
+                        .map(decode_ship_record)
+                        .transpose()?
+                        .ok_or(StoreError::Corrupt(
+                            "interception-watch ship disappeared after combat",
+                        ))?;
+                    let operational = shared
+                        .combat
+                        .vessels
+                        .iter()
+                        .find(|vessel| vessel.vessel_id == participant.ship_id)
+                        .is_some_and(|vessel| {
+                            !matches!(
+                                vessel.disposition,
+                                crate::combat::VesselDisposition::Captured
+                                    | crate::combat::VesselDisposition::Surrendered
+                                    | crate::combat::VesselDisposition::Abandoned
+                                    | crate::combat::VesselDisposition::Destroyed
+                            )
+                        });
+                    self.remove_contact_schedules_in(txn, participant.ship_id)?;
+                    if operational && Self::ship_traffic_locus(&ship) == Some(watch.locus) {
+                        self.schedule_next_interception_watch_in(txn, &watch, due_second)?;
+                    } else {
+                        self.interception_watches
+                            .delete(txn, &participant.ship_id)?;
+                    }
+                }
             }
         } else {
             for participant in participants
@@ -11450,9 +12004,19 @@ impl Store {
         revision: u64,
     ) -> Result<Vec<PlayerTravelTransition>, StoreError> {
         let txn = self.env.read_txn()?;
+        self.shared_combat_transitions_in(&txn, combat_id, committed_sequence, revision)
+    }
+
+    fn shared_combat_transitions_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        combat_id: u64,
+        committed_sequence: u64,
+        revision: u64,
+    ) -> Result<Vec<PlayerTravelTransition>, StoreError> {
         let Some(shared) = self
             .shared_combats
-            .get(&txn, &combat_id)?
+            .get(txn, &combat_id)?
             .map(decode_shared_combat_record)
             .transpose()?
         else {
@@ -11468,8 +12032,8 @@ impl Store {
                 identity: participant.identity.clone(),
                 committed_sequence,
                 revision,
-                phase: self.player_phase_in(&txn, &participant.identity)?,
-                status: self.travel_status_in(&txn, &participant.identity)?,
+                phase: self.player_phase_in(txn, &participant.identity)?,
+                status: self.travel_status_in(txn, &participant.identity)?,
             });
         }
         Ok(transitions)
@@ -11530,6 +12094,7 @@ impl Store {
             .ok_or(StoreError::Corrupt("contact-check ship is missing"))?;
         let identity = ship.command.clone();
         let key = encode_identity(&identity);
+        let watch = self.interception_watch_in(txn, ship.ship_id)?;
         if self
             .encounters
             .get(txn, &key)?
@@ -11537,6 +12102,9 @@ impl Store {
             .transpose()?
             .is_some_and(|record| record.snapshot.state != EncounterState::Resolved)
         {
+            if let Some(watch) = &watch {
+                self.schedule_next_interception_watch_in(txn, watch, due_second)?;
+            }
             return Ok(None);
         }
         let system = self
@@ -11545,6 +12113,49 @@ impl Store {
             .into_iter()
             .find(|system| system.system_id == ship.system_id)
             .ok_or(StoreError::MissingTrafficSimulationSystem(ship.system_id))?;
+        if let Some(watch) = watch {
+            if Self::ship_traffic_locus(&ship) != Some(watch.locus) {
+                self.interception_watches.delete(txn, &ship.ship_id)?;
+                return Ok(None);
+            }
+            let mut candidate = None;
+            for contact in crate::traffic::movements(&system, due_second, due_second)? {
+                let filter_matches = match watch.filter {
+                    InterceptionWatchFilter::CraftClass { catalog_id } => {
+                        contact.catalog_id == catalog_id
+                    }
+                    InterceptionWatchFilter::AllCraft => true,
+                    InterceptionWatchFilter::NamedVessel { .. } => false,
+                };
+                if filter_matches
+                    && self.traffic_contact_matches_watch_locus_in(txn, &contact, watch.locus)?
+                {
+                    candidate = Some(contact);
+                    break;
+                }
+            }
+            if let Some(contact) = candidate {
+                let career = self.career_state_in(txn, &identity)?;
+                match self.engage_traffic_contact_in(
+                    txn,
+                    &identity,
+                    contact.contact_id,
+                    career.revision,
+                )? {
+                    RuleResult::Applied(InterceptionStart::Combat(_)) => {
+                        return Ok(Some(identity));
+                    }
+                    RuleResult::Applied(InterceptionStart::Watch(_)) => {
+                        return Err(StoreError::Corrupt(
+                            "spaceborne watch contact established another watch",
+                        ));
+                    }
+                    RuleResult::Rejected(_) => {}
+                }
+            }
+            self.schedule_next_interception_watch_in(txn, &watch, due_second)?;
+            return Ok(None);
+        }
         let candidates = crate::traffic::snapshot(&system, due_second)?;
         if candidates.is_empty() {
             return Ok(None);
@@ -18326,11 +18937,11 @@ impl Store {
         identity: &PlayerIdentity,
         subsystem_id: u16,
     ) -> Result<RuleResult<ShipStatusSnapshot>, StoreError> {
-        let (_, mut ship) = self.player_and_ship_in(txn, identity)?;
+        let (mut player, mut ship) = self.player_and_ship_in(txn, identity)?;
         let ShipLocationRecord::Docked {
             world_id,
             facility_id,
-            ..
+            arrived_second,
         } = ship.location
         else {
             return Ok(RuleResult::Rejected(
@@ -18377,6 +18988,12 @@ impl Store {
         }
         let repair_hits = u64::from(subsystem.sustained_hits);
         let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        let berth_fee = crate::ship_condition::berth_fee_credits(arrived_second, current);
+        if !self.charge_operating_account_in(txn, &mut player, ship.ship_id, berth_fee)? {
+            return Ok(RuleResult::Rejected(format!(
+                "frontier fueling departure requires Cr{berth_fee} to clear the berth; the operating account is short"
+            )));
+        }
         // The monthly upkeep charge already purchases ordinary parts and
         // repair items. This work order therefore accounts for elapsed shop
         // access rather than inventing an unsupported per-hit material price.
@@ -18478,11 +19095,11 @@ impl Store {
                 "frontier fuel must be collected in a positive whole-ton quantity".into(),
             ));
         }
-        let (_, mut ship) = self.player_and_ship_in(txn, identity)?;
+        let (mut player, mut ship) = self.player_and_ship_in(txn, identity)?;
         let ShipLocationRecord::Docked {
             world_id,
             facility_id,
-            ..
+            arrived_second,
         } = ship.location
         else {
             return Ok(RuleResult::Rejected(
@@ -18518,6 +19135,12 @@ impl Store {
             .ok_or(StoreError::Corrupt("ship system is missing"))?;
         let celestial = derive_celestial_system(&system)?;
         let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        let berth_fee = crate::ship_condition::berth_fee_credits(arrived_second, current);
+        if !self.charge_operating_account_in(txn, &mut player, ship.ship_id, berth_fee)? {
+            return Ok(RuleResult::Rejected(format!(
+                "departure requires Cr{berth_fee} berth; the operating account is short"
+            )));
+        }
         let days = current as f64 / crate::simulation::SECONDS_PER_DAY as f64;
         let source = if gas_giant {
             selected_body_id.map_or_else(
@@ -18632,11 +19255,26 @@ impl Store {
                 service_due_second: service_due,
             },
         });
+        self.trigger_interception_watches_at_locus_in(
+            txn,
+            &mut ship,
+            ShipLocusRecord::Port {
+                system_id: system.id,
+                world_id,
+                facility_id,
+            },
+            true,
+        )?;
         self.schedule_player_travel_in(txn, ship.ship_id, outbound_due)?;
         self.schedule_contact_check_in(txn, ship.ship_id, current.saturating_add(1))?;
         self.schedule_contact_check_in(txn, ship.ship_id, outbound_due.saturating_add(1))?;
         self.ships
             .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+        self.players.put(
+            txn,
+            &encode_identity(identity),
+            &encode_player_record(&player),
+        )?;
         Ok(RuleResult::Applied(self.travel_status_in(txn, identity)?))
     }
 
@@ -18985,6 +19623,16 @@ impl Store {
                 jump_destination_system_id: destination_system_id,
             },
         });
+        self.trigger_interception_watches_at_locus_in(
+            txn,
+            &mut ship,
+            ShipLocusRecord::Port {
+                system_id: origin.id,
+                world_id,
+                facility_id,
+            },
+            true,
+        )?;
         for subsystem in &mut ship.subsystems {
             if matches!(
                 subsystem.kind,
@@ -19143,6 +19791,16 @@ impl Store {
             due_second,
             purpose: FlightLegPurpose::DepartForCoordinateJump { destination },
         });
+        self.trigger_interception_watches_at_locus_in(
+            txn,
+            &mut ship,
+            ShipLocusRecord::Port {
+                system_id: origin.id,
+                world_id,
+                facility_id,
+            },
+            true,
+        )?;
         for subsystem in &mut ship.subsystems {
             if matches!(
                 subsystem.kind,
@@ -21050,6 +21708,7 @@ impl Store {
         self.ship_combats.clear(&mut txn)?;
         self.shared_combat_events.clear(&mut txn)?;
         self.contact_events.clear(&mut txn)?;
+        self.interception_watches.clear(&mut txn)?;
         self.simulation.clear(&mut txn)?;
         put_meta_u64(self.meta, &mut txn, META_COVERAGE_REVISION, 0)?;
         put_meta_u64(
@@ -21729,6 +22388,107 @@ impl Store {
             &scheduled_event_key(due_second, event_id),
             &encode_scheduled_object(ship_id),
         )?;
+        Ok(())
+    }
+
+    fn remove_contact_schedules_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        ship_id: u64,
+    ) -> Result<(), StoreError> {
+        let stale = self
+            .contact_events
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((key, bytes)) => match decode_scheduled_object(key, bytes) {
+                    Ok((_, _, candidate)) if candidate == ship_id => Some(Ok(key.to_vec())),
+                    Ok(_) => None,
+                    Err(error) => Some(Err(error)),
+                },
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for key in stale {
+            self.contact_events.delete(txn, &key)?;
+        }
+        Ok(())
+    }
+
+    fn traffic_contact_matches_watch_locus_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        contact: &crate::traffic::TrafficContact,
+        locus: ShipLocusRecord,
+    ) -> Result<bool, StoreError> {
+        if contact.origin_system_id != locus.system_id()
+            && contact.destination_system_id != locus.system_id()
+        {
+            return Ok(false);
+        }
+        let allocation =
+            crate::ship_condition::mix64(contact.contact_id ^ locus.system_id().rotate_left(23));
+        let bucket = allocation % 100;
+        Ok(match locus {
+            ShipLocusRecord::Port { .. } => bucket < 55,
+            ShipLocusRecord::JumpLocus { .. } => (55..85).contains(&bucket),
+            ShipLocusRecord::Body { system_id, body_id } => {
+                let stellar = self
+                    .systems
+                    .get(txn, &system_id)?
+                    .map(decode_stellar_system)
+                    .transpose()?
+                    .ok_or(StoreError::Corrupt("interception-watch system is missing"))?;
+                let celestial = derive_celestial_system(&stellar)?;
+                let secondary = celestial
+                    .bodies
+                    .iter()
+                    .filter(|body| !body.is_primary_world)
+                    .map(|body| body.local_id)
+                    .collect::<Vec<_>>();
+                bucket >= 85
+                    && !secondary.is_empty()
+                    && secondary[allocation.rotate_left(19) as usize % secondary.len()] == body_id
+            }
+            ShipLocusRecord::DeepSpace { .. } => false,
+        })
+    }
+
+    fn schedule_next_interception_watch_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        watch: &InterceptionWatchRecord,
+        after_second: u64,
+    ) -> Result<(), StoreError> {
+        if matches!(watch.filter, InterceptionWatchFilter::NamedVessel { .. }) {
+            return Ok(());
+        }
+        let Some(system) = self
+            .simulation
+            .systems(txn)?
+            .into_iter()
+            .find(|system| system.system_id == watch.locus.system_id())
+        else {
+            return Err(StoreError::MissingTrafficSimulationSystem(
+                watch.locus.system_id(),
+            ));
+        };
+        let through = after_second.saturating_add(196 * crate::simulation::SECONDS_PER_DAY);
+        let contacts = crate::traffic::movements(&system, after_second.saturating_add(1), through)?;
+        for contact in contacts {
+            let filter_matches = match watch.filter {
+                InterceptionWatchFilter::CraftClass { catalog_id } => {
+                    contact.catalog_id == catalog_id
+                }
+                InterceptionWatchFilter::AllCraft => true,
+                InterceptionWatchFilter::NamedVessel { .. } => false,
+            };
+            if filter_matches
+                && self.traffic_contact_matches_watch_locus_in(txn, &contact, watch.locus)?
+            {
+                self.schedule_contact_check_in(txn, watch.hunter_ship_id, contact.edge_second)?;
+                break;
+            }
+        }
         Ok(())
     }
 
@@ -24630,6 +25390,41 @@ impl Store {
                 return Ok((ship.system_id, 6, ship.command));
             }
         }
+        let arrival_locus = match ship.location {
+            ShipLocationRecord::InFlight(leg)
+                if leg.due_second == due_second
+                    && leg.origin != leg.destination
+                    && matches!(
+                        leg.destination,
+                        ShipLocusRecord::Port { .. }
+                            | ShipLocusRecord::JumpLocus { .. }
+                            | ShipLocusRecord::Body { .. }
+                    ) =>
+            {
+                Some(leg.destination)
+            }
+            _ => None,
+        };
+        if let Some(arrival_locus) = arrival_locus {
+            if self
+                .trigger_interception_watches_at_locus_in(txn, &mut ship, arrival_locus, false)?
+                .is_some()
+            {
+                let resumed = due_second
+                    .saturating_add(crate::combat::COMBAT_TURN_SECONDS)
+                    .saturating_add(1);
+                let ShipLocationRecord::InFlight(ref mut leg) = ship.location else {
+                    return Err(StoreError::Corrupt(
+                        "arrival interception did not restore the target flight leg",
+                    ));
+                };
+                leg.due_second = resumed;
+                self.schedule_player_travel_in(txn, ship.ship_id, resumed)?;
+                self.ships
+                    .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+                return Ok((ship.system_id, 6, ship.command));
+            }
+        }
         let (system_id, stage) = match ship.location {
             ShipLocationRecord::InFlight(
                 leg @ FlightLegRecord {
@@ -25339,6 +26134,10 @@ impl Store {
                         "frontier service event disagrees with ship location",
                     ));
                 }
+                let departed_landed_site =
+                    matches!(activity.kind, ShipActivityKind::WildernessWater { .. });
+                let activity_due_second = activity.due_second;
+                let departure_locus = leg.destination;
                 ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
                     plan_id: leg.plan_id,
                     plan_revision: leg.plan_revision,
@@ -25350,10 +26149,18 @@ impl Store {
                         facility_id: return_facility_id,
                     },
                     started_second: due_second,
-                    due_second: activity.due_second,
+                    due_second: activity_due_second,
                     purpose: FlightLegPurpose::ReturnFromFrontierFuel { activity_id },
                 });
-                self.schedule_player_travel_in(txn, ship.ship_id, activity.due_second)?;
+                if departed_landed_site {
+                    self.trigger_interception_watches_at_locus_in(
+                        txn,
+                        &mut ship,
+                        departure_locus,
+                        true,
+                    )?;
+                }
+                self.schedule_player_travel_in(txn, ship.ship_id, activity_due_second)?;
                 (ship.system_id, 4)
             }
             ShipLocationRecord::InFlight(FlightLegRecord {
@@ -29053,6 +29860,27 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
             bytes.push(77);
             bytes.extend_from_slice(&amount.to_be_bytes());
         }
+        Command::SetInterceptionWatch(ref request) => {
+            bytes.push(78);
+            match request {
+                crate::wire::InterceptionWatchRequest::Cancel { expected_revision } => {
+                    bytes.push(0);
+                    bytes.extend_from_slice(&expected_revision.to_be_bytes());
+                }
+                crate::wire::InterceptionWatchRequest::AllCraft { expected_revision } => {
+                    bytes.push(1);
+                    bytes.extend_from_slice(&expected_revision.to_be_bytes());
+                }
+                crate::wire::InterceptionWatchRequest::CraftClass {
+                    expected_revision,
+                    catalog_id,
+                } => {
+                    bytes.push(2);
+                    bytes.extend_from_slice(&expected_revision.to_be_bytes());
+                    bytes.extend_from_slice(&catalog_id.to_be_bytes());
+                }
+            }
+        }
     }
     Ok(bytes)
 }
@@ -29445,6 +30273,19 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
         77 => Command::MisappropriateRestrictedCredits {
             amount: decoder.u64()?,
         },
+        78 => {
+            let kind = decoder.u8()?;
+            let expected_revision = decoder.u64()?;
+            Command::SetInterceptionWatch(match kind {
+                0 => crate::wire::InterceptionWatchRequest::Cancel { expected_revision },
+                1 => crate::wire::InterceptionWatchRequest::AllCraft { expected_revision },
+                2 => crate::wire::InterceptionWatchRequest::CraftClass {
+                    expected_revision,
+                    catalog_id: decoder.u32()?,
+                },
+                _ => return Err(StoreError::Corrupt("unknown interception-watch filter")),
+            })
+        }
         71 => Command::ApplyPersonnelAction {
             person_id: decoder.u64()?,
             expected_service_revision: decoder.u64()?,
@@ -30556,6 +31397,12 @@ fn encode_traffic_contact_record(
         bytes.push(contact.confidence_percent);
     }
     bytes.push(u8::from(contact.player_owned));
+    bytes.push(u8::from(contact.online_controlled));
+    bytes.push(match contact.attachment {
+        crate::traffic::TrafficAttachment::Spaceborne => 0,
+        crate::traffic::TrafficAttachment::Berthed => 1,
+        crate::traffic::TrafficAttachment::Landed => 2,
+    });
     Ok(())
 }
 
@@ -30563,6 +31410,7 @@ fn decode_traffic_contact_record(
     decoder: &mut Decoder<'_>,
     has_observation: bool,
     has_control_flags: bool,
+    has_attachment: bool,
 ) -> Result<crate::traffic::TrafficContact, StoreError> {
     let contact_id = decoder.u64()?;
     let catalog_id = decoder.u32()?;
@@ -30605,6 +31453,17 @@ fn decode_traffic_contact_record(
         }
     };
     let player_owned = has_control_flags && decoder.u8()? != 0;
+    let online_controlled = has_attachment && decoder.u8()? != 0;
+    let attachment = if has_attachment {
+        match decoder.u8()? {
+            0 => crate::traffic::TrafficAttachment::Spaceborne,
+            1 => crate::traffic::TrafficAttachment::Berthed,
+            2 => crate::traffic::TrafficAttachment::Landed,
+            _ => return Err(StoreError::Corrupt("unknown traffic attachment")),
+        }
+    } else {
+        crate::traffic::TrafficAttachment::Spaceborne
+    };
     Ok(crate::traffic::TrafficContact {
         contact_id,
         catalog_id,
@@ -30621,13 +31480,14 @@ fn decode_traffic_contact_record(
         resolution,
         confidence_percent,
         player_owned,
-        online_controlled: false,
+        online_controlled,
+        attachment,
     })
 }
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(5);
+    bytes.push(6);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -30799,6 +31659,21 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
             for contact in &value.system_contacts {
                 encode_traffic_contact_record(&mut bytes, contact, true)?;
             }
+            if let Some(watch) = &value.interception_watch {
+                bytes.push(1);
+                bytes.extend_from_slice(&watch.started_second.to_be_bytes());
+                bytes.extend_from_slice(&watch.target_contact_id.to_be_bytes());
+                bytes.extend_from_slice(&watch.target_catalog_id.to_be_bytes());
+                encode_text(&mut bytes, &watch.target_ship_name)?;
+                bytes.push(match watch.filter {
+                    crate::wire::InterceptionWatchFilterKind::NamedVessel => 0,
+                    crate::wire::InterceptionWatchFilterKind::CraftClass => 1,
+                    crate::wire::InterceptionWatchFilterKind::AllCraft => 2,
+                });
+                encode_wire_locus(&mut bytes, watch.locus);
+            } else {
+                bytes.push(0);
+            }
         }
         OutcomeKind::DockedServices(value) => {
             bytes.push(31);
@@ -30839,7 +31714,8 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
 fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
     let mut decoder = Decoder::new(bytes);
     let version = decoder.u8()?;
-    if version != 1 && version != 2 && version != 3 && version != 4 && version != 5 {
+    if version != 1 && version != 2 && version != 3 && version != 4 && version != 5 && version != 6
+    {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
     let command_id = decoder.array()?;
@@ -30948,6 +31824,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
                     &mut decoder,
                     version >= 3,
                     version >= 4,
+                    version >= 6,
                 )?);
             }
             let mut system_contacts = Vec::new();
@@ -30959,9 +31836,32 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
                         &mut decoder,
                         true,
                         version >= 4,
+                        version >= 6,
                     )?);
                 }
             }
+            let interception_watch = if version >= 6 && decoder.u8()? != 0 {
+                let started_second = decoder.u64()?;
+                let target_contact_id = decoder.u64()?;
+                let target_catalog_id = decoder.u32()?;
+                let target_ship_name = decoder.text()?;
+                let filter = match decoder.u8()? {
+                    0 => crate::wire::InterceptionWatchFilterKind::NamedVessel,
+                    1 => crate::wire::InterceptionWatchFilterKind::CraftClass,
+                    2 => crate::wire::InterceptionWatchFilterKind::AllCraft,
+                    _ => return Err(StoreError::Corrupt("unknown interception-watch filter")),
+                };
+                Some(crate::wire::InterceptionWatchStatus {
+                    started_second,
+                    target_contact_id,
+                    target_catalog_id,
+                    target_ship_name,
+                    filter,
+                    locus: decode_wire_locus(&mut decoder)?,
+                })
+            } else {
+                None
+            };
             OutcomeKind::CombatCareer(crate::wire::CombatCareerSnapshot {
                 state,
                 rank,
@@ -30969,6 +31869,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
                 local_enforcement_summary,
                 system_contacts,
                 local_contacts,
+                interception_watch,
             })
         }
         31 => OutcomeKind::DockedServices(decode_docked_services(&mut decoder)?),
@@ -32145,6 +33046,56 @@ fn decode_ship_locus(decoder: &mut Decoder<'_>) -> Result<ShipLocusRecord, Store
         }),
         _ => Err(StoreError::Corrupt("unknown ship locus")),
     }
+}
+
+fn encode_interception_watch(watch: &InterceptionWatchRecord) -> Result<Vec<u8>, StoreError> {
+    let mut bytes = Vec::new();
+    bytes.push(1);
+    bytes.extend_from_slice(&watch.hunter_ship_id.to_be_bytes());
+    encode_ship_locus(&mut bytes, watch.locus);
+    bytes.extend_from_slice(&watch.started_second.to_be_bytes());
+    match watch.filter {
+        InterceptionWatchFilter::NamedVessel { ship_id } => {
+            bytes.push(0);
+            bytes.extend_from_slice(&ship_id.to_be_bytes());
+        }
+        InterceptionWatchFilter::CraftClass { catalog_id } => {
+            bytes.push(1);
+            bytes.extend_from_slice(&catalog_id.to_be_bytes());
+        }
+        InterceptionWatchFilter::AllCraft => bytes.push(2),
+    }
+    encode_text(&mut bytes, &watch.target_ship_name)?;
+    Ok(bytes)
+}
+
+fn decode_interception_watch(bytes: &[u8]) -> Result<InterceptionWatchRecord, StoreError> {
+    let mut decoder = Decoder::new(bytes);
+    if decoder.u8()? != 1 {
+        return Err(StoreError::Corrupt("unsupported interception-watch record"));
+    }
+    let hunter_ship_id = decoder.u64()?;
+    let locus = decode_ship_locus(&mut decoder)?;
+    let started_second = decoder.u64()?;
+    let filter = match decoder.u8()? {
+        0 => InterceptionWatchFilter::NamedVessel {
+            ship_id: decoder.u64()?,
+        },
+        1 => InterceptionWatchFilter::CraftClass {
+            catalog_id: decoder.u32()?,
+        },
+        2 => InterceptionWatchFilter::AllCraft,
+        _ => return Err(StoreError::Corrupt("unknown interception-watch filter")),
+    };
+    let target_ship_name = decoder.text()?;
+    decoder.finish()?;
+    Ok(InterceptionWatchRecord {
+        hunter_ship_id,
+        locus,
+        started_second,
+        filter,
+        target_ship_name,
+    })
 }
 
 fn encode_flight_leg_purpose(bytes: &mut Vec<u8>, purpose: FlightLegPurpose) {
@@ -36863,6 +37814,41 @@ mod tests {
             .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
             .unwrap();
         txn.commit().unwrap();
+    }
+
+    fn clear_test_ship_to_port_locus(
+        store: &Store,
+        txn: &mut heed::RwTxn<'_>,
+        ship_id: u64,
+    ) -> ShipRecord {
+        let mut ship = store
+            .ships
+            .get(txn, &ship_id)
+            .unwrap()
+            .map(decode_ship_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        if let ShipLocationRecord::Docked {
+            world_id,
+            facility_id,
+            arrived_second,
+        } = ship.location
+        {
+            ship.location = ShipLocationRecord::Holding {
+                locus: ShipLocusRecord::Port {
+                    system_id: ship.system_id,
+                    world_id,
+                    facility_id,
+                },
+                arrived_second,
+            };
+            store
+                .ships
+                .put(txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+                .unwrap();
+        }
+        ship
     }
 
     #[test]
@@ -44373,6 +45359,10 @@ mod tests {
                 contact_id: 13,
                 expected_career_revision: 14,
             },
+            Command::SetInterceptionWatch(crate::wire::InterceptionWatchRequest::CraftClass {
+                expected_revision: 14,
+                catalog_id: 72,
+            }),
             Command::SetPirateCruise(crate::careers::PirateCruise {
                 revision: 15,
                 active: true,
@@ -44643,6 +45633,8 @@ mod tests {
 
         let mut txn = store.env.write_txn().unwrap();
         let other_ship_id = store.player_and_ship_in(&txn, &other).unwrap().1.ship_id;
+        clear_test_ship_to_port_locus(&store, &mut txn, template.ship_id);
+        clear_test_ship_to_port_locus(&store, &mut txn, other_ship_id);
         let snapshot = store.combat_career_snapshot_in(&txn, &observer).unwrap();
         let system_contact = snapshot
             .system_contacts
@@ -44671,7 +45663,10 @@ mod tests {
             .engage_traffic_contact_in(&mut txn, &observer, other_ship_id, career.revision)
             .unwrap()
         {
-            RuleResult::Applied(combat) => combat,
+            RuleResult::Applied(InterceptionStart::Combat(combat)) => combat,
+            RuleResult::Applied(InterceptionStart::Watch(_)) => {
+                panic!("spaceborne player interception established a watch")
+            }
             RuleResult::Rejected(reason) => panic!("player interception was rejected: {reason}"),
         };
         assert_eq!(combat.participants.len(), 2);
@@ -44693,6 +45688,238 @@ mod tests {
                 .get(&txn, &combat.combat_id)
                 .unwrap()
                 .is_some()
+        );
+    }
+
+    #[test]
+    fn docked_player_intercept_waits_for_departure_before_combat() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let hunter = identity();
+        let target = PlayerIdentity {
+            bbs_id: hunter.bbs_id,
+            player_id: hunter.player_id + 1,
+        };
+        let hunter_ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &hunter)
+            .unwrap()
+            .1;
+        establish_colocated_player(&store, &target, &hunter_ship);
+
+        let mut txn = store.env.write_txn().unwrap();
+        let mut target_ship = store.player_and_ship_in(&txn, &target).unwrap().1;
+        let target_contact = store
+            .combat_career_snapshot_in(&txn, &hunter)
+            .unwrap()
+            .local_contacts
+            .into_iter()
+            .find(|contact| contact.contact_id == target_ship.ship_id)
+            .unwrap();
+        assert_eq!(
+            target_contact.attachment,
+            crate::traffic::TrafficAttachment::Berthed
+        );
+        let revision = store.career_state_in(&txn, &hunter).unwrap().revision;
+        let watch = match store
+            .engage_traffic_contact_in(&mut txn, &hunter, target_ship.ship_id, revision)
+            .unwrap()
+        {
+            RuleResult::Applied(InterceptionStart::Watch(snapshot)) => snapshot,
+            RuleResult::Applied(InterceptionStart::Combat(_)) => {
+                panic!("a berthed target was attacked before departure")
+            }
+            RuleResult::Rejected(reason) => panic!("departure watch rejected: {reason}"),
+        };
+        assert!(matches!(
+            watch.interception_watch.map(|watch| watch.filter),
+            Some(crate::wire::InterceptionWatchFilterKind::NamedVessel)
+        ));
+
+        let ShipLocationRecord::Docked {
+            world_id,
+            facility_id,
+            ..
+        } = target_ship.location
+        else {
+            panic!("target fixture is not docked")
+        };
+        let locus = ShipLocusRecord::Port {
+            system_id: target_ship.system_id,
+            world_id,
+            facility_id,
+        };
+        target_ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: 1,
+            plan_revision: 1,
+            leg_index: 0,
+            origin: locus,
+            destination: ShipLocusRecord::JumpLocus {
+                system_id: target_ship.system_id,
+            },
+            started_second: 0,
+            due_second: crate::simulation::SECONDS_PER_DAY,
+            purpose: FlightLegPurpose::DepartForJump {
+                jump_destination_system_id: target_ship.system_id + 1,
+            },
+        });
+        let combat_id = store
+            .trigger_interception_watches_at_locus_in(&mut txn, &mut target_ship, locus, true)
+            .unwrap()
+            .expect("the named departure should trigger combat");
+        assert!(matches!(
+            target_ship.location,
+            ShipLocationRecord::InFlight(_)
+        ));
+        assert!(
+            store
+                .interception_watch_in(&txn, hunter_ship.ship_id)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .shared_combats
+                .get(&txn, &combat_id)
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn all_craft_watch_schedules_the_next_modeled_contact() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut txn = store.env.write_txn().unwrap();
+        let (_, ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        let revision = store.career_state_in(&txn, &identity()).unwrap().revision;
+        let snapshot = match store
+            .set_interception_watch_in(
+                &mut txn,
+                &identity(),
+                &crate::wire::InterceptionWatchRequest::AllCraft {
+                    expected_revision: revision,
+                },
+            )
+            .unwrap()
+        {
+            RuleResult::Applied(snapshot) => snapshot,
+            RuleResult::Rejected(reason) => panic!("all-craft watch rejected: {reason}"),
+        };
+        assert!(matches!(
+            snapshot.interception_watch.map(|watch| watch.filter),
+            Some(crate::wire::InterceptionWatchFilterKind::AllCraft)
+        ));
+        let scheduled = store
+            .contact_events
+            .iter(&txn)
+            .unwrap()
+            .map(|entry| {
+                let (key, value) = entry.unwrap();
+                decode_scheduled_object(key, value).unwrap()
+            })
+            .find(|(_, _, scheduled_ship_id)| *scheduled_ship_id == ship.ship_id)
+            .expect("an all-craft watch should schedule a modeled contact");
+        put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, scheduled.0).unwrap();
+        let triggered = store
+            .process_contact_check_in(&mut txn, scheduled.0, ship.ship_id)
+            .unwrap();
+        assert_eq!(triggered, Some(identity()));
+    }
+
+    #[test]
+    fn all_craft_watch_intercepts_a_player_arriving_at_the_locus() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let hunter = identity();
+        let arriving = PlayerIdentity {
+            bbs_id: hunter.bbs_id,
+            player_id: hunter.player_id + 1,
+        };
+        let hunter_ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &hunter)
+            .unwrap()
+            .1;
+        establish_colocated_player(&store, &arriving, &hunter_ship);
+
+        let mut txn = store.env.write_txn().unwrap();
+        let revision = store.career_state_in(&txn, &hunter).unwrap().revision;
+        assert!(matches!(
+            store
+                .set_interception_watch_in(
+                    &mut txn,
+                    &hunter,
+                    &crate::wire::InterceptionWatchRequest::AllCraft {
+                        expected_revision: revision,
+                    },
+                )
+                .unwrap(),
+            RuleResult::Applied(_)
+        ));
+        let mut arriving_ship = store.player_and_ship_in(&txn, &arriving).unwrap().1;
+        let ShipLocationRecord::Docked {
+            world_id,
+            facility_id,
+            ..
+        } = arriving_ship.location
+        else {
+            panic!("arriving fixture is not docked")
+        };
+        let port = ShipLocusRecord::Port {
+            system_id: arriving_ship.system_id,
+            world_id,
+            facility_id,
+        };
+        arriving_ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: 2,
+            plan_revision: 1,
+            leg_index: 1,
+            origin: ShipLocusRecord::JumpLocus {
+                system_id: arriving_ship.system_id,
+            },
+            destination: port,
+            started_second: 0,
+            due_second: 100,
+            purpose: FlightLegPurpose::ApproachPort,
+        });
+        store
+            .ships
+            .put(
+                &mut txn,
+                &arriving_ship.ship_id,
+                &encode_ship_record(&arriving_ship).unwrap(),
+            )
+            .unwrap();
+        put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, 100).unwrap();
+
+        let (_, stage, transitioned) = store
+            .process_player_travel_in(&mut txn, 100, arriving_ship.ship_id)
+            .unwrap();
+        assert_eq!(stage, 6);
+        assert_eq!(transitioned, arriving);
+        let combat_id = store
+            .ship_combats
+            .get(&txn, &arriving_ship.ship_id)
+            .unwrap()
+            .map(decode_u64)
+            .transpose()
+            .unwrap()
+            .expect("arrival should enter shared combat");
+        let transitions = store
+            .shared_combat_transitions_in(&txn, combat_id, 1, 1)
+            .unwrap();
+        assert_eq!(transitions.len(), 2);
+        assert!(
+            transitions
+                .iter()
+                .any(|transition| transition.identity == hunter)
+        );
+        assert!(
+            transitions
+                .iter()
+                .any(|transition| transition.identity == arriving)
         );
     }
 
@@ -45659,12 +46886,17 @@ mod tests {
             .1;
 
         let mut txn = store.env.write_txn().unwrap();
+        clear_test_ship_to_port_locus(&store, &mut txn, attacker_ship.ship_id);
+        clear_test_ship_to_port_locus(&store, &mut txn, defender_ship.ship_id);
         let career_revision = store.career_state_in(&txn, &attacker).unwrap().revision;
         let attacker_view = match store
             .engage_traffic_contact_in(&mut txn, &attacker, defender_ship.ship_id, career_revision)
             .unwrap()
         {
-            RuleResult::Applied(snapshot) => snapshot,
+            RuleResult::Applied(InterceptionStart::Combat(snapshot)) => snapshot,
+            RuleResult::Applied(InterceptionStart::Watch(_)) => {
+                panic!("spaceborne player interception established a watch")
+            }
             RuleResult::Rejected(reason) => panic!("player intercept rejected: {reason}"),
         };
         assert_eq!(attacker_view.participants.len(), 2);
@@ -45872,12 +47104,18 @@ mod tests {
         };
 
         let mut txn = store.env.write_txn().unwrap();
+        let attacker_ship_id = store.player_and_ship_in(&txn, &attacker).unwrap().1.ship_id;
+        clear_test_ship_to_port_locus(&store, &mut txn, attacker_ship_id);
+        clear_test_ship_to_port_locus(&store, &mut txn, managed_ship_id);
         let revision = store.career_state_in(&txn, &attacker).unwrap().revision;
         let view = match store
             .engage_traffic_contact_in(&mut txn, &attacker, managed_ship_id, revision)
             .unwrap()
         {
-            RuleResult::Applied(snapshot) => snapshot,
+            RuleResult::Applied(InterceptionStart::Combat(snapshot)) => snapshot,
+            RuleResult::Applied(InterceptionStart::Watch(_)) => {
+                panic!("spaceborne managed-ship interception established a watch")
+            }
             RuleResult::Rejected(reason) => panic!("managed ship intercept rejected: {reason}"),
         };
         assert_ne!(
@@ -46085,6 +47323,12 @@ mod tests {
             .player_and_ship_in(&store.env.read_txn().unwrap(), &defender)
             .unwrap()
             .1;
+        {
+            let mut txn = store.env.write_txn().unwrap();
+            clear_test_ship_to_port_locus(&store, &mut txn, attacker_ship.ship_id);
+            clear_test_ship_to_port_locus(&store, &mut txn, defender_ship.ship_id);
+            txn.commit().unwrap();
+        }
         let career_revision = store
             .career_state_in(&store.env.read_txn().unwrap(), &attacker)
             .unwrap()

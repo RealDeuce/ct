@@ -116,6 +116,15 @@ its 16-byte preview hash so intervening state cannot silently change a warned
 choice. Reliable checkpoint and encounter events are emitted on transition and
 replayed from current state when a session opens.
 
+Traffic contacts carry a closed attachment value (`spaceborne`, `berthed`, or
+`landed`) separately from their locus. Combat-career snapshots optionally
+carry a typed interception watch with its filter and locus. A direct intercept
+response is a combat snapshot when engagement begins immediately or a combat-
+career snapshot when selecting an attached player vessel establishes a named
+departure watch. The revisioned interception-watch command selects cancel,
+all craft, or an exact catalog ID; clients do not infer any of these states
+from explanatory text.
+
 Docked-service quotations return the ship revision, exact named fuel sources,
 physical provision and ammunition state, repair/replacement choices, facility
 reasons, prices, and elapsed times. One commit presents that revision and a

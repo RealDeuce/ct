@@ -1714,6 +1714,38 @@ pub struct CombatCareerSnapshot {
     pub local_enforcement_summary: String,
     pub system_contacts: Vec<crate::traffic::TrafficContact>,
     pub local_contacts: Vec<crate::traffic::TrafficContact>,
+    pub interception_watch: Option<InterceptionWatchStatus>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InterceptionWatchFilterKind {
+    NamedVessel,
+    CraftClass,
+    AllCraft,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InterceptionWatchStatus {
+    pub started_second: u64,
+    pub target_contact_id: u64,
+    pub target_catalog_id: u32,
+    pub target_ship_name: String,
+    pub filter: InterceptionWatchFilterKind,
+    pub locus: FlightLocus,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InterceptionWatchRequest {
+    Cancel {
+        expected_revision: u64,
+    },
+    AllCraft {
+        expected_revision: u64,
+    },
+    CraftClass {
+        expected_revision: u64,
+        catalog_id: u32,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2006,6 +2038,7 @@ pub enum Command {
         contact_id: u64,
         expected_career_revision: u64,
     },
+    SetInterceptionWatch(InterceptionWatchRequest),
     SetPirateCruise(crate::careers::PirateCruise),
     SettlePrize {
         prize_id: u64,
@@ -2172,6 +2205,7 @@ impl Command {
             }
             Self::AcceptCareerOpportunity { .. }
             | Self::EngageTrafficContact { .. }
+            | Self::SetInterceptionWatch(_)
             | Self::SetPirateCruise(_)
             | Self::SettlePrize { .. }
             | Self::SettleWarrant { .. }
@@ -2770,6 +2804,24 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
                 contact_id: value.get_contact_id(),
                 expected_career_revision: value.get_expected_career_revision(),
             }
+        }
+        request::SetInterceptionWatch(value) => {
+            let value = value?;
+            let expected_revision = value.get_expected_career_revision();
+            Command::SetInterceptionWatch(match value.which()? {
+                crate::ct_rpc_capnp::interception_watch_request::Cancel(()) => {
+                    InterceptionWatchRequest::Cancel { expected_revision }
+                }
+                crate::ct_rpc_capnp::interception_watch_request::AllCraft(()) => {
+                    InterceptionWatchRequest::AllCraft { expected_revision }
+                }
+                crate::ct_rpc_capnp::interception_watch_request::CatalogId(catalog_id) => {
+                    InterceptionWatchRequest::CraftClass {
+                        expected_revision,
+                        catalog_id,
+                    }
+                }
+            })
         }
         request::SetPirateCruise(value) => {
             let value = value?;
@@ -3716,6 +3768,26 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
             let mut value = builder.init_engage_traffic_contact();
             value.set_contact_id(contact_id);
             value.set_expected_career_revision(expected_career_revision);
+        }
+        Command::SetInterceptionWatch(request) => {
+            let mut value = builder.init_set_interception_watch();
+            match request {
+                InterceptionWatchRequest::Cancel { expected_revision } => {
+                    value.set_expected_career_revision(expected_revision);
+                    value.set_cancel(());
+                }
+                InterceptionWatchRequest::AllCraft { expected_revision } => {
+                    value.set_expected_career_revision(expected_revision);
+                    value.set_all_craft(());
+                }
+                InterceptionWatchRequest::CraftClass {
+                    expected_revision,
+                    catalog_id,
+                } => {
+                    value.set_expected_career_revision(expected_revision);
+                    value.set_catalog_id(catalog_id);
+                }
+            }
         }
         Command::SetPirateCruise(ref cruise) => {
             let mut value = builder.init_set_pirate_cruise();
@@ -5958,6 +6030,26 @@ fn set_combat_career_snapshot(
     for (index, contact) in snapshot.local_contacts.iter().enumerate() {
         set_traffic_contact(contacts.reborrow().get(index as u32), contact);
     }
+    builder.set_has_interception_watch(snapshot.interception_watch.is_some());
+    if let Some(watch) = &snapshot.interception_watch {
+        let mut target = builder.reborrow().init_interception_watch();
+        target.set_started_second(watch.started_second);
+        target.set_target_contact_id(watch.target_contact_id);
+        target.set_target_catalog_id(watch.target_catalog_id);
+        target.set_target_ship_name(&watch.target_ship_name);
+        target.set_filter(match watch.filter {
+            InterceptionWatchFilterKind::NamedVessel => {
+                crate::ct_rpc_capnp::InterceptionWatchFilterKind::NamedVessel
+            }
+            InterceptionWatchFilterKind::CraftClass => {
+                crate::ct_rpc_capnp::InterceptionWatchFilterKind::CraftClass
+            }
+            InterceptionWatchFilterKind::AllCraft => {
+                crate::ct_rpc_capnp::InterceptionWatchFilterKind::AllCraft
+            }
+        });
+        set_flight_locus(target.init_locus(), watch.locus);
+    }
     let mut opportunities = builder.reborrow().init_opportunities(
         u32::try_from(state.opportunities.len())
             .map_err(|_| WireError::Expected("fewer career opportunities"))?,
@@ -6405,6 +6497,15 @@ fn set_traffic_contact(
     builder.set_confidence_percent(contact.confidence_percent);
     builder.set_player_owned(contact.player_owned);
     builder.set_online_controlled(contact.online_controlled);
+    builder.set_attachment(match contact.attachment {
+        crate::traffic::TrafficAttachment::Spaceborne => {
+            crate::ct_rpc_capnp::TrafficAttachment::Spaceborne
+        }
+        crate::traffic::TrafficAttachment::Berthed => {
+            crate::ct_rpc_capnp::TrafficAttachment::Berthed
+        }
+        crate::traffic::TrafficAttachment::Landed => crate::ct_rpc_capnp::TrafficAttachment::Landed,
+    });
 }
 
 fn encode_ship_subsystem_kind(kind: ShipSubsystemKind) -> SchemaShipSubsystemKind {
@@ -6630,6 +6731,15 @@ mod tests {
                 session_epoch: 23,
                 command_id: [0xb8; COMMAND_ID_BYTES],
                 command: Command::MisappropriateRestrictedCredits { amount: 12_345 },
+            },
+            CommandRequest {
+                request_id: 202,
+                session_epoch: 23,
+                command_id: [0xb9; COMMAND_ID_BYTES],
+                command: Command::SetInterceptionWatch(InterceptionWatchRequest::CraftClass {
+                    expected_revision: 17,
+                    catalog_id: 72,
+                }),
             },
             CommandRequest {
                 request_id: 21,

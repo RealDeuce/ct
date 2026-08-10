@@ -266,6 +266,13 @@ uses that exact source rather than silently substituting the nearest body; on
 return to port, the activity completion transaction starts the next authorized
 plan step or leaves the plan held with the validation failure.
 
+The two collection phases have different encounter geography. A gas skimmer
+remains spaceborne at the body locus and may be intercepted during skimming.
+A wilderness water/ice collector is landed and cannot be attacked as though it
+were hovering in local space; a named interceptor may wait at that body locus
+and engage when the collector lifts for the return leg. Ports and downports
+use the same attachment-versus-locus distinction.
+
 ## Phase Results
 
 Successful terminal actions select the next authoritative state:

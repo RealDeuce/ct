@@ -1347,17 +1347,17 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Captain's Command Console",
         "Captain's Command Console",
     );
-    services_door.wait_for("(C/S/T/M/R/K/O) Manager");
+    services_door.wait_for("(C/K/M/O/R/S/T) Manager");
     services_door.send(b"c");
     services_door.wait_for("Crew Management -");
     services_door.wait_for("Complement:");
     services_door.wait_for("managed appointments");
     services_door.send(b"q");
     services_door.wait_for_occurrences("Captain's Command Console", 2);
-    services_door.wait_for_occurrences("(C/S/T/M/R/K/O) Manager", 2);
+    services_door.wait_for_occurrences("(C/K/M/O/R/S/T) Manager", 2);
     services_door.send(b"m");
     services_door.wait_for("Message Management");
-    services_door.send_through_page_prompt(b"c", "Recipient:", "Recipient:");
+    services_door.send_through_page_prompt(b"c", "Recipient", "Recipient");
     services_door.send(b"c");
     services_door.wait_for("BBS number");
     services_door.send(b"1\r");
@@ -1379,7 +1379,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Captain's Command Console",
         "Captain's Command Console",
     );
-    services_door.wait_for_occurrences("(C/S/T/M/R/K/O) Manager", 2);
+    services_door.wait_for_occurrences("(C/K/M/O/R/S/T) Manager", 2);
     services_door.send(b"x");
     let final_docked_occurrence = if banking_available { 3 } else { 2 };
     services_door.wait_for_occurrences("Docked Operations", final_docked_occurrence);
@@ -1456,7 +1456,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
             "Captain's Command Console",
             "Captain's Command Console",
         );
-        combat_door.wait_for("(C/S/T/M/R/K/O) Manager");
+        combat_door.wait_for("(C/K/M/O/R/S/T) Manager");
         combat_door.send(b"o");
         combat_door.wait_for_occurrences("Accept order or file report", 1);
         combat_door.send(b"m");

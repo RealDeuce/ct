@@ -1629,6 +1629,7 @@ TrafficContact decode_traffic_contact(const rpc::TrafficContact::Reader source)
       .confidence_percent = source.getConfidencePercent(),
       .player_owned = source.getPlayerOwned(),
       .online_controlled = source.getOnlineControlled(),
+      .attachment = static_cast<TrafficAttachment>(source.getAttachment()),
    };
 }
 
@@ -3291,6 +3292,7 @@ CombatCareerSnapshot decode_combat_career(const rpc::Response::Reader response)
       .local_enforcement_summary = source.getLocalEnforcementSummary().cStr(),
       .system_contacts = {},
       .local_contacts = {},
+      .interception_watch = std::nullopt,
       .phase = decode_response_phase(response.getPhase()),
    };
    for(const auto value : source.getOpportunities()) {
@@ -3365,6 +3367,17 @@ CombatCareerSnapshot decode_combat_career(const rpc::Response::Reader response)
    for(const auto contact : source.getLocalContacts()) {
       result.local_contacts.push_back(decode_traffic_contact(contact));
    }
+   if(source.getHasInterceptionWatch()) {
+      const auto watch = source.getInterceptionWatch();
+      result.interception_watch = InterceptionWatchStatus{
+         .started_second = watch.getStartedSecond(),
+         .target_contact_id = watch.getTargetContactId(),
+         .target_catalog_id = watch.getTargetCatalogId(),
+         .target_ship_name = watch.getTargetShipName().cStr(),
+         .filter = static_cast<InterceptionWatchFilterKind>(watch.getFilter()),
+         .locus = decode_flight_locus(watch.getLocus()),
+      };
+   }
    return result;
 }
 
@@ -3401,11 +3414,11 @@ CombatCareerSnapshot accept_career_opportunity(TlsConnection& connection, const 
    return decode_combat_career(checked_response(reader.getRoot<rpc::Envelope>(), id));
 }
 
-CombatSnapshot engage_traffic_contact(TlsConnection& connection, const uint64_t epoch,
-                                      const uint64_t contact_id,
-                                      const uint64_t revision,
-                                      const std::array<uint8_t, 16>& id,
-                                      const uint64_t request_id)
+InterceptionStart engage_traffic_contact(TlsConnection& connection, const uint64_t epoch,
+                                         const uint64_t contact_id,
+                                         const uint64_t revision,
+                                         const std::array<uint8_t, 16>& id,
+                                         const uint64_t request_id)
 {
    capnp::MallocMessageBuilder message;
    auto envelope = message.initRoot<rpc::Envelope>();
@@ -3417,7 +3430,44 @@ CombatSnapshot engage_traffic_contact(TlsConnection& connection, const uint64_t 
    send_frame(connection, capnp::messageToFlatArray(message).asBytes());
    auto words = receive_response(connection, epoch, request_id);
    capnp::FlatArrayMessageReader reader(words);
-   return decode_combat(checked_response(reader.getRoot<rpc::Envelope>(), id));
+   const auto response = checked_response(reader.getRoot<rpc::Envelope>(), id);
+   if(response.isCombat()) {
+      return decode_combat(response);
+   }
+   if(response.isCombatCareer()) {
+      return decode_combat_career(response);
+   }
+   throw std::runtime_error("expected combat or interception-watch response");
+}
+
+CombatCareerSnapshot set_interception_watch(TlsConnection& connection, const uint64_t epoch,
+                                             const InterceptionWatchSelection selection,
+                                             const uint32_t catalog_id,
+                                             const uint64_t revision,
+                                             const std::array<uint8_t, 16>& id,
+                                             const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   auto value = request.initSetInterceptionWatch();
+   value.setExpectedCareerRevision(revision);
+   switch(selection) {
+   case InterceptionWatchSelection::Cancel:
+      value.setCancel();
+      break;
+   case InterceptionWatchSelection::AllCraft:
+      value.setAllCraft();
+      break;
+   case InterceptionWatchSelection::CraftClass:
+      value.setCatalogId(catalog_id);
+      break;
+   }
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_combat_career(checked_response(reader.getRoot<rpc::Envelope>(), id));
 }
 
 CombatCareerSnapshot set_pirate_cruise(TlsConnection& connection, const uint64_t epoch,

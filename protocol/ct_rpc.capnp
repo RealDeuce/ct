@@ -163,6 +163,7 @@ struct Request {
     acknowledgeRadioReception @68 :RadioReceptionRequest;
     setRadioMute @69 :SetRadioMuteRequest;
     misappropriateRestrictedCredits @70 :MisappropriateRestrictedCreditsRequest;
+    setInterceptionWatch @71 :InterceptionWatchRequest;
   }
 }
 
@@ -1701,9 +1702,28 @@ struct CombatCareerSnapshot {
   localContacts @13 :List(TrafficContact);
   crewPressure @14 :UInt16;
   systemContacts @15 :List(TrafficContact);
+  interceptionWatch @16 :InterceptionWatchStatus;
+  hasInterceptionWatch @17 :Bool;
 }
 struct CareerOpportunityRequest { opportunityId @0 :UInt64; expectedRevision @1 :UInt64; }
 struct EngageTrafficContactRequest { contactId @0 :UInt64; expectedCareerRevision @1 :UInt64; }
+enum InterceptionWatchFilterKind { namedVessel @0; craftClass @1; allCraft @2; }
+struct InterceptionWatchStatus {
+  startedSecond @0 :UInt64;
+  targetContactId @1 :UInt64;
+  targetCatalogId @2 :UInt32;
+  targetShipName @3 :Text;
+  filter @4 :InterceptionWatchFilterKind;
+  locus @5 :FlightLocus;
+}
+struct InterceptionWatchRequest {
+  expectedCareerRevision @0 :UInt64;
+  union {
+    cancel @1 :Void;
+    allCraft @2 :Void;
+    catalogId @3 :UInt32;
+  }
+}
 struct PirateCruiseRequest { expectedRevision @0 :UInt64; active @1 :Bool; huntingSystemId @2 :UInt64; endsSecond @3 :UInt64; crewSharePercent @4 :UInt8; shipFundPercent @5 :UInt8; prohibitedTargets @6 :Text; }
 enum PrizeSettlementMethod {
   fileClaim @0;
@@ -1933,6 +1953,12 @@ enum TrafficContactResolution {
   identified @2;
 }
 
+enum TrafficAttachment {
+  spaceborne @0;
+  berthed @1;
+  landed @2;
+}
+
 struct TrafficContact {
   contactId @0 :UInt64;
   catalogId @1 :UInt32;
@@ -1950,6 +1976,7 @@ struct TrafficContact {
   confidencePercent @13 :UInt8;
   playerOwned @14 :Bool;
   onlineControlled @15 :Bool;
+  attachment @16 :TrafficAttachment;
 }
 
 struct TrafficSnapshot {

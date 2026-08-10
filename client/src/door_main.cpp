@@ -5799,6 +5799,23 @@ std::optional<ct::PlayerPhase> show_combat_operations(
          }
       }
       door_information("%s\n\r", safe_field(snapshot.local_enforcement_summary).c_str());
+      if(snapshot.interception_watch) {
+         const auto& watch = *snapshot.interception_watch;
+         door_label("Interception watch: ");
+         switch(watch.filter) {
+         case ct::InterceptionWatchFilterKind::NamedVessel:
+            door_warning("departure of %s", safe_field(watch.target_ship_name).c_str());
+            break;
+         case ct::InterceptionWatchFilterKind::CraftClass:
+            door_warning("all %s craft", safe_field(watch.target_ship_name).c_str());
+            break;
+         case ct::InterceptionWatchFilterKind::AllCraft:
+            door_warning("all craft");
+            break;
+         }
+         door_label("  since ");
+         door_value("%s\n\r", game_date(watch.started_second).c_str());
+      }
       door_identifier("\n\rOrders and intelligence\n\r");
       if(snapshot.opportunities.empty()) {
          door_information("  Nothing actionable is posted.\n\r");
@@ -5841,6 +5858,11 @@ std::optional<ct::PlayerPhase> show_combat_operations(
             door_label("  ");
          }
          door_identifier("%s", safe_field(c.ship_name).c_str());
+         if(c.attachment == ct::TrafficAttachment::Berthed) {
+            door_warning("  [BERTHED]");
+         } else if(c.attachment == ct::TrafficAttachment::Landed) {
+            door_warning("  [LANDED]");
+         }
          door_label("  [");
          door_value("%s", safe_field(c.transponder).c_str());
          door_label("]\n\r");
@@ -5878,6 +5900,11 @@ std::optional<ct::PlayerPhase> show_combat_operations(
             door_identifier("[PLAYER] ");
          }
          door_identifier("%s", safe_field(c.ship_name).c_str());
+         if(c.attachment == ct::TrafficAttachment::Berthed) {
+            door_warning("  [BERTHED]");
+         } else if(c.attachment == ct::TrafficAttachment::Landed) {
+            door_warning("  [LANDED]");
+         }
          door_label("  [");
          door_value("%s", safe_field(c.transponder).c_str());
          door_label("]\n\r");
@@ -5941,6 +5968,7 @@ std::optional<ct::PlayerPhase> show_combat_operations(
          "[A] Accept order or file report",
          "[I] Intercept traffic",
          "[P] Prize office",
+         "[S] Standing interception order",
          "[W] Warrant court",
          "[C] Cruise articles",
          "[M] Service or commission status",
@@ -5983,15 +6011,80 @@ std::optional<ct::PlayerPhase> show_combat_operations(
                      door_information("It will fight under its captain's standing combat policy.\n\r");
                   }
                }
-               door_warning("An armed intercept is an irreversible act.\n\r");
-               door_option_prompt({"[I] Confirm intercept", "[Q] Cancel"}, false);
+               const auto attached = target.attachment != ct::TrafficAttachment::Spaceborne;
+               if(snapshot.phase == ct::PlayerPhase::Docked) {
+                  door_information(
+                     "Your ship will clear its berth and pay any charges due before taking station.\n\r");
+               }
+               if(attached) {
+                  door_information(
+                     "The target is %s. Your ship will clear any berth, pay charges due, "
+                     "and wait at this locus until it departs.\n\r",
+                     target.attachment == ct::TrafficAttachment::Berthed ? "berthed" : "landed");
+               }
+               door_warning("An armed %s is an irreversible act.\n\r",
+                            attached ? "departure watch" : "intercept");
+               door_option_prompt({attached ? "[W] Confirm watch" : "[I] Confirm intercept",
+                                   "[Q] Cancel"}, false);
                const auto confirm = static_cast<char>(std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
                od_printf("\n\r");
-               if(confirm == 'I') {
-                  auto combat = ct::engage_traffic_contact(connection, epoch,
+               if(confirm == (attached ? 'W' : 'I')) {
+                  auto result = ct::engage_traffic_contact(connection, epoch,
                      target.contact_id, snapshot.revision, random_command_id(random),
                      request_id++);
-                  return combat.phase;
+                  if(std::holds_alternative<ct::CombatSnapshot>(result)) {
+                     return std::get<ct::CombatSnapshot>(result).phase;
+                  }
+                  snapshot = std::get<ct::CombatCareerSnapshot>(std::move(result));
+               }
+            }
+         } else if(key == 'S') {
+            std::vector<const ct::TrafficContact*> classes;
+            const auto add_class = [&classes](const ct::TrafficContact& contact) {
+               if(contact.catalog_id != 0 && std::none_of(
+                     classes.begin(), classes.end(), [&contact](const auto* existing) {
+                        return existing->catalog_id == contact.catalog_id;
+                     })) {
+                  classes.push_back(&contact);
+               }
+            };
+            for(const auto& contact : snapshot.local_contacts) {
+               add_class(contact);
+            }
+            for(const auto& contact : snapshot.system_contacts) {
+               add_class(contact);
+            }
+            door_option_prompt({"[A] All craft", "[C] Observed craft class",
+                                "[R] Remove watch", "[Q] Cancel"}, false);
+            const auto action = static_cast<char>(std::toupper(
+               static_cast<unsigned char>(od_get_key(TRUE))));
+            od_printf("\n\r");
+            if(action == 'A') {
+               snapshot = ct::set_interception_watch(
+                  connection, epoch, ct::InterceptionWatchSelection::AllCraft, 0,
+                  snapshot.revision, random_command_id(random), request_id++);
+            } else if(action == 'R' && snapshot.interception_watch) {
+               snapshot = ct::set_interception_watch(
+                  connection, epoch, ct::InterceptionWatchSelection::Cancel, 0,
+                  snapshot.revision, random_command_id(random), request_id++);
+            } else if(action == 'C') {
+               if(classes.empty()) {
+                  door_warning("No catalogued craft class is present in the current traffic picture.\n\r");
+                  wait_for_enter("Continue");
+                  continue;
+               }
+               for(size_t index = 0; index < classes.size(); ++index) {
+                  door_number("%zu", index + 1);
+                  door_label(". ");
+                  door_value("%s\n\r", safe_field(classes[index]->class_name).c_str());
+               }
+               const auto selected = input_number(
+                  "Craft class", 1, static_cast<unsigned>(classes.size()));
+               if(selected) {
+                  snapshot = ct::set_interception_watch(
+                     connection, epoch, ct::InterceptionWatchSelection::CraftClass,
+                     classes[*selected - 1]->catalog_id, snapshot.revision,
+                     random_command_id(random), request_id++);
                }
             }
          } else if(key == 'P' && !snapshot.prizes.empty()) {

@@ -624,6 +624,7 @@ mod tests {
             confidence_percent: 100,
             player_owned: false,
             online_controlled: false,
+            attachment: crate::traffic::TrafficAttachment::Spaceborne,
         }
     }
 

@@ -54,6 +54,13 @@ pub enum TrafficContactResolution {
     Identified,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TrafficAttachment {
+    Spaceborne,
+    Berthed,
+    Landed,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TrafficContact {
     pub contact_id: u64,
@@ -72,6 +79,7 @@ pub struct TrafficContact {
     pub confidence_percent: u8,
     pub player_owned: bool,
     pub online_controlled: bool,
+    pub attachment: TrafficAttachment,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -175,6 +183,7 @@ fn day_contacts(system: &SimulationSystem, day: u64) -> Result<Vec<TrafficContac
             confidence_percent: 100,
             player_owned: false,
             online_controlled: false,
+            attachment: TrafficAttachment::Spaceborne,
         });
     }
     contacts.sort_by_key(|contact| (contact.edge_second, contact.contact_id));

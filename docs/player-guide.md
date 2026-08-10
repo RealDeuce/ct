@@ -344,6 +344,24 @@ registry. Class and tonnage are separate sensor estimates, and may be
 approximate or unresolved when the ship has modest or damaged electronics.
 Only contacts still sharing the locus can be intercepted.
 
+`[BERTHED]` and `[LANDED]` mean that a vessel shares the traffic locus but is
+still attached to a facility or surface. Selecting one does not start combat
+inside the berth or on the ground. Your ship clears its own berth, pays the
+charges then due, and waits at the locus; the intercept occurs only if the
+selected vessel departs. Gas-giant skimming is spaceborne and remains exposed
+to immediate interception, while a wilderness water/ice expedition is landed
+until it lifts.
+
+**Standing interception order** places the ship on picket at its current port,
+Jump point, gas giant, or other modeled body locus. It can target all modeled
+craft or one catalogued craft class observed in the current traffic picture.
+Matching background movements and player arrivals or departures trigger the
+intercept. The Operations Ledger shows the active watch and can remove it. A
+named departure watch ends when that vessel departs; an all-craft or class
+watch continues after an engagement while the ship remains capable and at the
+same locus. Removing a port watch returns the ship to a berth with a new
+arrival time.
+
 Player vessels appear in these same traffic pictures. `[PLAYER]` identifies a
 player-owned ship operating under standing orders; `[ONLINE]` identifies the
 player-owned ship currently under a connected captain's direct control. These

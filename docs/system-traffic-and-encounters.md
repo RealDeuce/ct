@@ -335,6 +335,22 @@ must converge and are more likely to have compatible velocities. An obscure
 route through open space is genuinely useful for evasion, at the cost of time
 and fuel.
 
+Attachment and locus are orthogonal. A berthed ship is attached to a facility
+inside the port traffic locus, and a landed ship is attached to a surface
+inside its body locus. Neither can be attacked in place through the ordinary
+ship-intercept command. A named interceptor may clear its own attachment and
+wait for that vessel to depart; the encounter then begins in the shared
+traffic locus. Gas-giant skimming is spaceborne, while wilderness surface
+fueling remains landed until liftoff.
+
+A ship holding at a modeled locus may also keep a persistent interception
+watch against every modeled craft or one exact catalogued craft class. This is
+the ordinary picket/customs-cutter behavior. The next matching deterministic
+traffic movement or player arrival/departure triggers the same combat path as
+a manually selected local contact. Named watches are consumed by the target's
+departure; general and class watches remain in force after combat if the ship
+survives at the locus.
+
 ### Combat observation and reinforcement
 
 Nearby traffic is not frozen out merely because an encounter has begun, but it

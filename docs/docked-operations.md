@@ -60,6 +60,14 @@ opens the local career, warrant, prize, and traffic office. Services absent
 from the facility are omitted from the menu and remain server-rejected if a
 stale or forged command requests them.
 
+Docked is an attachment state inside the port traffic locus, not permission to
+fight from a berth. An immediate intercept order against spaceborne local
+traffic first settles the accrued berth charge and clears the ship into the
+port locus. Selecting another berthed vessel instead establishes a departure
+watch: the interceptor waits outside and combat can begin only when the target
+clears its attachment. Cancelling a port watch returns the interceptor to a
+berth and starts a new berth-fee interval.
+
 The docked header is an authoritative snapshot of the commanded ship, system,
 primary world, persistent primary-world facility, UWP-derived
 starport/TL/population/law data, account balance and provisional debt,

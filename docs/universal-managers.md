@@ -266,6 +266,14 @@ tonnage remain sensor observations with equipment- and damage-dependent
 confidence. The system-wide traffic-control feed is a separate transponder
 picture and does not make a remote vessel interceptable. Prize claims move by
 ordinary mail, and a warrant has no local effect before its message arrives.
+Local contacts distinguish spaceborne vessels from ships berthed at a port or
+landed at a surface site. An intercept against an attached player vessel
+creates a named departure watch rather than combat at the attachment. The
+interceptor clears its own berth and settles the accrued fee before waiting at
+the shared traffic locus. Operations Ledger also supports persistent pickets
+against all modeled craft or one observed catalogued craft class at the
+current locus. Gas skimmers are spaceborne; wilderness fuel collectors remain
+landed until they lift.
 Player-owned vessels carry a `[PLAYER]` marker when operating under standing
 orders and an `[ONLINE]` marker while a connected captain directly controls
 them. Ownership and control markers do not improve the local sensor solution.
