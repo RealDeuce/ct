@@ -274,11 +274,18 @@ the shared traffic locus. Operations Ledger also supports persistent pickets
 against all modeled craft or one observed catalogued craft class at the
 current locus. Gas skimmers are spaceborne; wilderness fuel collectors remain
 landed until they lift.
+An intercept or standing watch separately selects **armed attack** or
+**board/inspect**. Armed attack proceeds directly to combat. Board/inspect
+issues a heave-to order first; compliance resolves the boarding without fire,
+while refusal invokes the target's standing encounter response and then its
+ordinary combat policy. Lawful inspection orders rely on naval authority and
+call stronger enforcement traffic when refused. An unlawful boarding demand
+is piracy and can produce a warrant even when intimidation succeeds.
 Player-owned vessels carry a `[PLAYER]` marker when operating under standing
 orders and an `[ONLINE]` marker while a connected captain directly controls
 them. Ownership and control markers do not improve the local sensor solution.
-Intercepting either marker creates one authoritative combat shared by all
-participating vessels. Only the captain directly commanding a participant
+Combat after either marker refuses an intercept demand creates one
+authoritative engagement shared by all participating vessels. Only the captain directly commanding a participant
 receives tactical prompts; another vessel in the same account follows its
 persistent policy without sending its distant owner an instantaneous alert.
 Its loss or capture is reported through ordinary causal private mail.

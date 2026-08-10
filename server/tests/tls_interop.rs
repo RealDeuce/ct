@@ -6,8 +6,10 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use cepheus_trader_server::engine::{BbsRegistry, Engine};
-use cepheus_trader_server::store::{FlightLegPurpose, FlightLegRecord, ShipLocationRecord, Store};
+use cepheus_trader_server::engine::{BbsRegistry, Engine, EngineError};
+use cepheus_trader_server::store::{
+    FlightLegPurpose, FlightLegRecord, ShipLocationRecord, Store, StoreError,
+};
 use cepheus_trader_server::wire::{
     Command as WireCommand, CommandRequest, EncounterFallback, EncounterPosture, EncounterState,
     PlayerIdentity, ResolveEncounterRequest,
@@ -324,9 +326,18 @@ fn engine_request(epoch: u64, request_id: u64, command: WireCommand) -> CommandR
 }
 
 fn advance_simulation_to_due(engine: &Engine, due_second: u64) {
-    engine.recover().unwrap();
-    let target_second = due_second.max(engine.game_second().unwrap());
-    engine.advance_simulation_to(target_second).unwrap();
+    loop {
+        engine.recover().unwrap();
+        let current_second = engine.game_second().unwrap();
+        if due_second <= current_second {
+            return;
+        }
+        match engine.advance_simulation_to(due_second) {
+            Ok(_) => return,
+            Err(EngineError::Store(StoreError::SimulationTimeReversal { .. })) => continue,
+            Err(error) => panic!("simulation advance failed: {error}"),
+        }
+    }
 }
 
 fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
@@ -1468,6 +1479,8 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         combat_door.send(b"i");
         combat_door.wait_for("Contact (Q to cancel");
         combat_door.send(b"1\r");
+        combat_door.wait_for("Board or inspect");
+        combat_door.send(b"a");
         combat_door.wait_for("irreversible act");
         combat_door.wait_for("Confirm intercept");
         combat_door.send(b"i");

@@ -345,11 +345,30 @@ fueling remains landed until liftoff.
 
 A ship holding at a modeled locus may also keep a persistent interception
 watch against every modeled craft or one exact catalogued craft class. This is
-the ordinary picket/customs-cutter behavior. The next matching deterministic
-traffic movement or player arrival/departure triggers the same combat path as
-a manually selected local contact. Named watches are consumed by the target's
-departure; general and class watches remain in force after combat if the ship
-survives at the locus.
+the ordinary picket/customs-cutter behavior. Every direct intercept or watch
+also declares its purpose: an armed attack begins combat immediately, while a
+boarding/inspection interception first orders the target to heave to. A target
+that complies is boarded without combat. Refusal cascades into the same combat
+engine and stored tactical policy used by any other engagement. Named watches
+are consumed by the target's departure; general and class watches remain in
+force after a resolution if the ship survives at the locus.
+
+Lawful naval and customs boarding is backed by institutional authority rather
+than the picket's local firepower. Refusal creates a locally actionable record,
+the picket attempts to open range, and the most capable eligible enforcement
+traffic moves to intercept on its modeled traffic time. If the immediate
+engagement ends first, the resulting warrant directs enforcement at the
+command's next controlled locus and propagates outward only with its signed
+message.
+
+Picket geography follows security and traffic. Strongly ordered systems
+routinely challenge incoming ships at the Jump-arrival locus. Pirates in
+lightly travelled chaotic or combat-oriented systems can wait at that same
+arrival locus; as traffic and enforcement grow, viable pirate pickets retreat
+to gas giants and other less-controlled refuelling loci. They disappear from
+sufficiently secure systems. A pirate also compares the observed target with
+its own vessel before committing and abandons an interception when the target
+could be expected to destroy it easily.
 
 ### Combat observation and reinforcement
 
@@ -360,7 +379,9 @@ the speed of light. That ship receives only what its sensors and the signal's
 provenance support, including an uncertain assessment of the aggressor.
 
 A response then requires an actual intercept from the observer's position and
-velocity. It joins an ongoing combat only if it arrives while the encounter is
+velocity. Modeled enforcement traffic is selected by capability and retains
+its traffic-edge time rather than receiving an arbitrary combat-round delay.
+It joins an ongoing combat only if it arrives while the encounter is
 still active; otherwise it reaches a pursuit, rescue, arrest, salvage, or
 aftermath state. Player ships use online choices or persistent offline
 intervention policies. Enforcement traffic generally responds within its

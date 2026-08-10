@@ -1497,6 +1497,10 @@ enum class InterceptionWatchFilterKind {
    CraftClass,
    AllCraft,
 };
+enum class InterceptionPurpose {
+   ArmedAttack,
+   BoardingInspection,
+};
 struct InterceptionWatchStatus {
    uint64_t started_second;
    uint64_t target_contact_id;
@@ -1504,6 +1508,7 @@ struct InterceptionWatchStatus {
    std::string target_ship_name;
    InterceptionWatchFilterKind filter;
    FlightLocus locus;
+   InterceptionPurpose purpose;
 };
 struct CombatCareerSnapshot {
    uint64_t revision;
@@ -1526,7 +1531,7 @@ struct CombatCareerSnapshot {
    PlayerPhase phase;
 };
 
-using InterceptionStart = std::variant<CombatSnapshot, CombatCareerSnapshot>;
+using InterceptionStart = std::variant<CombatSnapshot, CombatCareerSnapshot, EncounterResult>;
 
 enum class InterceptionWatchSelection {
    Cancel,
@@ -2037,9 +2042,11 @@ CombatCareerSnapshot get_combat_career(TlsConnection&, uint64_t, const std::arra
 CombatCareerSnapshot accept_career_opportunity(TlsConnection&, uint64_t, uint64_t, uint64_t,
       const std::array<uint8_t, 16>&, uint64_t);
 InterceptionStart engage_traffic_contact(TlsConnection&, uint64_t, uint64_t, uint64_t,
+                                         InterceptionPurpose,
                                          const std::array<uint8_t, 16>&, uint64_t);
 CombatCareerSnapshot set_interception_watch(TlsConnection&, uint64_t,
-                                            InterceptionWatchSelection, uint32_t, uint64_t,
+                                            InterceptionWatchSelection, uint32_t,
+                                            InterceptionPurpose, uint64_t,
                                             const std::array<uint8_t, 16>&, uint64_t);
 CombatCareerSnapshot set_pirate_cruise(TlsConnection&, uint64_t, const PirateCruise&,
                                        const std::array<uint8_t, 16>&, uint64_t);

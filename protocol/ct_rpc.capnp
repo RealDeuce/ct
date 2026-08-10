@@ -1706,7 +1706,15 @@ struct CombatCareerSnapshot {
   hasInterceptionWatch @17 :Bool;
 }
 struct CareerOpportunityRequest { opportunityId @0 :UInt64; expectedRevision @1 :UInt64; }
-struct EngageTrafficContactRequest { contactId @0 :UInt64; expectedCareerRevision @1 :UInt64; }
+enum InterceptionPurpose {
+  armedAttack @0;
+  boardingInspection @1;
+}
+struct EngageTrafficContactRequest {
+  contactId @0 :UInt64;
+  expectedCareerRevision @1 :UInt64;
+  purpose @2 :InterceptionPurpose;
+}
 enum InterceptionWatchFilterKind { namedVessel @0; craftClass @1; allCraft @2; }
 struct InterceptionWatchStatus {
   startedSecond @0 :UInt64;
@@ -1715,6 +1723,7 @@ struct InterceptionWatchStatus {
   targetShipName @3 :Text;
   filter @4 :InterceptionWatchFilterKind;
   locus @5 :FlightLocus;
+  purpose @6 :InterceptionPurpose;
 }
 struct InterceptionWatchRequest {
   expectedCareerRevision @0 :UInt64;
@@ -1723,6 +1732,7 @@ struct InterceptionWatchRequest {
     allCraft @2 :Void;
     catalogId @3 :UInt32;
   }
+  purpose @4 :InterceptionPurpose;
 }
 struct PirateCruiseRequest { expectedRevision @0 :UInt64; active @1 :Bool; huntingSystemId @2 :UInt64; endsSecond @3 :UInt64; crewSharePercent @4 :UInt8; shipFundPercent @5 :UInt8; prohibitedTargets @6 :Text; }
 enum PrizeSettlementMethod {

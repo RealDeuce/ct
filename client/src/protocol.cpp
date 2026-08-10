@@ -3376,6 +3376,7 @@ CombatCareerSnapshot decode_combat_career(const rpc::Response::Reader response)
          .target_ship_name = watch.getTargetShipName().cStr(),
          .filter = static_cast<InterceptionWatchFilterKind>(watch.getFilter()),
          .locus = decode_flight_locus(watch.getLocus()),
+         .purpose = static_cast<InterceptionPurpose>(watch.getPurpose()),
       };
    }
    return result;
@@ -3417,6 +3418,7 @@ CombatCareerSnapshot accept_career_opportunity(TlsConnection& connection, const 
 InterceptionStart engage_traffic_contact(TlsConnection& connection, const uint64_t epoch,
                                          const uint64_t contact_id,
                                          const uint64_t revision,
+                                         const InterceptionPurpose purpose,
                                          const std::array<uint8_t, 16>& id,
                                          const uint64_t request_id)
 {
@@ -3427,6 +3429,7 @@ InterceptionStart engage_traffic_contact(TlsConnection& connection, const uint64
    auto value = request.initEngageTrafficContact();
    value.setContactId(contact_id);
    value.setExpectedCareerRevision(revision);
+   value.setPurpose(static_cast<rpc::InterceptionPurpose>(purpose));
    send_frame(connection, capnp::messageToFlatArray(message).asBytes());
    auto words = receive_response(connection, epoch, request_id);
    capnp::FlatArrayMessageReader reader(words);
@@ -3437,12 +3440,27 @@ InterceptionStart engage_traffic_contact(TlsConnection& connection, const uint64
    if(response.isCombatCareer()) {
       return decode_combat_career(response);
    }
-   throw std::runtime_error("expected combat or interception-watch response");
+   if(response.isEncounterResult()) {
+      const auto s = response.getEncounterResult();
+      return EncounterResult{
+         .encounter_id = s.getEncounterId(),
+         .resolved = s.getResolved(),
+         .terminal = s.getTerminal(),
+         .outcome = s.getOutcome().cStr(),
+         .turns = s.getTurns(),
+         .cargo_lost_millitons = s.getCargoLostMillitons(),
+         .fuel_lost_millitons = s.getFuelLostMillitons(),
+         .damage_hits = s.getDamageHits(),
+         .phase = decode_response_phase(response.getPhase()),
+      };
+   }
+   throw std::runtime_error("expected combat, boarding resolution, or interception-watch response");
 }
 
 CombatCareerSnapshot set_interception_watch(TlsConnection& connection, const uint64_t epoch,
                                              const InterceptionWatchSelection selection,
                                              const uint32_t catalog_id,
+                                             const InterceptionPurpose purpose,
                                              const uint64_t revision,
                                              const std::array<uint8_t, 16>& id,
                                              const uint64_t request_id)
@@ -3453,6 +3471,7 @@ CombatCareerSnapshot set_interception_watch(TlsConnection& connection, const uin
    initialize_request(envelope, epoch, request_id, id, request);
    auto value = request.initSetInterceptionWatch();
    value.setExpectedCareerRevision(revision);
+   value.setPurpose(static_cast<rpc::InterceptionPurpose>(purpose));
    switch(selection) {
    case InterceptionWatchSelection::Cancel:
       value.setCancel();

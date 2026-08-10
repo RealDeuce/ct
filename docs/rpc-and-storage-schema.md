@@ -119,11 +119,15 @@ replayed from current state when a session opens.
 Traffic contacts carry a closed attachment value (`spaceborne`, `berthed`, or
 `landed`) separately from their locus. Combat-career snapshots optionally
 carry a typed interception watch with its filter and locus. A direct intercept
-response is a combat snapshot when engagement begins immediately or a combat-
-career snapshot when selecting an attached player vessel establishes a named
-departure watch. The revisioned interception-watch command selects cancel,
-all craft, or an exact catalog ID; clients do not infer any of these states
-from explanatory text.
+response is a combat snapshot when engagement begins, an encounter result when
+a boarding demand resolves without combat, or a combat-career snapshot when
+selecting an attached player vessel establishes a named departure watch. Both
+direct intercepts and persisted watches carry the closed purpose value
+`armedAttack` or `boardingInspection`. The revisioned interception-watch
+command selects cancel, all craft, or an exact catalog ID; clients do not infer
+any of these states from explanatory text. Stored watch records and retained
+transaction outcomes carry independent format revisions so a restart cannot
+reinterpret a previously committed purpose.
 
 Docked-service quotations return the ship revision, exact named fuel sources,
 physical provision and ammunition state, repair/replacement choices, facility

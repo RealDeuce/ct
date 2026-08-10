@@ -1724,6 +1724,12 @@ pub enum InterceptionWatchFilterKind {
     AllCraft,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InterceptionPurpose {
+    ArmedAttack,
+    BoardingInspection,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InterceptionWatchStatus {
     pub started_second: u64,
@@ -1732,6 +1738,7 @@ pub struct InterceptionWatchStatus {
     pub target_ship_name: String,
     pub filter: InterceptionWatchFilterKind,
     pub locus: FlightLocus,
+    pub purpose: InterceptionPurpose,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1741,10 +1748,12 @@ pub enum InterceptionWatchRequest {
     },
     AllCraft {
         expected_revision: u64,
+        purpose: InterceptionPurpose,
     },
     CraftClass {
         expected_revision: u64,
         catalog_id: u32,
+        purpose: InterceptionPurpose,
     },
 }
 
@@ -2037,6 +2046,7 @@ pub enum Command {
     EngageTrafficContact {
         contact_id: u64,
         expected_career_revision: u64,
+        purpose: InterceptionPurpose,
     },
     SetInterceptionWatch(InterceptionWatchRequest),
     SetPirateCruise(crate::careers::PirateCruise),
@@ -2803,22 +2813,42 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
             Command::EngageTrafficContact {
                 contact_id: value.get_contact_id(),
                 expected_career_revision: value.get_expected_career_revision(),
+                purpose: match value.get_purpose()? {
+                    crate::ct_rpc_capnp::InterceptionPurpose::ArmedAttack => {
+                        InterceptionPurpose::ArmedAttack
+                    }
+                    crate::ct_rpc_capnp::InterceptionPurpose::BoardingInspection => {
+                        InterceptionPurpose::BoardingInspection
+                    }
+                },
             }
         }
         request::SetInterceptionWatch(value) => {
             let value = value?;
             let expected_revision = value.get_expected_career_revision();
+            let purpose = match value.get_purpose()? {
+                crate::ct_rpc_capnp::InterceptionPurpose::ArmedAttack => {
+                    InterceptionPurpose::ArmedAttack
+                }
+                crate::ct_rpc_capnp::InterceptionPurpose::BoardingInspection => {
+                    InterceptionPurpose::BoardingInspection
+                }
+            };
             Command::SetInterceptionWatch(match value.which()? {
                 crate::ct_rpc_capnp::interception_watch_request::Cancel(()) => {
                     InterceptionWatchRequest::Cancel { expected_revision }
                 }
                 crate::ct_rpc_capnp::interception_watch_request::AllCraft(()) => {
-                    InterceptionWatchRequest::AllCraft { expected_revision }
+                    InterceptionWatchRequest::AllCraft {
+                        expected_revision,
+                        purpose,
+                    }
                 }
                 crate::ct_rpc_capnp::interception_watch_request::CatalogId(catalog_id) => {
                     InterceptionWatchRequest::CraftClass {
                         expected_revision,
                         catalog_id,
+                        purpose,
                     }
                 }
             })
@@ -3764,10 +3794,19 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
         Command::EngageTrafficContact {
             contact_id,
             expected_career_revision,
+            purpose,
         } => {
             let mut value = builder.init_engage_traffic_contact();
             value.set_contact_id(contact_id);
             value.set_expected_career_revision(expected_career_revision);
+            value.set_purpose(match purpose {
+                InterceptionPurpose::ArmedAttack => {
+                    crate::ct_rpc_capnp::InterceptionPurpose::ArmedAttack
+                }
+                InterceptionPurpose::BoardingInspection => {
+                    crate::ct_rpc_capnp::InterceptionPurpose::BoardingInspection
+                }
+            });
         }
         Command::SetInterceptionWatch(request) => {
             let mut value = builder.init_set_interception_watch();
@@ -3776,15 +3815,35 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
                     value.set_expected_career_revision(expected_revision);
                     value.set_cancel(());
                 }
-                InterceptionWatchRequest::AllCraft { expected_revision } => {
+                InterceptionWatchRequest::AllCraft {
+                    expected_revision,
+                    purpose,
+                } => {
                     value.set_expected_career_revision(expected_revision);
+                    value.set_purpose(match purpose {
+                        InterceptionPurpose::ArmedAttack => {
+                            crate::ct_rpc_capnp::InterceptionPurpose::ArmedAttack
+                        }
+                        InterceptionPurpose::BoardingInspection => {
+                            crate::ct_rpc_capnp::InterceptionPurpose::BoardingInspection
+                        }
+                    });
                     value.set_all_craft(());
                 }
                 InterceptionWatchRequest::CraftClass {
                     expected_revision,
                     catalog_id,
+                    purpose,
                 } => {
                     value.set_expected_career_revision(expected_revision);
+                    value.set_purpose(match purpose {
+                        InterceptionPurpose::ArmedAttack => {
+                            crate::ct_rpc_capnp::InterceptionPurpose::ArmedAttack
+                        }
+                        InterceptionPurpose::BoardingInspection => {
+                            crate::ct_rpc_capnp::InterceptionPurpose::BoardingInspection
+                        }
+                    });
                     value.set_catalog_id(catalog_id);
                 }
             }
@@ -6048,6 +6107,14 @@ fn set_combat_career_snapshot(
                 crate::ct_rpc_capnp::InterceptionWatchFilterKind::AllCraft
             }
         });
+        target.set_purpose(match watch.purpose {
+            InterceptionPurpose::ArmedAttack => {
+                crate::ct_rpc_capnp::InterceptionPurpose::ArmedAttack
+            }
+            InterceptionPurpose::BoardingInspection => {
+                crate::ct_rpc_capnp::InterceptionPurpose::BoardingInspection
+            }
+        });
         set_flight_locus(target.init_locus(), watch.locus);
     }
     let mut opportunities = builder.reborrow().init_opportunities(
@@ -6739,6 +6806,7 @@ mod tests {
                 command: Command::SetInterceptionWatch(InterceptionWatchRequest::CraftClass {
                     expected_revision: 17,
                     catalog_id: 72,
+                    purpose: InterceptionPurpose::BoardingInspection,
                 }),
             },
             CommandRequest {

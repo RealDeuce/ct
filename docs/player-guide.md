@@ -355,12 +355,25 @@ until it lifts.
 **Standing interception order** places the ship on picket at its current port,
 Jump point, gas giant, or other modeled body locus. It can target all modeled
 craft or one catalogued craft class observed in the current traffic picture.
+It also specifies whether matching traffic is attacked or ordered to submit to
+boarding and inspection. An armed attack starts combat at once. A boarding
+order starts combat only if the target refuses; offline vessels apply their
+stored inspection response and then their normal tactical automation. An
+unauthorized boarding demand is still a crime even if the target submits.
 Matching background movements and player arrivals or departures trigger the
-intercept. The Operations Ledger shows the active watch and can remove it. A
+chosen intercept. The Operations Ledger shows the active watch and can remove it. A
 named departure watch ends when that vessel departs; an all-craft or class
 watch continues after an engagement while the ship remains capable and at the
 same locus. Removing a port watch returns the ship to a berth with a new
 arrival time.
+
+Customs and naval pickets are more common at incoming Jump loci in strongly
+enforced systems. Refusing a lawful inspection causes the local picket to call
+for help and try to withdraw rather than duel for honor; capable enforcement
+traffic may join on its real movement time, and the warrant can meet the ship
+again at its next controlled destination. Pirate pickets favor Jump-arrival
+loci in chaotic, lightly travelled systems, retreat toward gas giants as
+security grows, and avoid systems or targets that are too dangerous.
 
 Player vessels appear in these same traffic pictures. `[PLAYER]` identifies a
 player-owned ship operating under standing orders; `[ONLINE]` identifies the

@@ -1063,11 +1063,13 @@ struct InterceptionWatchRecord {
     started_second: u64,
     filter: InterceptionWatchFilter,
     target_ship_name: String,
+    purpose: crate::wire::InterceptionPurpose,
 }
 
 enum InterceptionStart {
     Combat(crate::wire::CombatSnapshot),
     Watch(crate::wire::CombatCareerSnapshot),
+    Resolution(crate::wire::EncounterResult),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4198,18 +4200,23 @@ impl Store {
             Command::EngageTrafficContact {
                 contact_id,
                 expected_career_revision,
+                purpose,
             } => {
                 match self.engage_traffic_contact_in(
                     txn,
                     &queued.identity,
                     contact_id,
                     expected_career_revision,
+                    purpose,
                 )? {
                     RuleResult::Applied(InterceptionStart::Combat(snapshot)) => {
                         OutcomeKind::Combat(snapshot)
                     }
                     RuleResult::Applied(InterceptionStart::Watch(snapshot)) => {
                         OutcomeKind::CombatCareer(snapshot)
+                    }
+                    RuleResult::Applied(InterceptionStart::Resolution(result)) => {
+                        OutcomeKind::EncounterResult(result)
                     }
                     RuleResult::Rejected(message) => OutcomeKind::Error {
                         code: ErrorCode::InvalidCommand,
@@ -6503,16 +6510,56 @@ impl Store {
         let candidate_count = u32::try_from(candidates.len()).unwrap_or(u32::MAX);
         let threshold = 1.0 - (5.0_f64 / 6.0).powi(candidate_count as i32);
         let roll = (contact_roll >> 11) as f64 / ((1_u64 << 53) as f64);
-        if roll < threshold {
+        let policy = self
+            .system_polity_policies
+            .get(txn, &ship.system_id)?
+            .map(decode_system_polity_policy)
+            .transpose()?;
+        let stellar = self
+            .systems
+            .get(txn, &ship.system_id)?
+            .map(decode_stellar_system)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("checkpoint system is missing"))?;
+        let law = self.primary_world_in(txn, &stellar)?.law_level;
+        let order = policy.as_ref().map_or(50, |value| value.chaos_order);
+        let combat_orientation = policy.as_ref().map_or(50, |value| value.trade_combat);
+        let security = (u16::from(order) + u16::from(law.min(10)) * 10) / 2;
+        let enforcement_picket = checkpoint.kind == CheckpointKind::JumpArrival
+            && security >= 60
+            && contact_roll % 100 < u64::from((security - 40).min(55));
+        let pirate_locus = match checkpoint.kind {
+            CheckpointKind::JumpArrival => security < 45 && candidate_count < 12,
+            CheckpointKind::GasGiant => {
+                (35..70).contains(&security) || candidate_count >= 12 && security < 70
+            }
+            _ => false,
+        };
+        let pirate_picket = pirate_locus
+            && contact_roll.rotate_left(13) % 100
+                < u64::from(
+                    (70_u16.saturating_sub(security) + u16::from(combat_orientation) / 4).min(60),
+                );
+        if roll < threshold || enforcement_picket || pirate_picket {
             let encounter_id = take_next_id(self.meta, txn, META_NEXT_ENCOUNTER_ID)?;
-            let policy = self
-                .system_polity_policies
-                .get(txn, &ship.system_id)?
-                .map(decode_system_polity_policy)
-                .transpose()?;
-            let kind = encounter_kind_for_policy(contact_roll, policy.as_ref());
+            let kind = if enforcement_picket {
+                EncounterKind::Inspection
+            } else if pirate_picket {
+                EncounterKind::Hostile
+            } else {
+                encounter_kind_for_policy(contact_roll, policy.as_ref())
+            };
             let hostile = kind == EncounterKind::Hostile;
             let projected = candidates.get(contact_roll as usize % candidates.len().max(1));
+            let opponent_catalog_id = projected.map_or(72, |contact| contact.catalog_id);
+            if hostile && security >= 70
+                || hostile
+                    && catalog_combat_power(ship.catalog_id).saturating_mul(2)
+                        >= catalog_combat_power(opponent_catalog_id).saturating_mul(3)
+            {
+                self.finish_checkpoint_arrival_in(txn, identity, &checkpoint)?;
+                return Ok(RuleResult::Applied(checkpoint));
+            }
             let summary = match kind {
                 EncounterKind::Hostile => {
                     "An armed contact is matching course and demanding that you heave to."
@@ -6592,7 +6639,7 @@ impl Store {
                 &key,
                 &encode_encounter_record(&EncounterRecord {
                     snapshot: snapshot.clone(),
-                    opponent_catalog_id: projected.map_or(72, |contact| contact.catalog_id),
+                    opponent_catalog_id,
                     posture: None,
                     fallbacks: Vec::new(),
                     result: None,
@@ -7186,13 +7233,68 @@ impl Store {
         record.snapshot.state = EncounterState::Resolving;
         record.snapshot.turn = 1;
         record.snapshot.next_turn_second = record.snapshot.started_second.saturating_add(1_000);
-        if record.snapshot.kind == EncounterKind::Hostile
-            && !matches!(
-                request.posture,
-                EncounterPosture::Comply | EncounterPosture::Surrender
-            )
-        {
+        let refusal_escalates = matches!(
+            record.snapshot.kind,
+            EncounterKind::Hostile | EncounterKind::Inspection | EncounterKind::Military
+        ) && !matches!(
+            request.posture,
+            EncounterPosture::Comply | EncounterPosture::Surrender
+        );
+        if refusal_escalates {
             let (_, mut ship) = self.player_and_ship_in(txn, identity)?;
+            if matches!(
+                record.snapshot.kind,
+                EncounterKind::Inspection | EncounterKind::Military
+            ) {
+                let mut career = self.career_state_in(txn, identity)?;
+                let already_recorded = career.warrants.iter().any(|warrant| {
+                    warrant.status != crate::careers::WarrantStatus::Satisfied
+                        && warrant.accusation.contains("refusal of lawful boarding")
+                        && warrant.origin_system_id == ship.system_id
+                });
+                if !already_recorded {
+                    let stellar = self
+                        .systems
+                        .get(txn, &ship.system_id)?
+                        .map(decode_stellar_system)
+                        .transpose()?
+                        .ok_or(StoreError::Corrupt("inspection system is missing"))?;
+                    let warrant_id = take_next_id(self.meta, txn, META_NEXT_ENCOUNTER_ID)?;
+                    let mut warrant = crate::careers::warrant_for_unlawful_attack(
+                        warrant_id,
+                        stellar.polity_id,
+                        ship.system_id,
+                        record.snapshot.started_second,
+                        100_000,
+                        100,
+                    );
+                    warrant.accusation = "refusal of lawful boarding and inspection orders".into();
+                    warrant.bounty_credits = 10_000;
+                    let destinations = self
+                        .simulation
+                        .systems(txn)?
+                        .into_iter()
+                        .map(|system| system.system_id)
+                        .collect::<Vec<_>>();
+                    let (message_id, _) = self.simulation.dispatch_message(
+                        txn,
+                        record.snapshot.started_second,
+                        ship.system_id,
+                        crate::simulation::MessageClass::PublicService,
+                        crate::simulation::MessageImportance::Important,
+                        &format!("Inspection refusal warrant {warrant_id}"),
+                        &format!(
+                            "The naval picket records refusal of lawful boarding and inspection orders. Warrant {warrant_id} directs capable enforcement vessels to intercept this command at its next controlled locus."
+                        ),
+                        &destinations,
+                    )?;
+                    warrant.message_id = message_id;
+                    warrant.status = crate::careers::WarrantStatus::Propagating;
+                    career.warrants.push(warrant);
+                    career.revision = career.revision.saturating_add(1);
+                    self.put_career_state_in(txn, identity, &career)?;
+                }
+            }
             manifest_ship_quirks(
                 &mut ship,
                 &[
@@ -7247,10 +7349,20 @@ impl Store {
                 &simulation_system,
                 record.snapshot.started_second,
                 record.snapshot.contact.contact_id,
-                true,
+                !matches!(
+                    record.snapshot.kind,
+                    EncounterKind::Inspection | EncounterKind::Military
+                ),
                 entropy,
             )?;
-            record.snapshot.summary = "General quarters. Joint crew orders are due before the one-kilosecond activation closes.".into();
+            record.snapshot.summary = if matches!(
+                record.snapshot.kind,
+                EncounterKind::Inspection | EncounterKind::Military
+            ) {
+                "The inspection order is refused. The picket opens range while calling more capable enforcement vessels; joint crew orders are due before the one-kilosecond activation closes."
+            } else {
+                "General quarters. Joint crew orders are due before the one-kilosecond activation closes."
+            }.into();
         } else {
             record.snapshot.summary =
                 "The declared response is queued for authoritative resolution.".into();
@@ -7995,6 +8107,7 @@ impl Store {
                     target_ship_name: watch.target_ship_name,
                     filter,
                     locus: flight_locus_status(watch.locus),
+                    purpose: watch.purpose,
                 }
             }))
     }
@@ -8497,6 +8610,7 @@ impl Store {
         identity: &PlayerIdentity,
         target: &crate::traffic::TrafficContact,
         mut career: crate::careers::CareerState,
+        purpose: crate::wire::InterceptionPurpose,
     ) -> Result<RuleResult<crate::wire::CombatCareerSnapshot>, StoreError> {
         let (_, current_ship) = self.player_and_ship_in(txn, identity)?;
         for entry in self.interception_watches.iter(txn)? {
@@ -8527,6 +8641,7 @@ impl Store {
                 ship_id: target.contact_id,
             },
             target_ship_name: target.ship_name.clone(),
+            purpose,
         };
         self.put_interception_watch_in(txn, &watch)?;
         career.revision = career.revision.saturating_add(1);
@@ -8545,7 +8660,9 @@ impl Store {
         let mut career = self.career_state_in(txn, identity)?;
         let expected_revision = match *request {
             crate::wire::InterceptionWatchRequest::Cancel { expected_revision }
-            | crate::wire::InterceptionWatchRequest::AllCraft { expected_revision }
+            | crate::wire::InterceptionWatchRequest::AllCraft {
+                expected_revision, ..
+            }
             | crate::wire::InterceptionWatchRequest::CraftClass {
                 expected_revision, ..
             } => expected_revision,
@@ -8597,11 +8714,17 @@ impl Store {
                 RuleResult::Applied(value) => value,
                 RuleResult::Rejected(message) => return Ok(RuleResult::Rejected(message)),
             };
-            let (filter, target_ship_name) = match *request {
-                crate::wire::InterceptionWatchRequest::AllCraft { .. } => {
-                    (InterceptionWatchFilter::AllCraft, "all craft".into())
-                }
-                crate::wire::InterceptionWatchRequest::CraftClass { catalog_id, .. } => {
+            let (filter, target_ship_name, purpose) = match *request {
+                crate::wire::InterceptionWatchRequest::AllCraft { purpose, .. } => (
+                    InterceptionWatchFilter::AllCraft,
+                    "all craft".into(),
+                    purpose,
+                ),
+                crate::wire::InterceptionWatchRequest::CraftClass {
+                    catalog_id,
+                    purpose,
+                    ..
+                } => {
                     let class_name = creation::ship_market_catalog()
                         .into_iter()
                         .find(|entry| entry.catalog_id == catalog_id)
@@ -8612,6 +8735,7 @@ impl Store {
                     (
                         InterceptionWatchFilter::CraftClass { catalog_id },
                         class_name,
+                        purpose,
                     )
                 }
                 crate::wire::InterceptionWatchRequest::Cancel { .. } => unreachable!(),
@@ -8625,6 +8749,7 @@ impl Store {
                     started_second: current,
                     filter,
                     target_ship_name,
+                    purpose,
                 },
             )?;
         }
@@ -8710,6 +8835,7 @@ impl Store {
             &hunter.command,
             departing_ship.ship_id,
             career.revision,
+            watch.purpose,
         )? {
             RuleResult::Applied(InterceptionStart::Combat(snapshot)) => Some(snapshot.combat_id),
             RuleResult::Applied(InterceptionStart::Watch(_)) => {
@@ -8717,6 +8843,7 @@ impl Store {
                     "departing vessel produced another interception watch",
                 ));
             }
+            RuleResult::Applied(InterceptionStart::Resolution(_)) => None,
             RuleResult::Rejected(_) => None,
         };
         if named_departure_watch {
@@ -8746,6 +8873,7 @@ impl Store {
         identity: &PlayerIdentity,
         contact_id: u64,
         expected_revision: u64,
+        purpose: crate::wire::InterceptionPurpose,
     ) -> Result<RuleResult<InterceptionStart>, StoreError> {
         if self.player_phase_in(txn, identity)? == PlayerPhase::Encounter {
             return Ok(RuleResult::Rejected(
@@ -8776,7 +8904,9 @@ impl Store {
                 ));
             }
             return Ok(
-                match self.establish_named_interception_watch_in(txn, identity, &contact, career)? {
+                match self.establish_named_interception_watch_in(
+                    txn, identity, &contact, career, purpose,
+                )? {
                     RuleResult::Applied(snapshot) => {
                         RuleResult::Applied(InterceptionStart::Watch(snapshot))
                     }
@@ -8848,6 +8978,36 @@ impl Store {
                         | crate::careers::OpportunityKind::PrivateerCommission
                 )
         });
+        let boarding_inspection = purpose == crate::wire::InterceptionPurpose::BoardingInspection;
+        let target_complies = if boarding_inspection {
+            if authorized {
+                if let Some(target) = player_target.as_ref() {
+                    self.flight_plans
+                        .get(txn, &encode_identity(&target.command))?
+                        .map(decode_flight_plan_snapshot)
+                        .transpose()?
+                        .map_or(true, |plan| plan.policy.comply_with_inspection)
+                } else {
+                    true
+                }
+            } else {
+                let hunter_power = catalog_combat_power(ship.catalog_id);
+                let target_power = catalog_combat_power(contact.catalog_id);
+                if target_power.saturating_mul(2) >= hunter_power.saturating_mul(3) {
+                    return Ok(RuleResult::Rejected(format!(
+                        "{} is assessed as capable of easily destroying this picket; the boarding attempt is abandoned",
+                        contact.ship_name
+                    )));
+                }
+                let permits_surrender = player_target
+                    .as_ref()
+                    .is_none_or(|target| target.combat_policy.permit_surrender);
+                permits_surrender
+                    && hunter_power.saturating_mul(2) >= target_power.saturating_mul(3)
+            }
+        } else {
+            false
+        };
         if !authorized {
             if career.mode == crate::careers::CombatCareerMode::Independent {
                 career.mode = crate::careers::CombatCareerMode::Pirate;
@@ -8885,11 +9045,21 @@ impl Store {
                 crate::simulation::MessageClass::PublicService,
                 crate::simulation::MessageImportance::Important,
                 &format!(
-                    "Warrant {warrant_id}: armed interception of {}",
+                    "Warrant {warrant_id}: {} of {}",
+                    if boarding_inspection {
+                        "unlawful boarding demand"
+                    } else {
+                        "armed interception"
+                    },
                     contact.transponder
                 ),
                 &format!(
-                    "The local authority alleges that this command initiated an unauthorized armed interception of {}. Warrant {} was filed in {} on day {}. Other authorities must wait for this instrument to reach them through the mail before acting on it.",
+                    "The local authority alleges that this command initiated {} against {}. Warrant {} was filed in {} on day {}. Other authorities must wait for this instrument to reach them through the mail before acting on it.",
+                    if boarding_inspection {
+                        "an unauthorized boarding demand"
+                    } else {
+                        "an unauthorized armed interception"
+                    },
                     contact.transponder,
                     warrant_id,
                     stellar.name,
@@ -8902,6 +9072,46 @@ impl Store {
             career.warrants.push(warrant);
         }
         career.revision = career.revision.saturating_add(1);
+        if boarding_inspection && target_complies {
+            let encounter_id = take_next_id(self.meta, txn, META_NEXT_ENCOUNTER_ID)?;
+            let mut recorded = false;
+            for opportunity in career.opportunities.iter_mut().filter(|opportunity| {
+                opportunity.state == crate::careers::OpportunityState::Accepted
+                    && opportunity.target_contact_id == contact.contact_id
+                    && opportunity.objective_kind == crate::careers::ObjectiveKind::Inspect
+            }) {
+                opportunity.evidence_kind = crate::careers::ObjectiveEvidenceKind::InspectionRecord;
+                opportunity.evidence_second = current;
+                recorded = true;
+            }
+            if recorded {
+                career.revision = career.revision.saturating_add(1);
+            }
+            self.put_career_state_in(txn, identity, &career)?;
+            let outcome = if authorized {
+                format!(
+                    "{} heaves to. The boarding party completes and seals the ordered inspection without combat.",
+                    contact.ship_name
+                )
+            } else {
+                format!(
+                    "{} heaves to rather than contest the boarding demand. The boarding is completed without combat.",
+                    contact.ship_name
+                )
+            };
+            return Ok(RuleResult::Applied(InterceptionStart::Resolution(
+                EncounterResult {
+                    encounter_id,
+                    resolved: true,
+                    terminal: false,
+                    outcome,
+                    turns: 0,
+                    cargo_lost_millitons: 0,
+                    fuel_lost_millitons: 0,
+                    damage_hits: 0,
+                },
+            )));
+        }
         manifest_ship_quirks(
             &mut ship,
             &[
@@ -8987,8 +9197,14 @@ impl Store {
                 orders: Vec::new(),
                 automation_decisions: Vec::new(),
                 combat_log: vec![format!(
-                    "{} initiates armed interception of {}.",
-                    ship.name, target_ship.name
+                    "{} {} {}.",
+                    ship.name,
+                    if boarding_inspection {
+                        "orders boarding inspection of"
+                    } else {
+                        "initiates armed interception of"
+                    },
+                    target_ship.name
                 )],
                 pending_interventions: self.pending_interventions_for_combat(
                     txn, &system, current, contact_id, authorized, entropy,
@@ -9013,7 +9229,11 @@ impl Store {
                         range: "short".into(),
                         confidence_percent: contact.confidence_percent,
                     },
-                    summary: "Your command initiates an armed intercept against another captain. Joint crew orders are required.".into(),
+                    summary: if boarding_inspection {
+                        "The intercepted captain refuses boarding. Combat begins; joint crew orders are required."
+                    } else {
+                        "Your command initiates an armed intercept against another captain. Joint crew orders are required."
+                    }.into(),
                 },
                 opponent_catalog_id: target_ship.catalog_id,
                 posture: Some(EncounterPosture::Fight),
@@ -9052,13 +9272,23 @@ impl Store {
                                     |entry| entry.class_name,
                                 ),
                             transponder: crate::traffic::transponder_for_id(ship.ship_id),
-                            role: "armed interceptor".into(),
+                            role: if boarding_inspection {
+                                "boarding picket"
+                            } else {
+                                "armed interceptor"
+                            }
+                            .into(),
                             range: "short".into(),
                             confidence_percent: 100,
                         },
                         summary: format!(
-                            "{} has initiated an armed intercept against your command. Joint crew orders are required.",
-                            ship.name
+                            "{} has {}. Joint crew orders are required.",
+                            ship.name,
+                            if boarding_inspection {
+                                "ordered boarding; standing orders refused and combat has begun"
+                            } else {
+                                "initiated an armed intercept against your command"
+                            }
                         ),
                     },
                     opponent_catalog_id: ship.catalog_id,
@@ -9153,9 +9383,12 @@ impl Store {
                     range: "short".into(),
                     confidence_percent: 100,
                 },
-                summary:
+                summary: if boarding_inspection {
+                    "The contact refuses boarding. Combat begins; joint crew orders are required."
+                } else {
                     "Your command initiates an armed intercept. Joint crew orders are required."
-                        .into(),
+                }
+                .into(),
             },
             opponent_catalog_id: contact.catalog_id,
             posture: Some(EncounterPosture::Fight),
@@ -9164,9 +9397,12 @@ impl Store {
             combat: Some(combat.clone()),
             player_order: None,
             automation_decision: None,
-            combat_log: vec![
-                "The command initiates armed interception of registered traffic.".into(),
-            ],
+            combat_log: vec![if boarding_inspection {
+                "The registered traffic refuses the boarding order; the picket escalates to combat."
+                    .into()
+            } else {
+                "The command initiates armed interception of registered traffic.".into()
+            }],
             pending_interventions: self.pending_interventions_for_combat(
                 txn, &system, current, contact_id, authorized, entropy,
             )?,
@@ -9206,7 +9442,7 @@ impl Store {
         current_second: u64,
         target_contact_id: u64,
         player_is_authorized: bool,
-        entropy: u64,
+        _entropy: u64,
     ) -> Result<Vec<PendingCombatIntervention>, StoreError> {
         let law = self
             .systems
@@ -9230,6 +9466,7 @@ impl Store {
             .collect::<Vec<_>>();
         candidates.sort_by_key(|contact| {
             (
+                std::cmp::Reverse(catalog_combat_power(contact.catalog_id)),
                 contact.edge_second.abs_diff(current_second),
                 contact.contact_id,
             )
@@ -9237,13 +9474,14 @@ impl Store {
         let Some(contact) = candidates.into_iter().next() else {
             return Ok(Vec::new());
         };
-        // Exact trajectories are unavailable for seed-derived locus traffic.
-        // A one-to-three-turn delay is the deterministic, conservative
-        // observation-plus-intercept solution at this abstraction boundary.
-        let delay_turns = 1 + (entropy.rotate_left(17) % 3);
+        // The traffic edge is the response vessel's durable movement time.  A
+        // vessel already present still needs one activation to observe the
+        // refusal and complete a local intercept.
+        let due_second = contact
+            .edge_second
+            .max(current_second.saturating_add(crate::combat::COMBAT_TURN_SECONDS));
         Ok(vec![PendingCombatIntervention {
-            due_second: current_second
-                .saturating_add(delay_turns.saturating_mul(crate::combat::COMBAT_TURN_SECONDS)),
+            due_second,
             contact_id: contact.contact_id,
             catalog_id: contact.catalog_id,
             side: if player_is_authorized { 1 } else { 2 },
@@ -10372,8 +10610,22 @@ impl Store {
                     &combat,
                     vessel.vessel_id,
                     &crate::combat::AutomationPolicy {
-                        objective: crate::combat::Objective::Defeat,
-                        minimum_victory_percent: 55,
+                        objective: if matches!(
+                            record.snapshot.kind,
+                            EncounterKind::Inspection | EncounterKind::Military
+                        ) {
+                            crate::combat::Objective::Withdraw
+                        } else {
+                            crate::combat::Objective::Defeat
+                        },
+                        minimum_victory_percent: if matches!(
+                            record.snapshot.kind,
+                            EncounterKind::Inspection | EncounterKind::Military
+                        ) {
+                            0
+                        } else {
+                            55
+                        },
                         ..Default::default()
                     },
                 )
@@ -12141,6 +12393,7 @@ impl Store {
                     &identity,
                     contact.contact_id,
                     career.revision,
+                    watch.purpose,
                 )? {
                     RuleResult::Applied(InterceptionStart::Combat(_)) => {
                         return Ok(Some(identity));
@@ -12149,6 +12402,10 @@ impl Store {
                         return Err(StoreError::Corrupt(
                             "spaceborne watch contact established another watch",
                         ));
+                    }
+                    RuleResult::Applied(InterceptionStart::Resolution(_)) => {
+                        self.schedule_next_interception_watch_in(txn, &watch, due_second)?;
+                        return Ok(Some(identity));
                     }
                     RuleResult::Rejected(_) => {}
                 }
@@ -12161,19 +12418,78 @@ impl Store {
             return Ok(None);
         }
         let entropy = crate::ship_condition::mix64(ship_id ^ due_second ^ 0x434f_4e54_4143_5400);
-        let probability =
-            1.0 - (5.0_f64 / 6.0).powi(i32::try_from(candidates.len()).unwrap_or(i32::MAX));
-        let roll = (entropy >> 11) as f64 / ((1_u64 << 53) as f64);
-        if roll >= probability {
-            return Ok(None);
-        }
-        let contact = &candidates[entropy as usize % candidates.len()];
         let policy = self
             .system_polity_policies
             .get(txn, &ship.system_id)?
             .map(decode_system_polity_policy)
             .transpose()?;
-        let kind = encounter_kind_for_policy(entropy, policy.as_ref());
+        let stellar = self
+            .systems
+            .get(txn, &ship.system_id)?
+            .map(decode_stellar_system)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("contact-check system is missing"))?;
+        let law = self.primary_world_in(txn, &stellar)?.law_level;
+        let order = policy.as_ref().map_or(50, |value| value.chaos_order);
+        let combat_orientation = policy.as_ref().map_or(50, |value| value.trade_combat);
+        let security = (u16::from(order) + u16::from(law.min(10)) * 10) / 2;
+        let encounter_locus = match ship.location {
+            ShipLocationRecord::InFlight(FlightLegRecord {
+                origin: locus @ ShipLocusRecord::JumpLocus { .. },
+                started_second,
+                purpose: FlightLegPurpose::ApproachPort,
+                ..
+            }) if due_second <= started_second.saturating_add(1) => Some(locus),
+            _ => self.local_traffic_locus_in(txn, &identity, &ship)?,
+        };
+        let candidate_count = u32::try_from(candidates.len()).unwrap_or(u32::MAX);
+        let enforcement_picket = matches!(encounter_locus, Some(ShipLocusRecord::JumpLocus { .. }))
+            && security >= 60
+            && entropy % 100 < u64::from((security - 40).min(55));
+        let pirate_locus = match encounter_locus {
+            Some(ShipLocusRecord::JumpLocus { .. }) => security < 45 && candidate_count < 12,
+            Some(ShipLocusRecord::Body { .. }) => {
+                (35..70).contains(&security) || candidate_count >= 12 && security < 70
+            }
+            Some(ShipLocusRecord::Port { .. }) => security < 25,
+            _ => false,
+        };
+        let pirate_picket = pirate_locus
+            && entropy.rotate_left(13) % 100
+                < u64::from(
+                    (70_u16.saturating_sub(security) + u16::from(combat_orientation) / 4).min(60),
+                );
+        let probability =
+            1.0 - (5.0_f64 / 6.0).powi(i32::try_from(candidates.len()).unwrap_or(i32::MAX));
+        let roll = (entropy >> 11) as f64 / ((1_u64 << 53) as f64);
+        if roll >= probability && !enforcement_picket && !pirate_picket {
+            return Ok(None);
+        }
+        let contact = &candidates[entropy as usize % candidates.len()];
+        let mut kind = if enforcement_picket {
+            EncounterKind::Inspection
+        } else if pirate_picket {
+            EncounterKind::Hostile
+        } else {
+            encounter_kind_for_policy(entropy, policy.as_ref())
+        };
+        if kind == EncounterKind::Hostile {
+            let locus_allows_pirates = match encounter_locus {
+                Some(ShipLocusRecord::JumpLocus { .. }) => security < 45,
+                Some(ShipLocusRecord::Body { .. }) => (35..70).contains(&security),
+                Some(ShipLocusRecord::Port { .. }) => security < 25,
+                _ => false,
+            };
+            let target_overmatches = catalog_combat_power(ship.catalog_id).saturating_mul(2)
+                >= catalog_combat_power(contact.catalog_id).saturating_mul(3);
+            if !locus_allows_pirates || target_overmatches {
+                kind = if security >= 60 {
+                    EncounterKind::Inspection
+                } else {
+                    EncounterKind::RoutineTraffic
+                };
+            }
+        }
         let hostile = kind == EncounterKind::Hostile;
         let filed_plan = self
             .flight_plans
@@ -26211,7 +26527,17 @@ impl Store {
                     &crate::wire::ResolveEncounterRequest {
                         encounter_id: encounter.snapshot.encounter_id,
                         expected_revision: encounter.snapshot.revision,
-                        posture: policy.hostile_posture,
+                        posture: if matches!(
+                            encounter.snapshot.kind,
+                            EncounterKind::Inspection
+                                | EncounterKind::TrafficControl
+                                | EncounterKind::Military
+                        ) && policy.comply_with_inspection
+                        {
+                            EncounterPosture::Comply
+                        } else {
+                            policy.hostile_posture
+                        },
                         fallbacks: policy.hostile_fallbacks,
                     },
                 )?;
@@ -27804,6 +28130,35 @@ fn apply_customs_inspection(
     }
 }
 
+fn catalog_combat_power(catalog_id: u32) -> u64 {
+    let status = creation::ship_status_spec(catalog_id);
+    let combat = creation::ship_combat_spec(catalog_id);
+    let displacement = status
+        .as_ref()
+        .map_or(0, |spec| spec.displacement_millitons / 10_000);
+    let thrust = status
+        .as_ref()
+        .map_or(0, |spec| u64::from(spec.thrust_g) * 75);
+    let armor = combat
+        .as_ref()
+        .map_or(0, |spec| u64::from(spec.armor_points) * 20);
+    let weapons = combat.as_ref().map_or(0, |spec| {
+        spec.weapons
+            .iter()
+            .map(|mount| {
+                u64::from(mount.quantity)
+                    .saturating_mul(u64::try_from(mount.weapons.len()).unwrap_or(u64::MAX))
+                    .saturating_mul(250)
+            })
+            .sum()
+    });
+    displacement
+        .saturating_add(thrust)
+        .saturating_add(armor)
+        .saturating_add(weapons)
+        .max(1)
+}
+
 fn price_with_import_tariff(price: u64, basis_points: u16) -> u64 {
     let numerator = u128::from(price) * u128::from(10_000_u16 + basis_points);
     u64::try_from(numerator.div_ceil(10_000)).unwrap_or(u64::MAX)
@@ -29357,7 +29712,7 @@ fn decode_shared_combat_record(bytes: &[u8]) -> Result<SharedCombatRecord, Store
 fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
     let identity = encode_identity(&command.identity);
     let mut bytes = Vec::with_capacity(64 + identity.len());
-    bytes.push(1);
+    bytes.push(2);
     bytes.extend_from_slice(&identity);
     bytes.extend_from_slice(&command.request.request_id.to_be_bytes());
     bytes.extend_from_slice(&command.request.session_epoch.to_be_bytes());
@@ -29633,10 +29988,15 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
         Command::EngageTrafficContact {
             contact_id,
             expected_career_revision,
+            purpose,
         } => {
             bytes.push(52);
             bytes.extend_from_slice(&contact_id.to_be_bytes());
             bytes.extend_from_slice(&expected_career_revision.to_be_bytes());
+            bytes.push(match purpose {
+                crate::wire::InterceptionPurpose::ArmedAttack => 0,
+                crate::wire::InterceptionPurpose::BoardingInspection => 1,
+            });
         }
         Command::SetPirateCruise(ref cruise) => {
             bytes.push(53);
@@ -29867,17 +30227,29 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
                     bytes.push(0);
                     bytes.extend_from_slice(&expected_revision.to_be_bytes());
                 }
-                crate::wire::InterceptionWatchRequest::AllCraft { expected_revision } => {
+                crate::wire::InterceptionWatchRequest::AllCraft {
+                    expected_revision,
+                    purpose,
+                } => {
                     bytes.push(1);
                     bytes.extend_from_slice(&expected_revision.to_be_bytes());
+                    bytes.push(match purpose {
+                        crate::wire::InterceptionPurpose::ArmedAttack => 0,
+                        crate::wire::InterceptionPurpose::BoardingInspection => 1,
+                    });
                 }
                 crate::wire::InterceptionWatchRequest::CraftClass {
                     expected_revision,
                     catalog_id,
+                    purpose,
                 } => {
                     bytes.push(2);
                     bytes.extend_from_slice(&expected_revision.to_be_bytes());
                     bytes.extend_from_slice(&catalog_id.to_be_bytes());
+                    bytes.push(match purpose {
+                        crate::wire::InterceptionPurpose::ArmedAttack => 0,
+                        crate::wire::InterceptionPurpose::BoardingInspection => 1,
+                    });
                 }
             }
         }
@@ -29887,7 +30259,8 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
 
 fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
     let mut decoder = Decoder::new(bytes);
-    if decoder.u8()? != 1 {
+    let queue_version = decoder.u8()?;
+    if queue_version != 1 && queue_version != 2 {
         return Err(StoreError::Corrupt("unsupported queue record version"));
     }
     let identity = decode_identity(&mut decoder)?;
@@ -30093,6 +30466,15 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
         52 => Command::EngageTrafficContact {
             contact_id: decoder.u64()?,
             expected_career_revision: decoder.u64()?,
+            purpose: if queue_version >= 2 {
+                match decoder.u8()? {
+                    0 => crate::wire::InterceptionPurpose::ArmedAttack,
+                    1 => crate::wire::InterceptionPurpose::BoardingInspection,
+                    _ => return Err(StoreError::Corrupt("unknown interception purpose")),
+                }
+            } else {
+                crate::wire::InterceptionPurpose::ArmedAttack
+            },
         },
         53 => Command::SetPirateCruise(crate::careers::PirateCruise {
             revision: decoder.u64()?,
@@ -30278,10 +30660,30 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
             let expected_revision = decoder.u64()?;
             Command::SetInterceptionWatch(match kind {
                 0 => crate::wire::InterceptionWatchRequest::Cancel { expected_revision },
-                1 => crate::wire::InterceptionWatchRequest::AllCraft { expected_revision },
+                1 => crate::wire::InterceptionWatchRequest::AllCraft {
+                    expected_revision,
+                    purpose: if queue_version >= 2 {
+                        match decoder.u8()? {
+                            0 => crate::wire::InterceptionPurpose::ArmedAttack,
+                            1 => crate::wire::InterceptionPurpose::BoardingInspection,
+                            _ => return Err(StoreError::Corrupt("unknown interception purpose")),
+                        }
+                    } else {
+                        crate::wire::InterceptionPurpose::ArmedAttack
+                    },
+                },
                 2 => crate::wire::InterceptionWatchRequest::CraftClass {
                     expected_revision,
                     catalog_id: decoder.u32()?,
+                    purpose: if queue_version >= 2 {
+                        match decoder.u8()? {
+                            0 => crate::wire::InterceptionPurpose::ArmedAttack,
+                            1 => crate::wire::InterceptionPurpose::BoardingInspection,
+                            _ => return Err(StoreError::Corrupt("unknown interception purpose")),
+                        }
+                    } else {
+                        crate::wire::InterceptionPurpose::ArmedAttack
+                    },
                 },
                 _ => return Err(StoreError::Corrupt("unknown interception-watch filter")),
             })
@@ -31487,7 +31889,7 @@ fn decode_traffic_contact_record(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(6);
+    bytes.push(7);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -31671,6 +32073,10 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
                     crate::wire::InterceptionWatchFilterKind::AllCraft => 2,
                 });
                 encode_wire_locus(&mut bytes, watch.locus);
+                bytes.push(match watch.purpose {
+                    crate::wire::InterceptionPurpose::ArmedAttack => 0,
+                    crate::wire::InterceptionPurpose::BoardingInspection => 1,
+                });
             } else {
                 bytes.push(0);
             }
@@ -31714,7 +32120,13 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
 fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
     let mut decoder = Decoder::new(bytes);
     let version = decoder.u8()?;
-    if version != 1 && version != 2 && version != 3 && version != 4 && version != 5 && version != 6
+    if version != 1
+        && version != 2
+        && version != 3
+        && version != 4
+        && version != 5
+        && version != 6
+        && version != 7
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -31858,6 +32270,15 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
                     target_ship_name,
                     filter,
                     locus: decode_wire_locus(&mut decoder)?,
+                    purpose: if version >= 7 {
+                        match decoder.u8()? {
+                            0 => crate::wire::InterceptionPurpose::ArmedAttack,
+                            1 => crate::wire::InterceptionPurpose::BoardingInspection,
+                            _ => return Err(StoreError::Corrupt("unknown interception purpose")),
+                        }
+                    } else {
+                        crate::wire::InterceptionPurpose::ArmedAttack
+                    },
                 })
             } else {
                 None
@@ -33050,7 +33471,7 @@ fn decode_ship_locus(decoder: &mut Decoder<'_>) -> Result<ShipLocusRecord, Store
 
 fn encode_interception_watch(watch: &InterceptionWatchRecord) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(1);
+    bytes.push(2);
     bytes.extend_from_slice(&watch.hunter_ship_id.to_be_bytes());
     encode_ship_locus(&mut bytes, watch.locus);
     bytes.extend_from_slice(&watch.started_second.to_be_bytes());
@@ -33066,12 +33487,17 @@ fn encode_interception_watch(watch: &InterceptionWatchRecord) -> Result<Vec<u8>,
         InterceptionWatchFilter::AllCraft => bytes.push(2),
     }
     encode_text(&mut bytes, &watch.target_ship_name)?;
+    bytes.push(match watch.purpose {
+        crate::wire::InterceptionPurpose::ArmedAttack => 0,
+        crate::wire::InterceptionPurpose::BoardingInspection => 1,
+    });
     Ok(bytes)
 }
 
 fn decode_interception_watch(bytes: &[u8]) -> Result<InterceptionWatchRecord, StoreError> {
     let mut decoder = Decoder::new(bytes);
-    if decoder.u8()? != 1 {
+    let version = decoder.u8()?;
+    if version != 1 && version != 2 {
         return Err(StoreError::Corrupt("unsupported interception-watch record"));
     }
     let hunter_ship_id = decoder.u64()?;
@@ -33088,6 +33514,15 @@ fn decode_interception_watch(bytes: &[u8]) -> Result<InterceptionWatchRecord, St
         _ => return Err(StoreError::Corrupt("unknown interception-watch filter")),
     };
     let target_ship_name = decoder.text()?;
+    let purpose = if version >= 2 {
+        match decoder.u8()? {
+            0 => crate::wire::InterceptionPurpose::ArmedAttack,
+            1 => crate::wire::InterceptionPurpose::BoardingInspection,
+            _ => return Err(StoreError::Corrupt("unknown interception purpose")),
+        }
+    } else {
+        crate::wire::InterceptionPurpose::ArmedAttack
+    };
     decoder.finish()?;
     Ok(InterceptionWatchRecord {
         hunter_ship_id,
@@ -33095,6 +33530,7 @@ fn decode_interception_watch(bytes: &[u8]) -> Result<InterceptionWatchRecord, St
         started_second,
         filter,
         target_ship_name,
+        purpose,
     })
 }
 
@@ -45358,10 +45794,12 @@ mod tests {
             Command::EngageTrafficContact {
                 contact_id: 13,
                 expected_career_revision: 14,
+                purpose: crate::wire::InterceptionPurpose::ArmedAttack,
             },
             Command::SetInterceptionWatch(crate::wire::InterceptionWatchRequest::CraftClass {
                 expected_revision: 14,
                 catalog_id: 72,
+                purpose: crate::wire::InterceptionPurpose::BoardingInspection,
             }),
             Command::SetPirateCruise(crate::careers::PirateCruise {
                 revision: 15,
@@ -45433,6 +45871,7 @@ mod tests {
                     Command::EngageTrafficContact {
                         contact_id: contact.contact_id,
                         expected_career_revision: career.state.revision,
+                        purpose: crate::wire::InterceptionPurpose::ArmedAttack,
                     },
                 ),
             })
@@ -45660,12 +46099,21 @@ mod tests {
 
         let career = store.career_state_in(&txn, &observer).unwrap();
         let combat = match store
-            .engage_traffic_contact_in(&mut txn, &observer, other_ship_id, career.revision)
+            .engage_traffic_contact_in(
+                &mut txn,
+                &observer,
+                other_ship_id,
+                career.revision,
+                crate::wire::InterceptionPurpose::ArmedAttack,
+            )
             .unwrap()
         {
             RuleResult::Applied(InterceptionStart::Combat(combat)) => combat,
             RuleResult::Applied(InterceptionStart::Watch(_)) => {
                 panic!("spaceborne player interception established a watch")
+            }
+            RuleResult::Applied(InterceptionStart::Resolution(_)) => {
+                panic!("armed interception resolved without combat")
             }
             RuleResult::Rejected(reason) => panic!("player interception was rejected: {reason}"),
         };
@@ -45722,12 +46170,21 @@ mod tests {
         );
         let revision = store.career_state_in(&txn, &hunter).unwrap().revision;
         let watch = match store
-            .engage_traffic_contact_in(&mut txn, &hunter, target_ship.ship_id, revision)
+            .engage_traffic_contact_in(
+                &mut txn,
+                &hunter,
+                target_ship.ship_id,
+                revision,
+                crate::wire::InterceptionPurpose::ArmedAttack,
+            )
             .unwrap()
         {
             RuleResult::Applied(InterceptionStart::Watch(snapshot)) => snapshot,
             RuleResult::Applied(InterceptionStart::Combat(_)) => {
                 panic!("a berthed target was attacked before departure")
+            }
+            RuleResult::Applied(InterceptionStart::Resolution(_)) => {
+                panic!("a berthed target was resolved before departure")
             }
             RuleResult::Rejected(reason) => panic!("departure watch rejected: {reason}"),
         };
@@ -45787,6 +46244,164 @@ mod tests {
     }
 
     #[test]
+    fn boarding_intercept_resolves_without_combat_when_target_complies() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let hunter = identity();
+        let target = PlayerIdentity {
+            bbs_id: hunter.bbs_id,
+            player_id: hunter.player_id + 1,
+        };
+        let hunter_ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &hunter)
+            .unwrap()
+            .1;
+        establish_colocated_player(&store, &target, &hunter_ship);
+
+        let catalog = creation::ship_market_catalog();
+        let strongest = catalog
+            .iter()
+            .max_by_key(|entry| catalog_combat_power(entry.catalog_id))
+            .unwrap()
+            .catalog_id;
+        let weakest = catalog
+            .iter()
+            .min_by_key(|entry| catalog_combat_power(entry.catalog_id))
+            .unwrap()
+            .catalog_id;
+        let mut txn = store.env.write_txn().unwrap();
+        let mut hunter_ship = store.player_and_ship_in(&txn, &hunter).unwrap().1;
+        let mut target_ship = store.player_and_ship_in(&txn, &target).unwrap().1;
+        hunter_ship.catalog_id = strongest;
+        target_ship.catalog_id = weakest;
+        store
+            .ships
+            .put(
+                &mut txn,
+                &hunter_ship.ship_id,
+                &encode_ship_record(&hunter_ship).unwrap(),
+            )
+            .unwrap();
+        store
+            .ships
+            .put(
+                &mut txn,
+                &target_ship.ship_id,
+                &encode_ship_record(&target_ship).unwrap(),
+            )
+            .unwrap();
+        clear_test_ship_to_port_locus(&store, &mut txn, hunter_ship.ship_id);
+        clear_test_ship_to_port_locus(&store, &mut txn, target_ship.ship_id);
+        let revision = store.career_state_in(&txn, &hunter).unwrap().revision;
+        let result = store
+            .engage_traffic_contact_in(
+                &mut txn,
+                &hunter,
+                target_ship.ship_id,
+                revision,
+                crate::wire::InterceptionPurpose::BoardingInspection,
+            )
+            .unwrap();
+        assert!(matches!(
+            result,
+            RuleResult::Applied(InterceptionStart::Resolution(EncounterResult {
+                resolved: true,
+                turns: 0,
+                ..
+            }))
+        ));
+        assert!(
+            store
+                .ship_combats
+                .get(&txn, &hunter_ship.ship_id)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .ship_combats
+                .get(&txn, &target_ship.ship_id)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn refused_boarding_intercept_cascades_into_shared_combat() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let hunter = identity();
+        let target = PlayerIdentity {
+            bbs_id: hunter.bbs_id,
+            player_id: hunter.player_id + 1,
+        };
+        let hunter_ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &hunter)
+            .unwrap()
+            .1;
+        establish_colocated_player(&store, &target, &hunter_ship);
+
+        let catalog = creation::ship_market_catalog();
+        let strongest = catalog
+            .iter()
+            .max_by_key(|entry| catalog_combat_power(entry.catalog_id))
+            .unwrap()
+            .catalog_id;
+        let weakest = catalog
+            .iter()
+            .min_by_key(|entry| catalog_combat_power(entry.catalog_id))
+            .unwrap()
+            .catalog_id;
+        let mut txn = store.env.write_txn().unwrap();
+        let mut hunter_ship = store.player_and_ship_in(&txn, &hunter).unwrap().1;
+        let mut target_ship = store.player_and_ship_in(&txn, &target).unwrap().1;
+        hunter_ship.catalog_id = strongest;
+        target_ship.catalog_id = weakest;
+        target_ship.combat_policy.permit_surrender = false;
+        store
+            .ships
+            .put(
+                &mut txn,
+                &hunter_ship.ship_id,
+                &encode_ship_record(&hunter_ship).unwrap(),
+            )
+            .unwrap();
+        store
+            .ships
+            .put(
+                &mut txn,
+                &target_ship.ship_id,
+                &encode_ship_record(&target_ship).unwrap(),
+            )
+            .unwrap();
+        clear_test_ship_to_port_locus(&store, &mut txn, hunter_ship.ship_id);
+        clear_test_ship_to_port_locus(&store, &mut txn, target_ship.ship_id);
+        let revision = store.career_state_in(&txn, &hunter).unwrap().revision;
+        let result = store
+            .engage_traffic_contact_in(
+                &mut txn,
+                &hunter,
+                target_ship.ship_id,
+                revision,
+                crate::wire::InterceptionPurpose::BoardingInspection,
+            )
+            .unwrap();
+        assert!(matches!(
+            result,
+            RuleResult::Applied(InterceptionStart::Combat(_))
+        ));
+        assert!(
+            store
+                .ship_combats
+                .get(&txn, &target_ship.ship_id)
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
     fn all_craft_watch_schedules_the_next_modeled_contact() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
@@ -45800,6 +46415,7 @@ mod tests {
                 &identity(),
                 &crate::wire::InterceptionWatchRequest::AllCraft {
                     expected_revision: revision,
+                    purpose: crate::wire::InterceptionPurpose::ArmedAttack,
                 },
             )
             .unwrap()
@@ -45853,6 +46469,7 @@ mod tests {
                     &hunter,
                     &crate::wire::InterceptionWatchRequest::AllCraft {
                         expected_revision: revision,
+                        purpose: crate::wire::InterceptionPurpose::ArmedAttack,
                     },
                 )
                 .unwrap(),
@@ -46264,6 +46881,7 @@ mod tests {
                 &identity(),
                 contact.contact_id,
                 career_before.revision,
+                crate::wire::InterceptionPurpose::ArmedAttack,
             )
             .unwrap();
         let warrant_count = store
@@ -46365,6 +46983,7 @@ mod tests {
                 &identity(),
                 contact.contact_id,
                 career_before.revision,
+                crate::wire::InterceptionPurpose::ArmedAttack,
             )
             .unwrap();
         let career_with_warrant = store.career_state_in(&txn, &identity()).unwrap();
@@ -46890,12 +47509,21 @@ mod tests {
         clear_test_ship_to_port_locus(&store, &mut txn, defender_ship.ship_id);
         let career_revision = store.career_state_in(&txn, &attacker).unwrap().revision;
         let attacker_view = match store
-            .engage_traffic_contact_in(&mut txn, &attacker, defender_ship.ship_id, career_revision)
+            .engage_traffic_contact_in(
+                &mut txn,
+                &attacker,
+                defender_ship.ship_id,
+                career_revision,
+                crate::wire::InterceptionPurpose::ArmedAttack,
+            )
             .unwrap()
         {
             RuleResult::Applied(InterceptionStart::Combat(snapshot)) => snapshot,
             RuleResult::Applied(InterceptionStart::Watch(_)) => {
                 panic!("spaceborne player interception established a watch")
+            }
+            RuleResult::Applied(InterceptionStart::Resolution(_)) => {
+                panic!("armed interception resolved without combat")
             }
             RuleResult::Rejected(reason) => panic!("player intercept rejected: {reason}"),
         };
@@ -47109,12 +47737,21 @@ mod tests {
         clear_test_ship_to_port_locus(&store, &mut txn, managed_ship_id);
         let revision = store.career_state_in(&txn, &attacker).unwrap().revision;
         let view = match store
-            .engage_traffic_contact_in(&mut txn, &attacker, managed_ship_id, revision)
+            .engage_traffic_contact_in(
+                &mut txn,
+                &attacker,
+                managed_ship_id,
+                revision,
+                crate::wire::InterceptionPurpose::ArmedAttack,
+            )
             .unwrap()
         {
             RuleResult::Applied(InterceptionStart::Combat(snapshot)) => snapshot,
             RuleResult::Applied(InterceptionStart::Watch(_)) => {
                 panic!("spaceborne managed-ship interception established a watch")
+            }
+            RuleResult::Applied(InterceptionStart::Resolution(_)) => {
+                panic!("armed interception resolved without combat")
             }
             RuleResult::Rejected(reason) => panic!("managed ship intercept rejected: {reason}"),
         };
@@ -47342,6 +47979,7 @@ mod tests {
                     Command::EngageTrafficContact {
                         contact_id: defender_ship.ship_id,
                         expected_career_revision: career_revision,
+                        purpose: crate::wire::InterceptionPurpose::ArmedAttack,
                     },
                 ),
             })

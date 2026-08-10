@@ -5802,6 +5802,9 @@ std::optional<ct::PlayerPhase> show_combat_operations(
       if(snapshot.interception_watch) {
          const auto& watch = *snapshot.interception_watch;
          door_label("Interception watch: ");
+         door_identifier("%s ", watch.purpose == ct::InterceptionPurpose::BoardingInspection
+                                      ? "board/inspect"
+                                      : "armed attack");
          switch(watch.filter) {
          case ct::InterceptionWatchFilterKind::NamedVessel:
             door_warning("departure of %s", safe_field(watch.target_ship_name).c_str());
@@ -6012,6 +6015,16 @@ std::optional<ct::PlayerPhase> show_combat_operations(
                   }
                }
                const auto attached = target.attachment != ct::TrafficAttachment::Spaceborne;
+               door_option_prompt({"[A] Armed attack", "[B] Board or inspect", "[Q] Cancel"}, false);
+               const auto intent_key = static_cast<char>(std::toupper(
+                  static_cast<unsigned char>(od_get_key(TRUE))));
+               od_printf("\n\r");
+               if(intent_key != 'A' && intent_key != 'B') {
+                  continue;
+               }
+               const auto purpose = intent_key == 'B'
+                  ? ct::InterceptionPurpose::BoardingInspection
+                  : ct::InterceptionPurpose::ArmedAttack;
                if(snapshot.phase == ct::PlayerPhase::Docked) {
                   door_information(
                      "Your ship will clear its berth and pay any charges due before taking station.\n\r");
@@ -6022,20 +6035,34 @@ std::optional<ct::PlayerPhase> show_combat_operations(
                      "and wait at this locus until it departs.\n\r",
                      target.attachment == ct::TrafficAttachment::Berthed ? "berthed" : "landed");
                }
-               door_warning("An armed %s is an irreversible act.\n\r",
-                            attached ? "departure watch" : "intercept");
+               if(purpose == ct::InterceptionPurpose::BoardingInspection) {
+                  door_information(
+                     "Combat begins only if the vessel refuses the boarding order. An unlawful "
+                     "demand can still produce a warrant even if it complies.\n\r");
+               } else {
+                  door_warning("An armed %s is an irreversible act.\n\r",
+                               attached ? "departure watch" : "intercept");
+               }
                door_option_prompt({attached ? "[W] Confirm watch" : "[I] Confirm intercept",
                                    "[Q] Cancel"}, false);
                const auto confirm = static_cast<char>(std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
                od_printf("\n\r");
                if(confirm == (attached ? 'W' : 'I')) {
                   auto result = ct::engage_traffic_contact(connection, epoch,
-                     target.contact_id, snapshot.revision, random_command_id(random),
+                     target.contact_id, snapshot.revision, purpose, random_command_id(random),
                      request_id++);
                   if(std::holds_alternative<ct::CombatSnapshot>(result)) {
                      return std::get<ct::CombatSnapshot>(result).phase;
                   }
-                  snapshot = std::get<ct::CombatCareerSnapshot>(std::move(result));
+                  if(std::holds_alternative<ct::EncounterResult>(result)) {
+                     door_information("%s\n\r",
+                        safe_field(std::get<ct::EncounterResult>(result).outcome).c_str());
+                     wait_for_enter("Continue");
+                     snapshot = ct::get_combat_career(
+                        connection, epoch, random_command_id(random), request_id++);
+                  } else {
+                     snapshot = std::get<ct::CombatCareerSnapshot>(std::move(result));
+                  }
                }
             }
          } else if(key == 'S') {
@@ -6054,18 +6081,33 @@ std::optional<ct::PlayerPhase> show_combat_operations(
             for(const auto& contact : snapshot.system_contacts) {
                add_class(contact);
             }
-            door_option_prompt({"[A] All craft", "[C] Observed craft class",
+            door_option_prompt({"[A] Armed-attack watch", "[B] Boarding/inspection watch",
                                 "[R] Remove watch", "[Q] Cancel"}, false);
+            const auto purpose_key = static_cast<char>(std::toupper(
+               static_cast<unsigned char>(od_get_key(TRUE))));
+            od_printf("\n\r");
+            if(purpose_key == 'R' && snapshot.interception_watch) {
+               snapshot = ct::set_interception_watch(
+                  connection, epoch, ct::InterceptionWatchSelection::Cancel, 0,
+                  ct::InterceptionPurpose::ArmedAttack, snapshot.revision,
+                  random_command_id(random), request_id++);
+               continue;
+            }
+            if(purpose_key != 'A' && purpose_key != 'B') {
+               continue;
+            }
+            const auto purpose = purpose_key == 'B'
+               ? ct::InterceptionPurpose::BoardingInspection
+               : ct::InterceptionPurpose::ArmedAttack;
+            door_option_prompt({"[A] All craft", "[C] Observed craft class",
+                                "[Q] Cancel"}, false);
             const auto action = static_cast<char>(std::toupper(
                static_cast<unsigned char>(od_get_key(TRUE))));
             od_printf("\n\r");
             if(action == 'A') {
                snapshot = ct::set_interception_watch(
                   connection, epoch, ct::InterceptionWatchSelection::AllCraft, 0,
-                  snapshot.revision, random_command_id(random), request_id++);
-            } else if(action == 'R' && snapshot.interception_watch) {
-               snapshot = ct::set_interception_watch(
-                  connection, epoch, ct::InterceptionWatchSelection::Cancel, 0,
+                  purpose,
                   snapshot.revision, random_command_id(random), request_id++);
             } else if(action == 'C') {
                if(classes.empty()) {
@@ -6083,7 +6125,7 @@ std::optional<ct::PlayerPhase> show_combat_operations(
                if(selected) {
                   snapshot = ct::set_interception_watch(
                      connection, epoch, ct::InterceptionWatchSelection::CraftClass,
-                     classes[*selected - 1]->catalog_id, snapshot.revision,
+                     classes[*selected - 1]->catalog_id, purpose, snapshot.revision,
                      random_command_id(random), request_id++);
                }
             }
@@ -8507,8 +8549,11 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
               encounter.contact.confidence_percent);
    door_information("%s\n\r", safe_field(encounter.summary).c_str());
    if(encounter.state == ct::EncounterState::Resolving) {
-      if(encounter.kind == ct::EncounterKind::Hostile) {
+      try {
          return run_combat(connection, hello, random, request_id);
+      } catch(const std::runtime_error&) {
+         // Non-combat encounter responses still use the same resolving state
+         // while their authoritative turn is queued.
       }
       door_information("\n\rThe ship's declared response is awaiting resolution.\n\r");
       wait_for_enter();
