@@ -6,11 +6,11 @@
 [![Game content: OGL 1.0a](https://img.shields.io/badge/game_content-OGL_1.0a-blue.svg)](OPEN_GAME_LICENSE.md)
 
 Cepheus Trader is a multiplayer BBS door game inspired by *TradeWars 2002*
-and *Yankee Trader*. It combines trading, ship operation, physical interstellar
+and *Yankee Trader*. It combines trading, ship operation, interstellar
 mail, exploration, naval service, privateering, piracy, and space combat in a
 persistent 3D universe based on the Cepheus Engine rules.
 
-The project is in active alpha development at version **0.7.4**. Milestones 0
+The project is in active alpha development at version **0.7.5**. Milestones 0
 through 6 are complete; Milestone 7 is validating multi-BBS play and field
 operations. See the [roadmap](ROADMAP.md) for the authoritative status and
 acceptance boundaries.
