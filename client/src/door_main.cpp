@@ -5777,6 +5777,15 @@ std::optional<ct::PlayerPhase> show_combat_operations(
              : found->system_name;
    };
    while(true) {
+      const auto warrant_for_ship = [&snapshot](const uint64_t ship_id) -> const ct::KnownWarrant* {
+         const auto found = std::find_if(
+            snapshot.known_warrants.begin(), snapshot.known_warrants.end(),
+            [ship_id](const auto& warrant) {
+               return warrant.associated_ship_id == ship_id
+                      && warrant.custody == ct::BountyCustodyState::AtLarge;
+            });
+         return found == snapshot.known_warrants.end() ? nullptr : &*found;
+      };
       od_clr_scr();
       door_heading("Operations Ledger\n\r=================\n\r\n\r");
       door_label("Service: ");
@@ -5860,6 +5869,9 @@ std::optional<ct::PlayerPhase> show_combat_operations(
          } else {
             door_label("  ");
          }
+         if(warrant_for_ship(c.contact_id)) {
+            door_warning("[WARRANT] ");
+         }
          door_identifier("%s", safe_field(c.ship_name).c_str());
          if(c.attachment == ct::TrafficAttachment::Berthed) {
             door_warning("  [BERTHED]");
@@ -5901,6 +5913,9 @@ std::optional<ct::PlayerPhase> show_combat_operations(
             door_success("[ONLINE] ");
          } else if(c.player_owned) {
             door_identifier("[PLAYER] ");
+         }
+         if(warrant_for_ship(c.contact_id)) {
+            door_warning("[WARRANT] ");
          }
          door_identifier("%s", safe_field(c.ship_name).c_str());
          if(c.attachment == ct::TrafficAttachment::Berthed) {
@@ -5967,6 +5982,31 @@ std::optional<ct::PlayerPhase> show_combat_operations(
             door_label("\n\r");
          }
       }
+      if(!snapshot.known_warrants.empty()) {
+         door_identifier("\n\rLocally received warrants and prisoners\n\r");
+         for(const auto& warrant : snapshot.known_warrants) {
+            door_label("  Warrant ");
+            door_number("%llu", static_cast<unsigned long long>(warrant.warrant_id));
+            door_label(": ");
+            door_value("%s", safe_field(warrant.subject_name).c_str());
+            door_label(" (Cr");
+            door_number("%llu", static_cast<unsigned long long>(warrant.bounty_credits));
+            door_label(")  ");
+            if(warrant.custody == ct::BountyCustodyState::HeldAboard) {
+               door_success("HELD ABOARD");
+            } else if(warrant.association == ct::WarrantAssociationKind::ConfirmedAboard) {
+               door_warning("confirmed aboard ");
+               door_identifier("%s", safe_field(warrant.associated_ship_name).c_str());
+            } else {
+               door_information("associated with %s",
+                  safe_field(warrant.associated_ship_name).c_str());
+            }
+            door_label("  last report: ");
+            door_identifier("%s", safe_field(system_name(warrant.last_known_system_id)).c_str());
+            door_label("\n\r");
+            print_wrapped_field("    Charge: ", safe_field(warrant.accusation));
+         }
+      }
       door_option_prompt({
          "[A] Accept order or file report",
          "[I] Intercept traffic",
@@ -6015,16 +6055,24 @@ std::optional<ct::PlayerPhase> show_combat_operations(
                   }
                }
                const auto attached = target.attachment != ct::TrafficAttachment::Spaceborne;
-               door_option_prompt({"[A] Armed attack", "[B] Board or inspect", "[Q] Cancel"}, false);
+               const auto wanted = warrant_for_ship(target.contact_id);
+               std::vector<std::string_view> intents{"[A] Armed attack", "[B] Board or inspect"};
+               if(wanted) {
+                  intents.emplace_back("[R] Arrest named subject");
+               }
+               intents.emplace_back("[Q] Cancel");
+               door_option_prompt(intents, false);
                const auto intent_key = static_cast<char>(std::toupper(
                   static_cast<unsigned char>(od_get_key(TRUE))));
                od_printf("\n\r");
-               if(intent_key != 'A' && intent_key != 'B') {
+               if(intent_key != 'A' && intent_key != 'B' && !(intent_key == 'R' && wanted)) {
                   continue;
                }
-               const auto purpose = intent_key == 'B'
-                  ? ct::InterceptionPurpose::BoardingInspection
-                  : ct::InterceptionPurpose::ArmedAttack;
+               const auto purpose = intent_key == 'R'
+                  ? ct::InterceptionPurpose::Arrest
+                  : intent_key == 'B'
+                    ? ct::InterceptionPurpose::BoardingInspection
+                    : ct::InterceptionPurpose::ArmedAttack;
                if(snapshot.phase == ct::PlayerPhase::Docked) {
                   door_information(
                      "Your ship will clear its berth and pay any charges due before taking station.\n\r");
@@ -6035,7 +6083,13 @@ std::optional<ct::PlayerPhase> show_combat_operations(
                      "and wait at this locus until it departs.\n\r",
                      target.attachment == ct::TrafficAttachment::Berthed ? "berthed" : "landed");
                }
-               if(purpose == ct::InterceptionPurpose::BoardingInspection) {
+               if(purpose == ct::InterceptionPurpose::Arrest) {
+                  door_information(
+                     "This is a lawful demand under locally received warrant %llu for %s. "
+                     "The vessel may deny the subject is aboard; a boarding party will then search it.\n\r",
+                     static_cast<unsigned long long>(wanted->warrant_id),
+                     safe_field(wanted->subject_name).c_str());
+               } else if(purpose == ct::InterceptionPurpose::BoardingInspection) {
                   door_information(
                      "Combat begins only if the vessel refuses the boarding order. An unlawful "
                      "demand can still produce a warrant even if it complies.\n\r");
@@ -6164,10 +6218,33 @@ std::optional<ct::PlayerPhase> show_combat_operations(
             }
             snapshot = ct::settle_prize(connection, epoch, snapshot.prizes[*selected - 1].prize_id,
                                         snapshot.revision, method, random_command_id(random), request_id++);
-         } else if(key == 'W' && !snapshot.warrants.empty()) {
-            const auto selected = input_number("Warrant", 1, static_cast<unsigned>(snapshot.warrants.size()));
+         } else if(key == 'W' && (!snapshot.warrants.empty()
+                                  || std::any_of(snapshot.known_warrants.begin(),
+                                                snapshot.known_warrants.end(), [](const auto& warrant) {
+               return warrant.custody == ct::BountyCustodyState::HeldAboard;
+            }))) {
+            std::vector<uint64_t> court_entries;
+            for(const auto& warrant : snapshot.warrants) {
+               court_entries.push_back(warrant.warrant_id);
+               door_number("%zu", court_entries.size());
+               door_label(". Settle warrant against this command: ");
+               door_value("%s\n\r", safe_field(warrant.accusation).c_str());
+            }
+            for(const auto& warrant : snapshot.known_warrants) {
+               if(warrant.custody == ct::BountyCustodyState::HeldAboard) {
+                  court_entries.push_back(warrant.warrant_id);
+                  door_number("%zu", court_entries.size());
+                  door_label(". Deliver prisoner: ");
+                  door_value("%s", safe_field(warrant.subject_name).c_str());
+                  door_label(" for Cr");
+                  door_number("%llu\n\r",
+                     static_cast<unsigned long long>(warrant.bounty_credits));
+               }
+            }
+            const auto selected = input_number("Warrant or prisoner", 1,
+                                               static_cast<unsigned>(court_entries.size()));
             if(selected) {
-               snapshot = ct::settle_warrant(connection, epoch, snapshot.warrants[*selected - 1].warrant_id,
+               snapshot = ct::settle_warrant(connection, epoch, court_entries[*selected - 1],
                                              snapshot.revision, random_command_id(random), request_id++);
             }
          } else if(key == 'C') {

@@ -383,6 +383,33 @@ player-owned ship operating under standing orders; `[ONLINE]` identifies the
 player-owned ship currently under a connected captain's direct control. These
 markers describe control, not the quality of the ship's sensor identification.
 
+Warrants arrive as ordinary physical mail and are entered into the Operations
+Ledger automatically; there is no bounty to accept. A `[WARRANT]` marker means
+that a locally received warrant names a person associated with that vessel.
+The association is dated evidence, not proof that the person is still aboard.
+Select **Arrest named subject** to issue a lawful surrender demand. A vessel
+may surrender the person, deny the person is aboard, or refuse boarding. A
+denial permits a search: Investigate, Recon, and Streetwise skill and the size
+of the boarding party oppose the subject's concealment. A failed search leaves
+the warrant active. A successful search places the person in custody aboard
+the hunter's ship. Deliver a held prisoner through **Warrant court** at a
+docked port with an authority office to collect the stated bounty.
+
+Generated traffic also carries persistent generated people with warrants, so
+bounty hunting does not depend on finding another player. Those targets move
+through the same systems and appear in the same traffic pictures as other
+ships. A warrant's last report does not track them magically; current presence
+is known only when their transponder or a local sensor contact is actually
+observed. When a player ship answers an arrest demand offline, its saved
+inspection and surrender policies govern the response. At a port, a delivered
+warrant may cause an automatic enforcement boarding. Whether a search occurs
+and how thoroughly it is conducted scales with local law level.
+For an offline player vessel, a lawful demand for someone not actually aboard
+uses the saved inspection-compliance setting. If the person is aboard, the
+saved surrender permission and minimum acceptable victory estimate decide
+whether the crew turns the subject over or resists. Ordinary combat automation
+then governs any refusal.
+
 A local player vessel can be intercepted under the same physical and legal
 rules as other traffic. If its captain is actively commanding it, both
 captains receive the shared combat turn and may seal orders before the window

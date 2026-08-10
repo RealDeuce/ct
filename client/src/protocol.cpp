@@ -3300,6 +3300,7 @@ CombatCareerSnapshot decode_combat_career(const rpc::Response::Reader response)
       .system_contacts = {},
       .local_contacts = {},
       .interception_watch = std::nullopt,
+      .known_warrants = {},
       .phase = decode_response_phase(response.getPhase()),
    };
    for(const auto value : source.getOpportunities()) {
@@ -3385,6 +3386,28 @@ CombatCareerSnapshot decode_combat_career(const rpc::Response::Reader response)
          .locus = decode_flight_locus(watch.getLocus()),
          .purpose = static_cast<InterceptionPurpose>(watch.getPurpose()),
       };
+   }
+   for(const auto value : source.getKnownWarrants()) {
+      result.known_warrants.push_back({
+         .warrant_id = value.getWarrantId(),
+         .subject_person_id = value.getSubjectPersonId(),
+         .subject_name = value.getSubjectName().cStr(),
+         .subject_role = value.getSubjectRole().cStr(),
+         .accusation = value.getAccusation().cStr(),
+         .bounty_credits = value.getBountyCredits(),
+         .severity = value.getSeverity(),
+         .evidence_percent = value.getEvidencePercent(),
+         .issuing_polity_id = value.getIssuingPolityId(),
+         .origin_system_id = value.getOriginSystemId(),
+         .filed_second = value.getFiledSecond(),
+         .associated_ship_id = value.getAssociatedShipId(),
+         .associated_ship_name = value.getAssociatedShipName().cStr(),
+         .associated_transponder = value.getAssociatedTransponder().cStr(),
+         .last_known_system_id = value.getLastKnownSystemId(),
+         .association = static_cast<WarrantAssociationKind>(value.getAssociation()),
+         .custody = static_cast<BountyCustodyState>(value.getCustody()),
+         .generated_target = value.getGeneratedTarget(),
+      });
    }
    return result;
 }

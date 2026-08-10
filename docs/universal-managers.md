@@ -266,6 +266,11 @@ tonnage remain sensor observations with equipment- and damage-dependent
 confidence. The system-wide traffic-control feed is a separate transponder
 picture and does not make a remote vessel interceptable. Prize claims move by
 ordinary mail, and a warrant has no local effect before its message arrives.
+Received warrants are ingested automatically rather than accepted as jobs.
+They name people, retain dated associations with vessels on which those people
+served, and may concern persistent generated traffic as well as players.
+Operations marks a currently observed associated vessel, but an old vessel
+association alone is not proof that the subject remains aboard.
 Local contacts distinguish spaceborne vessels from ships berthed at a port or
 landed at a surface site. An intercept against an attached player vessel
 creates a named departure watch rather than combat at the attachment. The
@@ -280,7 +285,20 @@ issues a heave-to order first; compliance resolves the boarding without fire,
 while refusal invokes the target's standing encounter response and then its
 ordinary combat policy. Lawful inspection orders rely on naval authority and
 call stronger enforcement traffic when refused. An unlawful boarding demand
-is piracy and can produce a warrant even when intimidation succeeds.
+is piracy and can produce a warrant even when intimidation succeeds. An
+**arrest** demand is available only when a locally received warrant names a
+person associated with the selected vessel. Compliance may surrender the
+subject or permit a search; Investigate, Recon, and Streetwise skill plus
+boarding-party size oppose concealment. Custody is physical and remains aboard
+the hunter until the prisoner is delivered to a port authority, which pays the
+published bounty and dispatches the satisfaction notice through ordinary
+mail. Port enforcement performs its own automatic warrant search on arrival
+when local law is strong enough, with search thoroughness proportional to law
+level.
+For an offline player vessel, a lawful demand for an absent subject follows
+the saved inspection-compliance setting. A demand for someone actually aboard
+uses the vessel's surrender permission and minimum-victory threshold; refusal
+then falls through to normal combat automation.
 Player-owned vessels carry a `[PLAYER]` marker when operating under standing
 orders and an `[ONLINE]` marker while a connected captain directly controls
 them. Ownership and control markers do not improve the local sensor solution.

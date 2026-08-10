@@ -1696,6 +1696,28 @@ struct WarrantRecord {
   evidencePercent @7 :UInt8; status @8 :WarrantStatus; accusation @9 :Text;
   resolutionMessageId @10 :UInt64; resolvedSecond @11 :UInt64; resolvingSystemId @12 :UInt64;
 }
+enum WarrantAssociationKind { historical @0; reportedAboard @1; confirmedAboard @2; wantedVessel @3; }
+enum BountyCustodyState { atLarge @0; heldAboard @1; settled @2; }
+struct KnownWarrant {
+  warrantId @0 :UInt64;
+  subjectPersonId @1 :UInt64;
+  subjectName @2 :Text;
+  subjectRole @3 :Text;
+  accusation @4 :Text;
+  bountyCredits @5 :UInt64;
+  severity @6 :UInt8;
+  evidencePercent @7 :UInt8;
+  issuingPolityId @8 :UInt64;
+  originSystemId @9 :UInt64;
+  filedSecond @10 :UInt64;
+  associatedShipId @11 :UInt64;
+  associatedShipName @12 :Text;
+  associatedTransponder @13 :Text;
+  lastKnownSystemId @14 :UInt64;
+  association @15 :WarrantAssociationKind;
+  custody @16 :BountyCustodyState;
+  generatedTarget @17 :Bool;
+}
 struct PirateCruise {
   revision @0 :UInt64; active @1 :Bool; huntingSystemId @2 :UInt64; endsSecond @3 :UInt64;
   crewSharePercent @4 :UInt8; shipFundPercent @5 :UInt8; prohibitedTargets @6 :Text;
@@ -1710,11 +1732,13 @@ struct CombatCareerSnapshot {
   systemContacts @15 :List(TrafficContact);
   interceptionWatch @16 :InterceptionWatchStatus;
   hasInterceptionWatch @17 :Bool;
+  knownWarrants @18 :List(KnownWarrant);
 }
 struct CareerOpportunityRequest { opportunityId @0 :UInt64; expectedRevision @1 :UInt64; }
 enum InterceptionPurpose {
   armedAttack @0;
   boardingInspection @1;
+  arrest @2;
 }
 struct EngageTrafficContactRequest {
   contactId @0 :UInt64;

@@ -117,6 +117,7 @@ const RADIO_UNREAD_LIFETIME_SECONDS: u64 = 196 * crate::simulation::SECONDS_PER_
 const RADIO_SEND_INTERVAL_SECONDS: u64 = 420;
 const RADIO_MAX_BODY_BYTES: usize = 500;
 const LIGHT_SECONDS_PER_AU: f64 = 499.004_783_836;
+const GENERATED_LEGAL_ENTITY_BIT: u64 = 1_u64 << 63;
 
 fn jump_number_for_distance(distance_parsecs: f64) -> u8 {
     distance_parsecs.ceil().clamp(1.0, f64::from(u8::MAX)) as u8
@@ -1156,6 +1157,52 @@ struct RadioReceptionRecord {
     received_second: u64,
     expires_second: u64,
     consumed: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WarrantTargetKind {
+    Player,
+    Generated,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WarrantCustodyState {
+    AtLarge,
+    HeldAboard,
+    Settled,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WarrantDossierRecord {
+    warrant_id: u64,
+    message_id: u64,
+    resolution_message_id: u64,
+    issuing_polity_id: u64,
+    origin_system_id: u64,
+    filed_second: u64,
+    subject_person_id: u64,
+    subject_name: String,
+    subject_role: String,
+    accusation: String,
+    bounty_credits: u64,
+    severity: u8,
+    evidence_percent: u8,
+    target_kind: WarrantTargetKind,
+    target_identity: PlayerIdentity,
+    associated_ship_ids: Vec<u64>,
+    associated_ship_id: u64,
+    associated_ship_name: String,
+    associated_transponder: String,
+    catalog_id: u32,
+    current_system_id: u64,
+    next_move_second: u64,
+    association_confirmed: bool,
+    subject_present: bool,
+    concealment_skill: i8,
+    custody: WarrantCustodyState,
+    custodian: PlayerIdentity,
+    custody_ship_id: u64,
+    settled_second: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2774,6 +2821,7 @@ pub struct Store {
     persons: UniverseDatabase,
     ships: UniverseDatabase,
     careers: Database<Bytes, Bytes>,
+    warrant_dossiers: UniverseDatabase,
     crew_services: UniverseDatabase,
     polities: UniverseDatabase,
     systems: UniverseDatabase,
@@ -2873,6 +2921,7 @@ impl Store {
         let persons = env.create_database(&mut txn, Some("persons"))?;
         let ships: UniverseDatabase = env.create_database(&mut txn, Some("ships"))?;
         let careers = env.create_database(&mut txn, Some("careers"))?;
+        let warrant_dossiers = env.create_database(&mut txn, Some("warrant-dossiers"))?;
         let crew_services = env.create_database(&mut txn, Some("crew-services"))?;
         let polities = env.create_database(&mut txn, Some("polities"))?;
         let systems = env.create_database(&mut txn, Some("stellar-systems"))?;
@@ -2969,6 +3018,7 @@ impl Store {
             persons,
             ships,
             careers,
+            warrant_dossiers,
             crew_services,
             polities,
             systems,
@@ -3476,6 +3526,11 @@ impl Store {
                         processed.due_second,
                     )?;
                     self.process_market_day_in(
+                        &mut txn,
+                        processed.system_id,
+                        processed.due_second,
+                    )?;
+                    self.process_generated_warrant_day_in(
                         &mut txn,
                         processed.system_id,
                         processed.due_second,
@@ -4178,6 +4233,7 @@ impl Store {
                 }
             }
             Command::GetCombatCareer => {
+                self.backfill_player_warrant_dossiers_in(txn, &queued.identity)?;
                 OutcomeKind::CombatCareer(self.combat_career_snapshot_in(txn, &queued.identity)?)
             }
             Command::AcceptCareerOpportunity {
@@ -6733,17 +6789,41 @@ impl Store {
             .ok_or(StoreError::Corrupt("arrival system is missing"))?;
         let law = self.primary_world_in(txn, &stellar)?.law_level;
         let career = self.career_state_in(txn, identity)?;
+        let concealment_skill = self
+            .persons
+            .get(txn, &player.captain_person_id)?
+            .map(decode_person_record)
+            .transpose()?
+            .and_then(|person| {
+                person
+                    .person
+                    .skills
+                    .iter()
+                    .filter(|rating| rating.skill == crate::wire::SkillId::Stealth)
+                    .map(|rating| rating.level)
+                    .max()
+            })
+            .unwrap_or(-3);
         if let Some(warrant) = career.warrants.iter().find(|warrant| {
             let recognition_threshold = if warrant.issuing_polity_id == stellar.polity_id {
                 8
             } else {
                 14 + u16::from(warrant.evidence_percent < 75) * 3
             };
-            crate::careers::warrant_is_enforceable(
+            let enforceable = crate::careers::warrant_is_enforceable(
                 warrant,
                 available.contains(&warrant.message_id),
                 available.contains(&warrant.resolution_message_id),
-            ) && u16::from(law) + u16::from(warrant.severity) >= recognition_threshold
+            ) && u16::from(law) + u16::from(warrant.severity)
+                >= recognition_threshold;
+            let entropy = crate::ship_condition::mix64(
+                warrant.warrant_id ^ ship.ship_id.rotate_left(11) ^ checkpoint.ready_second,
+            );
+            let search_roll = (2 + entropy % 6 + entropy.rotate_left(17) % 6) as i16
+                + i16::from(law.div_ceil(2))
+                + i16::from(warrant.severity);
+            let concealment_target = 8 + i16::from(concealment_skill.max(-3));
+            enforceable && search_roll >= concealment_target
         }) {
             let encounter_id = take_next_id(self.meta, txn, META_NEXT_ENCOUNTER_ID)?;
             let record = EncounterRecord {
@@ -6765,8 +6845,8 @@ impl Store {
                         confidence_percent: 100,
                     },
                     summary: format!(
-                        "Port enforcement has received warrant {} and orders this command to submit.",
-                        warrant.warrant_id
+                        "Port enforcement has received warrant {}. A law-level {} boarding detail automatically searches the arriving ship, confirms the wanted captain is aboard, and orders this command to submit.",
+                        warrant.warrant_id, law
                     ),
                 },
                 opponent_catalog_id: 144,
@@ -7290,6 +7370,7 @@ impl Store {
                     )?;
                     warrant.message_id = message_id;
                     warrant.status = crate::careers::WarrantStatus::Propagating;
+                    self.record_player_warrant_dossier_in(txn, identity, &ship, &warrant)?;
                     career.warrants.push(warrant);
                     career.revision = career.revision.saturating_add(1);
                     self.put_career_state_in(txn, identity, &career)?;
@@ -7879,6 +7960,187 @@ impl Store {
         )))
     }
 
+    fn generated_warrant_contacts_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        system_id: u64,
+        current: u64,
+    ) -> Result<Vec<crate::traffic::TrafficContact>, StoreError> {
+        let mut result = Vec::new();
+        for entry in self.warrant_dossiers.iter(txn)? {
+            let (_, encoded) = entry?;
+            let dossier = decode_warrant_dossier(encoded)?;
+            if dossier.target_kind != WarrantTargetKind::Generated
+                || dossier.custody != WarrantCustodyState::AtLarge
+                || dossier.current_system_id != system_id
+            {
+                continue;
+            }
+            let spec = creation::ship_status_spec(dossier.catalog_id).ok_or(
+                StoreError::Corrupt("generated bounty vessel catalog missing"),
+            )?;
+            let class_name = creation::ship_market_catalog()
+                .into_iter()
+                .find(|entry| entry.catalog_id == dossier.catalog_id)
+                .map_or_else(|| "unclassified vessel".into(), |entry| entry.class_name);
+            result.push(crate::traffic::TrafficContact {
+                contact_id: dossier.associated_ship_id,
+                catalog_id: dossier.catalog_id,
+                class_name,
+                ship_name: dossier.associated_ship_name,
+                transponder: dossier.associated_transponder,
+                operator_name: "Independent operator".into(),
+                role: "transient merchant".into(),
+                displacement_millitons: spec.displacement_millitons,
+                origin_system_id: dossier.origin_system_id,
+                destination_system_id: system_id,
+                movement: crate::traffic::TrafficMovementKind::Present,
+                edge_second: current,
+                resolution: crate::traffic::TrafficContactResolution::Identified,
+                confidence_percent: 100,
+                player_owned: false,
+                online_controlled: false,
+                attachment: crate::traffic::TrafficAttachment::Spaceborne,
+            });
+        }
+        Ok(result)
+    }
+
+    fn process_generated_warrant_day_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        system_id: u64,
+        current: u64,
+    ) -> Result<(), StoreError> {
+        let systems = self.simulation.systems(txn)?;
+        let Some(system) = systems
+            .iter()
+            .find(|candidate| candidate.system_id == system_id)
+        else {
+            return Ok(());
+        };
+        if systems.iter().map(|candidate| candidate.system_id).min() == Some(system_id) {
+            let records = self
+                .warrant_dossiers
+                .iter(txn)?
+                .map(|entry| {
+                    let (_, encoded) = entry?;
+                    decode_warrant_dossier(encoded)
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?;
+            for mut dossier in records.into_iter().filter(|dossier| {
+                dossier.target_kind == WarrantTargetKind::Generated
+                    && dossier.custody == WarrantCustodyState::AtLarge
+                    && dossier.next_move_second <= current
+            }) {
+                if let Some(location) = systems
+                    .iter()
+                    .find(|candidate| candidate.system_id == dossier.current_system_id)
+                {
+                    if !location.jump_two_neighbors.is_empty() {
+                        let index = (dossier.warrant_id ^ current) as usize
+                            % location.jump_two_neighbors.len();
+                        dossier.current_system_id = location.jump_two_neighbors[index];
+                    }
+                }
+                dossier.next_move_second =
+                    current.saturating_add(7 * crate::simulation::SECONDS_PER_DAY);
+                self.warrant_dossiers.put(
+                    txn,
+                    &dossier.warrant_id,
+                    &encode_warrant_dossier(&dossier)?,
+                )?;
+            }
+        }
+
+        let day = current / crate::simulation::SECONDS_PER_DAY;
+        if (day.saturating_add(system_id)) % 14 != 0 {
+            return Ok(());
+        }
+        let Some(contact) = crate::traffic::snapshot(system, current)?
+            .into_iter()
+            .next()
+        else {
+            return Ok(());
+        };
+        let warrant_id = take_id_range(self.meta, txn, META_NEXT_ENCOUNTER_ID, 1)?;
+        let person_id = GENERATED_LEGAL_ENTITY_BIT | warrant_id;
+        let ship_id = GENERATED_LEGAL_ENTITY_BIT | warrant_id.rotate_left(17);
+        let subject_name =
+            crate::person_names::generated_person_name(system_id ^ current, person_id);
+        let severity = 1 + (warrant_id % 4) as u8;
+        let bounty_credits = 4_000_u64.saturating_mul(u64::from(severity).pow(2));
+        let accusations = [
+            "failure to answer a lawful customs summons",
+            "cargo theft and fraudulent manifesting",
+            "assault upon a port officer",
+            "armed piracy and flight from lawful custody",
+        ];
+        let accusation = accusations[usize::from(severity - 1)].to_owned();
+        let destinations = systems
+            .iter()
+            .map(|value| value.system_id)
+            .collect::<Vec<_>>();
+        let (message_id, _) = self.simulation.dispatch_message(
+            txn,
+            current,
+            system_id,
+            crate::simulation::MessageClass::PublicService,
+            crate::simulation::MessageImportance::Important,
+            &format!("Warrant {warrant_id}: {subject_name}"),
+            &format!(
+                "The authority issues a severity-{severity} warrant for {subject_name}, last reported aboard {} ({}). Accusation: {accusation}. Lawful delivery of the subject pays Cr{bounty_credits}.",
+                contact.ship_name, contact.transponder
+            ),
+            &destinations,
+        )?;
+        let dossier = WarrantDossierRecord {
+            warrant_id,
+            message_id,
+            resolution_message_id: 0,
+            issuing_polity_id: system.polity_id,
+            origin_system_id: system_id,
+            filed_second: current,
+            subject_person_id: person_id,
+            subject_name,
+            subject_role: if warrant_id & 1 == 0 {
+                "captain"
+            } else {
+                "crew member"
+            }
+            .into(),
+            accusation,
+            bounty_credits,
+            severity,
+            evidence_percent: 65_u8.saturating_add(severity.saturating_mul(7)).min(95),
+            target_kind: WarrantTargetKind::Generated,
+            target_identity: PlayerIdentity {
+                bbs_id: 0,
+                player_id: 0,
+            },
+            associated_ship_ids: vec![ship_id],
+            associated_ship_id: ship_id,
+            associated_ship_name: contact.ship_name,
+            associated_transponder: contact.transponder,
+            catalog_id: contact.catalog_id,
+            current_system_id: system_id,
+            next_move_second: current.saturating_add(7 * crate::simulation::SECONDS_PER_DAY),
+            association_confirmed: true,
+            subject_present: true,
+            concealment_skill: (severity as i8).saturating_sub(2),
+            custody: WarrantCustodyState::AtLarge,
+            custodian: PlayerIdentity {
+                bbs_id: 0,
+                player_id: 0,
+            },
+            custody_ship_id: 0,
+            settled_second: 0,
+        };
+        self.warrant_dossiers
+            .put(txn, &warrant_id, &encode_warrant_dossier(&dossier)?)?;
+        Ok(())
+    }
+
     fn combat_career_snapshot_in(
         &self,
         txn: &heed::RoTxn<'_>,
@@ -7909,6 +8171,7 @@ impl Store {
                 .ok_or(StoreError::MissingTrafficSimulationSystem(ship.system_id))?;
             let mut contacts = crate::traffic::snapshot(&system, current)?;
             contacts.extend(self.player_traffic_contacts_in(txn, &ship, None, current)?);
+            contacts.extend(self.generated_warrant_contacts_in(txn, ship.system_id, current)?);
             contacts.sort_by_key(|contact| (contact.edge_second, contact.contact_id));
             contacts
                 .into_iter()
@@ -7969,6 +8232,7 @@ impl Store {
                 )
             })
             .count();
+        let known_warrants = self.known_warrants_in(txn, identity, &ship, current, &delivered)?;
         Ok(crate::wire::CombatCareerSnapshot {
             monthly_salary_credits: if state.mode == crate::careers::CombatCareerMode::Navy {
                 crate::careers::naval_salary_for_grade(state.naval_grade_index)
@@ -7987,7 +8251,173 @@ impl Store {
             system_contacts,
             local_contacts,
             interception_watch: self.interception_watch_status_in(txn, ship.ship_id)?,
+            known_warrants,
         })
+    }
+
+    fn known_warrants_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+        ship: &ShipRecord,
+        _current: u64,
+        delivered: &HashSet<u64>,
+    ) -> Result<Vec<crate::wire::KnownWarrant>, StoreError> {
+        let mut result = Vec::new();
+        for entry in self.warrant_dossiers.iter(txn)? {
+            let (_, encoded) = entry?;
+            let dossier = decode_warrant_dossier(encoded)?;
+            if dossier.custody == WarrantCustodyState::Settled
+                || (!delivered.contains(&dossier.message_id)
+                    && !(dossier.custody == WarrantCustodyState::HeldAboard
+                        && dossier.custodian == *identity))
+            {
+                continue;
+            }
+            let custody = match dossier.custody {
+                WarrantCustodyState::AtLarge => crate::wire::BountyCustodyState::AtLarge,
+                WarrantCustodyState::HeldAboard => crate::wire::BountyCustodyState::HeldAboard,
+                WarrantCustodyState::Settled => crate::wire::BountyCustodyState::Settled,
+            };
+            let locally_observed = dossier.current_system_id == ship.system_id;
+            let association = if dossier.target_kind == WarrantTargetKind::Generated
+                && dossier.subject_present
+                && locally_observed
+            {
+                crate::wire::WarrantAssociationKind::ConfirmedAboard
+            } else if dossier.association_confirmed {
+                crate::wire::WarrantAssociationKind::ReportedAboard
+            } else {
+                crate::wire::WarrantAssociationKind::Historical
+            };
+            result.push(crate::wire::KnownWarrant {
+                warrant_id: dossier.warrant_id,
+                subject_person_id: dossier.subject_person_id,
+                subject_name: dossier.subject_name,
+                subject_role: dossier.subject_role,
+                accusation: dossier.accusation,
+                bounty_credits: dossier.bounty_credits,
+                severity: dossier.severity,
+                evidence_percent: dossier.evidence_percent,
+                issuing_polity_id: dossier.issuing_polity_id,
+                origin_system_id: dossier.origin_system_id,
+                filed_second: dossier.filed_second,
+                associated_ship_id: dossier.associated_ship_id,
+                associated_ship_name: dossier.associated_ship_name,
+                associated_transponder: dossier.associated_transponder,
+                last_known_system_id: if locally_observed {
+                    dossier.current_system_id
+                } else {
+                    dossier.origin_system_id
+                },
+                association,
+                custody,
+                generated_target: dossier.target_kind == WarrantTargetKind::Generated,
+            });
+        }
+        result.sort_by_key(|warrant| {
+            (
+                warrant.custody != crate::wire::BountyCustodyState::HeldAboard,
+                std::cmp::Reverse(warrant.bounty_credits),
+                warrant.warrant_id,
+            )
+        });
+        Ok(result)
+    }
+
+    fn record_player_warrant_dossier_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        ship: &ShipRecord,
+        warrant: &crate::careers::WarrantRecord,
+    ) -> Result<(), StoreError> {
+        let player = self
+            .players
+            .get(txn, &encode_identity(identity))?
+            .map(decode_player_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("warrant subject has no player record"))?;
+        let person = self
+            .persons
+            .get(txn, &player.captain_person_id)?
+            .map(decode_person_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("warrant subject captain is missing"))?;
+        let mut associated_ship_ids = vec![ship.ship_id];
+        if let Some(existing) = self
+            .warrant_dossiers
+            .get(txn, &warrant.warrant_id)?
+            .map(decode_warrant_dossier)
+            .transpose()?
+        {
+            associated_ship_ids.extend(existing.associated_ship_ids);
+            associated_ship_ids.sort_unstable();
+            associated_ship_ids.dedup();
+        }
+        let dossier = WarrantDossierRecord {
+            warrant_id: warrant.warrant_id,
+            message_id: warrant.message_id,
+            resolution_message_id: warrant.resolution_message_id,
+            issuing_polity_id: warrant.issuing_polity_id,
+            origin_system_id: warrant.origin_system_id,
+            filed_second: warrant.filed_second,
+            subject_person_id: player.captain_person_id,
+            subject_name: person.person.name,
+            subject_role: "captain".into(),
+            accusation: warrant.accusation.clone(),
+            bounty_credits: warrant.bounty_credits,
+            severity: warrant.severity,
+            evidence_percent: warrant.evidence_percent,
+            target_kind: WarrantTargetKind::Player,
+            target_identity: identity.clone(),
+            associated_ship_ids,
+            associated_ship_id: ship.ship_id,
+            associated_ship_name: ship.name.clone(),
+            associated_transponder: crate::traffic::transponder_for_id(ship.ship_id),
+            catalog_id: ship.catalog_id,
+            current_system_id: ship.system_id,
+            next_move_second: 0,
+            association_confirmed: true,
+            subject_present: true,
+            concealment_skill: 0,
+            custody: if matches!(
+                warrant.status,
+                crate::careers::WarrantStatus::Revoked | crate::careers::WarrantStatus::Satisfied
+            ) {
+                WarrantCustodyState::Settled
+            } else {
+                WarrantCustodyState::AtLarge
+            },
+            custodian: PlayerIdentity {
+                bbs_id: 0,
+                player_id: 0,
+            },
+            custody_ship_id: 0,
+            settled_second: warrant.resolved_second,
+        };
+        self.warrant_dossiers
+            .put(txn, &warrant.warrant_id, &encode_warrant_dossier(&dossier)?)?;
+        Ok(())
+    }
+
+    fn backfill_player_warrant_dossiers_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+    ) -> Result<(), StoreError> {
+        let (_, ship) = self.player_and_ship_in(txn, identity)?;
+        let career = self.career_state_in(txn, identity)?;
+        for warrant in &career.warrants {
+            if self
+                .warrant_dossiers
+                .get(txn, &warrant.warrant_id)?
+                .is_none()
+            {
+                self.record_player_warrant_dossier_in(txn, identity, &ship, warrant)?;
+            }
+        }
+        Ok(())
     }
 
     fn local_traffic_locus_in(
@@ -8171,6 +8601,9 @@ impl Store {
             }
         });
         contacts.extend(self.player_traffic_contacts_in(txn, ship, Some(&locus), current)?);
+        if matches!(locus, ShipLocusRecord::Port { .. }) {
+            contacts.extend(self.generated_warrant_contacts_in(txn, ship.system_id, current)?);
+        }
         contacts.sort_by_key(|contact| (contact.edge_second, contact.contact_id));
         Ok(contacts)
     }
@@ -8672,6 +9105,21 @@ impl Store {
                 "the career ledger revision is stale".into(),
             ));
         }
+        if matches!(
+            request,
+            crate::wire::InterceptionWatchRequest::AllCraft {
+                purpose: crate::wire::InterceptionPurpose::Arrest,
+                ..
+            } | crate::wire::InterceptionWatchRequest::CraftClass {
+                purpose: crate::wire::InterceptionPurpose::Arrest,
+                ..
+            }
+        ) {
+            return Ok(RuleResult::Rejected(
+                "an arrest watch must name the vessel associated with a locally received warrant"
+                    .into(),
+            ));
+        }
         let (_, mut ship) = self.player_and_ship_in(txn, identity)?;
         if matches!(
             request,
@@ -8897,6 +9345,40 @@ impl Store {
                 "the named traffic contact is no longer at this locus".into(),
             ));
         };
+        let delivered = self
+            .simulation
+            .available_messages(txn, ship.system_id, current, false)?
+            .into_iter()
+            .map(|message| message.message.message_id)
+            .collect::<HashSet<_>>();
+        let arrest = purpose == crate::wire::InterceptionPurpose::Arrest;
+        let arrest_dossier = if arrest {
+            self.warrant_dossiers
+                .iter(txn)?
+                .filter_map(|entry| match entry {
+                    Ok((_, encoded)) => match decode_warrant_dossier(encoded) {
+                        Ok(dossier)
+                            if dossier.associated_ship_id == contact_id
+                                && dossier.custody == WarrantCustodyState::AtLarge
+                                && delivered.contains(&dossier.message_id) =>
+                        {
+                            Some(Ok(dossier))
+                        }
+                        Ok(_) => None,
+                        Err(error) => Some(Err(error)),
+                    },
+                    Err(error) => Some(Err(StoreError::Heed(error))),
+                })
+                .next()
+                .transpose()?
+        } else {
+            None
+        };
+        if arrest && arrest_dossier.is_none() {
+            return Ok(RuleResult::Rejected(
+                "no locally received warrant names a subject associated with that vessel".into(),
+            ));
+        }
         if contact.attachment != crate::traffic::TrafficAttachment::Spaceborne {
             if !contact.player_owned {
                 return Ok(RuleResult::Rejected(
@@ -8969,17 +9451,56 @@ impl Store {
             .into_iter()
             .find(|system| system.system_id == ship.system_id)
             .ok_or(StoreError::MissingTrafficSimulationSystem(ship.system_id))?;
-        let authorized = career.opportunities.iter().any(|offer| {
-            offer.state == crate::careers::OpportunityState::Accepted
-                && offer.target_contact_id == contact_id
-                && matches!(
-                    offer.kind,
-                    crate::careers::OpportunityKind::NavalOrder
-                        | crate::careers::OpportunityKind::PrivateerCommission
-                )
-        });
-        let boarding_inspection = purpose == crate::wire::InterceptionPurpose::BoardingInspection;
-        let target_complies = if boarding_inspection {
+        let authorized = arrest_dossier.is_some()
+            || career.opportunities.iter().any(|offer| {
+                offer.state == crate::careers::OpportunityState::Accepted
+                    && offer.target_contact_id == contact_id
+                    && matches!(
+                        offer.kind,
+                        crate::careers::OpportunityKind::NavalOrder
+                            | crate::careers::OpportunityKind::PrivateerCommission
+                    )
+            });
+        let boarding_inspection = matches!(
+            purpose,
+            crate::wire::InterceptionPurpose::BoardingInspection
+                | crate::wire::InterceptionPurpose::Arrest
+        );
+        let target_complies = if arrest_dossier
+            .as_ref()
+            .is_some_and(|dossier| dossier.target_kind == WarrantTargetKind::Generated)
+        {
+            true
+        } else if arrest {
+            let dossier = arrest_dossier.as_ref().ok_or(StoreError::Corrupt(
+                "arrest authorization lost its warrant dossier",
+            ))?;
+            let target = player_target.as_ref().ok_or(StoreError::Corrupt(
+                "player warrant is not associated with a player vessel",
+            ))?;
+            let subject_aboard = self
+                .crew_services
+                .get(txn, &dossier.subject_person_id)?
+                .map(decode_crew_service)
+                .transpose()?
+                .is_some_and(|service| {
+                    service.ship_id == target.ship_id && service_active(&service)
+                });
+            if !subject_aboard {
+                self.flight_plans
+                    .get(txn, &encode_identity(&target.command))?
+                    .map(decode_flight_plan_snapshot)
+                    .transpose()?
+                    .map_or(true, |plan| plan.policy.comply_with_inspection)
+            } else {
+                let hunter_power = catalog_combat_power(ship.catalog_id).max(1);
+                let target_power = catalog_combat_power(target.catalog_id).max(1);
+                let estimated_victory =
+                    target_power.saturating_mul(100) / hunter_power.saturating_add(target_power);
+                target.combat_policy.permit_surrender
+                    && estimated_victory < u64::from(target.combat_policy.minimum_victory_percent)
+            }
+        } else if boarding_inspection {
             if authorized {
                 if let Some(target) = player_target.as_ref() {
                     self.flight_plans
@@ -9069,9 +9590,173 @@ impl Store {
             )?;
             warrant.message_id = message_id;
             warrant.status = crate::careers::WarrantStatus::Propagating;
+            self.record_player_warrant_dossier_in(txn, identity, &ship, &warrant)?;
             career.warrants.push(warrant);
         }
         career.revision = career.revision.saturating_add(1);
+        if arrest && target_complies {
+            let mut dossier = arrest_dossier.ok_or(StoreError::Corrupt(
+                "authorized arrest lost its warrant dossier",
+            ))?;
+            let mut searchers = 0_u16;
+            let mut best_search_skill = -3_i8;
+            for entry in self.crew_services.iter(txn)? {
+                let (_, encoded) = entry?;
+                let service = decode_crew_service(encoded)?;
+                if service.command != *identity
+                    || service.ship_id != ship.ship_id
+                    || !service_available_for_duty(&service, current)
+                {
+                    continue;
+                }
+                searchers = searchers.saturating_add(service.represented_positions.max(1));
+                let person = self
+                    .persons
+                    .get(txn, &service.person_id)?
+                    .map(decode_person_record)
+                    .transpose()?
+                    .ok_or(StoreError::Corrupt("search-party member is missing"))?;
+                for rating in &person.person.skills {
+                    if matches!(
+                        rating.skill,
+                        crate::wire::SkillId::Investigate
+                            | crate::wire::SkillId::Recon
+                            | crate::wire::SkillId::Streetwise
+                    ) {
+                        best_search_skill = best_search_skill.max(rating.level);
+                    }
+                }
+            }
+            let entropy = crate::ship_condition::mix64(
+                dossier.warrant_id ^ ship.ship_id.rotate_left(19) ^ current,
+            );
+            let roll = (2 + entropy % 6 + entropy.rotate_left(13) % 6) as i16;
+            let searcher_dm = i16::from(searchers.max(1).ilog2() as u8);
+            let search_total = roll + i16::from(best_search_skill) + searcher_dm;
+            let target = 7 + i16::from(dossier.concealment_skill);
+            let subject_actually_aboard = if dossier.target_kind == WarrantTargetKind::Player {
+                self.crew_services
+                    .get(txn, &dossier.subject_person_id)?
+                    .map(decode_crew_service)
+                    .transpose()?
+                    .is_some_and(|service| {
+                        service.ship_id == contact.contact_id && service_active(&service)
+                    })
+            } else {
+                dossier.subject_present
+            };
+            let found = subject_actually_aboard && search_total >= target;
+            let encounter_id = take_next_id(self.meta, txn, META_NEXT_ENCOUNTER_ID)?;
+            let outcome = if found {
+                if dossier.target_kind == WarrantTargetKind::Player {
+                    let mut target_player = self
+                        .players
+                        .get(txn, &encode_identity(&dossier.target_identity))?
+                        .map(decode_player_record)
+                        .transpose()?
+                        .ok_or(StoreError::Corrupt("arrest target player is missing"))?;
+                    let mut target_ship = self
+                        .ships
+                        .get(txn, &dossier.associated_ship_id)?
+                        .map(decode_ship_record)
+                        .transpose()?
+                        .ok_or(StoreError::Corrupt("arrest target ship is missing"))?;
+                    let replacement = self
+                        .crew_services
+                        .iter(txn)?
+                        .filter_map(|entry| match entry {
+                            Ok((_, encoded)) => match decode_crew_service(encoded) {
+                                Ok(service)
+                                    if service.ship_id == target_ship.ship_id
+                                        && service.person_id != dossier.subject_person_id
+                                        && service_active(&service) =>
+                                {
+                                    Some(Ok(service.person_id))
+                                }
+                                Ok(_) => None,
+                                Err(error) => Some(Err(error)),
+                            },
+                            Err(error) => Some(Err(StoreError::Heed(error))),
+                        })
+                        .next()
+                        .transpose()?;
+                    if target_player.captain_person_id == dossier.subject_person_id {
+                        let Some(replacement) = replacement else {
+                            return Ok(RuleResult::Rejected(
+                                "the wanted captain cannot surrender while no officer remains to assume command"
+                                    .into(),
+                            ));
+                        };
+                        target_player.captain_person_id = replacement;
+                        target_ship.commanding_person_id = replacement;
+                        target_player.fleet_revision =
+                            target_player.fleet_revision.saturating_add(1);
+                        target_ship.revision = target_ship.revision.saturating_add(1);
+                    }
+                    if let Some(encoded) =
+                        self.crew_services.get(txn, &dossier.subject_person_id)?
+                    {
+                        let mut service = decode_crew_service(encoded)?;
+                        service.availability = CrewAvailability::Detached;
+                        service.service_end_second = current;
+                        service.revision = service.revision.saturating_add(1);
+                        self.crew_services.put(
+                            txn,
+                            &service.person_id,
+                            &encode_crew_service(&service)?,
+                        )?;
+                    }
+                    self.players.put(
+                        txn,
+                        &encode_identity(&dossier.target_identity),
+                        &encode_player_record(&target_player),
+                    )?;
+                    self.ships.put(
+                        txn,
+                        &target_ship.ship_id,
+                        &encode_ship_record(&target_ship)?,
+                    )?;
+                }
+                dossier.custody = WarrantCustodyState::HeldAboard;
+                dossier.custodian = identity.clone();
+                dossier.custody_ship_id = ship.ship_id;
+                dossier.subject_present = false;
+                dossier.association_confirmed = true;
+                format!(
+                    "{} submits to the lawful boarding demand. A search party of {} finds {} aboard {} and takes the subject into custody (search total {} against {}).",
+                    contact.ship_name,
+                    searchers.max(1),
+                    dossier.subject_name,
+                    contact.ship_name,
+                    search_total,
+                    target
+                )
+            } else {
+                format!(
+                    "{} submits to search, but the party finds no reportable evidence that {} is aboard (search total {} against {}). The warrant remains active.",
+                    contact.ship_name, dossier.subject_name, search_total, target
+                )
+            };
+            self.warrant_dossiers.put(
+                txn,
+                &dossier.warrant_id,
+                &encode_warrant_dossier(&dossier)?,
+            )?;
+            career.revision = career.revision.saturating_add(1);
+            self.put_career_state_in(txn, identity, &career)?;
+            return Ok(RuleResult::Applied(InterceptionStart::Resolution(
+                EncounterResult {
+                    encounter_id,
+                    resolved: true,
+                    terminal: false,
+                    outcome,
+                    turns: 0,
+                    cargo_lost_millitons: 0,
+                    fuel_lost_millitons: 0,
+                    damage_hits: 0,
+                },
+            )));
+        }
         if boarding_inspection && target_complies {
             let encounter_id = take_next_id(self.meta, txn, META_NEXT_ENCOUNTER_ID)?;
             let mut recorded = false;
@@ -9808,15 +10493,78 @@ impl Store {
             .into_iter()
             .map(|item| item.message.message_id)
             .collect::<HashSet<_>>();
-        let Some(warrant_index) = career
+        let warrant_index = career
             .warrants
             .iter()
-            .position(|warrant| warrant.warrant_id == warrant_id)
-        else {
-            return Ok(RuleResult::Rejected(
-                "that warrant is not in this ledger".into(),
+            .position(|warrant| warrant.warrant_id == warrant_id);
+        if warrant_index.is_none() {
+            let Some(encoded) = self.warrant_dossiers.get(txn, &warrant_id)? else {
+                return Ok(RuleResult::Rejected(
+                    "that warrant is not in this ledger".into(),
+                ));
+            };
+            let mut dossier = decode_warrant_dossier(encoded)?;
+            if dossier.custody != WarrantCustodyState::HeldAboard
+                || dossier.custodian != *identity
+                || dossier.custody_ship_id != ship.ship_id
+            {
+                return Ok(RuleResult::Rejected(
+                    "this command does not hold the named subject in custody".into(),
+                ));
+            }
+            let ShipLocationRecord::Docked { facility_id, .. } = ship.location else {
+                return Ok(RuleResult::Rejected(
+                    "a prisoner must be delivered to a port authority while docked".into(),
+                ));
+            };
+            let authority = self
+                .facilities
+                .get(txn, &facility_id)?
+                .map(decode_facility)
+                .transpose()?
+                .is_some_and(|facility| facility.authority_office);
+            if !authority {
+                return Ok(RuleResult::Rejected(
+                    "this port has no authority office able to receive a prisoner".into(),
+                ));
+            }
+            let destinations = self
+                .simulation
+                .systems(txn)?
+                .into_iter()
+                .map(|system| system.system_id)
+                .collect::<Vec<_>>();
+            let (resolution_message_id, _) = self.simulation.dispatch_message(
+                txn,
+                current,
+                ship.system_id,
+                crate::simulation::MessageClass::PublicService,
+                crate::simulation::MessageImportance::Important,
+                &format!("Warrant {warrant_id}: subject delivered"),
+                &format!(
+                    "The authority at system {} records lawful delivery of {} under warrant {} and payment of the Cr{} bounty.",
+                    ship.system_id, dossier.subject_name, warrant_id, dossier.bounty_credits
+                ),
+                &destinations,
+            )?;
+            player.credits = player.credits.saturating_add(dossier.bounty_credits);
+            dossier.custody = WarrantCustodyState::Settled;
+            dossier.resolution_message_id = resolution_message_id;
+            dossier.settled_second = current;
+            self.warrant_dossiers
+                .put(txn, &warrant_id, &encode_warrant_dossier(&dossier)?)?;
+            career.revision = career.revision.saturating_add(1);
+            self.players.put(
+                txn,
+                &encode_identity(identity),
+                &encode_player_record(&player),
+            )?;
+            self.put_career_state_in(txn, identity, &career)?;
+            return Ok(RuleResult::Applied(
+                self.combat_career_snapshot_in(txn, identity)?,
             ));
-        };
+        }
+        let warrant_index = warrant_index.expect("checked above");
         let warrant = &career.warrants[warrant_index];
         if !available.contains(&warrant.message_id)
             || matches!(
@@ -9859,6 +10607,14 @@ impl Store {
         warrant.resolution_message_id = resolution_message_id;
         warrant.resolved_second = current;
         warrant.resolving_system_id = ship.system_id;
+        if let Some(encoded) = self.warrant_dossiers.get(txn, &warrant_id)? {
+            let mut dossier = decode_warrant_dossier(encoded)?;
+            dossier.resolution_message_id = resolution_message_id;
+            dossier.custody = WarrantCustodyState::Settled;
+            dossier.settled_second = current;
+            self.warrant_dossiers
+                .put(txn, &warrant_id, &encode_warrant_dossier(&dossier)?)?;
+        }
         career.revision = career.revision.saturating_add(1);
         let key = encode_identity(identity);
         if let Some(mut plan) = self
@@ -10019,6 +10775,7 @@ impl Store {
                     )?;
                     warrant.message_id = message_id;
                     warrant.status = crate::careers::WarrantStatus::Propagating;
+                    self.record_player_warrant_dossier_in(txn, identity, &ship, &warrant)?;
                     career.warrants.push(warrant);
                     career.public_heat = career.public_heat.saturating_add(50);
                     finance.title = crate::wire::ShipTitleKind::StolenRegistry;
@@ -11149,6 +11906,7 @@ impl Store {
                     )?;
                     warrant.message_id = message_id;
                     warrant.status = crate::careers::WarrantStatus::Propagating;
+                    self.record_player_warrant_dossier_in(txn, identity, &ship, &warrant)?;
                     career.warrants.push(warrant);
                     career.revision = career.revision.saturating_add(1);
                 }
@@ -24161,6 +24919,7 @@ impl Store {
                 )?;
                 warrant.message_id = message_id;
                 warrant.status = crate::careers::WarrantStatus::Propagating;
+                self.record_player_warrant_dossier_in(txn, &offender, &ship, &warrant)?;
                 let mut career = self.career_state_in(txn, &offender)?;
                 career.warrants.push(warrant);
                 career.revision = career.revision.saturating_add(1);
@@ -30026,6 +30785,7 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
             bytes.push(match purpose {
                 crate::wire::InterceptionPurpose::ArmedAttack => 0,
                 crate::wire::InterceptionPurpose::BoardingInspection => 1,
+                crate::wire::InterceptionPurpose::Arrest => 2,
             });
         }
         Command::SetPirateCruise(ref cruise) => {
@@ -30266,6 +31026,7 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
                     bytes.push(match purpose {
                         crate::wire::InterceptionPurpose::ArmedAttack => 0,
                         crate::wire::InterceptionPurpose::BoardingInspection => 1,
+                        crate::wire::InterceptionPurpose::Arrest => 2,
                     });
                 }
                 crate::wire::InterceptionWatchRequest::CraftClass {
@@ -30279,6 +31040,7 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
                     bytes.push(match purpose {
                         crate::wire::InterceptionPurpose::ArmedAttack => 0,
                         crate::wire::InterceptionPurpose::BoardingInspection => 1,
+                        crate::wire::InterceptionPurpose::Arrest => 2,
                     });
                 }
             }
@@ -30500,6 +31262,7 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
                 match decoder.u8()? {
                     0 => crate::wire::InterceptionPurpose::ArmedAttack,
                     1 => crate::wire::InterceptionPurpose::BoardingInspection,
+                    2 => crate::wire::InterceptionPurpose::Arrest,
                     _ => return Err(StoreError::Corrupt("unknown interception purpose")),
                 }
             } else {
@@ -30696,6 +31459,7 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
                         match decoder.u8()? {
                             0 => crate::wire::InterceptionPurpose::ArmedAttack,
                             1 => crate::wire::InterceptionPurpose::BoardingInspection,
+                            2 => crate::wire::InterceptionPurpose::Arrest,
                             _ => return Err(StoreError::Corrupt("unknown interception purpose")),
                         }
                     } else {
@@ -30709,6 +31473,7 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
                         match decoder.u8()? {
                             0 => crate::wire::InterceptionPurpose::ArmedAttack,
                             1 => crate::wire::InterceptionPurpose::BoardingInspection,
+                            2 => crate::wire::InterceptionPurpose::Arrest,
                             _ => return Err(StoreError::Corrupt("unknown interception purpose")),
                         }
                     } else {
@@ -31917,9 +32682,79 @@ fn decode_traffic_contact_record(
     })
 }
 
+fn encode_known_warrant_into(
+    bytes: &mut Vec<u8>,
+    warrant: &crate::wire::KnownWarrant,
+) -> Result<(), StoreError> {
+    bytes.extend_from_slice(&warrant.warrant_id.to_be_bytes());
+    bytes.extend_from_slice(&warrant.subject_person_id.to_be_bytes());
+    encode_text(bytes, &warrant.subject_name)?;
+    encode_text(bytes, &warrant.subject_role)?;
+    encode_text(bytes, &warrant.accusation)?;
+    bytes.extend_from_slice(&warrant.bounty_credits.to_be_bytes());
+    bytes.push(warrant.severity);
+    bytes.push(warrant.evidence_percent);
+    bytes.extend_from_slice(&warrant.issuing_polity_id.to_be_bytes());
+    bytes.extend_from_slice(&warrant.origin_system_id.to_be_bytes());
+    bytes.extend_from_slice(&warrant.filed_second.to_be_bytes());
+    bytes.extend_from_slice(&warrant.associated_ship_id.to_be_bytes());
+    encode_text(bytes, &warrant.associated_ship_name)?;
+    encode_text(bytes, &warrant.associated_transponder)?;
+    bytes.extend_from_slice(&warrant.last_known_system_id.to_be_bytes());
+    bytes.push(match warrant.association {
+        crate::wire::WarrantAssociationKind::Historical => 0,
+        crate::wire::WarrantAssociationKind::ReportedAboard => 1,
+        crate::wire::WarrantAssociationKind::ConfirmedAboard => 2,
+        crate::wire::WarrantAssociationKind::WantedVessel => 3,
+    });
+    bytes.push(match warrant.custody {
+        crate::wire::BountyCustodyState::AtLarge => 0,
+        crate::wire::BountyCustodyState::HeldAboard => 1,
+        crate::wire::BountyCustodyState::Settled => 2,
+    });
+    bytes.push(u8::from(warrant.generated_target));
+    Ok(())
+}
+
+fn decode_known_warrant(
+    decoder: &mut Decoder<'_>,
+) -> Result<crate::wire::KnownWarrant, StoreError> {
+    Ok(crate::wire::KnownWarrant {
+        warrant_id: decoder.u64()?,
+        subject_person_id: decoder.u64()?,
+        subject_name: decoder.text()?,
+        subject_role: decoder.text()?,
+        accusation: decoder.text()?,
+        bounty_credits: decoder.u64()?,
+        severity: decoder.u8()?,
+        evidence_percent: decoder.u8()?,
+        issuing_polity_id: decoder.u64()?,
+        origin_system_id: decoder.u64()?,
+        filed_second: decoder.u64()?,
+        associated_ship_id: decoder.u64()?,
+        associated_ship_name: decoder.text()?,
+        associated_transponder: decoder.text()?,
+        last_known_system_id: decoder.u64()?,
+        association: match decoder.u8()? {
+            0 => crate::wire::WarrantAssociationKind::Historical,
+            1 => crate::wire::WarrantAssociationKind::ReportedAboard,
+            2 => crate::wire::WarrantAssociationKind::ConfirmedAboard,
+            3 => crate::wire::WarrantAssociationKind::WantedVessel,
+            _ => return Err(StoreError::Corrupt("unknown warrant association")),
+        },
+        custody: match decoder.u8()? {
+            0 => crate::wire::BountyCustodyState::AtLarge,
+            1 => crate::wire::BountyCustodyState::HeldAboard,
+            2 => crate::wire::BountyCustodyState::Settled,
+            _ => return Err(StoreError::Corrupt("unknown bounty custody state")),
+        },
+        generated_target: decoder.u8()? != 0,
+    })
+}
+
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(8);
+    bytes.push(9);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -32106,9 +32941,18 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
                 bytes.push(match watch.purpose {
                     crate::wire::InterceptionPurpose::ArmedAttack => 0,
                     crate::wire::InterceptionPurpose::BoardingInspection => 1,
+                    crate::wire::InterceptionPurpose::Arrest => 2,
                 });
             } else {
                 bytes.push(0);
+            }
+            bytes.extend_from_slice(
+                &u16::try_from(value.known_warrants.len())
+                    .map_err(|_| StoreError::Corrupt("too many locally known warrants"))?
+                    .to_be_bytes(),
+            );
+            for warrant in &value.known_warrants {
+                encode_known_warrant_into(&mut bytes, warrant)?;
             }
         }
         OutcomeKind::DockedServices(value) => {
@@ -32158,6 +33002,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 6
         && version != 7
         && version != 8
+        && version != 9
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -32305,6 +33150,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
                         match decoder.u8()? {
                             0 => crate::wire::InterceptionPurpose::ArmedAttack,
                             1 => crate::wire::InterceptionPurpose::BoardingInspection,
+                            2 => crate::wire::InterceptionPurpose::Arrest,
                             _ => return Err(StoreError::Corrupt("unknown interception purpose")),
                         }
                     } else {
@@ -32314,6 +33160,14 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
             } else {
                 None
             };
+            let mut known_warrants = Vec::new();
+            if version >= 9 {
+                let count = decoder.u16()? as usize;
+                known_warrants.reserve(count);
+                for _ in 0..count {
+                    known_warrants.push(decode_known_warrant(&mut decoder)?);
+                }
+            }
             OutcomeKind::CombatCareer(crate::wire::CombatCareerSnapshot {
                 state,
                 rank,
@@ -32322,6 +33176,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
                 system_contacts,
                 local_contacts,
                 interception_watch,
+                known_warrants,
             })
         }
         31 => OutcomeKind::DockedServices(decode_docked_services(&mut decoder)?),
@@ -33521,6 +34376,7 @@ fn encode_interception_watch(watch: &InterceptionWatchRecord) -> Result<Vec<u8>,
     bytes.push(match watch.purpose {
         crate::wire::InterceptionPurpose::ArmedAttack => 0,
         crate::wire::InterceptionPurpose::BoardingInspection => 1,
+        crate::wire::InterceptionPurpose::Arrest => 2,
     });
     Ok(bytes)
 }
@@ -33549,6 +34405,7 @@ fn decode_interception_watch(bytes: &[u8]) -> Result<InterceptionWatchRecord, St
         match decoder.u8()? {
             0 => crate::wire::InterceptionPurpose::ArmedAttack,
             1 => crate::wire::InterceptionPurpose::BoardingInspection,
+            2 => crate::wire::InterceptionPurpose::Arrest,
             _ => return Err(StoreError::Corrupt("unknown interception purpose")),
         }
     } else {
@@ -33904,6 +34761,134 @@ fn encode_career_record(state: &crate::careers::CareerState) -> Result<Vec<u8>, 
     let mut bytes = vec![1];
     encode_career_state(&mut bytes, state)?;
     Ok(bytes)
+}
+
+fn encode_warrant_dossier(record: &WarrantDossierRecord) -> Result<Vec<u8>, StoreError> {
+    let mut bytes = vec![1];
+    for value in [
+        record.warrant_id,
+        record.message_id,
+        record.resolution_message_id,
+        record.issuing_polity_id,
+        record.origin_system_id,
+        record.filed_second,
+        record.subject_person_id,
+    ] {
+        bytes.extend_from_slice(&value.to_be_bytes());
+    }
+    encode_text(&mut bytes, &record.subject_name)?;
+    encode_text(&mut bytes, &record.subject_role)?;
+    encode_text(&mut bytes, &record.accusation)?;
+    bytes.extend_from_slice(&record.bounty_credits.to_be_bytes());
+    bytes.push(record.severity);
+    bytes.push(record.evidence_percent);
+    bytes.push(match record.target_kind {
+        WarrantTargetKind::Player => 0,
+        WarrantTargetKind::Generated => 1,
+    });
+    bytes.extend_from_slice(&record.target_identity.bbs_id.to_be_bytes());
+    bytes.extend_from_slice(&record.target_identity.player_id.to_be_bytes());
+    bytes.extend_from_slice(
+        &u16::try_from(record.associated_ship_ids.len())
+            .map_err(|_| StoreError::Corrupt("too many warrant vessel associations"))?
+            .to_be_bytes(),
+    );
+    for ship_id in &record.associated_ship_ids {
+        bytes.extend_from_slice(&ship_id.to_be_bytes());
+    }
+    bytes.extend_from_slice(&record.associated_ship_id.to_be_bytes());
+    encode_text(&mut bytes, &record.associated_ship_name)?;
+    encode_text(&mut bytes, &record.associated_transponder)?;
+    bytes.extend_from_slice(&record.catalog_id.to_be_bytes());
+    bytes.extend_from_slice(&record.current_system_id.to_be_bytes());
+    bytes.extend_from_slice(&record.next_move_second.to_be_bytes());
+    bytes.push(u8::from(record.association_confirmed));
+    bytes.push(u8::from(record.subject_present));
+    bytes.push(record.concealment_skill as u8);
+    bytes.push(match record.custody {
+        WarrantCustodyState::AtLarge => 0,
+        WarrantCustodyState::HeldAboard => 1,
+        WarrantCustodyState::Settled => 2,
+    });
+    bytes.extend_from_slice(&record.custodian.bbs_id.to_be_bytes());
+    bytes.extend_from_slice(&record.custodian.player_id.to_be_bytes());
+    bytes.extend_from_slice(&record.custody_ship_id.to_be_bytes());
+    bytes.extend_from_slice(&record.settled_second.to_be_bytes());
+    Ok(bytes)
+}
+
+fn decode_warrant_dossier(bytes: &[u8]) -> Result<WarrantDossierRecord, StoreError> {
+    let mut d = Decoder::new(bytes);
+    if d.u8()? != 1 {
+        return Err(StoreError::Corrupt("unsupported warrant dossier version"));
+    }
+    let warrant_id = d.u64()?;
+    let message_id = d.u64()?;
+    let resolution_message_id = d.u64()?;
+    let issuing_polity_id = d.u64()?;
+    let origin_system_id = d.u64()?;
+    let filed_second = d.u64()?;
+    let subject_person_id = d.u64()?;
+    let subject_name = d.text()?;
+    let subject_role = d.text()?;
+    let accusation = d.text()?;
+    let bounty_credits = d.u64()?;
+    let severity = d.u8()?;
+    let evidence_percent = d.u8()?;
+    let target_kind = match d.u8()? {
+        0 => WarrantTargetKind::Player,
+        1 => WarrantTargetKind::Generated,
+        _ => return Err(StoreError::Corrupt("unknown warrant target kind")),
+    };
+    let target_identity = PlayerIdentity {
+        bbs_id: d.u32()?,
+        player_id: d.u32()?,
+    };
+    let mut associated_ship_ids = Vec::with_capacity(d.u16()? as usize);
+    for _ in 0..associated_ship_ids.capacity() {
+        associated_ship_ids.push(d.u64()?);
+    }
+    let record = WarrantDossierRecord {
+        warrant_id,
+        message_id,
+        resolution_message_id,
+        issuing_polity_id,
+        origin_system_id,
+        filed_second,
+        subject_person_id,
+        subject_name,
+        subject_role,
+        accusation,
+        bounty_credits,
+        severity,
+        evidence_percent,
+        target_kind,
+        target_identity,
+        associated_ship_ids,
+        associated_ship_id: d.u64()?,
+        associated_ship_name: d.text()?,
+        associated_transponder: d.text()?,
+        catalog_id: d.u32()?,
+        current_system_id: d.u64()?,
+        next_move_second: d.u64()?,
+        association_confirmed: d.u8()? != 0,
+        subject_present: d.u8()? != 0,
+        concealment_skill: d.u8()? as i8,
+        custody: match d.u8()? {
+            0 => WarrantCustodyState::AtLarge,
+            1 => WarrantCustodyState::HeldAboard,
+            2 => WarrantCustodyState::Settled,
+            _ => return Err(StoreError::Corrupt("unknown warrant custody state")),
+        },
+        custodian: PlayerIdentity {
+            bbs_id: d.u32()?,
+            player_id: d.u32()?,
+        },
+        custody_ship_id: d.u64()?,
+        settled_second: d.u64()?,
+    };
+    d.finish()?;
+    Ok(record)
 }
 
 fn decode_career_record(bytes: &[u8]) -> Result<crate::careers::CareerState, StoreError> {
@@ -46446,6 +47431,361 @@ mod tests {
                 .get(&txn, &target_ship.ship_id)
                 .unwrap()
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn mailed_generated_warrant_drives_arrest_custody_and_authority_payout() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let hunter = identity();
+        let mut txn = store.env.write_txn().unwrap();
+        let (_, hunter_ship) = store.player_and_ship_in(&txn, &hunter).unwrap();
+        let current = get_meta_u64(store.meta, &txn, META_GAME_SECOND)
+            .unwrap()
+            .unwrap_or(0);
+        let warrant_id = 9_999_991;
+        let contact_id = GENERATED_LEGAL_ENTITY_BIT | 9_999_992;
+        let (message_id, _) = store
+            .simulation
+            .dispatch_message(
+                &mut txn,
+                current,
+                hunter_ship.system_id,
+                crate::simulation::MessageClass::PublicService,
+                crate::simulation::MessageImportance::Important,
+                "Test warrant",
+                "A physical warrant delivered at the issuing port.",
+                &[hunter_ship.system_id],
+            )
+            .unwrap();
+        let dossier = WarrantDossierRecord {
+            warrant_id,
+            message_id,
+            resolution_message_id: 0,
+            issuing_polity_id: 1,
+            origin_system_id: hunter_ship.system_id,
+            filed_second: current,
+            subject_person_id: GENERATED_LEGAL_ENTITY_BIT | 9_999_993,
+            subject_name: "Test Fugitive".into(),
+            subject_role: "crew member".into(),
+            accusation: "cargo theft".into(),
+            bounty_credits: 12_000,
+            severity: 2,
+            evidence_percent: 80,
+            target_kind: WarrantTargetKind::Generated,
+            target_identity: PlayerIdentity {
+                bbs_id: 0,
+                player_id: 0,
+            },
+            associated_ship_ids: vec![contact_id],
+            associated_ship_id: contact_id,
+            associated_ship_name: "Doubtful Venture".into(),
+            associated_transponder: "TEST-992".into(),
+            catalog_id: hunter_ship.catalog_id,
+            current_system_id: hunter_ship.system_id,
+            next_move_second: current.saturating_add(crate::simulation::SECONDS_PER_DAY),
+            association_confirmed: true,
+            subject_present: true,
+            concealment_skill: -100,
+            custody: WarrantCustodyState::AtLarge,
+            custodian: PlayerIdentity {
+                bbs_id: 0,
+                player_id: 0,
+            },
+            custody_ship_id: 0,
+            settled_second: 0,
+        };
+        store
+            .warrant_dossiers
+            .put(
+                &mut txn,
+                &warrant_id,
+                &encode_warrant_dossier(&dossier).unwrap(),
+            )
+            .unwrap();
+
+        let snapshot = store.combat_career_snapshot_in(&txn, &hunter).unwrap();
+        assert!(
+            snapshot
+                .known_warrants
+                .iter()
+                .any(|warrant| warrant.warrant_id == warrant_id)
+        );
+        assert!(
+            snapshot
+                .local_contacts
+                .iter()
+                .any(|contact| contact.contact_id == contact_id)
+        );
+        assert!(matches!(
+            store
+                .engage_traffic_contact_in(
+                    &mut txn,
+                    &hunter,
+                    contact_id,
+                    snapshot.state.revision,
+                    crate::wire::InterceptionPurpose::Arrest,
+                )
+                .unwrap(),
+            RuleResult::Applied(InterceptionStart::Resolution(_))
+        ));
+        let held = decode_warrant_dossier(
+            store
+                .warrant_dossiers
+                .get(&txn, &warrant_id)
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(held.custody, WarrantCustodyState::HeldAboard);
+
+        let (before, mut ship) = store.player_and_ship_in(&txn, &hunter).unwrap();
+        ship.location = ShipLocationRecord::Docked {
+            world_id: ship.system_id,
+            facility_id: ship.system_id,
+            arrived_second: current,
+        };
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        let revision = store.career_state_in(&txn, &hunter).unwrap().revision;
+        assert!(matches!(
+            store
+                .settle_warrant_in(&mut txn, &hunter, warrant_id, revision)
+                .unwrap(),
+            RuleResult::Applied(_)
+        ));
+        let (after, _) = store.player_and_ship_in(&txn, &hunter).unwrap();
+        assert_eq!(after.credits, before.credits.saturating_add(12_000));
+        assert_eq!(
+            decode_warrant_dossier(
+                store
+                    .warrant_dossiers
+                    .get(&txn, &warrant_id)
+                    .unwrap()
+                    .unwrap()
+            )
+            .unwrap()
+            .custody,
+            WarrantCustodyState::Settled
+        );
+    }
+
+    #[test]
+    fn lawful_player_arrest_uses_standing_policy_and_transfers_command() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let hunter = identity();
+        let target = PlayerIdentity {
+            bbs_id: hunter.bbs_id,
+            player_id: hunter.player_id + 1,
+        };
+        let hunter_ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &hunter)
+            .unwrap()
+            .1;
+        establish_colocated_player(&store, &target, &hunter_ship);
+        let mut txn = store.env.write_txn().unwrap();
+        let current = get_meta_u64(store.meta, &txn, META_GAME_SECOND)
+            .unwrap()
+            .unwrap_or(0);
+        let catalog = creation::ship_market_catalog();
+        let strongest = catalog
+            .iter()
+            .max_by_key(|entry| catalog_combat_power(entry.catalog_id))
+            .unwrap()
+            .catalog_id;
+        let weakest = catalog
+            .iter()
+            .min_by_key(|entry| catalog_combat_power(entry.catalog_id))
+            .unwrap()
+            .catalog_id;
+        let mut hunter_ship = store.player_and_ship_in(&txn, &hunter).unwrap().1;
+        let (mut target_player_before, mut target_ship) =
+            store.player_and_ship_in(&txn, &target).unwrap();
+        let template_person = decode_person_record(
+            store
+                .persons
+                .get(&txn, &target_player_before.captain_person_id)
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        let template_service = decode_crew_service(
+            store
+                .crew_services
+                .get(&txn, &target_player_before.captain_person_id)
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        let wanted_person_id = 9_999_971;
+        let replacement_person_id = 9_999_972;
+        for (person_id, name, kind) in [
+            (
+                wanted_person_id,
+                "Wanted Captain",
+                CrewServiceKind::OwnerCaptain,
+            ),
+            (
+                replacement_person_id,
+                "Relief Officer",
+                CrewServiceKind::Salaried,
+            ),
+        ] {
+            let mut person = template_person.clone();
+            person.person_id = person_id;
+            person.person.name = name.into();
+            store
+                .persons
+                .put(
+                    &mut txn,
+                    &person_id,
+                    &encode_person_record(&person).unwrap(),
+                )
+                .unwrap();
+            let mut service = template_service.clone();
+            service.person_id = person_id;
+            service.ship_id = target_ship.ship_id;
+            service.command = target.clone();
+            service.service_kind = kind;
+            service.availability = CrewAvailability::Active;
+            service.service_end_second = 0;
+            store
+                .crew_services
+                .put(
+                    &mut txn,
+                    &person_id,
+                    &encode_crew_service(&service).unwrap(),
+                )
+                .unwrap();
+        }
+        target_player_before.captain_person_id = wanted_person_id;
+        target_ship.commanding_person_id = wanted_person_id;
+        store
+            .players
+            .put(
+                &mut txn,
+                &encode_identity(&target),
+                &encode_player_record(&target_player_before),
+            )
+            .unwrap();
+        hunter_ship.catalog_id = strongest;
+        target_ship.catalog_id = weakest;
+        target_ship.combat_policy.permit_surrender = true;
+        target_ship.combat_policy.minimum_victory_percent = 100;
+        store
+            .ships
+            .put(
+                &mut txn,
+                &hunter_ship.ship_id,
+                &encode_ship_record(&hunter_ship).unwrap(),
+            )
+            .unwrap();
+        store
+            .ships
+            .put(
+                &mut txn,
+                &target_ship.ship_id,
+                &encode_ship_record(&target_ship).unwrap(),
+            )
+            .unwrap();
+        clear_test_ship_to_port_locus(&store, &mut txn, hunter_ship.ship_id);
+        clear_test_ship_to_port_locus(&store, &mut txn, target_ship.ship_id);
+        let warrant_id = 9_999_981;
+        let mut warrant = crate::careers::warrant_for_unlawful_attack(
+            warrant_id,
+            1,
+            hunter_ship.system_id,
+            current,
+            100_000,
+            90,
+        );
+        let (message_id, _) = store
+            .simulation
+            .dispatch_message(
+                &mut txn,
+                current,
+                hunter_ship.system_id,
+                crate::simulation::MessageClass::PublicService,
+                crate::simulation::MessageImportance::Important,
+                "Player arrest test warrant",
+                "The warrant is physically present in this system.",
+                &[hunter_ship.system_id],
+            )
+            .unwrap();
+        warrant.message_id = message_id;
+        warrant.status = crate::careers::WarrantStatus::Active;
+        store
+            .record_player_warrant_dossier_in(&mut txn, &target, &target_ship, &warrant)
+            .unwrap();
+        let mut dossier = decode_warrant_dossier(
+            store
+                .warrant_dossiers
+                .get(&txn, &warrant_id)
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        dossier.concealment_skill = -100;
+        store
+            .warrant_dossiers
+            .put(
+                &mut txn,
+                &warrant_id,
+                &encode_warrant_dossier(&dossier).unwrap(),
+            )
+            .unwrap();
+
+        let revision = store.career_state_in(&txn, &hunter).unwrap().revision;
+        assert!(matches!(
+            store
+                .engage_traffic_contact_in(
+                    &mut txn,
+                    &hunter,
+                    target_ship.ship_id,
+                    revision,
+                    crate::wire::InterceptionPurpose::Arrest,
+                )
+                .unwrap(),
+            RuleResult::Applied(InterceptionStart::Resolution(_))
+        ));
+        let target_player_after = store
+            .players
+            .get(&txn, &encode_identity(&target))
+            .unwrap()
+            .map(decode_player_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert_ne!(
+            target_player_after.captain_person_id,
+            target_player_before.captain_person_id
+        );
+        let former_captain = decode_crew_service(
+            store
+                .crew_services
+                .get(&txn, &target_player_before.captain_person_id)
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(former_captain.availability, CrewAvailability::Detached);
+        assert_eq!(
+            decode_warrant_dossier(
+                store
+                    .warrant_dossiers
+                    .get(&txn, &warrant_id)
+                    .unwrap()
+                    .unwrap()
+            )
+            .unwrap()
+            .custody,
+            WarrantCustodyState::HeldAboard
         );
     }
 

@@ -1506,6 +1506,38 @@ enum class InterceptionWatchFilterKind {
 enum class InterceptionPurpose {
    ArmedAttack,
    BoardingInspection,
+   Arrest,
+};
+enum class WarrantAssociationKind {
+   Historical,
+   ReportedAboard,
+   ConfirmedAboard,
+   WantedVessel,
+};
+enum class BountyCustodyState {
+   AtLarge,
+   HeldAboard,
+   Settled,
+};
+struct KnownWarrant {
+   uint64_t warrant_id;
+   uint64_t subject_person_id;
+   std::string subject_name;
+   std::string subject_role;
+   std::string accusation;
+   uint64_t bounty_credits;
+   uint8_t severity;
+   uint8_t evidence_percent;
+   uint64_t issuing_polity_id;
+   uint64_t origin_system_id;
+   uint64_t filed_second;
+   uint64_t associated_ship_id;
+   std::string associated_ship_name;
+   std::string associated_transponder;
+   uint64_t last_known_system_id;
+   WarrantAssociationKind association;
+   BountyCustodyState custody;
+   bool generated_target;
 };
 struct InterceptionWatchStatus {
    uint64_t started_second;
@@ -1534,6 +1566,7 @@ struct CombatCareerSnapshot {
    std::vector<TrafficContact> system_contacts;
    std::vector<TrafficContact> local_contacts;
    std::optional<InterceptionWatchStatus> interception_watch;
+   std::vector<KnownWarrant> known_warrants;
    PlayerPhase phase;
 };
 

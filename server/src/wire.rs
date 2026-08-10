@@ -1722,6 +1722,44 @@ pub struct CombatCareerSnapshot {
     pub system_contacts: Vec<crate::traffic::TrafficContact>,
     pub local_contacts: Vec<crate::traffic::TrafficContact>,
     pub interception_watch: Option<InterceptionWatchStatus>,
+    pub known_warrants: Vec<KnownWarrant>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WarrantAssociationKind {
+    Historical,
+    ReportedAboard,
+    ConfirmedAboard,
+    WantedVessel,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BountyCustodyState {
+    AtLarge,
+    HeldAboard,
+    Settled,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct KnownWarrant {
+    pub warrant_id: u64,
+    pub subject_person_id: u64,
+    pub subject_name: String,
+    pub subject_role: String,
+    pub accusation: String,
+    pub bounty_credits: u64,
+    pub severity: u8,
+    pub evidence_percent: u8,
+    pub issuing_polity_id: u64,
+    pub origin_system_id: u64,
+    pub filed_second: u64,
+    pub associated_ship_id: u64,
+    pub associated_ship_name: String,
+    pub associated_transponder: String,
+    pub last_known_system_id: u64,
+    pub association: WarrantAssociationKind,
+    pub custody: BountyCustodyState,
+    pub generated_target: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1735,6 +1773,7 @@ pub enum InterceptionWatchFilterKind {
 pub enum InterceptionPurpose {
     ArmedAttack,
     BoardingInspection,
+    Arrest,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2827,6 +2866,7 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
                     crate::ct_rpc_capnp::InterceptionPurpose::BoardingInspection => {
                         InterceptionPurpose::BoardingInspection
                     }
+                    crate::ct_rpc_capnp::InterceptionPurpose::Arrest => InterceptionPurpose::Arrest,
                 },
             }
         }
@@ -2840,6 +2880,7 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
                 crate::ct_rpc_capnp::InterceptionPurpose::BoardingInspection => {
                     InterceptionPurpose::BoardingInspection
                 }
+                crate::ct_rpc_capnp::InterceptionPurpose::Arrest => InterceptionPurpose::Arrest,
             };
             Command::SetInterceptionWatch(match value.which()? {
                 crate::ct_rpc_capnp::interception_watch_request::Cancel(()) => {
@@ -3813,6 +3854,7 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
                 InterceptionPurpose::BoardingInspection => {
                     crate::ct_rpc_capnp::InterceptionPurpose::BoardingInspection
                 }
+                InterceptionPurpose::Arrest => crate::ct_rpc_capnp::InterceptionPurpose::Arrest,
             });
         }
         Command::SetInterceptionWatch(request) => {
@@ -3834,6 +3876,9 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
                         InterceptionPurpose::BoardingInspection => {
                             crate::ct_rpc_capnp::InterceptionPurpose::BoardingInspection
                         }
+                        InterceptionPurpose::Arrest => {
+                            crate::ct_rpc_capnp::InterceptionPurpose::Arrest
+                        }
                     });
                     value.set_all_craft(());
                 }
@@ -3849,6 +3894,9 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
                         }
                         InterceptionPurpose::BoardingInspection => {
                             crate::ct_rpc_capnp::InterceptionPurpose::BoardingInspection
+                        }
+                        InterceptionPurpose::Arrest => {
+                            crate::ct_rpc_capnp::InterceptionPurpose::Arrest
                         }
                     });
                     value.set_catalog_id(catalog_id);
@@ -6129,8 +6177,51 @@ fn set_combat_career_snapshot(
             InterceptionPurpose::BoardingInspection => {
                 crate::ct_rpc_capnp::InterceptionPurpose::BoardingInspection
             }
+            InterceptionPurpose::Arrest => crate::ct_rpc_capnp::InterceptionPurpose::Arrest,
         });
         set_flight_locus(target.init_locus(), watch.locus);
+    }
+    let mut warrants = builder.reborrow().init_known_warrants(
+        u32::try_from(snapshot.known_warrants.len())
+            .map_err(|_| WireError::Expected("fewer locally known warrants"))?,
+    );
+    for (index, warrant) in snapshot.known_warrants.iter().enumerate() {
+        let mut target = warrants.reborrow().get(index as u32);
+        target.set_warrant_id(warrant.warrant_id);
+        target.set_subject_person_id(warrant.subject_person_id);
+        target.set_subject_name(&warrant.subject_name);
+        target.set_subject_role(&warrant.subject_role);
+        target.set_accusation(&warrant.accusation);
+        target.set_bounty_credits(warrant.bounty_credits);
+        target.set_severity(warrant.severity);
+        target.set_evidence_percent(warrant.evidence_percent);
+        target.set_issuing_polity_id(warrant.issuing_polity_id);
+        target.set_origin_system_id(warrant.origin_system_id);
+        target.set_filed_second(warrant.filed_second);
+        target.set_associated_ship_id(warrant.associated_ship_id);
+        target.set_associated_ship_name(&warrant.associated_ship_name);
+        target.set_associated_transponder(&warrant.associated_transponder);
+        target.set_last_known_system_id(warrant.last_known_system_id);
+        target.set_association(match warrant.association {
+            WarrantAssociationKind::Historical => {
+                crate::ct_rpc_capnp::WarrantAssociationKind::Historical
+            }
+            WarrantAssociationKind::ReportedAboard => {
+                crate::ct_rpc_capnp::WarrantAssociationKind::ReportedAboard
+            }
+            WarrantAssociationKind::ConfirmedAboard => {
+                crate::ct_rpc_capnp::WarrantAssociationKind::ConfirmedAboard
+            }
+            WarrantAssociationKind::WantedVessel => {
+                crate::ct_rpc_capnp::WarrantAssociationKind::WantedVessel
+            }
+        });
+        target.set_custody(match warrant.custody {
+            BountyCustodyState::AtLarge => crate::ct_rpc_capnp::BountyCustodyState::AtLarge,
+            BountyCustodyState::HeldAboard => crate::ct_rpc_capnp::BountyCustodyState::HeldAboard,
+            BountyCustodyState::Settled => crate::ct_rpc_capnp::BountyCustodyState::Settled,
+        });
+        target.set_generated_target(warrant.generated_target);
     }
     let mut opportunities = builder.reborrow().init_opportunities(
         u32::try_from(state.opportunities.len())
