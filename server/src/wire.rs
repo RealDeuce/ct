@@ -2115,6 +2115,9 @@ pub enum Command {
     DeclareBankruptcy {
         successor_name: String,
     },
+    AbandonPlayer {
+        confirmation: String,
+    },
     GetTaskLedger,
     AcceptTaskOffer {
         offer_id: u64,
@@ -2267,7 +2270,8 @@ impl Command {
             | Self::SettleWarrant { .. }
             | Self::SetCombatCareerMode { .. }
             | Self::RecoverCommand { .. }
-            | Self::DeclareBankruptcy { .. } => CommandPersistence::Transaction,
+            | Self::DeclareBankruptcy { .. }
+            | Self::AbandonPlayer { .. } => CommandPersistence::Transaction,
             Self::AcceptTaskOffer { .. }
             | Self::SetCarriageDeclaration(_)
             | Self::PurchaseShip { .. }
@@ -2981,6 +2985,13 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
         request::DeclareBankruptcy(value) => Command::DeclareBankruptcy {
             successor_name: value?
                 .get_successor_name()?
+                .to_str()
+                .map_err(|_| WireError::InvalidText)?
+                .to_owned(),
+        },
+        request::AbandonPlayer(value) => Command::AbandonPlayer {
+            confirmation: value?
+                .get_confirmation()?
                 .to_str()
                 .map_err(|_| WireError::InvalidText)?
                 .to_owned(),
@@ -3978,6 +3989,9 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
             builder
                 .init_declare_bankruptcy()
                 .set_successor_name(successor_name);
+        }
+        Command::AbandonPlayer { ref confirmation } => {
+            builder.init_abandon_player().set_confirmation(confirmation);
         }
         Command::GetDockedServices => builder.set_get_docked_services(()),
         Command::CommitDockedService(ref order) => {
@@ -6914,6 +6928,14 @@ mod tests {
                     catalog_id: 72,
                     purpose: InterceptionPurpose::BoardingInspection,
                 }),
+            },
+            CommandRequest {
+                request_id: 203,
+                session_epoch: 23,
+                command_id: [0xba; COMMAND_ID_BYTES],
+                command: Command::AbandonPlayer {
+                    confirmation: "ABANDON EVERYTHING".into(),
+                },
             },
             CommandRequest {
                 request_id: 21,

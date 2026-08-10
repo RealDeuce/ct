@@ -4369,6 +4369,15 @@ impl Store {
                     },
                 }
             }
+            Command::AbandonPlayer { ref confirmation } => {
+                match self.abandon_player_in(txn, &queued.identity, confirmation)? {
+                    RuleResult::Applied(()) => OutcomeKind::Pong,
+                    RuleResult::Rejected(message) => OutcomeKind::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message,
+                    },
+                }
+            }
             Command::BeginVoyage {
                 destination_system_id,
             } => {
@@ -10876,6 +10885,429 @@ impl Store {
             &encode_encounter_record(&encounter)?,
         )?;
         self.recover_command_in(txn, identity, successor_name)
+    }
+
+    fn abandon_player_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        confirmation: &str,
+    ) -> Result<RuleResult<()>, StoreError> {
+        if confirmation != "ABANDON EVERYTHING" {
+            return Ok(RuleResult::Rejected(
+                "permanent abandonment requires the exact confirmation phrase".into(),
+            ));
+        }
+        let identity_key = encode_identity(identity);
+        let Some(player) = self
+            .players
+            .get(txn, &identity_key)?
+            .map(decode_player_record)
+            .transpose()?
+        else {
+            return Ok(RuleResult::Rejected(
+                "this account has no captain to abandon".into(),
+            ));
+        };
+        if self.player_phase_in(txn, identity)? == PlayerPhase::Encounter {
+            return Ok(RuleResult::Rejected(
+                "the captain cannot be abandoned while an encounter is being resolved".into(),
+            ));
+        }
+
+        let owned_ships = self
+            .ships
+            .iter(txn)?
+            .map(|entry| {
+                let (_, value) = entry?;
+                decode_ship_record(value)
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?
+            .into_iter()
+            .filter(|ship| ship.command == *identity)
+            .collect::<Vec<_>>();
+        for ship in &owned_ships {
+            if self.ship_combats.get(txn, &ship.ship_id)?.is_some() {
+                return Ok(RuleResult::Rejected(
+                    "the captain cannot be abandoned during a shared combat".into(),
+                ));
+            }
+        }
+        let owned_ship_ids = owned_ships
+            .iter()
+            .map(|ship| ship.ship_id)
+            .collect::<Vec<_>>();
+        let release_system_id = owned_ships
+            .iter()
+            .find(|ship| ship.ship_id == player.ship_id)
+            .or_else(|| owned_ships.first())
+            .map_or(0, |ship| ship.system_id);
+        let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+
+        let services = self
+            .crew_services
+            .iter(txn)?
+            .map(|entry| {
+                let (_, value) = entry?;
+                decode_crew_service(value)
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        let mut person_ids = services
+            .iter()
+            .filter(|service| {
+                service.command == *identity || owned_ship_ids.contains(&service.ship_id)
+            })
+            .map(|service| service.person_id)
+            .collect::<Vec<_>>();
+        if !person_ids.contains(&player.captain_person_id) {
+            person_ids.push(player.captain_person_id);
+        }
+
+        let warrants = self
+            .warrant_dossiers
+            .iter(txn)?
+            .map(|entry| {
+                let (key, value) = entry?;
+                Ok((key, decode_warrant_dossier(value)?))
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for (warrant_id, mut warrant) in warrants {
+            let mut changed = false;
+            if warrant.target_kind == WarrantTargetKind::Player
+                && warrant.target_identity == *identity
+            {
+                warrant.custody = WarrantCustodyState::Settled;
+                warrant.settled_second = current;
+                warrant.subject_present = false;
+                warrant.association_confirmed = false;
+                warrant.target_identity = PlayerIdentity {
+                    bbs_id: 0,
+                    player_id: 0,
+                };
+                warrant.current_system_id = 0;
+                changed = true;
+            }
+            if warrant.custody == WarrantCustodyState::HeldAboard && warrant.custodian == *identity
+            {
+                warrant.custody = WarrantCustodyState::AtLarge;
+                warrant.custodian = PlayerIdentity {
+                    bbs_id: 0,
+                    player_id: 0,
+                };
+                warrant.custody_ship_id = 0;
+                warrant.subject_present = true;
+                warrant.current_system_id = release_system_id;
+                warrant.next_move_second =
+                    current.saturating_add(7 * crate::simulation::SECONDS_PER_DAY);
+                changed = true;
+            }
+            if changed {
+                self.warrant_dossiers
+                    .put(txn, &warrant_id, &encode_warrant_dossier(&warrant)?)?;
+            }
+        }
+
+        let unique_objects = self
+            .unique_cargo
+            .iter(txn)?
+            .map(|entry| {
+                let (key, value) = entry?;
+                Ok((key, decode_unique_cargo(value)?))
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for (object_id, mut object) in unique_objects {
+            if matches!(object.location, UniqueCargoLocation::PlayerShip { ship_id, .. }
+                if owned_ship_ids.contains(&ship_id))
+            {
+                object.location = UniqueCargoLocation::Port {
+                    system_id: release_system_id,
+                };
+                self.unique_cargo
+                    .put(txn, &object_id, &encode_unique_cargo(&object)?)?;
+            }
+        }
+
+        let tasks = self
+            .tasks
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((key, value)) => match decode_stored_task(value) {
+                    Ok(task) if task.identity == *identity => Some(Ok(key.to_vec())),
+                    Ok(_) => None,
+                    Err(error) => Some(Err(error)),
+                },
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for key in tasks {
+            self.tasks.delete(txn, &key)?;
+        }
+        let offers = self
+            .task_offers
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((key, value)) => match decode_stored_task_offer(value) {
+                    Ok(offer) if offer.claimed_by.as_ref() == Some(identity) => {
+                        Some(Ok(key.to_vec()))
+                    }
+                    Ok(_) => None,
+                    Err(error) => Some(Err(error)),
+                },
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for key in offers {
+            self.task_offers.delete(txn, &key)?;
+        }
+
+        let work = self
+            .work_assignments
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((key, value)) => match decode_stored_work_assignment(value) {
+                    Ok(work) if work.identity == *identity => {
+                        Some(Ok((key.to_vec(), work.assignment.assignment_id)))
+                    }
+                    Ok(_) => None,
+                    Err(error) => Some(Err(error)),
+                },
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        let work_ids = work.iter().map(|(_, id)| *id).collect::<Vec<_>>();
+        for (key, _) in work {
+            self.work_assignments.delete(txn, &key)?;
+        }
+
+        for scheduled in [
+            &self.player_events,
+            &self.ship_condition_events,
+            &self.ship_activity_events,
+            &self.contact_events,
+        ] {
+            let keys = scheduled
+                .iter(txn)?
+                .filter_map(|entry| match entry {
+                    Ok((key, value)) => match decode_scheduled_object(key, value) {
+                        Ok((_, _, object_id)) if owned_ship_ids.contains(&object_id) => {
+                            Some(Ok(key.to_vec()))
+                        }
+                        Ok(_) => None,
+                        Err(error) => Some(Err(error)),
+                    },
+                    Err(error) => Some(Err(StoreError::Heed(error))),
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?;
+            for key in keys {
+                scheduled.delete(txn, &key)?;
+            }
+        }
+        for (scheduled, object_ids) in [
+            (&self.work_assignment_events, &work_ids),
+            (&self.person_training_events, &person_ids),
+        ] {
+            let keys = scheduled
+                .iter(txn)?
+                .filter_map(|entry| match entry {
+                    Ok((key, value)) => match decode_scheduled_object(key, value) {
+                        Ok((_, _, object_id))
+                            if object_ids.contains(
+                                &(object_id
+                                    & !(PERSON_TREATMENT_EVENT_BIT
+                                        | PERSON_PRISONER_RELEASE_EVENT_BIT)),
+                            ) =>
+                        {
+                            Some(Ok(key.to_vec()))
+                        }
+                        Ok(_) => None,
+                        Err(error) => Some(Err(error)),
+                    },
+                    Err(error) => Some(Err(StoreError::Heed(error))),
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?;
+            for key in keys {
+                scheduled.delete(txn, &key)?;
+            }
+        }
+        let encounter_event_keys = self
+            .encounter_events
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((key, value)) if value.len() == 17 && value[1..9] == identity_key => {
+                    Some(Ok(key.to_vec()))
+                }
+                Ok(_) => None,
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for key in encounter_event_keys {
+            self.encounter_events.delete(txn, &key)?;
+        }
+
+        let identity_databases = [
+            self.market_observations,
+            self.player_message_state,
+            self.player_feed_cursors,
+            self.player_system_mappings,
+            self.insurance_policies,
+        ];
+        for database in identity_databases {
+            let keys = database
+                .iter(txn)?
+                .filter_map(|entry| match entry {
+                    Ok((key, _)) if key.starts_with(&identity_key) => Some(Ok(key.to_vec())),
+                    Ok(_) => None,
+                    Err(error) => Some(Err(StoreError::Heed(error))),
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?;
+            for key in keys {
+                database.delete(txn, &key)?;
+            }
+        }
+        let mute_keys = self
+            .radio_mutes
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((key, _))
+                    if key.starts_with(&identity_key)
+                        || (key.len() == 16 && key[8..] == identity_key) =>
+                {
+                    Some(Ok(key.to_vec()))
+                }
+                Ok(_) => None,
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for key in mute_keys {
+            self.radio_mutes.delete(txn, &key)?;
+        }
+
+        let leads = self
+            .market_leads
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((key, value)) => match decode_market_lead(value) {
+                    Ok(lead) if lead.identity == *identity => Some(Ok(key.to_vec())),
+                    Ok(_) => None,
+                    Err(error) => Some(Err(error)),
+                },
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for key in leads {
+            self.market_leads.delete(txn, &key)?;
+        }
+        let recipients = self
+            .private_message_recipients
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((key, value)) => match decode_private_message_recipient(value) {
+                    Ok(recipient) if recipient.recipient == *identity => Some(Ok(key.to_vec())),
+                    Ok(_) => None,
+                    Err(error) => Some(Err(error)),
+                },
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for key in recipients {
+            self.private_message_recipients.delete(txn, &key)?;
+        }
+        let claims = self
+            .discovery_claims
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((key, value)) => match decode_discovery_claim(value) {
+                    Ok(claim) if claim.claimant == *identity => Some(Ok(key)),
+                    Ok(_) => None,
+                    Err(error) => Some(Err(error)),
+                },
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for key in claims {
+            self.discovery_claims.delete(txn, &key)?;
+        }
+        let directives = self
+            .sysop_directives
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((key, value)) => match decode_sysop_directive(value) {
+                    Ok(directive) if directive.identity == *identity => Some(Ok(key)),
+                    Ok(_) => None,
+                    Err(error) => Some(Err(error)),
+                },
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for key in directives {
+            self.sysop_directives.delete(txn, &key)?;
+        }
+
+        let receptions = self
+            .radio_receptions
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((key, value)) => match decode_radio_reception(value) {
+                    Ok(reception) if owned_ship_ids.contains(&reception.receiving_ship_id) => {
+                        Some(Ok((key.to_vec(), reception)))
+                    }
+                    Ok(_) => None,
+                    Err(error) => Some(Err(error)),
+                },
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        let mut released_receptions = std::collections::HashMap::<u64, u64>::new();
+        for (key, reception) in receptions {
+            self.radio_receptions.delete(txn, &key)?;
+            if !reception.consumed {
+                *released_receptions
+                    .entry(reception.transmission_id)
+                    .or_default() += 1;
+            }
+        }
+        for (transmission_id, released) in released_receptions {
+            let Some(mut transmission) = self
+                .radio_transmissions
+                .get(txn, &transmission_id)?
+                .map(decode_radio_transmission)
+                .transpose()?
+            else {
+                return Err(StoreError::Corrupt(
+                    "abandoned radio reception content is missing",
+                ));
+            };
+            transmission.reference_count = transmission.reference_count.saturating_sub(released);
+            if transmission.reference_count == 0 {
+                self.radio_transmissions.delete(txn, &transmission_id)?;
+            } else {
+                self.radio_transmissions.put(
+                    txn,
+                    &transmission_id,
+                    &encode_radio_transmission(&transmission)?,
+                )?;
+            }
+        }
+
+        for person_id in person_ids {
+            self.crew_services.delete(txn, &person_id)?;
+            self.persons.delete(txn, &person_id)?;
+        }
+        for ship_id in owned_ship_ids {
+            self.ships.delete(txn, &ship_id)?;
+            self.finances.delete(txn, &ship_finance_key(ship_id))?;
+            self.interception_watches.delete(txn, &ship_id)?;
+        }
+
+        self.careers.delete(txn, &identity_key)?;
+        self.carriage_declarations.delete(txn, &identity_key)?;
+        self.radio_cooldowns.delete(txn, &identity_key)?;
+        self.player_arrivals.delete(txn, &identity_key)?;
+        self.flight_plans.delete(txn, &identity_key)?;
+        self.checkpoints.delete(txn, &identity_key)?;
+        self.encounters.delete(txn, &identity_key)?;
+        self.players.delete(txn, &identity_key)?;
+        Ok(RuleResult::Applied(()))
     }
 
     fn recover_command_in(
@@ -30988,6 +31420,10 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
             bytes.push(70);
             encode_text(&mut bytes, successor_name)?;
         }
+        Command::AbandonPlayer { ref confirmation } => {
+            bytes.push(79);
+            encode_text(&mut bytes, confirmation)?;
+        }
         Command::GetSystemRadio => bytes.push(72),
         Command::TransmitSystemRadio { ref body } => {
             bytes.push(73);
@@ -31483,6 +31919,9 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
                 _ => return Err(StoreError::Corrupt("unknown interception-watch filter")),
             })
         }
+        79 => Command::AbandonPlayer {
+            confirmation: decoder.text()?,
+        },
         71 => Command::ApplyPersonnelAction {
             person_id: decoder.u64()?,
             expected_service_revision: decoder.u64()?,
@@ -46936,6 +47375,9 @@ mod tests {
             Command::DeclareBankruptcy {
                 successor_name: "Jordan Vale".into(),
             },
+            Command::AbandonPlayer {
+                confirmation: "ABANDON EVERYTHING".into(),
+            },
         ];
         for (index, command) in commands.into_iter().enumerate() {
             let queued = QueuedCommand {
@@ -48641,6 +49083,89 @@ mod tests {
             PlayerPhase::Docked
         );
         txn.commit().unwrap();
+    }
+
+    #[test]
+    fn permanent_abandonment_erases_the_player_and_allows_fresh_registration() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let epoch = initialize_player_fixture(&store);
+        let (ship_id, captain_id) = {
+            let txn = store.env.read_txn().unwrap();
+            let player = store
+                .players
+                .get(&txn, &encode_identity(&identity()))
+                .unwrap()
+                .map(decode_player_record)
+                .transpose()
+                .unwrap()
+                .unwrap();
+            (player.ship_id, player.captain_person_id)
+        };
+
+        let mut txn = store.env.write_txn().unwrap();
+        assert!(matches!(
+            store
+                .abandon_player_in(&mut txn, &identity(), "yes")
+                .unwrap(),
+            RuleResult::Rejected(_)
+        ));
+        assert!(matches!(
+            store
+                .abandon_player_in(&mut txn, &identity(), "ABANDON EVERYTHING")
+                .unwrap(),
+            RuleResult::Applied(())
+        ));
+        assert_eq!(
+            store.player_phase_in(&txn, &identity()).unwrap(),
+            PlayerPhase::NewUser
+        );
+        assert!(
+            store
+                .players
+                .get(&txn, &encode_identity(&identity()))
+                .unwrap()
+                .is_none()
+        );
+        assert!(store.ships.get(&txn, &ship_id).unwrap().is_none());
+        assert!(store.persons.get(&txn, &captain_id).unwrap().is_none());
+        assert!(
+            store
+                .crew_services
+                .get(&txn, &captain_id)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .finances
+                .get(&txn, &ship_finance_key(ship_id))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            store
+                .careers
+                .get(&txn, &encode_identity(&identity()))
+                .unwrap()
+                .is_none()
+        );
+        txn.commit().unwrap();
+
+        assert_eq!(
+            store.player_access(&identity()).unwrap().state,
+            PlayerAccessState::Active
+        );
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(epoch, 201, Command::CreatePlayer(profile())),
+            })
+            .unwrap();
+        assert!(matches!(
+            store.process_next().unwrap().unwrap().outcome.kind,
+            OutcomeKind::PlayerCreated(_)
+        ));
     }
 
     #[test]

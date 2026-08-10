@@ -6480,6 +6480,59 @@ void show_system_radio(
    }
 }
 
+bool abandon_captain(
+   ct::TlsConnection& connection,
+   ct::ServerHello& hello,
+   ct::CommandIdGenerator& random,
+   uint64_t& request_id)
+{
+   od_clr_scr();
+   door_error("Permanently Abandon Captain and Assets\n\r");
+   door_error("======================================\n\r\n\r");
+   door_warning(
+      "This permanently discards this captain, every crew member and ship, "
+      "all cargo, stores, cash, credit, debt, tasks, contracts, career and "
+      "service history, prizes, warrants, private messages, and personal "
+      "knowledge. Nothing transfers to the replacement captain.\n\r\n\r");
+   door_information(
+      "The local BBS account remains active and will immediately return to "
+      "new-captain registration. This cannot be undone.\n\r\n\r");
+   const auto phrase = input_text(
+      "Type ABANDON EVERYTHING exactly", "", 32);
+   if(!phrase) {
+      return false;
+   }
+   if(*phrase != "ABANDON EVERYTHING") {
+      door_error("The confirmation phrase did not match. Nothing was changed.\n\r");
+      wait_for_enter("Continue");
+      return false;
+   }
+   door_option_prompt({
+      "[Y] Permanently abandon everything",
+      "[N/Enter] Keep this captain",
+   });
+   const auto confirmation = od_get_key(TRUE);
+   if(confirmation != 'y' && confirmation != 'Y') {
+      return false;
+   }
+   const auto phase = ct::abandon_player(
+      connection,
+      hello.assigned_epoch,
+      *phrase,
+      random_command_id(random),
+      request_id++);
+   if(phase != ct::PlayerPhase::NewUser) {
+      throw std::runtime_error(
+         "server acknowledged abandonment without opening captain registration");
+   }
+   hello.phase = phase;
+   od_clr_scr();
+   door_success("The former captain and estate have been permanently abandoned.\n\r");
+   door_information("This account may now register a new captain.\n\r");
+   wait_for_enter("Begin registration");
+   return true;
+}
+
 void render_command_console(const ct::ServerHello& hello)
 {
    od_clr_scr();
@@ -6490,28 +6543,32 @@ void render_command_console(const ct::ServerHello& hello)
    door_information(
       "These seven managers are available throughout every operational "
       "situation. Available actions depend on the ship's present status.\n\r\n\r");
+   door_number("A");
+   door_label(". ");
+   door_identifier("Abandon Captain and Restart\n\r");
    door_number("C");
    door_label(". ");
    door_identifier("Crew Management\n\r");
+   door_number("K");
+   door_label(". ");
+   door_identifier("Known Universe\n\r");
+   door_number("M");
+   door_label(". ");
+   door_identifier("Message Management\n\r");
+   door_number("O");
+   door_label(". ");
+   door_identifier("Operations Ledger\n\r");
+   door_number("R");
+   door_label(". ");
+   door_identifier("System Common Radio\n\r");
    door_number("S");
    door_label(". ");
    door_identifier("Ship Management\n\r");
    door_number("T");
    door_label(". ");
    door_identifier("Task Management\n\r");
-   door_number("M");
-   door_label(". ");
-   door_identifier("Message Management\n\r");
-   door_number("R");
-   door_label(". ");
-   door_identifier("System Common Radio\n\r");
-   door_number("K");
-   door_label(". ");
-   door_identifier("Known Universe\n\r");
-   door_number("O");
-   door_label(". ");
-   door_identifier("Operations Ledger\n\r");
    door_option_prompt({
+      "[A] Abandon captain",
       "[C/K/M/O/R/S/T] Manager",
       "[Enter] Refresh",
       "[X] Operational view",
@@ -6540,6 +6597,11 @@ bool run_command_console(
             hello.assigned_epoch,
             random,
             request_id);
+         render_command_console(hello);
+      } else if(key == 'a' || key == 'A') {
+         if(abandon_captain(connection, hello, random, request_id)) {
+            return false;
+         }
          render_command_console(hello);
       } else if(key == 's' || key == 'S') {
          show_ship_manager(
@@ -8706,6 +8768,9 @@ void run_operational_loop(ct::TlsConnection& connection, ct::ServerHello& hello)
    uint64_t request_id = 1000;
    uint64_t packet_generation = std::numeric_limits<uint64_t>::max();
    for(;;) {
+      if(hello.phase == ct::PlayerPhase::NewUser) {
+         return;
+      }
       collect_player_events();
       if(latest_phase_status.has_value()) {
          hello.phase = latest_phase_status->phase;
@@ -8754,6 +8819,7 @@ void run_operational_loop(ct::TlsConnection& connection, ct::ServerHello& hello)
             "A surviving captain remains the same person through rescue, custody, or parole. "
             "Only a recorded death opens the estate to a successor.\n\r");
          door_option_prompt({
+            "[A] Abandon captain and restart",
             "[R] Review recovery or succession",
             "[Enter] Refresh",
             "[Q] Leave game",
@@ -8762,6 +8828,12 @@ void run_operational_loop(ct::TlsConnection& connection, ct::ServerHello& hello)
             static_cast<unsigned char>(od_get_key(TRUE))));
          if(action == 'Q') {
             if(confirm_return_to_bbs()) {
+               return;
+            }
+            continue;
+         }
+         if(action == 'A') {
+            if(abandon_captain(connection, hello, random, request_id)) {
                return;
             }
             continue;
@@ -8877,9 +8949,15 @@ int main(int argc, char** argv)
                if(run_player_creation(connection, hello)) {
                   hello.phase = ct::PlayerPhase::Docked;
                   run_operational_loop(connection, hello);
+                  if(hello.phase == ct::PlayerPhase::NewUser) {
+                     continue;
+                  }
                }
             } else {
                run_operational_loop(connection, hello);
+               if(hello.phase == ct::PlayerPhase::NewUser) {
+                  continue;
+               }
             }
             session_finished = true;
          } catch(const ct::PlayerRequestRejected& error) {

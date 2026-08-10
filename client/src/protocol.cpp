@@ -3636,6 +3636,28 @@ FleetSnapshot declare_bankruptcy(
    return decode_fleet(checked_response(reader.getRoot<rpc::Envelope>(), id));
 }
 
+PlayerPhase abandon_player(
+   TlsConnection& connection,
+   const uint64_t epoch,
+   const std::string& confirmation,
+   const std::array<uint8_t, 16>& id,
+   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   request.initAbandonPlayer().setConfirmation(confirmation);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   const auto response = checked_response(reader.getRoot<rpc::Envelope>(), id);
+   if(!response.isPong()) {
+      throw std::runtime_error("expected abandonment acknowledgement");
+   }
+   return decode_response_phase(response.getPhase());
+}
+
 ArrivalPacket open_arrival_packet(
    TlsConnection& connection,
    const uint64_t session_epoch,

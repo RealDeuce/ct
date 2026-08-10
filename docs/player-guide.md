@@ -227,7 +227,7 @@ ship departs. Keep a reserve instead of committing every credit to cargo.
 
 ## Universal command console
 
-Press `U` from docked operations, or Enter from the voyage screen, to open six
+Press `U` from docked operations, or Enter from the voyage screen, to open seven
 managers that remain inspectable throughout normal play:
 
 - `C` — **Crew Management**
@@ -236,9 +236,19 @@ managers that remain inspectable throughout normal play:
 - `M` — **Message Management**
 - `K` — **Known Universe**
 - `O` — **Operations Ledger**
+- `R` — **System Common Radio**
 
 Enter refreshes the command console. `X` returns to the previous operational
 screen. `Q` offers to return to the BBS and requires confirmation.
+
+`A` permanently abandons the current captain and starts over. It discards every
+ship and crew member, cargo and stores, cash and financing, tasks and contracts,
+career and service history, prizes and warrants, private messages, and personal
+knowledge. Nothing carries over. The door requires the exact phrase `ABANDON
+EVERYTHING` and a separate final confirmation, then returns the same BBS account
+to new-captain registration. The command-recovery screen also offers this action
+when a command has been lost. Abandonment is temporarily unavailable while an
+encounter or shared combat is being resolved.
 
 ### Crew Management
 

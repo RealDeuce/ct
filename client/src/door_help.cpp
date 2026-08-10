@@ -79,7 +79,9 @@ constexpr std::array<DoorHelp, static_cast<size_t>(DoorHelpTopic::Count)> HELP{{
       "The managers are available while docked and during scheduled travel, although particular "
       "actions depend on location, facilities, authority, and current ship state.\n\n"
       "Press the manager's letter, Enter to return to the operational screen, or Q to request leaving "
-      "the game.",
+      "the game. A permanently abandons the captain and entire estate only after an exact typed phrase "
+      "and a second confirmation. It erases all player assets and history, then opens new-captain "
+      "registration for the same BBS account.",
    },
    {
       "Ship management",

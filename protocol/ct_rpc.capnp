@@ -164,6 +164,7 @@ struct Request {
     setRadioMute @69 :SetRadioMuteRequest;
     misappropriateRestrictedCredits @70 :MisappropriateRestrictedCreditsRequest;
     setInterceptionWatch @71 :InterceptionWatchRequest;
+    abandonPlayer @72 :AbandonPlayerRequest;
   }
 }
 
@@ -1777,6 +1778,7 @@ struct PrizeSettlementRequest { prizeId @0 :UInt64; expectedCareerRevision @1 :U
 struct WarrantSettlementRequest { warrantId @0 :UInt64; expectedCareerRevision @1 :UInt64; }
 struct CombatCareerModeRequest { mode @0 :CombatCareerMode; expectedRevision @1 :UInt64; }
 struct RecoverCommandRequest { successorName @0 :Text; }
+struct AbandonPlayerRequest { confirmation @0 :Text; }
 
 enum MessageClass {
   agencyNews @0;

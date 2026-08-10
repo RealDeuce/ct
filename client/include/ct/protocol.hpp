@@ -2099,6 +2099,8 @@ FleetSnapshot recover_command(TlsConnection&, uint64_t, const std::string&,
                               const std::array<uint8_t, 16>&, uint64_t);
 FleetSnapshot declare_bankruptcy(TlsConnection&, uint64_t, const std::string&,
                                  const std::array<uint8_t, 16>&, uint64_t);
+PlayerPhase abandon_player(TlsConnection&, uint64_t, const std::string&,
+                           const std::array<uint8_t, 16>&, uint64_t);
 
 ArrivalPacket open_arrival_packet(TlsConnection& connection,
                                   uint64_t session_epoch,
