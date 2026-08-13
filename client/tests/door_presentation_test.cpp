@@ -289,6 +289,21 @@ int main() {
    pager.write("page boundary\n\r", ct::DoorTextRole::Prompt);
    check(pauses == 2);
 
+   pager.set_paging_enabled(false);
+   pager.reset_paging();
+   pager.resume_paging();
+   for(unsigned line = 0; line < 46; ++line) {
+      pager.write("persistent continuous output\n\r");
+   }
+   check(pauses == 2);
+   pager.set_paging_enabled(true);
+   pager.reset_paging();
+   pager.resume_paging();
+   for(unsigned line = 0; line < 23; ++line) {
+      pager.write("paging restored\n\r");
+   }
+   check(pauses == 3);
+
    std::string continuous_page;
    unsigned continuous_pauses = 0;
    ct::DoorPresentation continuous_pager(

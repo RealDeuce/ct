@@ -191,6 +191,10 @@ fixed-coordinate screen helpers assume 80×25. Full presentation semantics and
 tests are in `docs/door-presentation.md`. Plain page transitions use form
 feed. Enhanced page transitions use reset, clear-screen, and cursor-home;
 there is no other coordinate-based rendering or redraw.
+Ordinary automatic continuation pauses are enabled by default but can be
+durably disabled per local BBS identity in Player Preferences. Disabling them
+only streams paged output continuously; it never bypasses an action menu,
+confirmation, indexed-page control, or other required input.
 
 Enhanced presentation uses stable semantic colours inspired by the
 high-contrast *TradeWars 2002* and *Yankee Trader* style: cyan labels,

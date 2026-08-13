@@ -510,8 +510,15 @@ void DoorPresentation::configure_paging(const size_t reserved_rows,
    page_pause_ = std::move(pause);
 }
 
+void DoorPresentation::set_paging_enabled(const bool enabled) noexcept {
+   paging_enabled_ = enabled;
+   if(!paging_enabled_) {
+      paging_active_ = false;
+   }
+}
+
 void DoorPresentation::resume_paging() noexcept {
-   paging_active_ = static_cast<bool>(page_pause_) &&
+   paging_active_ = paging_enabled_ && static_cast<bool>(page_pause_) &&
                     !paging_suppressed_until_input_;
 }
 
@@ -599,13 +606,13 @@ void DoorPresentation::pause_at_page_boundary(const DoorTextRole role) {
       }
    } catch(...) {
       handling_page_pause_ = false;
-      paging_active_ = static_cast<bool>(page_pause_) &&
+      paging_active_ = paging_enabled_ && static_cast<bool>(page_pause_) &&
                        !paging_suppressed_until_input_;
       throw;
    }
    row_ = 0;
    handling_page_pause_ = false;
-   paging_active_ = static_cast<bool>(page_pause_) &&
+   paging_active_ = paging_enabled_ && static_cast<bool>(page_pause_) &&
                     !paging_suppressed_until_input_;
    if(door_profile_uses_ansi(profile_)) {
       emit(role_sequence(role));

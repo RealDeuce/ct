@@ -525,6 +525,7 @@ int main(int argc, char** argv) {
                          << (entry.help_level == ct::HelpLevel::Beginner
                                 ? "beginner"
                                 : "expert")
+                         << '\t' << (entry.page_pauses ? "pauses" : "continuous")
                          << '\t' << entry.name << '\n';
             }
             return 0;

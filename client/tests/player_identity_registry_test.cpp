@@ -83,6 +83,34 @@ void write_version_one_registry(const std::filesystem::path& path) {
 #endif
 }
 
+void write_version_two_registry(const std::filesystem::path& path) {
+   std::vector<uint8_t> bytes{'C', 'T', 'I', 'D', 'M', 'A', 'P', 0};
+   append_u16(bytes, 2);
+   append_u16(bytes, 0);
+   append_u32(bytes, 17);
+   append_u32(bytes, 2);
+   append_u32(bytes, 1);
+   bytes.push_back(0);
+   bytes.push_back(1);
+   bytes.push_back(1);
+   bytes.push_back(1);
+   append_u16(bytes, 8);
+   append_u32(bytes, 1);
+   append_u32(bytes, 43);
+   bytes.insert(bytes.end(), {'V', '2', ' ', 'U', 's', 'e', 'r', '!'});
+   auto hash = Botan::HashFunction::create_or_throw("SHA-256");
+   hash->update(bytes);
+   const auto digest = hash->final();
+   bytes.insert(bytes.end(), digest.begin(), digest.end());
+   std::ofstream output(path, std::ios::binary);
+   output.write(reinterpret_cast<const char*>(bytes.data()),
+                static_cast<std::streamsize>(bytes.size()));
+   output.close();
+#ifndef _WIN32
+   chmod(path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+}
+
 }  // namespace
 
 int main() {
@@ -94,9 +122,18 @@ int main() {
    check(legacy.player_id == 1);
    check(legacy.help_level == ct::HelpLevel::Beginner);
    check(!legacy.orientation_shown);
+   check(legacy.page_pauses);
    ct::mark_player_orientation_shown(legacy_path.string(), 17, 1);
    check(ct::resolve_player_identity(legacy_path.string(), 17, "Legacy", 42)
             .orientation_shown);
+
+   const auto version_two_path = scratch.path / "version-two.bin";
+   write_version_two_registry(version_two_path);
+   const auto version_two =
+      ct::resolve_player_identity(version_two_path.string(), 17, "V2 User!", 43);
+   check(version_two.help_level == ct::HelpLevel::Expert);
+   check(version_two.orientation_shown);
+   check(version_two.page_pauses);
 
    const auto path = (scratch.path / "players.bin").string();
    ct::create_player_identity_registry(path, 17);
@@ -110,6 +147,7 @@ int main() {
    check(first.player_id == 1);
    check(first.help_level == ct::HelpLevel::Beginner);
    check(!first.orientation_shown);
+   check(first.page_pauses);
    check(ct::resolve_player_identity(path, 17, "Jane Doe", 42).player_id ==
          first.player_id);
    check(throws([&] {
@@ -120,10 +158,12 @@ int main() {
    }));
 
    ct::set_player_help_level(path, 17, first.player_id, ct::HelpLevel::Expert);
+   ct::set_player_page_pauses(path, 17, first.player_id, false);
    ct::mark_player_orientation_shown(path, 17, first.player_id);
    auto updated = ct::resolve_player_identity(path, 17, "Jane Doe", 42);
    check(updated.help_level == ct::HelpLevel::Expert);
    check(updated.orientation_shown);
+   check(!updated.page_pauses);
    ct::rename_player_identity(path, 17, first.player_id, "Jane Smith");
    ct::reindex_player_identity(path, 17, first.player_id, 43);
    check(ct::resolve_player_identity(path, 17, "Jane Smith", 43).player_id ==
@@ -132,6 +172,7 @@ int main() {
    const auto replacement =
       ct::resolve_player_identity(path, 17, "Jane Smith", 43);
    check(replacement.player_id == 2);
+   check(replacement.page_pauses);
 
    const auto entries = ct::list_player_identities(path, 17);
    check(entries.size() == 2);

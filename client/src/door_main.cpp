@@ -102,6 +102,7 @@ std::string local_identity_registry_path;
 uint32_t local_identity_bbs_id = 0;
 uint32_t local_identity_player_id = 0;
 bool local_orientation_shown = false;
+bool page_pauses_enabled = true;
 
 enum class HelpPageCommand {
    None,
@@ -1297,11 +1298,17 @@ void edit_help_level(ct::HelpLevel* visit_level)
    door_information(
       "Beginner help introduces the game concepts behind a screen. Expert help "
       "is a shorter operational reference.\n\r");
-   door_option_prompt({
-      "[B] Beginner", "[Q/Enter] Keep", "[X] Expert", "[?] Help"});
+   if(default_help_level == ct::HelpLevel::Beginner) {
+      door_option_prompt({
+         "[Q/Enter] Keep", "[X] Expert", "[?] Help"});
+   } else {
+      door_option_prompt({
+         "[B] Beginner", "[Q/Enter] Keep", "[?] Help"});
+   }
    while(true) {
       const auto key = ::od_get_key(TRUE);
-      if(key == 'b' || key == 'B') {
+      if(default_help_level != ct::HelpLevel::Beginner &&
+         (key == 'b' || key == 'B')) {
          echo_prompt_key(key, false);
          persist_help_level(ct::HelpLevel::Beginner);
          if(visit_level != nullptr) {
@@ -1309,12 +1316,74 @@ void edit_help_level(ct::HelpLevel* visit_level)
          }
          return;
       }
-      if(key == 'x' || key == 'X') {
+      if(default_help_level != ct::HelpLevel::Expert &&
+         (key == 'x' || key == 'X')) {
          echo_prompt_key(key, false);
          persist_help_level(ct::HelpLevel::Expert);
          if(visit_level != nullptr) {
             *visit_level = default_help_level;
          }
+         return;
+      }
+      if(key == '?') {
+         echo_prompt_key(key, true);
+         const HelpScope help_scope(ct::DoorHelpTopic::PlayerPreferences);
+         show_context_help();
+         continue;
+      }
+      if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
+         echo_prompt_key(key, false);
+         return;
+      }
+   }
+}
+
+void persist_page_pauses(const bool enabled)
+{
+   try {
+      ct::set_player_page_pauses(
+         local_identity_registry_path,
+         local_identity_bbs_id,
+         local_identity_player_id,
+         enabled);
+      page_pauses_enabled = enabled;
+      output().set_paging_enabled(enabled);
+      door_success("Automatic page pauses are now %s.\n\r",
+                   enabled ? "enabled" : "disabled");
+   } catch(const std::exception& error) {
+      door_error("The page-pause preference could not be saved: %s\n\r",
+                 safe_field(error.what()).c_str());
+   }
+}
+
+void edit_page_pauses()
+{
+   output().suspend_paging();
+   door_heading("\n\rAutomatic Page Pauses\n\r");
+   door_heading("=====================\n\r\n\r");
+   door_label("Current setting: ");
+   door_identifier("%s\n\r", page_pauses_enabled ? "Enabled" : "Disabled");
+   door_information(
+      "Page pauses keep long screens from scrolling past. Disabling them "
+      "streams ordinary screens without the continuation prompt; choices and "
+      "confirmations still wait for your input.\n\r");
+   if(page_pauses_enabled) {
+      door_option_prompt({
+         "[D] Disable", "[Q/Enter] Keep", "[?] Help"});
+   } else {
+      door_option_prompt({
+         "[E] Enable", "[Q/Enter] Keep", "[?] Help"});
+   }
+   while(true) {
+      const auto key = ::od_get_key(TRUE);
+      if(page_pauses_enabled && (key == 'd' || key == 'D')) {
+         echo_prompt_key(key, false);
+         persist_page_pauses(false);
+         return;
+      }
+      if(!page_pauses_enabled && (key == 'e' || key == 'E')) {
+         echo_prompt_key(key, false);
+         persist_page_pauses(true);
          return;
       }
       if(key == '?') {
@@ -1486,7 +1555,32 @@ void show_help_browser_direct()
 void show_player_preferences()
 {
    const HelpScope help_scope(ct::DoorHelpTopic::PlayerPreferences);
-   edit_help_level(nullptr);
+   while(true) {
+      od_clr_scr();
+      door_heading("Player Preferences\n\r");
+      door_heading("==================\n\r\n\r");
+      door_label("Default help: ");
+      door_identifier("%s\n\r",
+         default_help_level == ct::HelpLevel::Beginner ? "Beginner" : "Expert");
+      door_label("Page pauses:  ");
+      door_identifier("%s\n\r", page_pauses_enabled ? "Enabled" : "Disabled");
+      door_option_prompt({
+         "[H] Help level", "[P] Page pauses", "[Q/Enter] Console", "[?] Help"});
+      const auto key = ::od_get_key(TRUE);
+      if(key == 'h' || key == 'H') {
+         echo_prompt_key(key, false);
+         edit_help_level(nullptr);
+      } else if(key == 'p' || key == 'P') {
+         echo_prompt_key(key, false);
+         edit_page_pauses();
+      } else if(key == '?') {
+         echo_prompt_key(key, true);
+         show_context_help();
+      } else if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
+         echo_prompt_key(key, false);
+         return;
+      }
+   }
 }
 
 void show_new_player_orientation()
@@ -4174,6 +4268,75 @@ void show_task_offer_detail(const ct::TaskOffer& offer,
    }
 }
 
+void show_task_detail(const ct::TaskRecord& task,
+                      const std::string& origin_name,
+                      const std::string& destination_name,
+                      const std::string& ship_name)
+{
+   const HelpScope help_scope(ct::DoorHelpTopic::Tasks);
+   while(true) {
+      od_clr_scr();
+      door_heading("Accepted Task Instrument\n\r========================\n\r\n\r");
+      door_label("Task:          #");
+      door_number("%llu\n\r", static_cast<unsigned long long>(task.task_id));
+      door_label("Service:       ");
+      door_value("%s\n\r", task_kind_name(task.offer.kind));
+      door_label("Terms:         ");
+      door_identifier("%s\n\r", safe_field(task.offer.title).c_str());
+      door_label("Standing:      ");
+      door_value("%s\n\r", task_state_name(task.state));
+      door_label("Performing ship: ");
+      door_identifier("%s\n\r", safe_field(ship_name).c_str());
+      door_label("Pickup:        ");
+      door_identifier("%s\n\r", safe_field(origin_name).c_str());
+      door_label("Deliver to:    ");
+      door_identifier("%s\n\r", safe_field(destination_name).c_str());
+      if(task.accepted_second != 0) {
+         door_label("Accepted:      ");
+         door_number("%s\n\r", game_date(task.accepted_second).c_str());
+      }
+      door_label("Deliver by:    ");
+      door_number("%s\n\r", game_date(task.offer.delivery_deadline_second).c_str());
+      if(task.offer.quantity_millitons != 0) {
+         door_label("Cargo:         ");
+         print_millitons(task.offer.quantity_millitons);
+         if(task.delivered_quantity_millitons != 0) {
+            door_label("; delivered ");
+            print_millitons(task.delivered_quantity_millitons);
+         }
+         od_printf("\n\r");
+      }
+      if(task.offer.passenger_count != 0) {
+         door_label("Passengers:    ");
+         door_number("%u\n\r", task.offer.passenger_count);
+      }
+      if(task.offer.performance_count > 1) {
+         door_label("Performances:  ");
+         door_number("%u of %u\n\r", task.performances_completed,
+                     task.offer.performance_count);
+      }
+      door_label("Payment:       Cr");
+      door_number("%llu\n\r", static_cast<unsigned long long>(task.offer.payment_credits));
+      door_label("Collateral:    Cr");
+      door_number("%llu\n\r", static_cast<unsigned long long>(task.offer.collateral_credits));
+      door_label("Failure charge: Cr");
+      door_number("%llu\n\r", static_cast<unsigned long long>(
+         task.offer.failure_penalty_credits));
+      if(!task.status_text.empty()) {
+         door_label("Current notice:\n\r");
+         print_wrapped(task.status_text, "  ");
+      }
+      door_option_prompt({
+         "[Q] Task ledger",
+         "[?] Help",
+      });
+      const auto key = od_get_key(TRUE);
+      if(key == 'q' || key == 'Q') {
+         return;
+      }
+   }
+}
+
 void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epoch,
                        ct::CommandIdGenerator& random, uint64_t& request_id)
 {
@@ -4341,6 +4504,12 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
          door_number("%s", game_date(task.offer.delivery_deadline_second).c_str());
          door_label("; payment Cr");
          door_number("%llu\n\r", static_cast<unsigned long long>(task.offer.payment_credits));
+         door_label("   Route ");
+         door_identifier("%s", safe_field(destination_name(
+            task.offer.origin_system_id)).c_str());
+         door_label(" to ");
+         door_identifier("%s\n\r", safe_field(destination_name(
+            task.offer.destination_system_id)).c_str());
          print_wrapped(task.status_text, "   ");
       }
       door_identifier("\n\rStanding carriage declaration\n\r");
@@ -4406,6 +4575,7 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
             "[A] Accept offer",
             "[V] Available offers",
             "[M] Manage task",
+            "[T] Inspect task",
             "[C] Carriage declaration",
             "[Enter] Refresh",
             "[Q] Console",
@@ -4417,6 +4587,7 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
             "[A] Accept offer",
             "[V] Unavailable offers",
             "[M] Manage task",
+            "[T] Inspect task",
             "[C] Carriage declaration",
             "[Enter] Refresh",
             "[Q] Console",
@@ -4458,6 +4629,17 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
                door_error("%s\n\r", safe_field(error.what()).c_str());
                wait_for_enter();
             }
+         }
+      } else if((key == 't' || key == 'T') && !ledger.tasks.empty()) {
+         const auto selected = input_number(
+            "Task", 1, static_cast<unsigned>(ledger.tasks.size()));
+         if(selected) {
+            const auto& task = ledger.tasks[*selected - 1];
+            show_task_detail(
+               task,
+               destination_name(task.offer.origin_system_id),
+               destination_name(task.offer.destination_system_id),
+               ship_name(task.performing_ship_id));
          }
       } else if((key == 'm' || key == 'M') && !ledger.tasks.empty()) {
          const auto selected = input_number("Task", 1, static_cast<unsigned>(ledger.tasks.size()));
@@ -9320,6 +9502,8 @@ int main(int argc, char** argv)
       local_identity_player_id = player_id;
       default_help_level = local_identity.help_level;
       local_orientation_shown = local_identity.orientation_shown;
+      page_pauses_enabled = local_identity.page_pauses;
+      output().set_paging_enabled(page_pauses_enabled);
       ct::TlsConnection connection(
          config.server,
          config.game_port,

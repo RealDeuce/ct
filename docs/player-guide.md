@@ -35,7 +35,8 @@ screen. Letter choices are case-insensitive.
 - A full page pauses at an `[Enter/Space] Continue  [C] Continuous` prompt.
   Press Enter or Space to continue one page, or `C` to suppress further page
   pauses until the next keyboard input. The prompt is erased and output resumes
-  beneath it.
+  beneath it. Player Preferences can durably disable these automatic pauses;
+  menus and confirmations still wait for input.
 - A menu may omit an action when the present port, ship, or situation cannot
   support it.
 

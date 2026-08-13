@@ -19,6 +19,7 @@ struct LocalPlayerIdentity {
    bool retired;
    HelpLevel help_level;
    bool orientation_shown;
+   bool page_pauses;
 };
 
 void create_player_identity_registry(const std::string& path, uint32_t bbs_id);
@@ -51,6 +52,11 @@ void set_player_help_level(const std::string& path,
                            uint32_t bbs_id,
                            uint32_t player_id,
                            HelpLevel help_level);
+
+void set_player_page_pauses(const std::string& path,
+                            uint32_t bbs_id,
+                            uint32_t player_id,
+                            bool enabled);
 
 void mark_player_orientation_shown(const std::string& path,
                                    uint32_t bbs_id,

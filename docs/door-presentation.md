@@ -107,6 +107,11 @@ After acknowledgement the door overwrites the prompt with spaces on the same
 line, does not clear the screen, and continues streaming output on that row.
 The continuation prompt also offers `C` for continuous output, which suppresses
 additional page pauses until the next keyboard input resets pagination.
+Automatic continuation pauses are enabled by default and may be durably
+disabled in Player Preferences for the local BBS identity. That preference
+only makes ordinary paged output continuous; explicit menus, confirmations,
+indexed navigation, and other required input remain in force. Older identity
+registries acquire the enabled default when read.
 Screens with their own page navigation, such as the license display and
 indexed rosters, retain their explicit paging controls.
 

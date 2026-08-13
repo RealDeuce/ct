@@ -74,6 +74,7 @@ public:
    void set_display_formatting(DisplayFormatting formatting);
 
    void configure_paging(size_t reserved_rows, PagePause pause);
+   void set_paging_enabled(bool enabled) noexcept;
    void resume_paging() noexcept;
    void suspend_paging() noexcept;
    void suppress_paging_until_input() noexcept;
@@ -106,6 +107,7 @@ private:
    size_t row_ = 0;
    size_t paging_content_rows_ = 0;
    PagePause page_pause_;
+   bool paging_enabled_ = true;
    bool paging_active_ = false;
    bool paging_suppressed_until_input_ = false;
    bool handling_page_pause_ = false;

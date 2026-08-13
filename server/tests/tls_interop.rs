@@ -1302,11 +1302,14 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     docked_door.send(b"j");
     docked_door.wait_for("Task Ledger");
     docked_door.wait_for("Carriage declaration");
-    let (availability, _) = docked_door.wait_for_any(&[
-        "Offers available here (0 unavailable hidden)",
-        "Offers available here (1 unavailable hidden)",
-    ]);
-    if availability == 1 {
+    let offer_list = normalized_display_text(&docked_door.wait_for("Offers available here ("));
+    let offer_section = &offer_list[offer_list.rfind("Offers available here (").unwrap()..];
+    let offer_header_end =
+        offer_section.find(" unavailable hidden)").unwrap() + " unavailable hidden)".len();
+    let showing_unavailable = offer_section[offer_header_end..]
+        .trim_start()
+        .starts_with("None ");
+    if showing_unavailable {
         docked_door.send(b"v");
         docked_door.wait_for("Offers unavailable to this captain");
     }
@@ -1314,7 +1317,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     docked_door.wait_for("Offer (Q to cancel");
     docked_door.send(b"1\r");
     docked_door.wait_for("Signed Offer Instrument");
-    if availability == 1 {
+    if showing_unavailable {
         docked_door.wait_for("Unavailable to this captain:");
     }
     docked_door.wait_for("(Q) Task ledger");
@@ -1326,6 +1329,14 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     docked_door.wait_for("(Enter) Previous menu");
     docked_door.send(b"\r");
     docked_door.wait_for_occurrences("Task Ledger", 3);
+    docked_door.send_through_page_prompt(b"t", "Task (Q to cancel", "Task (Q to cancel");
+    docked_door.send(b"1\r");
+    docked_door.wait_for("Accepted Task Instrument");
+    docked_door.wait_for("Pickup:");
+    docked_door.wait_for("Deliver to:");
+    docked_door.wait_for("(Q) Task ledger");
+    docked_door.send(b"q");
+    docked_door.wait_for_occurrences("Task Ledger", 4);
     docked_door.send_through_page_prompt(b"q", "Docked Operations", "Docked Operations");
     docked_door.wait_for_occurrences("Return to BBS", 2);
     docked_door.return_to_bbs();
@@ -1340,6 +1351,8 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Depart",
         "Universal",
         "Signed Offer Instrument",
+        "Accepted Task Instrument",
+        "Deliver to:",
         "Failure charge:",
         "Accepted obligations",
     ] {
@@ -1350,7 +1363,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         docked_semantic.contains("Help: j"),
         "menu prompt did not retain the cursor and echo its selection: {docked_screen:?}"
     );
-    if availability == 1 {
+    if showing_unavailable {
         assert!(docked_semantic.contains("Unavailable to this captain:"));
     }
     let mut reconnected_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
@@ -1388,6 +1401,84 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let help_screen = normalized_display_text(&help_door.finish());
     assert!(help_screen.contains("services actually available here"));
     assert!(help_screen.contains("(?) Help"));
+
+    // Automatic continuation pauses are a durable local-player preference.
+    // Disabling them must stream a long 40-column manager without weakening
+    // its actual action prompt, and the choice must survive a new door process.
+    let mut preference_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
+    preference_door.send(b"\r");
+    preference_door.wait_for("Docked Operations");
+    preference_door.send_through_page_prompt(
+        b"u",
+        "Captain's Command Console",
+        "Captain's Command Console",
+    );
+    preference_door.send(b"p");
+    preference_door.wait_for("Player Preferences");
+    preference_door.wait_for("Page pauses:  Enabled");
+    preference_door.send(b"h");
+    preference_door.wait_for("Default Help Level");
+    preference_door.wait_for("(X) Expert");
+    let beginner_editor = normalized_display_text(&preference_door.output());
+    let beginner_editor = &beginner_editor[beginner_editor.rfind("Default Help Level").unwrap()..];
+    assert!(!beginner_editor.contains("(B) Beginner"));
+    preference_door.send(b"x");
+    preference_door.wait_for("Default help: Expert");
+    preference_door.send(b"h");
+    preference_door.wait_for_occurrences("Default Help Level", 2);
+    preference_door.wait_for("(B) Beginner");
+    let expert_editor = normalized_display_text(&preference_door.output());
+    let expert_editor = &expert_editor[expert_editor.rfind("Default Help Level").unwrap()..];
+    assert!(!expert_editor.contains("(X) Expert"));
+    preference_door.send(b"b");
+    preference_door.wait_for("Default help: Beginner");
+    preference_door.send(b"p");
+    preference_door.wait_for("Automatic Page Pauses");
+    preference_door.send(b"d");
+    preference_door.wait_for("Page pauses:  Disabled");
+    let pauses_before = normalized_display_text(&preference_door.output())
+        .matches("Enter/Space")
+        .count();
+    preference_door.send(b"q");
+    preference_door.wait_for_occurrences("Captain's Command Console", 2);
+    preference_door.send(b"c");
+    preference_door.wait_for("Crew Management -");
+    preference_door.wait_for("managed appointments");
+    let pauses_after = normalized_display_text(&preference_door.output())
+        .matches("Enter/Space")
+        .count();
+    assert_eq!(pauses_after, pauses_before);
+    preference_door.send(b"q");
+    preference_door.wait_for_occurrences("Captain's Command Console", 3);
+    preference_door.send(b"x");
+    preference_door.wait_for_occurrences("Docked Operations", 2);
+    preference_door.return_to_bbs();
+    let preference_screen = normalized_display_text(&preference_door.finish());
+    assert!(preference_screen.contains("Page pauses: Disabled"));
+
+    let mut persisted_preference_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
+    persisted_preference_door.send(b"\r");
+    persisted_preference_door.wait_for("Docked Operations");
+    persisted_preference_door.send(b"u");
+    persisted_preference_door.wait_for("Captain's Command Console");
+    persisted_preference_door.send(b"p");
+    persisted_preference_door.wait_for("Player Preferences");
+    persisted_preference_door.wait_for("Page pauses:  Disabled");
+    persisted_preference_door.send(b"p");
+    persisted_preference_door.wait_for("Automatic Page Pauses");
+    persisted_preference_door.send(b"e");
+    persisted_preference_door.wait_for("Page pauses:  Enabled");
+    persisted_preference_door.send(b"q");
+    persisted_preference_door.wait_for_occurrences("Captain's Command Console", 2);
+    persisted_preference_door.send_through_page_prompt(
+        b"x",
+        "Docked Operations",
+        "Docked Operations",
+    );
+    persisted_preference_door.return_to_bbs();
+    let persisted_preference_screen = normalized_display_text(&persisted_preference_door.finish());
+    assert!(persisted_preference_screen.contains("Page pauses: Disabled"));
+    assert!(persisted_preference_screen.contains("Page pauses: Enabled"));
 
     // Exercise the Milestone 5 correspondence controls through the real door
     // rather than merely proving their wire codecs. Banking is also exercised
