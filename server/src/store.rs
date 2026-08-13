@@ -2701,6 +2701,56 @@ fn reconcile_accommodation_capacity_in(
     Ok(())
 }
 
+fn reconcile_radio_identifier_metadata_in(
+    meta: Database<Str, Bytes>,
+    radio_transmissions: UniverseDatabase,
+    radio_receptions: Database<Bytes, Bytes>,
+    txn: &mut heed::RwTxn<'_>,
+) -> Result<(), StoreError> {
+    // Radio storage was added while the storage format was still version 1.
+    // Universes created by an older build therefore have neither allocator,
+    // even though all of their other metadata is valid. Leave brand-new,
+    // uninitialized stores alone; initialize_universe() establishes every
+    // universe allocator together.
+    if meta.get(txn, META_UNIVERSE_ID)?.is_none() {
+        return Ok(());
+    }
+
+    let minimum_transmission_id = radio_transmissions.iter(txn)?.try_fold(
+        1_u64,
+        |minimum, entry| -> Result<u64, StoreError> {
+            let (transmission_id, _) = entry?;
+            let next = transmission_id.checked_add(1).ok_or(StoreError::Corrupt(
+                "radio transmission identifier overflow",
+            ))?;
+            Ok(minimum.max(next))
+        },
+    )?;
+    let minimum_reception_id = radio_receptions.iter(txn)?.try_fold(
+        1_u64,
+        |minimum, entry| -> Result<u64, StoreError> {
+            let (_, bytes) = entry?;
+            let next = decode_radio_reception(bytes)?
+                .reception_id
+                .checked_add(1)
+                .ok_or(StoreError::Corrupt("radio reception identifier overflow"))?;
+            Ok(minimum.max(next))
+        },
+    )?;
+
+    for (key, minimum) in [
+        (META_NEXT_RADIO_TRANSMISSION_ID, minimum_transmission_id),
+        (META_NEXT_RADIO_RECEPTION_ID, minimum_reception_id),
+    ] {
+        let actual = get_meta_u64(meta, txn, key)?;
+        let reconciled = actual.unwrap_or(1).max(minimum);
+        if actual != Some(reconciled) {
+            put_meta_u64(meta, txn, key, reconciled)?;
+        }
+    }
+    Ok(())
+}
+
 fn new_ship_maintenance(
     spec: &creation::ShipStatusSpec,
     current_game_second: u64,
@@ -2995,6 +3045,12 @@ impl Store {
             &mut txn,
             META_STORAGE_FORMAT_VERSION,
             STORAGE_FORMAT_VERSION,
+        )?;
+        reconcile_radio_identifier_metadata_in(
+            meta,
+            radio_transmissions,
+            radio_receptions,
+            &mut txn,
         )?;
         reconcile_accommodation_capacity_in(ships, meta, &mut txn)?;
         txn.commit()?;
@@ -41291,6 +41347,36 @@ mod tests {
                 }) if actual == incompatible_version && required == STORAGE_FORMAT_VERSION
             ));
         }
+    }
+
+    #[test]
+    fn reopening_initialized_universe_restores_missing_radio_identifiers() {
+        let dir = TempDir::new().unwrap();
+        {
+            let store = Store::open(dir.path()).unwrap();
+            initialize_player_fixture(&store);
+            let mut txn = store.env.write_txn().unwrap();
+            store
+                .meta
+                .delete(&mut txn, META_NEXT_RADIO_TRANSMISSION_ID)
+                .unwrap();
+            store
+                .meta
+                .delete(&mut txn, META_NEXT_RADIO_RECEPTION_ID)
+                .unwrap();
+            txn.commit().unwrap();
+        }
+
+        let store = Store::open(dir.path()).unwrap();
+        let txn = store.env.read_txn().unwrap();
+        assert_eq!(
+            get_meta_u64(store.meta, &txn, META_NEXT_RADIO_TRANSMISSION_ID).unwrap(),
+            Some(1)
+        );
+        assert_eq!(
+            get_meta_u64(store.meta, &txn, META_NEXT_RADIO_RECEPTION_ID).unwrap(),
+            Some(1)
+        );
     }
 
     fn squared_distance(first: [f64; 3], second: [f64; 3]) -> f64 {

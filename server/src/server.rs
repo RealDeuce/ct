@@ -682,7 +682,7 @@ fn spawn_engine(
     EngineHandle,
     mpsc::Receiver<EngineEvent>,
     thread::JoinHandle<()>,
-    std::sync::mpsc::Receiver<()>,
+    std::sync::mpsc::Receiver<Result<(), String>>,
 ) {
     let (input_sender, mut input_receiver) = mpsc::channel(ENGINE_QUEUE_DEPTH);
     let (event_sender, event_receiver) = mpsc::channel(ENGINE_QUEUE_DEPTH);
@@ -690,13 +690,16 @@ fn spawn_engine(
     let join = thread::Builder::new()
         .name("ct-authoritative-engine".into())
         .spawn(move || {
+            let mut ready_sender = Some(ready_sender);
             let run = || -> Result<(), EngineError> {
                 let engine = Engine::open(data_path, bbs_registry)?;
                 let recovered = engine.recover()?;
                 let mut live_clock = crate::clock::LiveClock::now(engine.game_second()?);
                 let mut observers = HashMap::<PlayerIdentity, Observer>::new();
                 let mut last_lag_report = Instant::now() - Duration::from_secs(60);
-                let _ = ready_sender.send(());
+                if let Some(sender) = ready_sender.take() {
+                    let _ = sender.send(Ok(()));
+                }
                 for transition in recovered.player_transitions {
                     if !emit_transition(&engine, &event_sender, &mut observers, transition)? {
                         return Ok(());
@@ -1025,6 +1028,9 @@ fn spawn_engine(
                 Ok(())
             };
             if let Err(error) = run() {
+                if let Some(sender) = ready_sender.take() {
+                    let _ = sender.send(Err(error.to_string()));
+                }
                 let _ = event_sender.blocking_send(EngineEvent::Fatal(error.to_string()));
             }
         })
@@ -1442,7 +1448,8 @@ pub async fn run_on_addresses(
     tokio::task::spawn_blocking(move || engine_ready.recv())
         .await
         .map_err(|_| ServerError::EngineStopped)?
-        .map_err(|_| ServerError::EngineStopped)?;
+        .map_err(|_| ServerError::EngineStopped)?
+        .map_err(ServerError::Engine)?;
     eprintln!(
         "Cepheus Trader game listeners on {game_listener_text}; administrator listeners on \
          {admin_listener_text}; sysop listeners on {sysop_listener_text}"
@@ -2387,6 +2394,24 @@ mod tests {
     use tokio::io::{duplex, split};
 
     use super::*;
+
+    #[test]
+    fn engine_startup_preserves_the_authoritative_error() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let (_engine, mut events, engine_thread, ready) =
+            spawn_engine(file.path().to_owned(), BbsRegistry::default());
+
+        let startup_error = ready.recv().unwrap().unwrap_err();
+        assert!(
+            startup_error.starts_with("storage I/O error:"),
+            "{startup_error}"
+        );
+        assert!(matches!(
+            events.blocking_recv(),
+            Some(EngineEvent::Fatal(error)) if error == startup_error
+        ));
+        engine_thread.join().unwrap();
+    }
 
     #[test]
     fn obsolete_client_rejection_requires_an_upgrade() {
