@@ -7278,6 +7278,85 @@ void render_docked_snapshot(const ct::DockedSnapshot& snapshot)
    od_printf("\n\r\n\r");
 }
 
+enum class MarketPriceBand {
+   Favorable,
+   Middling,
+   Unfavorable,
+};
+
+MarketPriceBand market_price_band(const ct::PriceDistribution& distribution,
+                                  const uint64_t current,
+                                  const bool buying) {
+   if(buying) {
+      if(current < distribution.lower_quartile) {
+         return MarketPriceBand::Favorable;
+      }
+      if(current < distribution.median) {
+         return MarketPriceBand::Middling;
+      }
+   } else {
+      if(current > distribution.upper_quartile) {
+         return MarketPriceBand::Favorable;
+      }
+      if(current > distribution.median) {
+         return MarketPriceBand::Middling;
+      }
+   }
+   return MarketPriceBand::Unfavorable;
+}
+
+void door_market_price(const uint64_t price,
+                       const MarketPriceBand band) {
+   switch(band) {
+      case MarketPriceBand::Favorable:
+         door_success("%llu", static_cast<unsigned long long>(price));
+         break;
+      case MarketPriceBand::Middling:
+         door_number("%llu", static_cast<unsigned long long>(price));
+         break;
+      case MarketPriceBand::Unfavorable:
+         door_error("%llu", static_cast<unsigned long long>(price));
+         break;
+   }
+}
+
+const char* market_price_description(const MarketPriceBand band,
+                                     const bool buying) {
+   switch(band) {
+      case MarketPriceBand::Favorable:
+         return buying ? "low-price buy" : "high-price sale";
+      case MarketPriceBand::Middling:
+         return buying ? "mid-price buy" : "mid-price sale";
+      case MarketPriceBand::Unfavorable:
+         return buying ? "high-price buy" : "low-price sale";
+   }
+   return "unknown";
+}
+
+void render_price_distribution(const ct::PriceDistribution& distribution,
+                               const uint64_t current) {
+   door_label("   Range ");
+   door_value("%s\n\r",
+              ct::price_box_plot(distribution.minimum,
+                                 distribution.lower_quartile,
+                                 distribution.median,
+                                 distribution.upper_quartile,
+                                 distribution.maximum,
+                                 current).c_str());
+   door_label("   Min Cr");
+   door_number("%llu", static_cast<unsigned long long>(distribution.minimum));
+   door_label("  Q1 Cr");
+   door_number("%llu\n\r",
+               static_cast<unsigned long long>(distribution.lower_quartile));
+   door_label("   Median Cr");
+   door_number("%llu", static_cast<unsigned long long>(distribution.median));
+   door_label("  Q3 Cr");
+   door_number("%llu\n\r",
+               static_cast<unsigned long long>(distribution.upper_quartile));
+   door_label("   Max Cr");
+   door_number("%llu/t\n\r", static_cast<unsigned long long>(distribution.maximum));
+}
+
 void render_market(const ct::MarketSnapshot& market)
 {
    od_clr_scr();
@@ -7290,7 +7369,9 @@ void render_market(const ct::MarketSnapshot& market)
    print_millitons(market.cargo_used_millitons);
    door_label("/");
    print_millitons(market.cargo_capacity_millitons);
-   od_printf("\n\r\n\r");
+   od_printf("\n\r");
+   door_information("Universal market range; * marks your current negotiated quote.\n\r");
+   door_information("Plot: o min/max, ( ) quartiles, : median, X overlap\n\r\n\r");
    door_identifier("Local offers\n\r");
    for(size_t index = 0; index < market.offers.size(); ++index) {
       const auto& offer = market.offers[index];
@@ -7298,10 +7379,15 @@ void render_market(const ct::MarketSnapshot& market)
       door_label(". ");
       door_value("%s\n\r", safe_field(offer.commodity_name).c_str());
       door_label("   Buy Cr");
-      door_number("%llu", static_cast<unsigned long long>(offer.purchase_price_per_ton));
+      const auto band = market_price_band(
+         offer.price_distribution, offer.purchase_price_per_ton, true);
+      door_market_price(offer.purchase_price_per_ton, band);
       door_label("/t  Available ");
       print_millitons(offer.available_millitons);
-      od_printf("\n\r");
+      door_label("  ");
+      door_value("%s\n\r", market_price_description(band, true));
+      render_price_distribution(
+         offer.price_distribution, offer.purchase_price_per_ton);
    }
    door_identifier("\n\rCargo aboard\n\r");
    if(market.cargo.empty()) {
@@ -7327,8 +7413,13 @@ void render_market(const ct::MarketSnapshot& market)
          door_information("  not for sale\n\r");
       } else {
          door_label("  Local bid Cr");
-         door_number("%llu/t\n\r",
-                     static_cast<unsigned long long>(quote->price_per_ton));
+         const auto band = market_price_band(
+            quote->price_distribution, quote->price_per_ton, false);
+         door_market_price(quote->price_per_ton, band);
+         door_label("/t  ");
+         door_value("%s\n\r", market_price_description(band, false));
+         render_price_distribution(
+            quote->price_distribution, quote->price_per_ton);
       }
    }
    door_identifier("\n\rPort research\n\r");

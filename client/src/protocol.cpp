@@ -1493,6 +1493,7 @@ MarketSnapshot decode_market(const rpc::Response::Reader response)
       .phase = decode_response_phase(response.getPhase()),
    };
    for(const auto offer : source.getOffers()) {
+      const auto distribution = offer.getPriceDistribution();
       result.offers.push_back(MarketOffer{
          .offer_id = offer.getOfferId(),
          .commodity_id = offer.getCommodityId(),
@@ -1502,6 +1503,13 @@ MarketSnapshot decode_market(const rpc::Response::Reader response)
          .sale_price_per_ton = offer.getSalePricePerTon(),
          .available_millitons = offer.getAvailableMillitons(),
          .legality = static_cast<uint8_t>(offer.getLegality()),
+         .price_distribution = {
+            .minimum = distribution.getMinimum(),
+            .lower_quartile = distribution.getLowerQuartile(),
+            .median = distribution.getMedian(),
+            .upper_quartile = distribution.getUpperQuartile(),
+            .maximum = distribution.getMaximum(),
+         },
       });
    }
    for(const auto lot : source.getCargo()) {
@@ -1521,9 +1529,17 @@ MarketSnapshot decode_market(const rpc::Response::Reader response)
       });
    }
    for(const auto quote : source.getCargoSaleQuotes()) {
+      const auto distribution = quote.getPriceDistribution();
       result.cargo_sale_quotes.push_back({
          .cargo_lot_id = quote.getCargoLotId(),
          .price_per_ton = quote.getPricePerTon(),
+         .price_distribution = {
+            .minimum = distribution.getMinimum(),
+            .lower_quartile = distribution.getLowerQuartile(),
+            .median = distribution.getMedian(),
+            .upper_quartile = distribution.getUpperQuartile(),
+            .maximum = distribution.getMaximum(),
+         },
       });
    }
    for(const auto assignment : source.getWorkAssignments()) {

@@ -720,6 +720,13 @@ fn complete_arrival_and_trade(
     // can share a logical line with the erased prompt.  Parse the normalized
     // display stream and take the numbered item immediately before the name.
     let normalized_cargo = normalized_display_text(cargo_section);
+    assert!(normalized_cargo.contains("Range"));
+    assert!(normalized_cargo.contains("Min Cr"));
+    assert!(normalized_cargo.contains("Q1 Cr"));
+    assert!(normalized_cargo.contains("Median Cr"));
+    assert!(normalized_cargo.contains("Q3 Cr"));
+    assert!(normalized_cargo.contains("Max Cr"));
+    assert!(normalized_cargo.contains("-price sale"));
     let cargo_selection = normalized_cargo
         .split_once(&cargo_name)
         .and_then(|(before_name, _)| before_name.split_whitespace().next_back())

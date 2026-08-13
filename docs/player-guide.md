@@ -187,6 +187,15 @@ quantity from the ship. The ordinary bid remains below the local ask, but a
 reserved private buyer may offer more. Splitting or repeating a request does
 not create duplicate cargo or money.
 
+Each listed price has a compact range plot. Its minimum, Q1, median, Q3, and
+maximum are universe-wide market-value landmarks for that commodity, not a
+forecast tailored to your captain. The current-price marker is your actual
+negotiated quote, which can change with the captain's Broker skill and Charisma
+as well as local trade codes, events, and tariffs. Low purchase prices are
+favorable; high sale prices are favorable. The green/yellow/red judgment is
+also written as `low-price`, `mid-price`, or `high-price` so it remains clear
+without color.
+
 Speculative cargo may be sold in its origin system, normally at an immediate
 loss. Market reports are observations made at a particular place and time,
 not a promise that stock or prices will be unchanged when you arrive.

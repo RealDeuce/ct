@@ -81,6 +81,20 @@ void check_profile_and_width(const ct::DoorProfile profile,
 }  // namespace
 
 int main() {
+   const auto price_plot =
+      ct::price_box_plot(900, 1'000, 1'100, 1'200, 1'300, 1'150);
+   check(price_plot.size() == 21);
+   check(price_plot.front() == 'o');
+   check(price_plot.back() == 'o');
+   check(price_plot.find('(') != std::string::npos);
+   check(price_plot.find(':') != std::string::npos);
+   check(price_plot.find(')') != std::string::npos);
+   check(price_plot.find('*') != std::string::npos);
+   const auto flat_price_plot =
+      ct::price_box_plot(1'000, 1'000, 1'000, 1'000, 1'000, 1'000);
+   check(flat_price_plot.size() == 21);
+   check(flat_price_plot[10] == 'X');
+
    check(ct::parse_tonnage_millitons("1") == 1000);
    check(ct::parse_tonnage_millitons("1.25") == 1250);
    check(ct::parse_tonnage_millitons(".001") == 1);

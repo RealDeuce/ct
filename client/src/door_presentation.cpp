@@ -443,6 +443,52 @@ std::string door_option_prompt(
    return prompt;
 }
 
+std::string price_box_plot(const uint64_t minimum,
+                           const uint64_t lower_quartile,
+                           const uint64_t median,
+                           const uint64_t upper_quartile,
+                           const uint64_t maximum,
+                           const uint64_t current,
+                           const size_t requested_width) {
+   const auto width = std::max<size_t>(requested_width, 9);
+   std::string result(width, ' ');
+   const auto position = [&](const uint64_t value) {
+      if(maximum <= minimum) {
+         return width / 2;
+      }
+      const auto bounded = std::clamp(value, minimum, maximum);
+      const auto offset = static_cast<unsigned __int128>(bounded - minimum) *
+                          static_cast<unsigned __int128>(width - 1);
+      return static_cast<size_t>(offset / (maximum - minimum));
+   };
+   const auto minimum_position = position(minimum);
+   const auto lower_position = position(lower_quartile);
+   const auto median_position = position(median);
+   const auto upper_position = position(upper_quartile);
+   const auto maximum_position = position(maximum);
+   const auto current_position = position(current);
+
+   std::fill(result.begin() + minimum_position,
+             result.begin() + maximum_position + 1,
+             '-');
+   std::fill(result.begin() + lower_position,
+             result.begin() + upper_position + 1,
+             '=');
+   result[minimum_position] = 'o';
+   result[maximum_position] = 'o';
+   result[lower_position] = '(';
+   result[upper_position] = ')';
+   result[median_position] = ':';
+   const bool marker_overlap =
+      current_position == minimum_position ||
+      current_position == lower_position ||
+      current_position == median_position ||
+      current_position == upper_position ||
+      current_position == maximum_position;
+   result[current_position] = marker_overlap ? 'X' : '*';
+   return result;
+}
+
 std::string door_option_prompt(
    const std::initializer_list<std::string_view> options,
    const size_t columns,

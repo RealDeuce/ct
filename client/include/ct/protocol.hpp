@@ -625,6 +625,14 @@ struct CoursePlot {
    PlayerPhase phase;
 };
 
+struct PriceDistribution {
+   uint64_t minimum;
+   uint64_t lower_quartile;
+   uint64_t median;
+   uint64_t upper_quartile;
+   uint64_t maximum;
+};
+
 struct MarketOffer {
    uint64_t offer_id;
    uint16_t commodity_id;
@@ -634,6 +642,7 @@ struct MarketOffer {
    uint64_t sale_price_per_ton;
    uint64_t available_millitons;
    uint8_t legality;
+   PriceDistribution price_distribution;
 };
 
 struct CargoLot {
@@ -654,6 +663,7 @@ struct CargoLot {
 struct CargoSaleQuote {
    uint64_t cargo_lot_id;
    uint64_t price_per_ton;
+   PriceDistribution price_distribution;
 };
 
 enum class TaskKind {

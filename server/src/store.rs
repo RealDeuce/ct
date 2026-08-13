@@ -60,10 +60,10 @@ use crate::wire::{
     FlightPlanStep, FlightPlanWarning, FuelOperation, KnownDestinations, KnownSystemSummary,
     MarketOffer, MarketSnapshot, MessageClassification, MessageItem, MessageManagement,
     OriginDossier, Outcome, OutcomeKind, PlayerCreation, PlayerIdentity, PlayerPhase,
-    ShipActivityKind as WireShipActivityKind, ShipActivityStatus, ShipAmmunitionStatus,
-    ShipProvisionStatus, ShipStatusSnapshot, ShipSubsystemKind, ShipSubsystemStatus,
-    SystemMappingChoice, SystemMappingState, SystemMappingStatus, TravelStage, TravelStatus,
-    WaypointAuthority,
+    PriceDistribution, ShipActivityKind as WireShipActivityKind, ShipActivityStatus,
+    ShipAmmunitionStatus, ShipProvisionStatus, ShipStatusSnapshot, ShipSubsystemKind,
+    ShipSubsystemStatus, SystemMappingChoice, SystemMappingState, SystemMappingStatus, TravelStage,
+    TravelStatus, WaypointAuthority,
 };
 
 type SequenceDatabase = Database<U64<BE>, Bytes>;
@@ -15319,6 +15319,8 @@ impl Store {
                     )
                 });
                 let purchase_price = price_with_import_tariff(purchase, tariff_basis_points);
+                let purchase_distribution =
+                    absolute_purchase_price_distribution(quote.commodity.base_price_per_ton);
                 let sale_price = non_crossing_market_bid(
                     price_after_export_tariff(sale, tariff_basis_points),
                     purchase_price,
@@ -15346,6 +15348,7 @@ impl Store {
                         crate::commerce::Legality::Restricted => CommodityLegality::Restricted,
                         crate::commerce::Legality::Prohibited => CommodityLegality::Prohibited,
                     },
+                    price_distribution: purchase_distribution,
                 }
             })
             .collect::<Vec<_>>();
@@ -15369,12 +15372,13 @@ impl Store {
                     sale_price_per_ton: 1_000,
                     available_millitons: pie.mass_millitons,
                     legality: CommodityLegality::Legal,
+                    price_distribution: PriceDistribution::flat(1_000),
                 });
             }
         }
         let mut cargo_sale_quotes = Vec::new();
         for lot in &ship.cargo {
-            let price_per_ton = match lot.title {
+            let (price_per_ton, price_distribution) = match lot.title {
                 CargoTitle::PlayerOwned => {
                     let item = commodity(lot.commodity_id)
                         .ok_or(StoreError::Corrupt("cargo commodity is unknown"))?;
@@ -15400,19 +15404,22 @@ impl Store {
                             )
                         });
                     let bid = price_after_export_tariff(event_price, tariff_basis_points);
-                    offers
+                    let current_bid = offers
                         .iter()
                         .find(|offer| offer.commodity_id == lot.commodity_id)
                         .map_or(bid, |offer| {
                             non_crossing_market_bid(bid, offer.purchase_price_per_ton)
-                        })
+                        });
+                    let distribution = absolute_sale_price_distribution(item.base_price_per_ton);
+                    (current_bid, distribution)
                 }
-                CargoTitle::UniqueObject => 1_000,
+                CargoTitle::UniqueObject => (1_000, PriceDistribution::flat(1_000)),
                 CargoTitle::Freight | CargoTitle::Contract => continue,
             };
             cargo_sale_quotes.push(CargoSaleQuote {
                 cargo_lot_id: lot.cargo_lot_id,
                 price_per_ton,
+                price_distribution,
             });
         }
         let spec = creation::ship_status_spec(ship.catalog_id)
@@ -19531,6 +19538,7 @@ impl Store {
                 sale_price_per_ton: 0,
                 available_millitons: stored.lead.quantity_millitons,
                 legality: CommodityLegality::Legal,
+                price_distribution: PriceDistribution::flat(stored.lead.price_per_ton),
             };
             reserved_lead = Some(stored);
             offer
@@ -29387,6 +29395,35 @@ fn market_tariff_basis_points(world: &crate::universe::World) -> u16 {
         .min(1_500)
 }
 
+fn absolute_purchase_price_distribution(base_price: u64) -> PriceDistribution {
+    let minimum = price_with_import_tariff(base_price.saturating_mul(80) / 100, 500);
+    let maximum = price_with_import_tariff(base_price.saturating_mul(120) / 100, 1_250);
+    quartile_span(minimum, maximum)
+}
+
+fn absolute_sale_price_distribution(base_price: u64) -> PriceDistribution {
+    let tariff_only_minimum = price_after_export_tariff(base_price, 1_250);
+    let spread_capped_minimum =
+        price_with_import_tariff(base_price.saturating_mul(80) / 100, 500).saturating_sub(1);
+    let minimum = tariff_only_minimum.min(spread_capped_minimum);
+    let maximum = price_after_export_tariff(base_price.saturating_mul(130) / 100, 500);
+    quartile_span(minimum, maximum)
+}
+
+fn quartile_span(minimum: u64, maximum: u64) -> PriceDistribution {
+    let span = u128::from(maximum.saturating_sub(minimum));
+    let quartile = |numerator: u128| {
+        minimum.saturating_add(u64::try_from(span * numerator / 4).unwrap_or(u64::MAX))
+    };
+    PriceDistribution {
+        minimum,
+        lower_quartile: quartile(1),
+        median: quartile(2),
+        upper_quartile: quartile(3),
+        maximum,
+    }
+}
+
 #[derive(Debug, Eq, PartialEq)]
 struct CustomsDisposition {
     confiscated_millitons: u64,
@@ -33284,7 +33321,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(9);
+    bytes.push(10);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -33533,6 +33570,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 7
         && version != 8
         && version != 9
+        && version != 10
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -37592,6 +37630,7 @@ fn encode_market_snapshot_into(
             CommodityLegality::Restricted => 1,
             CommodityLegality::Prohibited => 2,
         });
+        encode_price_distribution_into(bytes, offer.price_distribution);
     }
     let cargo_count = u16::try_from(snapshot.cargo.len())
         .map_err(|_| StoreError::Corrupt("too many cargo lots"))?;
@@ -37662,6 +37701,7 @@ fn encode_market_snapshot_into(
     for quote in &snapshot.cargo_sale_quotes {
         bytes.extend_from_slice(&quote.cargo_lot_id.to_be_bytes());
         bytes.extend_from_slice(&quote.price_per_ton.to_be_bytes());
+        encode_price_distribution_into(bytes, quote.price_distribution);
     }
     Ok(())
 }
@@ -37680,20 +37720,34 @@ fn decode_market_snapshot(
     let offer_count = decoder.u16()? as usize;
     let mut offers = Vec::with_capacity(offer_count);
     for _ in 0..offer_count {
+        let offer_id = decoder.u64()?;
+        let commodity_id = decoder.u16()?;
+        let commodity_name = decoder.text()?;
+        let base_price_per_ton = decoder.u64()?;
+        let purchase_price_per_ton = decoder.u64()?;
+        let sale_price_per_ton = decoder.u64()?;
+        let available_millitons = decoder.u64()?;
+        let legality = match decoder.u8()? {
+            0 => CommodityLegality::Legal,
+            1 => CommodityLegality::Restricted,
+            2 => CommodityLegality::Prohibited,
+            _ => return Err(StoreError::Corrupt("unknown cached commodity legality")),
+        };
+        let price_distribution = if outcome_version >= 10 {
+            decode_price_distribution(decoder)?
+        } else {
+            PriceDistribution::flat(purchase_price_per_ton)
+        };
         offers.push(MarketOffer {
-            offer_id: decoder.u64()?,
-            commodity_id: decoder.u16()?,
-            commodity_name: decoder.text()?,
-            base_price_per_ton: decoder.u64()?,
-            purchase_price_per_ton: decoder.u64()?,
-            sale_price_per_ton: decoder.u64()?,
-            available_millitons: decoder.u64()?,
-            legality: match decoder.u8()? {
-                0 => CommodityLegality::Legal,
-                1 => CommodityLegality::Restricted,
-                2 => CommodityLegality::Prohibited,
-                _ => return Err(StoreError::Corrupt("unknown cached commodity legality")),
-            },
+            offer_id,
+            commodity_id,
+            commodity_name,
+            base_price_per_ton,
+            purchase_price_per_ton,
+            sale_price_per_ton,
+            available_millitons,
+            legality,
+            price_distribution,
         });
     }
     let cargo_count = decoder.u16()? as usize;
@@ -37776,9 +37830,17 @@ fn decode_market_snapshot(
         Vec::new()
     };
     for _ in 0..cargo_sale_quotes.capacity() {
+        let cargo_lot_id = decoder.u64()?;
+        let price_per_ton = decoder.u64()?;
+        let price_distribution = if outcome_version >= 10 {
+            decode_price_distribution(decoder)?
+        } else {
+            PriceDistribution::flat(price_per_ton)
+        };
         cargo_sale_quotes.push(CargoSaleQuote {
-            cargo_lot_id: decoder.u64()?,
-            price_per_ton: decoder.u64()?,
+            cargo_lot_id,
+            price_per_ton,
+            price_distribution,
         });
     }
     Ok(MarketSnapshot {
@@ -37798,6 +37860,28 @@ fn decode_market_snapshot(
         leads,
         events,
         cargo_sale_quotes,
+    })
+}
+
+fn encode_price_distribution_into(bytes: &mut Vec<u8>, distribution: PriceDistribution) {
+    for value in [
+        distribution.minimum,
+        distribution.lower_quartile,
+        distribution.median,
+        distribution.upper_quartile,
+        distribution.maximum,
+    ] {
+        bytes.extend_from_slice(&value.to_be_bytes());
+    }
+}
+
+fn decode_price_distribution(decoder: &mut Decoder<'_>) -> Result<PriceDistribution, StoreError> {
+    Ok(PriceDistribution {
+        minimum: decoder.u64()?,
+        lower_quartile: decoder.u64()?,
+        median: decoder.u64()?,
+        upper_quartile: decoder.u64()?,
+        maximum: decoder.u64()?,
     })
 }
 
@@ -38857,6 +38941,30 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    #[test]
+    fn absolute_market_ranges_are_not_captain_specific() {
+        assert_eq!(
+            absolute_purchase_price_distribution(1_000),
+            PriceDistribution {
+                minimum: 840,
+                lower_quartile: 967,
+                median: 1_095,
+                upper_quartile: 1_222,
+                maximum: 1_350,
+            }
+        );
+        assert_eq!(
+            absolute_sale_price_distribution(1_000),
+            PriceDistribution {
+                minimum: 839,
+                lower_quartile: 938,
+                median: 1_037,
+                upper_quartile: 1_136,
+                maximum: 1_235,
+            }
+        );
+    }
 
     #[test]
     fn combat_log_uses_ship_names_instead_of_internal_vessel_ids() {

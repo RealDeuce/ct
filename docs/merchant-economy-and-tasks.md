@@ -20,6 +20,26 @@ ordinary local bid is capped below the local ask whenever the exchange also
 has that commodity in stock, so loading and immediately unloading cargo cannot
 create money. A named reserved buyer is a separate negotiated transaction and
 may cross the public spread.
+
+Cargo Exchange price plots compare the captain's current quote against an
+absolute, universe-wide market-value span for the commodity, not against a
+distribution tailored to that captain. Purchase spans include the rules'
+80%-to-120% negotiation outcomes and the generated universe's 5%-to-12.5%
+import-tariff bounds. Sale spans include the 100%-to-130% outcomes, export
+tariffs, and the ordinary bid/ask spread cap. The lower quartile, median, and
+upper quartile divide that absolute credit span into four equal intervals;
+they are market-value landmarks, not probabilities for the current captain.
+The current quote still reflects Broker skill, Charisma, local trade codes,
+events, tariffs, and (for ordinary sales) the local ask.
+
+For purchases, a quote below Q1 is favorable/green, Q1 through below the
+median is middling/yellow, and the median or higher is unfavorable/red. Sales
+reverse that judgment: above Q3 is favorable/green, above the median through
+Q3 is middling/yellow, and the median or lower is unfavorable/red. Every row
+also prints `low-price`, `mid-price`, or `high-price` buy/sale wording so color
+is never the only signal. The plot uses minimum, Q1, median, Q3, maximum, and a
+current-price marker; it intentionally omits a mean.
+
 Prohibited goods cannot be bought through the open exchange; restricted goods
 remain identifiable for deeper permit enforcement.
 

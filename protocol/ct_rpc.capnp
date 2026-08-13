@@ -822,6 +822,14 @@ struct CoursePlot {
   clockRateRealSeconds @7 :UInt64;
 }
 
+struct PriceDistribution {
+  minimum @0 :UInt64;
+  lowerQuartile @1 :UInt64;
+  median @2 :UInt64;
+  upperQuartile @3 :UInt64;
+  maximum @4 :UInt64;
+}
+
 struct MarketOffer {
   offerId @0 :UInt64;
   commodityId @1 :UInt16;
@@ -831,6 +839,7 @@ struct MarketOffer {
   salePricePerTon @5 :UInt64;
   availableMillitons @6 :UInt64;
   legality @7 :CommodityLegality;
+  priceDistribution @8 :PriceDistribution;
 }
 
 enum CommodityLegality {
@@ -864,6 +873,7 @@ struct CargoLot {
 struct CargoSaleQuote {
   cargoLotId @0 :UInt64;
   pricePerTon @1 :UInt64;
+  priceDistribution @2 :PriceDistribution;
 }
 
 struct MarketSnapshot {

@@ -49,6 +49,13 @@ std::string door_option_prompt(
    std::initializer_list<std::string_view> options,
    size_t columns,
    bool leading_newline = true);
+std::string price_box_plot(uint64_t minimum,
+                           uint64_t lower_quartile,
+                           uint64_t median,
+                           uint64_t upper_quartile,
+                           uint64_t maximum,
+                           uint64_t current,
+                           size_t width = 21);
 
 class DoorPresentation {
 public:

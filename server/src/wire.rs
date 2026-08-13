@@ -822,6 +822,27 @@ pub struct CoursePlot {
     pub current_game_second: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PriceDistribution {
+    pub minimum: u64,
+    pub lower_quartile: u64,
+    pub median: u64,
+    pub upper_quartile: u64,
+    pub maximum: u64,
+}
+
+impl PriceDistribution {
+    pub const fn flat(price: u64) -> Self {
+        Self {
+            minimum: price,
+            lower_quartile: price,
+            median: price,
+            upper_quartile: price,
+            maximum: price,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MarketOffer {
     pub offer_id: u64,
@@ -832,6 +853,7 @@ pub struct MarketOffer {
     pub sale_price_per_ton: u64,
     pub available_millitons: u64,
     pub legality: CommodityLegality,
+    pub price_distribution: PriceDistribution,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -869,6 +891,7 @@ pub struct CargoLot {
 pub struct CargoSaleQuote {
     pub cargo_lot_id: u64,
     pub price_per_ton: u64,
+    pub price_distribution: PriceDistribution,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -5321,6 +5344,10 @@ fn set_market(
             CommodityLegality::Restricted => crate::ct_rpc_capnp::CommodityLegality::Restricted,
             CommodityLegality::Prohibited => crate::ct_rpc_capnp::CommodityLegality::Prohibited,
         });
+        set_price_distribution(
+            item.reborrow().init_price_distribution(),
+            offer.price_distribution,
+        );
     }
     let cargo_count =
         u32::try_from(snapshot.cargo.len()).map_err(|_| WireError::Expected("fewer cargo lots"))?;
@@ -5352,6 +5379,10 @@ fn set_market(
         let mut item = quotes.reborrow().get(index as u32);
         item.set_cargo_lot_id(quote.cargo_lot_id);
         item.set_price_per_ton(quote.price_per_ton);
+        set_price_distribution(
+            item.reborrow().init_price_distribution(),
+            quote.price_distribution,
+        );
     }
     let code_count = u32::try_from(snapshot.trade_codes.len())
         .map_err(|_| WireError::Expected("fewer trade codes"))?;
@@ -5431,6 +5462,17 @@ fn set_market(
         item.set_headline(&event.headline);
     }
     Ok(())
+}
+
+fn set_price_distribution(
+    mut builder: crate::ct_rpc_capnp::price_distribution::Builder<'_>,
+    distribution: PriceDistribution,
+) {
+    builder.set_minimum(distribution.minimum);
+    builder.set_lower_quartile(distribution.lower_quartile);
+    builder.set_median(distribution.median);
+    builder.set_upper_quartile(distribution.upper_quartile);
+    builder.set_maximum(distribution.maximum);
 }
 
 fn set_travel_status(
