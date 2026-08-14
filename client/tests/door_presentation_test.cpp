@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -94,6 +96,14 @@ int main() {
       ct::price_box_plot(1'000, 1'000, 1'000, 1'000, 1'000, 1'000);
    check(flat_price_plot.size() == 21);
    check(flat_price_plot[10] == 'X');
+   const auto full_range_price_plot = ct::price_box_plot(
+      0,
+      0,
+      0,
+      std::numeric_limits<uint64_t>::max(),
+      std::numeric_limits<uint64_t>::max(),
+      std::numeric_limits<uint64_t>::max() / 2);
+   check(full_range_price_plot.find('*') == 9);
 
    check(ct::parse_tonnage_millitons("1") == 1000);
    check(ct::parse_tonnage_millitons("1.25") == 1250);

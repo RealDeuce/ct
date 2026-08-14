@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -452,14 +453,40 @@ std::string price_box_plot(const uint64_t minimum,
                            const size_t requested_width) {
    const auto width = std::max<size_t>(requested_width, 9);
    std::string result(width, ' ');
+   const auto multiply_divide = [](const uint64_t value,
+                                   const size_t multiplier,
+                                   const uint64_t divisor) {
+      size_t quotient = 0;
+      uint64_t remainder = 0;
+      auto bit = size_t{1} << (std::numeric_limits<size_t>::digits - 1);
+      while(bit != 0 && (bit & multiplier) == 0) {
+         bit >>= 1;
+      }
+      for(; bit != 0; bit >>= 1) {
+         quotient *= 2;
+         if(remainder >= divisor - remainder) {
+            remainder -= divisor - remainder;
+            ++quotient;
+         } else {
+            remainder += remainder;
+         }
+         if((bit & multiplier) != 0) {
+            if(remainder >= divisor - value) {
+               remainder -= divisor - value;
+               ++quotient;
+            } else {
+               remainder += value;
+            }
+         }
+      }
+      return quotient;
+   };
    const auto position = [&](const uint64_t value) {
       if(maximum <= minimum) {
          return width / 2;
       }
       const auto bounded = std::clamp(value, minimum, maximum);
-      const auto offset = static_cast<unsigned __int128>(bounded - minimum) *
-                          static_cast<unsigned __int128>(width - 1);
-      return static_cast<size_t>(offset / (maximum - minimum));
+      return multiply_divide(bounded - minimum, width - 1, maximum - minimum);
    };
    const auto minimum_position = position(minimum);
    const auto lower_position = position(lower_quartile);
