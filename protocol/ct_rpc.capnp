@@ -165,6 +165,7 @@ struct Request {
     misappropriateRestrictedCredits @70 :MisappropriateRestrictedCreditsRequest;
     setInterceptionWatch @71 :InterceptionWatchRequest;
     abandonPlayer @72 :AbandonPlayerRequest;
+    suggestTaskCourse @73 :Void;
   }
 }
 

@@ -1947,6 +1947,11 @@ CoursePlot plot_course(TlsConnection& connection,
                        const std::array<uint8_t, 16>& command_id,
                        uint64_t request_id);
 
+CoursePlot suggest_task_course(TlsConnection& connection,
+                               uint64_t session_epoch,
+                               const std::array<uint8_t, 16>& command_id,
+                               uint64_t request_id);
+
 MarketSnapshot get_market(TlsConnection& connection,
                           uint64_t session_epoch,
                           const std::array<uint8_t, 16>& command_id,

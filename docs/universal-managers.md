@@ -163,6 +163,12 @@ they only pass requirements into Flight Plan. Replanning never rewrites an
 accepted obligation: its cargo, passengers, mail, destination, deadline, and
 consequences remain authoritative even when the captain diverts.
 
+Flight Plan may request a bounded all-task route for the active ship. The
+server's deadline-aware beam search keeps pickups before deliveries and returns
+a useful suggestion without factorial permutation enumeration. It can combine
+shared stops or revisit one, but it is not guaranteed globally optimal and does
+not replace Flight Plan preview's authoritative deadline warnings.
+
 ## Message Management
 
 Message Management owns the complete collection of material already delivered

@@ -2092,6 +2092,7 @@ pub enum Command {
         destination_system_id: u64,
         use_current_fuel: bool,
     },
+    SuggestTaskCourse,
     OpenArrivalPacket,
     GetMessageManagement,
     SetMessageClassification {
@@ -2263,6 +2264,7 @@ impl Command {
             | Self::GetMarket
             | Self::GetTravelStatus
             | Self::PlotCourse { .. }
+            | Self::SuggestTaskCourse
             | Self::GetMessageManagement
             | Self::GetFlightPlan
             | Self::PreviewFlightPlan(_)
@@ -2822,6 +2824,7 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
             })
         }
         request::GetTaskLedger(()) => Command::GetTaskLedger,
+        request::SuggestTaskCourse(()) => Command::SuggestTaskCourse,
         request::AcceptTaskOffer(accept) => {
             let accept = accept?;
             Command::AcceptTaskOffer {
@@ -3741,6 +3744,7 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
             query.set_destination_system_id(destination_system_id);
             query.set_use_current_fuel(use_current_fuel);
         }
+        Command::SuggestTaskCourse => builder.set_suggest_task_course(()),
         Command::OpenArrivalPacket => builder.set_open_arrival_packet(()),
         Command::GetMessageManagement => builder.set_get_message_management(()),
         Command::SetMessageClassification {
@@ -7027,6 +7031,12 @@ mod tests {
                     destination_system_id: 44,
                     use_current_fuel: false,
                 },
+            },
+            CommandRequest {
+                request_id: 204,
+                session_epoch: 23,
+                command_id: [0xbb; COMMAND_ID_BYTES],
+                command: Command::SuggestTaskCourse,
             },
             CommandRequest {
                 request_id: 24,

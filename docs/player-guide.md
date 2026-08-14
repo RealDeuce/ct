@@ -369,6 +369,14 @@ frontier skimming where the ship and charts support it. The plot reports its
 modeled fuel-purchase cost and travel time. The captain still chooses and
 imports a course into the executable Flight Plan.
 
+Flight Plan can also request a route through every active accepted-task stop
+assigned to the commanded ship. The server uses a bounded beam-search heuristic
+rather than enumerating all stop permutations: pickups remain before their
+deliveries, deadlines influence the order, shared stops are consolidated when
+useful, and a system may be revisited when an urgent delivery requires it. This
+returns quickly but is not a proof of the optimal route. Preview the imported
+plan to see authoritative deadline warnings before filing it.
+
 When adding a charted leg, the destination list reports distance from that
 leg's origin, primary-world port, population and tech codes, and the number of
 charted gas giants. Its dossier adds chart age, source, and coordinates.
@@ -481,7 +489,8 @@ for the most serious choices; treat that warning literally.
 
 The Flight Plan is a sequence of destinations and authorized actions. It can
 use carried charts, imported plotted courses, task destinations, frontier-fuel
-stops, or coordinates where those choices are available. Importing a plotted
+stops, coordinates, or the bounded all-assigned-tasks suggestion where those
+choices are available. Importing a plotted
 course also adds its required port purchases or frontier-fuel operations to
 the plan. A Flight Plan preview reports estimated time, fuel, and warnings
 before the plan is filed. Keep enough operating cash available: a purchase

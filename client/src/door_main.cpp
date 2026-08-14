@@ -5908,13 +5908,29 @@ void run_course_plotter(
    door_number("P");
    door_label(". ");
    door_identifier("Known primary to known primary\n\r");
+   door_number("T");
+   door_label(". ");
+   door_identifier("All active tasks assigned to this ship\n\r");
    door_option_prompt({
-      "[C/P] Plot type",
+      "[C/P/T] Plot type",
       "[Enter/Q] Charts",
       "[?] Help",
    });
    const auto mode = od_get_key(TRUE);
    if(mode == '\r' || mode == '\n' || mode == 'q' || mode == 'Q') {
+      return;
+   }
+   if(mode == 't' || mode == 'T') {
+      try {
+         show_course_plot(ct::suggest_task_course(
+                             connection,
+                             session_epoch,
+                             random_command_id(random),
+                             request_id++));
+      } catch(const std::exception& error) {
+         door_error("%s\n\r", safe_field(error.what()).c_str());
+         wait_for_enter();
+      }
       return;
    }
    const bool use_current = mode == 'c' || mode == 'C';
@@ -8053,6 +8069,85 @@ ct::FlightPlanStep purchase_fuel_step(
    };
 }
 
+bool replace_proposal_with_course(
+   ct::FlightPlanProposal& proposal,
+   const ct::CoursePlan& course,
+   const ct::KnownDestinations& destinations,
+   const ct::TravelStatus& travel)
+{
+   if(!course.available || course.waypoints.size() < 2) {
+      door_warning("No executable travel is required or available for that course.\n\r");
+      wait_for_enter();
+      return false;
+   }
+   if(std::any_of(course.waypoints.begin(), course.waypoints.end(),
+   [](const auto & waypoint) {
+      return waypoint.fuel_source == ct::CourseFuelSource::FrontierSkimming;
+   })) {
+      door_warning(
+         "This course requires a body-specific frontier-fuel stop. "
+         "Add that named body manually before filing.\n\r");
+      wait_for_enter();
+      return false;
+   }
+   ct::FlightPlanAction navigation_probe;
+   navigation_probe.kind = ct::FlightPlanActionKind::Jump;
+   if(!configure_jump_navigation(navigation_probe)) {
+      return false;
+   }
+   const auto jump_one_fuel = destinations.jump_rating == 0
+                              ? 0
+                              : travel.jump_fuel_millitons / destinations.jump_rating;
+   if(jump_one_fuel == 0) {
+      door_warning("The ship's Jump fuel allocation is unavailable.\n\r");
+      wait_for_enter();
+      return false;
+   }
+   const auto leg_fuel = [jump_one_fuel](const uint64_t milliparsecs) {
+      return jump_one_fuel * std::max<uint64_t>(1, (milliparsecs + 999) / 1000);
+   };
+   std::vector<ct::FlightPlanStep> steps;
+   auto projected_fuel = travel.current_fuel_millitons;
+   for(size_t index = 0; index + 1 < course.waypoints.size(); ++index) {
+      const auto source = course.waypoints[index].fuel_source;
+      if(source == ct::CourseFuelSource::RefinedPort ||
+            source == ct::CourseFuelSource::UnrefinedPort) {
+         auto required = leg_fuel(course.waypoints[index].next_leg_milliparsecs);
+         for(size_t carried = index + 1;
+               carried + 1 < course.waypoints.size() &&
+               course.waypoints[carried].fuel_source == ct::CourseFuelSource::Carried;
+               ++carried) {
+            required += leg_fuel(course.waypoints[carried].next_leg_milliparsecs);
+         }
+         if(required > projected_fuel) {
+            const auto quantity = required - projected_fuel;
+            steps.push_back(purchase_fuel_step(
+                               course.waypoints[index].system_id, source, quantity));
+            projected_fuel += quantity;
+         }
+      }
+      auto step = jump_step(
+                     course.waypoints[index].system_id,
+                     course.waypoints[index + 1].system_id);
+      step.action.jump_navigation = navigation_probe.jump_navigation;
+      step.action.proceed_on_known_bad_plot =
+         navigation_probe.proceed_on_known_bad_plot;
+      steps.push_back(step);
+      steps.push_back(primary_dock_step(
+                         course.waypoints[index + 1].system_id,
+                         index + 2 == course.waypoints.size()
+                         ? ct::WaypointAuthority::Terminal
+                         : ct::WaypointAuthority::Through));
+      projected_fuel = projected_fuel >= leg_fuel(
+                          course.waypoints[index].next_leg_milliparsecs)
+                       ? projected_fuel - leg_fuel(
+                          course.waypoints[index].next_leg_milliparsecs)
+                       : 0;
+   }
+   proposal.steps = std::move(steps);
+   return true;
+}
+
 std::optional<ct::TravelStatus> run_flight_plan_editor(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
@@ -8093,6 +8188,7 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
       door_option_prompt({
          "[A] Add charted leg",
          "[C] Import plotted course",
+         "[R] Route all assigned tasks",
          "[J] Add task destination",
          "[G] Add frontier fuel stop",
          "[X] Explore coordinates",
@@ -8161,73 +8257,37 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
                continue;
             }
             const auto& course = choice == 'F' ? plot.fastest : plot.cheapest;
-            if(!course.available || course.waypoints.size() < 2) {
-               door_warning("No executable course was found.\n\r");
-               wait_for_enter();
-               continue;
-            }
-            if(std::any_of(course.waypoints.begin(), course.waypoints.end(),
-            [](const auto & waypoint) {
-            return waypoint.fuel_source == ct::CourseFuelSource::FrontierSkimming;
-         })) {
-               door_warning(
-                  "This course requires a body-specific frontier-fuel stop. "
-                  "Add that named body manually before filing.\n\r");
-               wait_for_enter();
-               continue;
-            }
-            ct::FlightPlanAction navigation_probe;
-            navigation_probe.kind = ct::FlightPlanActionKind::Jump;
-            if(!configure_jump_navigation(navigation_probe)) {
-               continue;
-            }
-            const auto jump_one_fuel = destinations.jump_rating == 0
-                                       ? 0
-                                       : travel.jump_fuel_millitons / destinations.jump_rating;
-            if(jump_one_fuel == 0) {
-               door_warning("The ship's Jump fuel allocation is unavailable.\n\r");
-               wait_for_enter();
-               continue;
-            }
-            const auto leg_fuel = [jump_one_fuel](const uint64_t milliparsecs) {
-               return jump_one_fuel * std::max<uint64_t>(1, (milliparsecs + 999) / 1000);
-            };
-            proposal.steps.clear();
-            auto projected_fuel = travel.current_fuel_millitons;
-            for(size_t index = 0; index + 1 < course.waypoints.size(); ++index) {
-               const auto source = course.waypoints[index].fuel_source;
-               if(source == ct::CourseFuelSource::RefinedPort ||
-                     source == ct::CourseFuelSource::UnrefinedPort) {
-                  auto required = leg_fuel(course.waypoints[index].next_leg_milliparsecs);
-                  for(size_t carried = index + 1;
-                        carried + 1 < course.waypoints.size() &&
-                        course.waypoints[carried].fuel_source ==
-                        ct::CourseFuelSource::Carried;
-                        ++carried) {
-                     required += leg_fuel(course.waypoints[carried].next_leg_milliparsecs);
-                  }
-                  if(required > projected_fuel) {
-                     const auto quantity = required - projected_fuel;
-                     proposal.steps.push_back(purchase_fuel_step(
-                                                course.waypoints[index].system_id,
-                                                source,
-                                                quantity));
-                     projected_fuel += quantity;
-                  }
-               }
-               auto step = jump_step(
-                              course.waypoints[index].system_id,
-                              course.waypoints[index + 1].system_id);
-               step.action.jump_navigation = navigation_probe.jump_navigation;
-               step.action.proceed_on_known_bad_plot =
-                  navigation_probe.proceed_on_known_bad_plot;
-               proposal.steps.push_back(step);
-               proposal.steps.push_back(primary_dock_step(
-                                           course.waypoints[index + 1].system_id,
-                                           index + 2 == course.waypoints.size()
-                                           ? ct::WaypointAuthority::Terminal
-                                           : ct::WaypointAuthority::Through));
-               projected_fuel -= leg_fuel(course.waypoints[index].next_leg_milliparsecs);
+            replace_proposal_with_course(proposal, course, destinations, travel);
+         } catch(const std::exception& error) {
+            door_error("%s\n\r", safe_field(error.what()).c_str());
+            wait_for_enter();
+         }
+      } else if(key == 'R') {
+         if(destinations.current_system_id == 0) {
+            door_warning("Task-route suggestions require a charted origin system.\n\r");
+            wait_for_enter();
+            continue;
+         }
+         try {
+            const auto plot = ct::suggest_task_course(
+                                 connection, session_epoch,
+                                 random_command_id(random), request_id++);
+            const auto& course = plot.fastest;
+            door_information(
+               "The bounded task-route heuristic found %zu jump leg(s), "
+               "estimated at %s. It covers active accepted obligations assigned "
+               "to this ship; preview remains the deadline check.\n\r",
+               course.waypoints.empty() ? 0 : course.waypoints.size() - 1,
+               course_duration(course.elapsed_seconds).c_str());
+            door_option_prompt({
+               "[I] Import suggested route",
+               "[Q/Enter] Keep current proposal",
+            }, false);
+            const auto choice = static_cast<char>(
+                                   std::toupper(static_cast<unsigned char>(door_get_live_key())));
+            od_printf("\n\r");
+            if(choice == 'I') {
+               replace_proposal_with_course(proposal, course, destinations, travel);
             }
          } catch(const std::exception& error) {
             door_error("%s\n\r", safe_field(error.what()).c_str());

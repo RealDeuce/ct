@@ -264,3 +264,12 @@ making Known Universe the owner of the active route. A coordinate Jump
 materializes the six-parsec arrival volume and adds its resolved stellar
 contacts as private carried observations; a later Jump can depart the
 deep-space hold for one of those candidates.
+
+On request, the server also suggests a single fast-to-compute course through
+all active accepted-task stops assigned to the commanded ship. Its bounded beam
+search respects pickup-before-delivery precedence and ranks alternatives by
+deadline risk and estimated travel time. It may consolidate common stops or
+revisit a system, but it is deliberately heuristic rather than an exhaustive
+travelling-salesman search. The resulting course carries fuel between segments,
+uses only directly importable carried or port fuel, and must still pass Flight
+Plan preview before filing.

@@ -1,6 +1,6 @@
 //! Durable authoritative storage.
 
-use std::cmp::Reverse;
+use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::fs;
 use std::io::Write;
@@ -1454,6 +1454,25 @@ struct CoursePredecessor {
 struct CalculatedCoursePlan {
     plan: CoursePlan,
     checkpoint_elapsed_seconds: Option<u64>,
+    final_fuel_millitons: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct TaskCourseRequirement {
+    task_id: u64,
+    pickup_system_id: Option<u64>,
+    destination_system_id: u64,
+    deadline_second: u64,
+}
+
+#[derive(Clone)]
+struct TaskCourseSearchState {
+    stages: Vec<u8>,
+    current_system_id: u64,
+    elapsed_seconds: u64,
+    late_deliveries: u16,
+    total_lateness_seconds: u64,
+    stops: Vec<u64>,
 }
 
 fn apply_ship_damage_to_combat(ship: &ShipRecord, vessel: &mut crate::combat::VesselState) {
@@ -4094,6 +4113,15 @@ impl Store {
                     message,
                 },
             },
+            Command::SuggestTaskCourse => {
+                match self.suggest_task_course_in(txn, &queued.identity)? {
+                    RuleResult::Applied(plot) => OutcomeKind::CoursePlot(plot),
+                    RuleResult::Rejected(message) => OutcomeKind::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message,
+                    },
+                }
+            }
             Command::OpenArrivalPacket => {
                 if self.player_phase_in(txn, &queued.identity)? == PlayerPhase::Jump {
                     return Ok((
@@ -15239,6 +15267,125 @@ impl Store {
         );
         Ok(RuleResult::Applied(CoursePlot {
             origin_system_id,
+            destination_system_id,
+            jump_rating: spec.jump_rating,
+            fastest,
+            cheapest,
+            current_game_second: current_second,
+        }))
+    }
+
+    fn suggest_task_course_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+    ) -> Result<RuleResult<CoursePlot>, StoreError> {
+        let (player, ship) = self.player_and_ship_in(txn, identity)?;
+        let spec = creation::ship_status_spec(ship.catalog_id)
+            .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
+        if spec.jump_rating == 0 || spec.jump_fuel_millitons == 0 {
+            return Ok(RuleResult::Rejected(
+                "the commanded ship has no interstellar course capability".into(),
+            ));
+        }
+        let mut requirements = Vec::new();
+        for entry in self.tasks.iter(txn)? {
+            let (_, value) = entry?;
+            let stored = decode_stored_task(value)?;
+            let task = stored.task;
+            if stored.identity != *identity
+                || task.performing_ship_id != ship.ship_id
+                || task.offer.destination_system_id == 0
+                || !task.known_result
+                || !matches!(
+                    task.state,
+                    crate::wire::TaskState::Accepted
+                        | crate::wire::TaskState::Sourcing
+                        | crate::wire::TaskState::Loading
+                        | crate::wire::TaskState::InTransit
+                )
+            {
+                continue;
+            }
+            let pickup_system_id = (task.state == crate::wire::TaskState::Accepted
+                && matches!(
+                    task.offer.kind,
+                    crate::wire::TaskKind::Freight
+                        | crate::wire::TaskKind::Passenger
+                        | crate::wire::TaskKind::Charter
+                        | crate::wire::TaskKind::Courier
+                ))
+            .then_some(task.offer.origin_system_id);
+            requirements.push(TaskCourseRequirement {
+                task_id: task.task_id,
+                pickup_system_id,
+                destination_system_id: task.offer.destination_system_id,
+                deadline_second: task.offer.delivery_deadline_second,
+            });
+        }
+        requirements.sort_by_key(|requirement| requirement.task_id);
+        if requirements.is_empty() {
+            return Ok(RuleResult::Rejected(
+                "this ship has no active accepted tasks with route destinations".into(),
+            ));
+        }
+        if requirements.iter().any(|requirement| {
+            !player
+                .known_system_ids
+                .contains(&requirement.destination_system_id)
+                || requirement
+                    .pickup_system_id
+                    .is_some_and(|pickup| !player.known_system_ids.contains(&pickup))
+        }) {
+            return Ok(RuleResult::Rejected(
+                "an active task requires a system absent from the captain's Known Universe".into(),
+            ));
+        }
+        let current_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        let mut nodes =
+            self.course_nodes_in(txn, &player.known_system_ids, &spec, current_second)?;
+        // A suggested course is intended for direct import into Flight Plan. The
+        // compact course format cannot name the body required for a frontier-fuel
+        // operation, so restrict this plot to carried and port fuel.
+        for node in &mut nodes {
+            node.frontier_round_trip_seconds = None;
+        }
+        let Some(stops) = suggest_task_stop_order(
+            &nodes,
+            ship.system_id,
+            current_second,
+            spec.jump_rating,
+            &requirements,
+        ) else {
+            return Ok(RuleResult::Rejected(
+                "no bounded task-route suggestion could cover every active obligation".into(),
+            ));
+        };
+        let destination_system_id = stops.last().copied().unwrap_or(ship.system_id);
+        let fastest = calculate_course_plan_sequence(
+            &nodes,
+            ship.system_id,
+            &stops,
+            &spec,
+            ship.current_fuel_millitons,
+            CoursePreference::Fastest,
+        );
+        if !fastest.available {
+            return Ok(RuleResult::Rejected(
+                "no executable course through known systems can visit every required task stop"
+                    .into(),
+            ));
+        }
+        let cheapest = calculate_course_plan_sequence(
+            &nodes,
+            ship.system_id,
+            &stops,
+            &spec,
+            ship.current_fuel_millitons,
+            CoursePreference::Cheapest,
+        );
+        Ok(RuleResult::Applied(CoursePlot {
+            origin_system_id: ship.system_id,
             destination_system_id,
             jump_rating: spec.jump_rating,
             fastest,
@@ -28926,6 +29073,312 @@ fn mean_skimming_seconds(quantity_millitons: u64) -> u64 {
         .unwrap_or(u64::MAX)
 }
 
+fn estimated_task_leg_seconds(
+    by_id: &HashMap<u64, &CourseNode>,
+    origin_system_id: u64,
+    destination_system_id: u64,
+    jump_rating: u8,
+) -> u64 {
+    if origin_system_id == destination_system_id {
+        return 0;
+    }
+    let (Some(origin), Some(destination)) = (
+        by_id.get(&origin_system_id),
+        by_id.get(&destination_system_id),
+    ) else {
+        return u64::MAX;
+    };
+    let distance = origin
+        .position_parsecs
+        .iter()
+        .zip(destination.position_parsecs)
+        .map(|(left, right)| (left - right).powi(2))
+        .sum::<f64>()
+        .sqrt();
+    let jumps = (distance / f64::from(jump_rating.max(1))).ceil() as u64;
+    jumps
+        .saturating_mul(STANDARD_JUMP_SECONDS)
+        .saturating_add(origin.approach_seconds)
+        .saturating_add(destination.approach_seconds)
+}
+
+fn advance_task_course_state(
+    state: &mut TaskCourseSearchState,
+    requirements: &[TaskCourseRequirement],
+    current_second: u64,
+) {
+    for (stage, requirement) in state.stages.iter_mut().zip(requirements) {
+        if *stage == 0 && requirement.pickup_system_id == Some(state.current_system_id) {
+            *stage = 1;
+        }
+        if *stage == 1 && requirement.destination_system_id == state.current_system_id {
+            *stage = 2;
+            let arrival_second = current_second.saturating_add(state.elapsed_seconds);
+            if arrival_second > requirement.deadline_second {
+                state.late_deliveries = state.late_deliveries.saturating_add(1);
+                state.total_lateness_seconds = state
+                    .total_lateness_seconds
+                    .saturating_add(arrival_second - requirement.deadline_second);
+            }
+        }
+    }
+}
+
+fn task_course_search_rank(
+    state: &TaskCourseSearchState,
+    requirements: &[TaskCourseRequirement],
+    by_id: &HashMap<u64, &CourseNode>,
+    current_second: u64,
+    jump_rating: u8,
+) -> (u16, u64, u64, usize) {
+    let mut projected_late = 0_u16;
+    let mut projected_lateness = 0_u64;
+    let mut nearest_progress = u64::MAX;
+    for (stage, requirement) in state.stages.iter().zip(requirements) {
+        if *stage == 2 {
+            continue;
+        }
+        let remaining = if *stage == 0 {
+            let pickup = requirement
+                .pickup_system_id
+                .expect("pending pickup stage has a pickup system");
+            let first =
+                estimated_task_leg_seconds(by_id, state.current_system_id, pickup, jump_rating);
+            nearest_progress = nearest_progress.min(first);
+            first.saturating_add(estimated_task_leg_seconds(
+                by_id,
+                pickup,
+                requirement.destination_system_id,
+                jump_rating,
+            ))
+        } else {
+            let remaining = estimated_task_leg_seconds(
+                by_id,
+                state.current_system_id,
+                requirement.destination_system_id,
+                jump_rating,
+            );
+            nearest_progress = nearest_progress.min(remaining);
+            remaining
+        };
+        let projected_arrival = current_second
+            .saturating_add(state.elapsed_seconds)
+            .saturating_add(remaining);
+        if projected_arrival > requirement.deadline_second {
+            projected_late = projected_late.saturating_add(1);
+            projected_lateness =
+                projected_lateness.saturating_add(projected_arrival - requirement.deadline_second);
+        }
+    }
+    (
+        state.late_deliveries.saturating_add(projected_late),
+        state
+            .total_lateness_seconds
+            .saturating_add(projected_lateness),
+        state
+            .elapsed_seconds
+            .saturating_add(if nearest_progress == u64::MAX {
+                0
+            } else {
+                nearest_progress
+            }),
+        state.stops.len(),
+    )
+}
+
+fn compare_task_course_states(
+    left: &TaskCourseSearchState,
+    right: &TaskCourseSearchState,
+    requirements: &[TaskCourseRequirement],
+    by_id: &HashMap<u64, &CourseNode>,
+    current_second: u64,
+    jump_rating: u8,
+) -> Ordering {
+    task_course_search_rank(left, requirements, by_id, current_second, jump_rating)
+        .cmp(&task_course_search_rank(
+            right,
+            requirements,
+            by_id,
+            current_second,
+            jump_rating,
+        ))
+        .then_with(|| left.stops.cmp(&right.stops))
+        .then_with(|| left.stages.cmp(&right.stages))
+        .then_with(|| left.current_system_id.cmp(&right.current_system_id))
+}
+
+fn suggest_task_stop_order(
+    nodes: &[CourseNode],
+    origin_system_id: u64,
+    current_second: u64,
+    jump_rating: u8,
+    requirements: &[TaskCourseRequirement],
+) -> Option<Vec<u64>> {
+    const BEAM_WIDTH: usize = 48;
+    let by_id = nodes
+        .iter()
+        .map(|node| (node.system_id, node))
+        .collect::<HashMap<_, _>>();
+    if !by_id.contains_key(&origin_system_id) {
+        return None;
+    }
+    let mut initial = TaskCourseSearchState {
+        stages: requirements
+            .iter()
+            .map(|requirement| u8::from(requirement.pickup_system_id.is_none()))
+            .collect(),
+        current_system_id: origin_system_id,
+        elapsed_seconds: 0,
+        late_deliveries: 0,
+        total_lateness_seconds: 0,
+        stops: Vec::new(),
+    };
+    advance_task_course_state(&mut initial, requirements, current_second);
+    let mut beam = vec![initial];
+    let mut completed = Vec::new();
+    for _ in 0..=requirements.len().saturating_mul(2) {
+        let mut next_by_state: HashMap<(u64, Vec<u8>), TaskCourseSearchState> = HashMap::new();
+        for state in beam {
+            if state.stages.iter().all(|stage| *stage == 2) {
+                completed.push(state);
+                continue;
+            }
+            let mut candidates = HashSet::new();
+            for (stage, requirement) in state.stages.iter().zip(requirements) {
+                match *stage {
+                    0 => {
+                        candidates.insert(requirement.pickup_system_id?);
+                    }
+                    1 => {
+                        candidates.insert(requirement.destination_system_id);
+                    }
+                    _ => {}
+                }
+            }
+            let mut candidates = candidates.into_iter().collect::<Vec<_>>();
+            candidates.sort_unstable();
+            for candidate in candidates {
+                let travel = estimated_task_leg_seconds(
+                    &by_id,
+                    state.current_system_id,
+                    candidate,
+                    jump_rating,
+                );
+                if travel == u64::MAX {
+                    continue;
+                }
+                let mut next = state.clone();
+                next.current_system_id = candidate;
+                next.elapsed_seconds = next.elapsed_seconds.saturating_add(travel);
+                next.stops.push(candidate);
+                advance_task_course_state(&mut next, requirements, current_second);
+                let key = (candidate, next.stages.clone());
+                let replace = next_by_state.get(&key).is_none_or(|existing| {
+                    compare_task_course_states(
+                        &next,
+                        existing,
+                        requirements,
+                        &by_id,
+                        current_second,
+                        jump_rating,
+                    ) == Ordering::Less
+                });
+                if replace {
+                    next_by_state.insert(key, next);
+                }
+            }
+        }
+        if next_by_state.is_empty() {
+            break;
+        }
+        beam = next_by_state.into_values().collect();
+        beam.sort_by(|left, right| {
+            compare_task_course_states(
+                left,
+                right,
+                requirements,
+                &by_id,
+                current_second,
+                jump_rating,
+            )
+        });
+        beam.truncate(BEAM_WIDTH);
+    }
+    completed
+        .into_iter()
+        .min_by(|left, right| {
+            compare_task_course_states(
+                left,
+                right,
+                requirements,
+                &by_id,
+                current_second,
+                jump_rating,
+            )
+        })
+        .map(|state| state.stops)
+}
+
+fn calculate_course_plan_sequence(
+    nodes: &[CourseNode],
+    origin_system_id: u64,
+    stops: &[u64],
+    spec: &creation::ShipStatusSpec,
+    initial_fuel_millitons: u64,
+    preference: CoursePreference,
+) -> CoursePlan {
+    let Some(origin) = nodes.iter().find(|node| node.system_id == origin_system_id) else {
+        return unavailable_course_plan();
+    };
+    let mut plan = CoursePlan {
+        available: true,
+        elapsed_seconds: 0,
+        fuel_cost_credits: 0,
+        total_milliparsecs: 0,
+        waypoints: vec![CourseWaypoint {
+            system_id: origin.system_id,
+            system_name: origin.system_name.clone(),
+            world_name: origin.world_name.clone(),
+            fuel_source: CourseFuelSource::None,
+            next_leg_milliparsecs: 0,
+        }],
+    };
+    let mut current_system_id = origin_system_id;
+    let mut fuel_millitons = initial_fuel_millitons;
+    for destination_system_id in stops.iter().copied() {
+        if destination_system_id == current_system_id {
+            continue;
+        }
+        let segment = calculate_course_plan_through(
+            nodes,
+            current_system_id,
+            destination_system_id,
+            None,
+            None,
+            spec,
+            fuel_millitons,
+            preference,
+        );
+        if !segment.plan.available {
+            return unavailable_course_plan();
+        }
+        plan.elapsed_seconds = plan
+            .elapsed_seconds
+            .saturating_add(segment.plan.elapsed_seconds);
+        plan.fuel_cost_credits = plan
+            .fuel_cost_credits
+            .saturating_add(segment.plan.fuel_cost_credits);
+        plan.total_milliparsecs = plan
+            .total_milliparsecs
+            .saturating_add(segment.plan.total_milliparsecs);
+        plan.waypoints.pop();
+        plan.waypoints.extend(segment.plan.waypoints);
+        current_system_id = destination_system_id;
+        fuel_millitons = segment.final_fuel_millitons;
+    }
+    plan
+}
+
 fn calculate_course_plan(
     nodes: &[CourseNode],
     origin_system_id: u64,
@@ -28969,12 +29422,14 @@ fn calculate_course_plan_through(
         return CalculatedCoursePlan {
             plan: unavailable_course_plan(),
             checkpoint_elapsed_seconds: None,
+            final_fuel_millitons: 0,
         };
     };
     if checkpoint_system_id.is_some_and(|checkpoint| !by_id.contains_key(&checkpoint)) {
         return CalculatedCoursePlan {
             plan: unavailable_course_plan(),
             checkpoint_elapsed_seconds: None,
+            final_fuel_millitons: 0,
         };
     }
     if origin == destination
@@ -28995,6 +29450,7 @@ fn calculate_course_plan_through(
                 }],
             },
             checkpoint_elapsed_seconds: checkpoint_system_id.map(|_| 0),
+            final_fuel_millitons: initial_fuel_millitons.min(spec.fuel_capacity_millitons),
         };
     }
 
@@ -29004,6 +29460,7 @@ fn calculate_course_plan_through(
         return CalculatedCoursePlan {
             plan: unavailable_course_plan(),
             checkpoint_elapsed_seconds: None,
+            final_fuel_millitons: 0,
         };
     }
     let stride = maximum_loads as usize + 1;
@@ -29011,6 +29468,7 @@ fn calculate_course_plan_through(
         return CalculatedCoursePlan {
             plan: unavailable_course_plan(),
             checkpoint_elapsed_seconds: None,
+            final_fuel_millitons: 0,
         };
     };
     let stage_count = if checkpoint_system_id.is_some() { 2 } else { 1 };
@@ -29018,12 +29476,14 @@ fn calculate_course_plan_through(
         return CalculatedCoursePlan {
             plan: unavailable_course_plan(),
             checkpoint_elapsed_seconds: None,
+            final_fuel_millitons: 0,
         };
     };
     if state_count > 10_000_000 {
         return CalculatedCoursePlan {
             plan: unavailable_course_plan(),
             checkpoint_elapsed_seconds: None,
+            final_fuel_millitons: 0,
         };
     }
     let mut costs = vec![None; state_count];
@@ -29229,6 +29689,7 @@ fn calculate_course_plan_through(
         return CalculatedCoursePlan {
             plan: unavailable_course_plan(),
             checkpoint_elapsed_seconds: None,
+            final_fuel_millitons: 0,
         };
     };
     let mut states = vec![final_state];
@@ -29238,6 +29699,7 @@ fn calculate_course_plan_through(
             return CalculatedCoursePlan {
                 plan: unavailable_course_plan(),
                 checkpoint_elapsed_seconds: None,
+                final_fuel_millitons: 0,
             };
         };
         cursor = predecessor.state;
@@ -29294,6 +29756,7 @@ fn calculate_course_plan_through(
             waypoints,
         },
         checkpoint_elapsed_seconds,
+        final_fuel_millitons: ((final_state % base_state_count) % stride) as u64 * fuel_quantum,
     }
 }
 
@@ -31353,6 +31816,7 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
             bytes.extend_from_slice(&destination_system_id.to_be_bytes());
             bytes.push(u8::from(use_current_fuel));
         }
+        Command::SuggestTaskCourse => bytes.push(80),
         Command::OpenArrivalPacket => bytes.push(21),
         Command::GetMessageManagement => bytes.push(22),
         Command::SetMessageClassification {
@@ -31856,6 +32320,7 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
             destination_system_id: decoder.u64()?,
             use_current_fuel: decoder.u8()? != 0,
         },
+        80 => Command::SuggestTaskCourse,
         21 => Command::OpenArrivalPacket,
         22 => Command::GetMessageManagement,
         23 => Command::SetMessageClassification {
@@ -39497,6 +39962,72 @@ mod tests {
     }
 
     #[test]
+    fn task_route_heuristic_observes_pickup_precedence_and_consolidates_stops() {
+        let node = |system_id: u64, x: f64| CourseNode {
+            system_id,
+            system_name: format!("System {system_id}"),
+            world_name: format!("World {system_id}"),
+            position_parsecs: [x, 0.0, 0.0],
+            refined_port: true,
+            unrefined_port: true,
+            approach_seconds: 0,
+            frontier_round_trip_seconds: None,
+        };
+        let nodes = vec![node(1, 0.0), node(2, 1.0), node(3, 2.0)];
+        let requirements = vec![
+            TaskCourseRequirement {
+                task_id: 10,
+                pickup_system_id: None,
+                destination_system_id: 2,
+                deadline_second: 100 * crate::simulation::SECONDS_PER_DAY,
+            },
+            TaskCourseRequirement {
+                task_id: 11,
+                pickup_system_id: Some(3),
+                destination_system_id: 2,
+                deadline_second: 100 * crate::simulation::SECONDS_PER_DAY,
+            },
+        ];
+
+        let stops = suggest_task_stop_order(&nodes, 1, 0, 2, &requirements).unwrap();
+
+        assert_eq!(stops, vec![3, 2]);
+    }
+
+    #[test]
+    fn task_route_heuristic_can_revisit_an_urgent_destination() {
+        let node = |system_id: u64, x: f64| CourseNode {
+            system_id,
+            system_name: format!("System {system_id}"),
+            world_name: format!("World {system_id}"),
+            position_parsecs: [x, 0.0, 0.0],
+            refined_port: true,
+            unrefined_port: true,
+            approach_seconds: 0,
+            frontier_round_trip_seconds: None,
+        };
+        let nodes = vec![node(1, 0.0), node(2, 1.0), node(3, 2.0)];
+        let requirements = vec![
+            TaskCourseRequirement {
+                task_id: 20,
+                pickup_system_id: None,
+                destination_system_id: 2,
+                deadline_second: STANDARD_JUMP_SECONDS,
+            },
+            TaskCourseRequirement {
+                task_id: 21,
+                pickup_system_id: Some(3),
+                destination_system_id: 2,
+                deadline_second: 100 * crate::simulation::SECONDS_PER_DAY,
+            },
+        ];
+
+        let stops = suggest_task_stop_order(&nodes, 1, 0, 2, &requirements).unwrap();
+
+        assert_eq!(stops, vec![2, 3, 2]);
+    }
+
+    #[test]
     fn course_uses_purchased_unrefined_fuel_at_class_c_relay() {
         let nodes = vec![
             CourseNode {
@@ -46121,6 +46652,85 @@ mod tests {
     }
 
     #[test]
+    fn suggested_task_course_visits_remote_pickup_before_delivery() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let txn = store.env.read_txn().unwrap();
+        let (player, ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        let spec = creation::ship_status_spec(ship.catalog_id).unwrap();
+        let now = get_meta_u64(store.meta, &txn, META_GAME_SECOND)
+            .unwrap()
+            .unwrap_or(0);
+        let mut nodes = store
+            .course_nodes_in(&txn, &player.known_system_ids, &spec, now)
+            .unwrap();
+        for node in &mut nodes {
+            node.frontier_round_trip_seconds = None;
+        }
+        let pickup = nodes
+            .iter()
+            .map(|node| node.system_id)
+            .filter(|system_id| *system_id != ship.system_id)
+            .find(|system_id| {
+                calculate_course_plan_sequence(
+                    &nodes,
+                    ship.system_id,
+                    &[*system_id, ship.system_id],
+                    &spec,
+                    ship.current_fuel_millitons,
+                    CoursePreference::Fastest,
+                )
+                .available
+            })
+            .expect("fixture needs an importable round trip");
+        drop(txn);
+
+        let mut offer = test_task_offer(
+            88_001,
+            pickup,
+            ship.system_id,
+            crate::wire::TaskKind::Freight,
+        );
+        offer.delivery_deadline_second =
+            now.saturating_add(100 * crate::simulation::SECONDS_PER_DAY);
+        let mut task = test_task(identity(), 88_101, offer, 0);
+        task.task.state = crate::wire::TaskState::Accepted;
+        task.task.known_result = true;
+        task.task.performing_ship_id = ship.ship_id;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .tasks
+            .put(
+                &mut txn,
+                &task.task.task_id.to_be_bytes(),
+                &encode_stored_task(&task).unwrap(),
+            )
+            .unwrap();
+        txn.commit().unwrap();
+
+        let RuleResult::Applied(plot) = store
+            .suggest_task_course_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap()
+        else {
+            panic!("task-route suggestion was rejected");
+        };
+        let pickup_position = plot
+            .fastest
+            .waypoints
+            .iter()
+            .position(|waypoint| waypoint.system_id == pickup)
+            .expect("suggestion must visit pickup");
+        let delivery_position = plot
+            .fastest
+            .waypoints
+            .iter()
+            .rposition(|waypoint| waypoint.system_id == ship.system_id)
+            .expect("suggestion must return to delivery");
+        assert!(pickup_position < delivery_position);
+    }
+
+    #[test]
     fn remote_claim_races_are_physical_private_and_custody_waits_for_the_reply() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
@@ -47992,6 +48602,18 @@ mod tests {
                 queued
             );
         }
+    }
+
+    #[test]
+    fn suggested_task_course_command_survives_authoritative_queue_replay() {
+        let queued = QueuedCommand {
+            identity: identity(),
+            request: request(22, 204, Command::SuggestTaskCourse),
+        };
+        assert_eq!(
+            decode_queued(&encode_queued(&queued).unwrap()).unwrap(),
+            queued
+        );
     }
 
     #[test]

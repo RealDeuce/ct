@@ -2163,6 +2163,24 @@ CoursePlot plot_course(
              checked_response(reader.getRoot<rpc::Envelope>(), command_id));
 }
 
+CoursePlot suggest_task_course(
+   TlsConnection& connection,
+   const uint64_t session_epoch,
+   const std::array<uint8_t, 16>& command_id,
+   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, session_epoch, request_id, command_id, request);
+   request.setSuggestTaskCourse();
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, session_epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_course_plot(
+             checked_response(reader.getRoot<rpc::Envelope>(), command_id));
+}
+
 MarketSnapshot get_market(
    TlsConnection& connection,
    const uint64_t session_epoch,
