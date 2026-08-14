@@ -2268,6 +2268,7 @@ TaskLedger decode_task_ledger(const rpc::Response::Reader response)
       .tasks = {},
       .local_offers = {},
       .carriage = decode_carriage(source.getCarriage()),
+      .route_assessments = {},
       .phase = decode_response_phase(response.getPhase()),
    };
    for(const auto task : source.getTasks()) {
@@ -2275,6 +2276,15 @@ TaskLedger decode_task_ledger(const rpc::Response::Reader response)
    }
    for(const auto offer : source.getLocalOffers()) {
       result.local_offers.push_back(decode_task_offer(offer));
+   }
+   for(const auto assessment : source.getRouteAssessments()) {
+      result.route_assessments.push_back({
+         .offer_id = assessment.getOfferId(),
+         .pickup_available = assessment.getPickupAvailable(),
+         .pickup_arrival_second = assessment.getPickupArrivalSecond(),
+         .delivery_available = assessment.getDeliveryAvailable(),
+         .delivery_arrival_second = assessment.getDeliveryArrivalSecond(),
+      });
    }
    return result;
 }

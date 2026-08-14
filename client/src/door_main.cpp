@@ -4108,12 +4108,6 @@ void report_offer_claim(const ct::TaskLedger& ledger, const uint64_t offer_id)
    }
 }
 
-struct PickupRouteEstimate {
-   bool available;
-   uint64_t current_second;
-   uint64_t elapsed_seconds;
-};
-
 struct PickupSlack {
    bool available;
    bool late;
@@ -4121,26 +4115,21 @@ struct PickupSlack {
 };
 
 PickupSlack pickup_slack(const ct::TaskOffer& offer,
-                         const PickupRouteEstimate& route)
+                         const ct::TaskRouteAssessment& route)
 {
-   if(!route.available) {
+   if(!route.pickup_available) {
       return {.available = false, .late = true, .seconds = 0};
    }
-   const auto arrival = route.current_second >
-                           std::numeric_limits<uint64_t>::max() -
-                              route.elapsed_seconds
-                        ? std::numeric_limits<uint64_t>::max()
-                        : route.current_second + route.elapsed_seconds;
-   return arrival <= offer.expires_second
+   return route.pickup_arrival_second <= offer.expires_second
           ? PickupSlack{
                .available = true,
                .late = false,
-               .seconds = offer.expires_second - arrival,
+               .seconds = offer.expires_second - route.pickup_arrival_second,
             }
           : PickupSlack{
                .available = true,
                .late = true,
-               .seconds = arrival - offer.expires_second,
+               .seconds = route.pickup_arrival_second - offer.expires_second,
             };
 }
 
@@ -4164,31 +4153,23 @@ void print_pickup_slack(const PickupSlack& slack)
 
 std::vector<std::string> task_offer_unavailable_reasons(
    const ct::TaskOffer& offer,
-   const PickupRouteEstimate& pickup_route,
-   const PickupRouteEstimate* delivery_route)
+   const ct::TaskRouteAssessment& route)
 {
    auto reasons = offer.unavailable_reasons;
-   const auto slack = pickup_slack(offer, pickup_route);
+   const auto slack = pickup_slack(offer, route);
    if(!slack.available) {
       reasons.emplace_back("No executable course reaches the pickup system.");
    } else if(slack.late) {
       reasons.emplace_back(
          "The fastest course reaches the pickup system after the offer closes.");
    }
-   if(delivery_route != nullptr) {
-      if(!delivery_route->available) {
-         reasons.emplace_back("No executable course reaches the delivery system.");
-      } else {
-         const auto arrival = delivery_route->current_second >
-                                 std::numeric_limits<uint64_t>::max() -
-                                    delivery_route->elapsed_seconds
-                              ? std::numeric_limits<uint64_t>::max()
-                              : delivery_route->current_second +
-                                 delivery_route->elapsed_seconds;
-         if(arrival > offer.delivery_deadline_second) {
-            reasons.emplace_back(
-               "The fastest course reaches the delivery system after the deadline.");
-         }
+   if(slack.available && !slack.late && offer.destination_system_id != 0) {
+      if(!route.delivery_available) {
+         reasons.emplace_back(
+            "No executable course can reach pickup before it closes and then reach delivery.");
+      } else if(route.delivery_arrival_second > offer.delivery_deadline_second) {
+         reasons.emplace_back(
+            "The fastest pickup-and-delivery course reaches the destination after the deadline.");
       }
    }
    return reasons;
@@ -4349,98 +4330,9 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
          connection, session_epoch, random_command_id(random), request_id++);
       const auto fleet = ct::get_fleet(
          connection, session_epoch, random_command_id(random), request_id++);
-      std::unordered_map<uint64_t, PickupRouteEstimate> pickup_routes;
-      for(const auto& offer : ledger.local_offers) {
-         if(pickup_routes.contains(offer.origin_system_id)) {
-            continue;
-         }
-         if(offer.origin_system_id == charts.current_system_id) {
-            pickup_routes.emplace(
-               offer.origin_system_id,
-               PickupRouteEstimate{
-                  .available = true,
-                  .current_second = ledger.current_second,
-                  .elapsed_seconds = 0,
-               });
-            continue;
-         }
-         const auto origin_known = std::any_of(
-            charts.systems.begin(), charts.systems.end(),
-            [&offer](const auto& system) {
-               return system.system_id == offer.origin_system_id;
-            });
-         if(!origin_known) {
-            pickup_routes.emplace(
-               offer.origin_system_id,
-               PickupRouteEstimate{
-                  .available = false,
-                  .current_second = ledger.current_second,
-                  .elapsed_seconds = 0,
-               });
-            continue;
-         }
-         const auto plot = ct::plot_course(
-            connection,
-            session_epoch,
-            charts.current_system_id,
-            offer.origin_system_id,
-            true,
-            random_command_id(random),
-            request_id++);
-         pickup_routes.emplace(
-            offer.origin_system_id,
-            PickupRouteEstimate{
-               .available = plot.fastest.available,
-               .current_second = plot.current_game_second,
-               .elapsed_seconds = plot.fastest.elapsed_seconds,
-            });
-      }
-      std::unordered_map<uint64_t, PickupRouteEstimate> delivery_routes;
-      for(const auto& offer : ledger.local_offers) {
-         if(offer.origin_system_id != charts.current_system_id ||
-               delivery_routes.contains(offer.destination_system_id)) {
-            continue;
-         }
-         if(offer.destination_system_id == charts.current_system_id) {
-            delivery_routes.emplace(
-               offer.destination_system_id,
-               PickupRouteEstimate{
-                  .available = true,
-                  .current_second = ledger.current_second,
-                  .elapsed_seconds = 0,
-               });
-            continue;
-         }
-         const auto destination_known = std::any_of(
-            charts.systems.begin(), charts.systems.end(),
-            [&offer](const auto& system) {
-               return system.system_id == offer.destination_system_id;
-            });
-         if(!destination_known) {
-            delivery_routes.emplace(
-               offer.destination_system_id,
-               PickupRouteEstimate{
-                  .available = false,
-                  .current_second = ledger.current_second,
-                  .elapsed_seconds = 0,
-               });
-            continue;
-         }
-         const auto plot = ct::plot_course(
-            connection,
-            session_epoch,
-            charts.current_system_id,
-            offer.destination_system_id,
-            true,
-            random_command_id(random),
-            request_id++);
-         delivery_routes.emplace(
-            offer.destination_system_id,
-            PickupRouteEstimate{
-               .available = plot.fastest.available,
-               .current_second = plot.current_game_second,
-               .elapsed_seconds = plot.fastest.elapsed_seconds,
-            });
+      std::unordered_map<uint64_t, const ct::TaskRouteAssessment*> route_assessments;
+      for(const auto& assessment : ledger.route_assessments) {
+         route_assessments.emplace(assessment.offer_id, &assessment);
       }
       struct ListedOffer {
          const ct::TaskOffer* offer;
@@ -4450,14 +4342,21 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
       std::vector<ListedOffer> available_offers;
       std::vector<ListedOffer> unavailable_offers;
       for(const auto& offer : ledger.local_offers) {
-         const auto delivery = delivery_routes.find(offer.destination_system_id);
+         const auto assessment = route_assessments.find(offer.offer_id);
+         const ct::TaskRouteAssessment missing_assessment{
+            .offer_id = offer.offer_id,
+            .pickup_available = false,
+            .pickup_arrival_second = 0,
+            .delivery_available = false,
+            .delivery_arrival_second = 0,
+         };
+         const auto& route = assessment == route_assessments.end()
+                                ? missing_assessment
+                                : *assessment->second;
          auto listed = ListedOffer{
             .offer = &offer,
-            .pickup = pickup_slack(offer, pickup_routes.at(offer.origin_system_id)),
-            .unavailable_reasons = task_offer_unavailable_reasons(
-               offer,
-               pickup_routes.at(offer.origin_system_id),
-               delivery == delivery_routes.end() ? nullptr : &delivery->second),
+            .pickup = pickup_slack(offer, route),
+            .unavailable_reasons = task_offer_unavailable_reasons(offer, route),
          };
          if(listed.unavailable_reasons.empty()) {
             available_offers.push_back(std::move(listed));

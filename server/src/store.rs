@@ -62,8 +62,8 @@ use crate::wire::{
     OriginDossier, Outcome, OutcomeKind, PlayerCreation, PlayerIdentity, PlayerPhase,
     PriceDistribution, ShipActivityKind as WireShipActivityKind, ShipActivityStatus,
     ShipAmmunitionStatus, ShipProvisionStatus, ShipStatusSnapshot, ShipSubsystemKind,
-    ShipSubsystemStatus, SystemMappingChoice, SystemMappingState, SystemMappingStatus, TravelStage,
-    TravelStatus, WaypointAuthority,
+    ShipSubsystemStatus, SystemMappingChoice, SystemMappingState, SystemMappingStatus,
+    TaskRouteAssessment, TravelStage, TravelStatus, WaypointAuthority,
 };
 
 type SequenceDatabase = Database<U64<BE>, Bytes>;
@@ -1449,6 +1449,11 @@ struct CoursePredecessor {
     state: usize,
     fuel_source: CourseFuelSource,
     leg_milliparsecs: u64,
+}
+
+struct CalculatedCoursePlan {
+    plan: CoursePlan,
+    checkpoint_elapsed_seconds: Option<u64>,
 }
 
 fn apply_ship_damage_to_combat(ship: &ShipRecord, vessel: &mut crate::combat::VesselState) {
@@ -15121,39 +15126,17 @@ impl Store {
         })
     }
 
-    fn plot_course_in(
+    fn course_nodes_in(
         &self,
         txn: &heed::RoTxn<'_>,
-        identity: &PlayerIdentity,
-        origin_system_id: u64,
-        destination_system_id: u64,
-        use_current_fuel: bool,
-    ) -> Result<RuleResult<CoursePlot>, StoreError> {
-        let (player, ship) = self.player_and_ship_in(txn, identity)?;
-        if use_current_fuel && origin_system_id != ship.system_id {
-            return Ok(RuleResult::Rejected(
-                "a current-position course must begin in the ship's present system".into(),
-            ));
-        }
-        if !player.known_system_ids.contains(&origin_system_id)
-            || !player.known_system_ids.contains(&destination_system_id)
-        {
-            return Ok(RuleResult::Rejected(
-                "both course endpoints must be in the captain's Known Universe".into(),
-            ));
-        }
-        let spec = creation::ship_status_spec(ship.catalog_id)
-            .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
-        if spec.jump_rating == 0 || spec.jump_fuel_millitons == 0 {
-            return Ok(RuleResult::Rejected(
-                "the commanded ship has no interstellar course capability".into(),
-            ));
-        }
-        let current_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        known_system_ids: &[u64],
+        spec: &creation::ShipStatusSpec,
+        current_second: u64,
+    ) -> Result<Vec<CourseNode>, StoreError> {
         let game_days = current_second as f64 / crate::simulation::SECONDS_PER_DAY as f64;
         let frontier_capable = spec.has_fuel_scoop && spec.fuel_processing_millitons_per_day > 0;
-        let mut nodes = Vec::with_capacity(player.known_system_ids.len());
-        for system_id in &player.known_system_ids {
+        let mut nodes = Vec::with_capacity(known_system_ids.len());
+        for system_id in known_system_ids {
             let Some(system) = self
                 .systems
                 .get(txn, system_id)?
@@ -15200,6 +15183,39 @@ impl Store {
             });
         }
         nodes.sort_by_key(|node| node.system_id);
+        Ok(nodes)
+    }
+
+    fn plot_course_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+        origin_system_id: u64,
+        destination_system_id: u64,
+        use_current_fuel: bool,
+    ) -> Result<RuleResult<CoursePlot>, StoreError> {
+        let (player, ship) = self.player_and_ship_in(txn, identity)?;
+        if use_current_fuel && origin_system_id != ship.system_id {
+            return Ok(RuleResult::Rejected(
+                "a current-position course must begin in the ship's present system".into(),
+            ));
+        }
+        if !player.known_system_ids.contains(&origin_system_id)
+            || !player.known_system_ids.contains(&destination_system_id)
+        {
+            return Ok(RuleResult::Rejected(
+                "both course endpoints must be in the captain's Known Universe".into(),
+            ));
+        }
+        let spec = creation::ship_status_spec(ship.catalog_id)
+            .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
+        if spec.jump_rating == 0 || spec.jump_fuel_millitons == 0 {
+            return Ok(RuleResult::Rejected(
+                "the commanded ship has no interstellar course capability".into(),
+            ));
+        }
+        let current_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        let nodes = self.course_nodes_in(txn, &player.known_system_ids, &spec, current_second)?;
         let initial_fuel = if use_current_fuel {
             ship.current_fuel_millitons
         } else {
@@ -15747,6 +15763,61 @@ impl Store {
                 reasons.push("No qualified medical attendant is aboard for low passage.".into());
             }
         }
+        let route_assessments = if local_offers.is_empty() {
+            Vec::new()
+        } else {
+            let nodes =
+                self.course_nodes_in(txn, &player.known_system_ids, &spec, current_second)?;
+            let mut pickup_routes = HashMap::new();
+            let mut assessments = Vec::with_capacity(local_offers.len());
+            for offer in &local_offers {
+                let pickup = pickup_routes
+                    .entry(offer.origin_system_id)
+                    .or_insert_with(|| {
+                        calculate_course_plan(
+                            &nodes,
+                            ship.system_id,
+                            offer.origin_system_id,
+                            &spec,
+                            ship.current_fuel_millitons,
+                            CoursePreference::Fastest,
+                        )
+                    });
+                let pickup_available = pickup.available;
+                let pickup_arrival_second = current_second.saturating_add(pickup.elapsed_seconds);
+                let (delivery_available, delivery_arrival_second) = if offer.destination_system_id
+                    == 0
+                {
+                    (pickup_available, pickup_arrival_second)
+                } else {
+                    let itinerary = calculate_course_plan_through(
+                        &nodes,
+                        ship.system_id,
+                        offer.destination_system_id,
+                        Some(offer.origin_system_id),
+                        Some(offer.expires_second.saturating_sub(current_second)),
+                        &spec,
+                        ship.current_fuel_millitons,
+                        CoursePreference::Fastest,
+                    );
+                    debug_assert!(
+                        !itinerary.plan.available || itinerary.checkpoint_elapsed_seconds.is_some()
+                    );
+                    (
+                        itinerary.plan.available,
+                        current_second.saturating_add(itinerary.plan.elapsed_seconds),
+                    )
+                };
+                assessments.push(TaskRouteAssessment {
+                    offer_id: offer.offer_id,
+                    pickup_available,
+                    pickup_arrival_second,
+                    delivery_available,
+                    delivery_arrival_second,
+                });
+            }
+            assessments
+        };
         Ok(crate::wire::TaskLedger {
             current_second,
             available_credits: unreserved_credits,
@@ -15756,6 +15827,7 @@ impl Store {
             tasks,
             local_offers,
             carriage: self.carriage_in(txn, identity)?,
+            route_assessments,
         })
     }
 
@@ -28862,6 +28934,29 @@ fn calculate_course_plan(
     initial_fuel_millitons: u64,
     preference: CoursePreference,
 ) -> CoursePlan {
+    calculate_course_plan_through(
+        nodes,
+        origin_system_id,
+        destination_system_id,
+        None,
+        None,
+        spec,
+        initial_fuel_millitons,
+        preference,
+    )
+    .plan
+}
+
+fn calculate_course_plan_through(
+    nodes: &[CourseNode],
+    origin_system_id: u64,
+    destination_system_id: u64,
+    checkpoint_system_id: Option<u64>,
+    checkpoint_latest_elapsed_seconds: Option<u64>,
+    spec: &creation::ShipStatusSpec,
+    initial_fuel_millitons: u64,
+    preference: CoursePreference,
+) -> CalculatedCoursePlan {
     let by_id = nodes
         .iter()
         .enumerate()
@@ -28871,40 +28966,71 @@ fn calculate_course_plan(
         by_id.get(&origin_system_id),
         by_id.get(&destination_system_id),
     ) else {
-        return unavailable_course_plan();
+        return CalculatedCoursePlan {
+            plan: unavailable_course_plan(),
+            checkpoint_elapsed_seconds: None,
+        };
     };
-    if origin == destination {
-        return CoursePlan {
-            available: true,
-            elapsed_seconds: 0,
-            fuel_cost_credits: 0,
-            total_milliparsecs: 0,
-            waypoints: vec![CourseWaypoint {
-                system_id: nodes[origin].system_id,
-                system_name: nodes[origin].system_name.clone(),
-                world_name: nodes[origin].world_name.clone(),
-                fuel_source: CourseFuelSource::None,
-                next_leg_milliparsecs: 0,
-            }],
+    if checkpoint_system_id.is_some_and(|checkpoint| !by_id.contains_key(&checkpoint)) {
+        return CalculatedCoursePlan {
+            plan: unavailable_course_plan(),
+            checkpoint_elapsed_seconds: None,
+        };
+    }
+    if origin == destination
+        && checkpoint_system_id.is_none_or(|checkpoint| checkpoint == origin_system_id)
+    {
+        return CalculatedCoursePlan {
+            plan: CoursePlan {
+                available: true,
+                elapsed_seconds: 0,
+                fuel_cost_credits: 0,
+                total_milliparsecs: 0,
+                waypoints: vec![CourseWaypoint {
+                    system_id: nodes[origin].system_id,
+                    system_name: nodes[origin].system_name.clone(),
+                    world_name: nodes[origin].world_name.clone(),
+                    fuel_source: CourseFuelSource::None,
+                    next_leg_milliparsecs: 0,
+                }],
+            },
+            checkpoint_elapsed_seconds: checkpoint_system_id.map(|_| 0),
         };
     }
 
     let fuel_quantum = MILLITONS_PER_TON;
     let maximum_loads = spec.fuel_capacity_millitons / fuel_quantum;
     if maximum_loads == 0 {
-        return unavailable_course_plan();
+        return CalculatedCoursePlan {
+            plan: unavailable_course_plan(),
+            checkpoint_elapsed_seconds: None,
+        };
     }
     let stride = maximum_loads as usize + 1;
-    let Some(state_count) = nodes.len().checked_mul(stride) else {
-        return unavailable_course_plan();
+    let Some(base_state_count) = nodes.len().checked_mul(stride) else {
+        return CalculatedCoursePlan {
+            plan: unavailable_course_plan(),
+            checkpoint_elapsed_seconds: None,
+        };
+    };
+    let stage_count = if checkpoint_system_id.is_some() { 2 } else { 1 };
+    let Some(state_count) = base_state_count.checked_mul(stage_count) else {
+        return CalculatedCoursePlan {
+            plan: unavailable_course_plan(),
+            checkpoint_elapsed_seconds: None,
+        };
     };
     if state_count > 10_000_000 {
-        return unavailable_course_plan();
+        return CalculatedCoursePlan {
+            plan: unavailable_course_plan(),
+            checkpoint_elapsed_seconds: None,
+        };
     }
     let mut costs = vec![None; state_count];
     let mut previous = vec![None; state_count];
     let initial_loads = (initial_fuel_millitons / fuel_quantum).min(maximum_loads) as usize;
-    let initial_state = origin * stride + initial_loads;
+    let initial_stage = usize::from(checkpoint_system_id == Some(origin_system_id));
+    let initial_state = initial_stage * base_state_count + origin * stride + initial_loads;
     let zero = CourseCost {
         elapsed_seconds: 0,
         fuel_cost_credits: 0,
@@ -28940,9 +29066,11 @@ fn calculate_course_plan(
         if course_cost_key(cost, preference) != (first, second, third) {
             continue;
         }
-        let node_index = state / stride;
-        let loads = state % stride;
-        if node_index == destination {
+        let stage = state / base_state_count;
+        let base_state = state % base_state_count;
+        let node_index = base_state / stride;
+        let loads = base_state % stride;
+        if node_index == destination && (checkpoint_system_id.is_none() || stage == 1) {
             destination_state = Some(state);
             break;
         }
@@ -29047,7 +29175,13 @@ fn calculate_course_plan(
                                 continue;
                             }
                             let next_loads = filled_loads - consumed_loads;
-                            let next_state = neighbor * stride + next_loads;
+                            let next_stage = if stage == 0
+                                && checkpoint_system_id == Some(nodes[neighbor].system_id)
+                            {
+                                1
+                            } else {
+                                stage
+                            };
                             let candidate = CourseCost {
                                 elapsed_seconds: cost
                                     .elapsed_seconds
@@ -29058,6 +29192,18 @@ fn calculate_course_plan(
                                     .total_milliparsecs
                                     .saturating_add(leg_milliparsecs),
                             };
+                            if next_stage != stage
+                                && checkpoint_latest_elapsed_seconds.is_some_and(|latest| {
+                                    candidate
+                                        .elapsed_seconds
+                                        .saturating_add(nodes[neighbor].approach_seconds)
+                                        > latest
+                                })
+                            {
+                                continue;
+                            }
+                            let next_state =
+                                next_stage * base_state_count + neighbor * stride + next_loads;
                             if costs[next_state].is_some_and(|existing| {
                                 course_cost_key(existing, preference)
                                     <= course_cost_key(candidate, preference)
@@ -29080,13 +29226,19 @@ fn calculate_course_plan(
     }
 
     let Some(final_state) = destination_state else {
-        return unavailable_course_plan();
+        return CalculatedCoursePlan {
+            plan: unavailable_course_plan(),
+            checkpoint_elapsed_seconds: None,
+        };
     };
     let mut states = vec![final_state];
     let mut cursor = final_state;
     while cursor != initial_state {
         let Some(predecessor) = previous[cursor] else {
-            return unavailable_course_plan();
+            return CalculatedCoursePlan {
+                plan: unavailable_course_plan(),
+                checkpoint_elapsed_seconds: None,
+            };
         };
         cursor = predecessor.state;
         states.push(cursor);
@@ -29094,7 +29246,7 @@ fn calculate_course_plan(
     states.reverse();
     let mut waypoints = Vec::with_capacity(states.len());
     for (position, state) in states.iter().enumerate() {
-        let node = &nodes[*state / stride];
+        let node = &nodes[(*state % base_state_count) / stride];
         let (fuel_source, next_leg_milliparsecs) = states
             .get(position + 1)
             .and_then(|next| previous[*next])
@@ -29110,15 +29262,38 @@ fn calculate_course_plan(
         });
     }
     let mut cost = costs[final_state].expect("reached course state has a cost");
-    cost.elapsed_seconds = cost
-        .elapsed_seconds
-        .saturating_add(nodes[destination].approach_seconds);
-    CoursePlan {
-        available: true,
-        elapsed_seconds: cost.elapsed_seconds,
-        fuel_cost_credits: cost.fuel_cost_credits,
-        total_milliparsecs: cost.total_milliparsecs,
-        waypoints,
+    if states.len() > 1 {
+        cost.elapsed_seconds = cost
+            .elapsed_seconds
+            .saturating_add(nodes[destination].approach_seconds);
+    }
+    let checkpoint_elapsed_seconds = checkpoint_system_id.map(|checkpoint| {
+        if checkpoint == origin_system_id {
+            return 0;
+        }
+        states
+            .iter()
+            .find_map(|state| {
+                let stage = *state / base_state_count;
+                let node_index = (*state % base_state_count) / stride;
+                (stage == 1 && nodes[node_index].system_id == checkpoint).then(|| {
+                    costs[*state]
+                        .expect("course checkpoint state has a cost")
+                        .elapsed_seconds
+                        .saturating_add(nodes[node_index].approach_seconds)
+                })
+            })
+            .unwrap_or(cost.elapsed_seconds)
+    });
+    CalculatedCoursePlan {
+        plan: CoursePlan {
+            available: true,
+            elapsed_seconds: cost.elapsed_seconds,
+            fuel_cost_credits: cost.fuel_cost_credits,
+            total_milliparsecs: cost.total_milliparsecs,
+            waypoints,
+        },
+        checkpoint_elapsed_seconds,
     }
 }
 
@@ -32313,7 +32488,7 @@ fn encode_task_ledger_into(
         bytes.extend_from_slice(&n.to_be_bytes());
     }
     bytes.push(u8::from(c.accept_electronic_mail));
-    bytes.push(1);
+    bytes.push(2);
     bytes.extend_from_slice(&(ledger.local_offers.len() as u32).to_be_bytes());
     for offer in &ledger.local_offers {
         let reason_count = u16::try_from(offer.unavailable_reasons.len())
@@ -32322,6 +32497,14 @@ fn encode_task_ledger_into(
         for reason in &offer.unavailable_reasons {
             encode_text(bytes, reason)?;
         }
+    }
+    bytes.extend_from_slice(&(ledger.route_assessments.len() as u32).to_be_bytes());
+    for assessment in &ledger.route_assessments {
+        bytes.extend_from_slice(&assessment.offer_id.to_be_bytes());
+        bytes.push(u8::from(assessment.pickup_available));
+        bytes.extend_from_slice(&assessment.pickup_arrival_second.to_be_bytes());
+        bytes.push(u8::from(assessment.delivery_available));
+        bytes.extend_from_slice(&assessment.delivery_arrival_second.to_be_bytes());
     }
     Ok(())
 }
@@ -32349,8 +32532,10 @@ fn decode_task_ledger(d: &mut Decoder<'_>) -> Result<crate::wire::TaskLedger, St
         low_berths: d.u16()?,
         accept_electronic_mail: d.u8()? != 0,
     };
+    let mut route_assessments = Vec::new();
     if !d.remaining().is_empty() {
-        if d.u8()? != 1 {
+        let extension_version = d.u8()?;
+        if !matches!(extension_version, 1 | 2) {
             return Err(StoreError::Corrupt("unknown task-ledger extension version"));
         }
         let offer_count = d.u32()? as usize;
@@ -32364,6 +32549,19 @@ fn decode_task_ledger(d: &mut Decoder<'_>) -> Result<crate::wire::TaskLedger, St
                 offer.unavailable_reasons.push(d.text()?);
             }
         }
+        if extension_version >= 2 {
+            let assessment_count = d.u32()? as usize;
+            route_assessments.reserve(assessment_count);
+            for _ in 0..assessment_count {
+                route_assessments.push(TaskRouteAssessment {
+                    offer_id: d.u64()?,
+                    pickup_available: d.u8()? != 0,
+                    pickup_arrival_second: d.u64()?,
+                    delivery_available: d.u8()? != 0,
+                    delivery_arrival_second: d.u64()?,
+                });
+            }
+        }
     }
     Ok(crate::wire::TaskLedger {
         current_second,
@@ -32374,6 +32572,7 @@ fn decode_task_ledger(d: &mut Decoder<'_>) -> Result<crate::wire::TaskLedger, St
         tasks,
         local_offers,
         carriage,
+        route_assessments,
     })
 }
 fn encode_finance_into(
@@ -39203,6 +39402,101 @@ mod tests {
     }
 
     #[test]
+    fn task_course_carries_time_and_fuel_through_remote_pickup() {
+        let nodes = [
+            CourseNode {
+                system_id: 1,
+                system_name: "Current".into(),
+                world_name: "Current Prime".into(),
+                position_parsecs: [0.0, 0.0, 0.0],
+                refined_port: true,
+                unrefined_port: false,
+                approach_seconds: 0,
+                frontier_round_trip_seconds: None,
+            },
+            CourseNode {
+                system_id: 2,
+                system_name: "Pickup".into(),
+                world_name: "Pickup Prime".into(),
+                position_parsecs: [1.0, 0.0, 0.0],
+                refined_port: true,
+                unrefined_port: false,
+                approach_seconds: 0,
+                frontier_round_trip_seconds: None,
+            },
+            CourseNode {
+                system_id: 3,
+                system_name: "Delivery".into(),
+                world_name: "Delivery Prime".into(),
+                position_parsecs: [-1.0, 0.0, 0.0],
+                refined_port: true,
+                unrefined_port: false,
+                approach_seconds: 0,
+                frontier_round_trip_seconds: None,
+            },
+        ];
+        let spec = creation::ShipStatusSpec {
+            tech_level: 12,
+            construction_price_credits: 1,
+            displacement_millitons: 100_000,
+            jump_rating: 1,
+            thrust_g: 1,
+            fuel_capacity_millitons: 30_000,
+            jump_fuel_millitons: 10_000,
+            cargo_capacity_millitons: 1,
+            passenger_berths: 0,
+            low_berths: 0,
+            monthly_life_support_credits: 0,
+            life_support_capacity_persons: 0,
+            has_fuel_scoop: false,
+            fuel_processing_millitons_per_day: 0,
+            subsystems: Vec::new(),
+        };
+
+        let direct = calculate_course_plan(
+            &nodes,
+            1,
+            3,
+            &spec,
+            spec.fuel_capacity_millitons,
+            CoursePreference::Fastest,
+        );
+        assert_eq!(direct.elapsed_seconds, STANDARD_JUMP_SECONDS);
+
+        let through_pickup = calculate_course_plan_through(
+            &nodes,
+            1,
+            3,
+            Some(2),
+            Some(STANDARD_JUMP_SECONDS),
+            &spec,
+            spec.fuel_capacity_millitons,
+            CoursePreference::Fastest,
+        );
+        assert!(through_pickup.plan.available);
+        assert_eq!(
+            through_pickup.checkpoint_elapsed_seconds,
+            Some(STANDARD_JUMP_SECONDS)
+        );
+        assert_eq!(
+            through_pickup.plan.elapsed_seconds,
+            3 * STANDARD_JUMP_SECONDS
+        );
+
+        let closes_too_soon = calculate_course_plan_through(
+            &nodes,
+            1,
+            3,
+            Some(2),
+            Some(STANDARD_JUMP_SECONDS - 1),
+            &spec,
+            spec.fuel_capacity_millitons,
+            CoursePreference::Fastest,
+        );
+        assert!(!closes_too_soon.plan.available);
+    }
+
+    #[test]
     fn course_uses_purchased_unrefined_fuel_at_class_c_relay() {
         let nodes = vec![
             CourseNode {
@@ -45744,6 +46038,86 @@ mod tests {
         let mut decoder = Decoder::new(&encoded);
         assert_eq!(decode_task_ledger(&mut decoder).unwrap(), ledger);
         decoder.finish().unwrap();
+    }
+
+    #[test]
+    fn task_ledger_assesses_remote_pickup_and_delivery_as_one_voyage() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let txn = store.env.read_txn().unwrap();
+        let (player, ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        let destination = ship.system_id;
+        let pickup = store
+            .known_destinations_in(&txn, &identity())
+            .unwrap()
+            .systems
+            .into_iter()
+            .find(|system| system.within_jump_rating && system.system_id != ship.system_id)
+            .expect("fixture needs a reachable remote pickup")
+            .system_id;
+        let now = get_meta_u64(store.meta, &txn, META_GAME_SECOND)
+            .unwrap()
+            .unwrap_or(0);
+        drop(txn);
+
+        let mut txn = store.env.write_txn().unwrap();
+        let (offer_id, _) = store
+            .simulation
+            .dispatch_message(
+                &mut txn,
+                now,
+                ship.system_id,
+                crate::simulation::MessageClass::ContractOffer,
+                crate::simulation::MessageImportance::Notable,
+                "Remote pickup timing fixture",
+                "A fixture instrument is attached.",
+                &[],
+            )
+            .unwrap();
+        let mut offer = test_task_offer(
+            offer_id,
+            pickup,
+            destination,
+            crate::wire::TaskKind::Freight,
+        );
+        offer.expires_second = now.saturating_add(100 * crate::simulation::SECONDS_PER_DAY);
+        offer.delivery_deadline_second = now.saturating_add(STANDARD_JUMP_SECONDS);
+        store
+            .task_offers
+            .put(
+                &mut txn,
+                &offer_id.to_be_bytes(),
+                &encode_stored_task_offer(&StoredTaskOffer {
+                    offer,
+                    claimed_by: None,
+                    claimed_task_id: 0,
+                    closure_message_id: 0,
+                })
+                .unwrap(),
+            )
+            .unwrap();
+        txn.commit().unwrap();
+
+        let ledger = store
+            .task_ledger_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        assert!(
+            ledger
+                .local_offers
+                .iter()
+                .any(|offer| offer.offer_id == offer_id)
+        );
+        let assessment = ledger
+            .route_assessments
+            .iter()
+            .find(|assessment| assessment.offer_id == offer_id)
+            .expect("remote offer needs a route assessment");
+        assert!(assessment.pickup_available);
+        assert!(assessment.pickup_arrival_second < now + 100 * crate::simulation::SECONDS_PER_DAY);
+        assert!(assessment.delivery_available);
+        assert!(assessment.delivery_arrival_second > now + STANDARD_JUMP_SECONDS);
+        assert!(player.known_system_ids.contains(&pickup));
     }
 
     #[test]

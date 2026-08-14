@@ -221,6 +221,13 @@ executable course to the issuing system. Green means more than six hours,
 yellow means 30 minutes through six hours, and red means less than 30 minutes,
 already late, or no executable course.
 
+For a remote pickup, availability is based on one continuous projected voyage:
+current system to pickup and then pickup to delivery. Fuel remaining after the
+first leg carries into the second, the pickup must occur before the offer
+closes, and final arrival is compared with the delivery deadline. The task
+ledger receives this assessment with the offer so its classification cannot
+drift while the client separately plots each endpoint.
+
 The ledger initially shows only offers the commanded ship and its present crew
 can reasonably perform. It reports how many unavailable offers are hidden;
 press `V` to view those offers and the reasons they are unavailable. The check

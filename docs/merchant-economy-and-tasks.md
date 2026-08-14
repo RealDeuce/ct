@@ -102,10 +102,15 @@ Task-ledger offer listings carry contextual availability reasons. The player
 client hides unavailable offers by default, reports the hidden count, and can
 show them with their reasons on request. Server-derived reasons cover current
 hold or berth capacity, required passenger staff, and whether posting the
-collateral would leave enough cash to clear the current berth; the client adds
-current course and deadline feasibility from authoritative course plots. These
-are refreshed observations, not permanent properties of the offer, and they do
-not prohibit a captain from accepting the associated risk.
+collateral would leave enough cash to clear the current berth. The ledger also
+carries an authoritative route assessment for each offer. One continuous
+search preserves time and fuel from the captain's current system through the
+required pickup and onward to delivery. It enforces the offer closing time
+during the search and supplies the final arrival used to classify the delivery
+deadline. The client displays that assessment rather than issuing independent
+per-offer course plots. These are refreshed observations, not
+permanent properties of the offer, and they do not prohibit a captain from
+accepting the associated risk.
 
 The accepted record names one performing ship. Freight loading creates a
 task-titled cargo lot; passenger, charter, and passenger-courier work creates

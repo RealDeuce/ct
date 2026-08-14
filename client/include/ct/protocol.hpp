@@ -772,6 +772,14 @@ struct CarriageDeclaration {
    bool accept_electronic_mail = true;
 };
 
+struct TaskRouteAssessment {
+   uint64_t offer_id;
+   bool pickup_available;
+   uint64_t pickup_arrival_second;
+   bool delivery_available;
+   uint64_t delivery_arrival_second;
+};
+
 struct TaskLedger {
    uint64_t current_second;
    uint64_t available_credits;
@@ -781,6 +789,7 @@ struct TaskLedger {
    std::vector<TaskRecord> tasks;
    std::vector<TaskOffer> local_offers;
    CarriageDeclaration carriage;
+   std::vector<TaskRouteAssessment> route_assessments;
    PlayerPhase phase;
 };
 

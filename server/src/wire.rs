@@ -1149,6 +1149,16 @@ pub struct TaskLedger {
     pub tasks: Vec<TaskRecord>,
     pub local_offers: Vec<TaskOffer>,
     pub carriage: CarriageDeclaration,
+    pub route_assessments: Vec<TaskRouteAssessment>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TaskRouteAssessment {
+    pub offer_id: u64,
+    pub pickup_available: bool,
+    pub pickup_arrival_second: u64,
+    pub delivery_available: bool,
+    pub delivery_arrival_second: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -5096,6 +5106,17 @@ fn set_task_ledger(
     let mut offers = builder.reborrow().init_local_offers(offer_count);
     for (index, offer) in ledger.local_offers.iter().enumerate() {
         set_task_offer(offers.reborrow().get(index as u32), offer);
+    }
+    let assessment_count = u32::try_from(ledger.route_assessments.len())
+        .map_err(|_| WireError::Expected("fewer task route assessments"))?;
+    let mut assessments = builder.reborrow().init_route_assessments(assessment_count);
+    for (index, assessment) in ledger.route_assessments.iter().enumerate() {
+        let mut item = assessments.reborrow().get(index as u32);
+        item.set_offer_id(assessment.offer_id);
+        item.set_pickup_available(assessment.pickup_available);
+        item.set_pickup_arrival_second(assessment.pickup_arrival_second);
+        item.set_delivery_available(assessment.delivery_available);
+        item.set_delivery_arrival_second(assessment.delivery_arrival_second);
     }
     set_carriage(builder.init_carriage(), ledger.carriage);
     Ok(())

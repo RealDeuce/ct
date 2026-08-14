@@ -1084,6 +1084,15 @@ struct TaskLedger {
   tasks @5 :List(TaskRecord);
   localOffers @6 :List(TaskOffer);
   carriage @7 :CarriageDeclaration;
+  routeAssessments @8 :List(TaskRouteAssessment);
+}
+
+struct TaskRouteAssessment {
+  offerId @0 :UInt64;
+  pickupAvailable @1 :Bool;
+  pickupArrivalSecond @2 :UInt64;
+  deliveryAvailable @3 :Bool;
+  deliveryArrivalSecond @4 :UInt64;
 }
 
 struct AcceptTaskOfferRequest {
