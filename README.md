@@ -10,7 +10,7 @@ and *Yankee Trader*. It combines trading, ship operation, interstellar
 mail, exploration, naval service, privateering, piracy, and space combat in a
 persistent 3D universe based on the Cepheus Engine rules.
 
-The project is in active alpha development at version **0.7.5**. Milestones 0
+The project is in active alpha development at version **0.7.6**. Milestones 0
 through 6 are complete; Milestone 7 is validating multi-BBS play and field
 operations. See the [roadmap](ROADMAP.md) for the authoritative status and
 acceptance boundaries.

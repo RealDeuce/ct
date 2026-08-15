@@ -13,14 +13,16 @@ hosted runners to build only `cepheus-trader-door` and
 x86-64/x86. Linux packages are built once per architecture on Ubuntu 22.04,
 then the same archives are exercised on Ubuntu 22.04, 24.04, and 26.04.
 Each client kit also contains the platform's `cepheus-trader-client-core`
-shared library, which holds the common project, Botan, and Cap'n Proto/KJ
-implementation used by those executables.
+shared library, which owns the Botan-backed TLS transport behind a stable C
+ABI. The common protocol and Cap'n Proto/KJ implementation are linked into
+the executables.
 
 Botan, Cap'n Proto/KJ, and OpenDoors each have an independent cache per
 platform ABI and toolchain. They are rebuilt only on a cold cache or when the
 corresponding pinned source/build recipe changes. Normal client jobs build
-the code owned by this repository, including the shared client core, and
-consume those cached dependency libraries.
+the code owned by this repository, including the shared TLS transport and
+statically linked protocol code, and consume those cached dependency
+libraries.
 
 There is no FreeBSD CI coverage. Field-alpha load and the full capacity
 fixture are manual benchmarks with retained reports.
@@ -32,7 +34,7 @@ For an alpha release:
 
 1. make the default-branch pipeline green;
 2. confirm `python3 tools/check_repository.py` succeeds on the tag commit;
-3. create the protected annotated tag `v<version>` (for example, `v0.7.5`);
+3. create the protected annotated tag `v<version>` (for example, `v0.7.6`);
 4. let each native runner configure with `CT_PORTABLE_CLIENT=ON` and an exact
    GitHub release URL;
 5. unpack and inspect every archive, run native `--version` probes, and inspect
