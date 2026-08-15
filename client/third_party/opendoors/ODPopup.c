@@ -59,12 +59,11 @@
 #include "ODGen.h"
 #include "ODPlat.h"
 #include "ODKrnl.h"
-#include "ODStat.h"
 
 
 /* Configurable od_popup_menu() parameters. */
 
-/* Maximum menu level. */
+/* Number of available menu levels. */
 #define MENU_LEVELS        11
 
 /* Maximum number of items in a menu. */
@@ -143,8 +142,8 @@ static void ODPopupDisplayMenuItem(BYTE btLeft, BYTE btTop,
  *             nTop     - The 1-based row number of the upper right corner of
  *                        the menu.
  *
- *             nLevel   - Menu level, which must be a value between 0 and
- *                        MENU_LEVELS.
+ *             nLevel   - Menu level, which must be a value from 0 through
+ *                        10.
  *
  *             uFlags   - One or more flags, combined by the bitwise or (|)
  *                        operator.
@@ -167,7 +166,7 @@ ODAPIDEF INT ODCALL od_popup_menu(char *pszTitle, char *pszText, INT nLeft,
    BYTE btCursor;
    BYTE btLeft;
    BYTE btTop;
-   void *pWindow;
+   void *pWindow = NULL;
    BYTE btBetweenSize;
    BYTE btTitleSize;
    BYTE btRemaining;
@@ -180,6 +179,7 @@ ODAPIDEF INT ODCALL od_popup_menu(char *pszTitle, char *pszText, INT nLeft,
 
    /* Initialize OpenDoors, if not already done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(0);
 
    OD_API_ENTRY();
 
@@ -198,7 +198,7 @@ ODAPIDEF INT ODCALL od_popup_menu(char *pszTitle, char *pszText, INT nLeft,
 
 
    /* check level bounds */
-   if(nLevel < 0 || nLevel > MENU_LEVELS)
+   if(nLevel < 0 || nLevel >= MENU_LEVELS)
    {
       od_control.od_error = ERR_LIMIT;
       OD_API_EXIT();
@@ -220,17 +220,12 @@ ODAPIDEF INT ODCALL od_popup_menu(char *pszTitle, char *pszText, INT nLeft,
          return(POPUP_ERROR);
       }
 
-      if(paMenuItems == NULL)
+      if((paMenuItems = malloc(sizeof(tMenuItem) * MAX_MENU_ITEMS)) == NULL)
       {
-         if((paMenuItems = malloc(sizeof(tMenuItem) * MAX_MENU_ITEMS)) == NULL)
-         {
-            od_control.od_error = ERR_PARAMETER;
-            OD_API_EXIT();
-            return(POPUP_ERROR);
-         }
+         od_control.od_error = ERR_MEMORY;
+         OD_API_EXIT();
+         return(POPUP_ERROR);
       }
-      MenuLevelInfo[nLevel].paMenuItems = paMenuItems;
-
       btCurrentNumMenuItems = 0;
       btWidth = 0;
       btCount = 0;
@@ -241,11 +236,14 @@ ODAPIDEF INT ODCALL od_popup_menu(char *pszTitle, char *pszText, INT nLeft,
          switch(*pszText)
          {
             case '|':
-                  paMenuItems[btCurrentNumMenuItems++].szItemText[btCount]
-                     = '\0';
+                  paMenuItems[btCurrentNumMenuItems].szItemText[btCount] = '\0';
+                  ++btCurrentNumMenuItems;
                   if(btCount > btWidth) btWidth = btCount;
                   btCount = 0;
-                  paMenuItems[btCurrentNumMenuItems].btKeyIndex = 0;
+                  if(btCurrentNumMenuItems < MAX_MENU_ITEMS)
+                  {
+                     paMenuItems[btCurrentNumMenuItems].btKeyIndex = 0;
+                  }
                break;
 
             case '^':
@@ -272,7 +270,8 @@ ODAPIDEF INT ODCALL od_popup_menu(char *pszTitle, char *pszText, INT nLeft,
       if(btCount != 0)
       {
          /* null-terminate current menu entry string */
-         paMenuItems[btCurrentNumMenuItems++].szItemText[btCount] = '\0';
+         paMenuItems[btCurrentNumMenuItems].szItemText[btCount] = '\0';
+         ++btCurrentNumMenuItems;
 
          /* If this is the widest entry, update he menu width appropriately  */
          if(btCount > btWidth) btWidth = btCount;
@@ -283,8 +282,7 @@ ODAPIDEF INT ODCALL od_popup_menu(char *pszTitle, char *pszText, INT nLeft,
       {
          /* Return with parameter error */
          od_control.od_error = ERR_PARAMETER;
-         OD_API_EXIT();
-         return(POPUP_ERROR);
+         goto creation_error;
       }
 
       /* Adjust menu width to allow title to fit, if possible               */
@@ -308,8 +306,7 @@ ODAPIDEF INT ODCALL od_popup_menu(char *pszTitle, char *pszText, INT nLeft,
       if(!(od_control.user_ansi || od_control.user_avatar))
       {
          od_control.od_error = ERR_NOGRAPHICS;
-         OD_API_EXIT();
-         return(POPUP_ERROR);
+         goto creation_error;
       }
 
       /* If menu would "fall off" edge of screen, return with an error */
@@ -318,8 +315,7 @@ ODAPIDEF INT ODCALL od_popup_menu(char *pszTitle, char *pszText, INT nLeft,
          || btBottom - btTop < 2)
       {
          od_control.od_error = ERR_PARAMETER;
-         OD_API_EXIT();
-         return(POPUP_ERROR);
+         goto creation_error;
       }
 
       /* Allocate space to store window information. If unable to allocate */
@@ -328,20 +324,15 @@ ODAPIDEF INT ODCALL od_popup_menu(char *pszTitle, char *pszText, INT nLeft,
          + (btBottom - btTop + 1) * 160)) == NULL)
       {
          od_control.od_error = ERR_MEMORY;
-         OD_API_EXIT();
-         return(POPUP_ERROR);
+         goto creation_error;
       }
 
       /* Store contents of screen where memu will be drawn in the temporary */
       /* buffer.                                                            */
       if(!od_gettext(btLeft, btTop, btRight, btBottom, pWindow))
       {
-         free(pWindow);
-         pWindow = NULL;
-
          /* Note that od_error code has been set in od_gettext(). */
-         OD_API_EXIT();
-         return(POPUP_ERROR);
+         goto creation_error;
       }
 
       /* Determine number of characters of title to be displayed */
@@ -380,10 +371,10 @@ ODAPIDEF INT ODCALL od_popup_menu(char *pszTitle, char *pszText, INT nLeft,
 
       btLineCount = btTop + 1;
       btCorrectItem = 0;
+      MenuLevelInfo[nLevel].paMenuItems = paMenuItems;
       ODPopupCheckForKey(FALSE);
       btCursor = btCorrectItem;
-      for(btCount = 0; btCount < btCurrentNumMenuItems
-         && btLineCount < btBottom; ++btCount)
+      for(btCount = 0; btCount < btCurrentNumMenuItems; ++btCount)
       {
          ODPopupCheckForKey(FALSE);
          if(nCommand != NO_COMMAND && !(wCurrentFlags & MENU_KEEP))
@@ -448,13 +439,16 @@ ODAPIDEF INT ODCALL od_popup_menu(char *pszTitle, char *pszText, INT nLeft,
    for(;;)
    {
       ODPopupCheckForKey(TRUE);
+      if(!bODInitialized) goto session_ended;
       if(btCorrectItem != btCursor)
       {
          ODPopupDisplayMenuItem(btLeft, btTop, paMenuItems, btCursor,
             FALSE, btWidth, TRUE);
          btCursor = btCorrectItem;
          ODWaitDrain(25);
+         if(!bODInitialized) goto session_ended;
          ODPopupCheckForKey(FALSE);
+         if(!bODInitialized) goto session_ended;
          ODPopupDisplayMenuItem(btLeft, btTop, paMenuItems, btCursor,
             TRUE, btWidth, TRUE);
       }
@@ -464,6 +458,15 @@ ODAPIDEF INT ODCALL od_popup_menu(char *pszTitle, char *pszText, INT nLeft,
          goto exit_now;
       }
    }
+
+session_ended:
+   free(pWindow);
+   free(paMenuItems);
+   MenuLevelInfo[nLevel].pWindow = NULL;
+   MenuLevelInfo[nLevel].paMenuItems = NULL;
+   ODStatEndArrowUse();
+   OD_API_EXIT();
+   return(POPUP_ESCAPE);
 
 exit_now:
    if((!(wCurrentFlags & MENU_KEEP)) || nCommand <= 0)
@@ -478,7 +481,7 @@ destroy:
          MenuLevelInfo[nLevel].paMenuItems = NULL;
       }
    }
-   else if(wCurrentFlags & MENU_KEEP)
+   else
    {
       MenuLevelInfo[nLevel].paMenuItems = paMenuItems;
       MenuLevelInfo[nLevel].btNumMenuItems = btCurrentNumMenuItems;
@@ -501,6 +504,15 @@ destroy:
 
    OD_API_EXIT();
    return(nCommand);
+
+creation_error:
+   if(pWindow != NULL)
+   {
+      free(pWindow);
+   }
+   free(paMenuItems);
+   OD_API_EXIT();
+   return(POPUP_ERROR);
 }
 
 
@@ -534,6 +546,8 @@ static void ODPopupCheckForKey(BOOL bWaitForInput)
       if(!od_get_input(&InputEvent, bWaitForInput && !bDoneAnythingYet
          ? OD_NO_TIMEOUT : 0, GETIN_NORMAL))
       {
+         if(!bODInitialized)
+            nCommand = POPUP_ESCAPE;
          /* Return right away if no input event is waiting. */
          return;
       }
@@ -606,9 +620,11 @@ right_arrow:
             /* Check whether key is a menu "hot key" */
             for(btCount = 0; btCount < btCurrentNumMenuItems; ++btCount)
             {
-               if(toupper(MenuLevelInfo[nCurrentLevel].paMenuItems[btCount]
+               if(toupper((unsigned char)MenuLevelInfo[nCurrentLevel]
+                  .paMenuItems[btCount]
                   .szItemText[MenuLevelInfo[nCurrentLevel].paMenuItems[btCount]
-                  .btKeyIndex]) == toupper(InputEvent.chKeyPress))
+                  .btKeyIndex]) ==
+                  toupper((unsigned char)InputEvent.chKeyPress))
                {
                   btCorrectItem = btCount;
                   nCommand = btCorrectItem + 1;

@@ -18,7 +18,7 @@
  *
  *        File: ODKrnl.h
  *
- * Description: Contains the public definitions related to odkrnl.c
+ * Description: Contains internal definitions related to odkrnl.c.
  *
  *   Revisions: Date          Ver   Who  Change
  *              ---------------------------------------------------------------
@@ -35,6 +35,35 @@
 
 #include "ODPlat.h"
 
+#define OD_MIN_USER_TIME_MINUTES 0
+#define OD_MAX_USER_TIME_MINUTES 1440
+
+#ifdef ODPLAT_WIN32
+typedef struct
+{
+   HICON hAppIcon;
+   char szProgramName[sizeof(od_control.od_prog_name)];
+   char szProgramCopyright[sizeof(od_control.od_prog_copyright)];
+   char szProgramVersion[sizeof(od_control.od_prog_version)];
+   char szUserName[sizeof(od_control.user_name)];
+   char szUserLocation[sizeof(od_control.user_location)];
+   char szUserReasonForChat[sizeof(od_control.user_reasonforchat)];
+   DWORD dwBaud;
+   DWORD dwConnectSpeed;
+   INT nNode;
+   INT nTimeLimit;
+   INT nCmdShow;
+   WORD wDisable;
+   BOOL bUserWantsChat;
+   BOOL bInactivityDisabled;
+   BOOL bSysopNext;
+   BOOL bUserKeyboardOn;
+   BOOL bChatActive;
+   void (*pfHelpCallback)(void);
+   void (*pfConfigCallback)(void);
+} tODUIState;
+#endif
+
 /* Global kernel-related variables. */
 extern tODTimer RunKernelTimer;
 extern time_t nNextTimeDeductTime;
@@ -42,9 +71,6 @@ extern char chLastControlKey;
 extern INT nArrowUseCount;
 extern BOOL bForceStatusUpdate;
 extern BOOL bSysopColor;
-#ifdef OD_MULTITHREADED
-extern tODSemaphoreHandle hODActiveSemaphore;
-#endif /* OD_MULTITHREADED */
 
 /* Chat mode global variables. */
 extern BOOL bIsShell;
@@ -56,33 +82,44 @@ void ODKrnlShutdown(void);
 void ODKrnlHandleLocalKey(WORD wKeyCode);
 void ODKrnlEndChatMode(void);
 void ODKrnlForceOpenDoorsShutdown(BYTE btReasonForShutdown);
-#ifdef OD_MULTITHREADED
-tODResult ODKrnlStartChatThread(BOOL bTriggeredInternally);
-#endif /* OD_MULTITHREADED */
-
-/* Macro used to generate the appropriate code (if any) to call */
-/* the OpenDoors kernel from within OpenDoors code.             */
-#ifdef OD_MULTITHREADED
-#define CALL_KERNEL_IF_NEEDED()
-#else /* !OD_MULTITHREADED */
-#ifdef ODPLAT_NIX
-#ifdef USE_KERNEL_SIGNAL
-#define CALL_KERNEL_IF_NEEDED()
-#else
-#define CALL_KERNEL_IF_NEEDED()     od_kernel()
+void ODStatStartArrowUse(void);
+void ODStatEndArrowUse(void);
+void ODKrnlDispatchPending(BOOL bAllowApplicationCallbacks);
+void ODKrnlRequestChatToggle(void);
+void ODKrnlRequestKeyboardToggle(void);
+void ODKrnlRequestSysopNextToggle(void);
+void ODKrnlRequestInactivityToggle(void);
+void ODKrnlRequestTimeAdjustment(INT nMinutes);
+void ODKrnlRequestLockout(void);
+void ODKrnlRequestExit(INT nErrorLevel, BOOL bTermCall);
+#ifdef ODPLAT_WIN32
+void ODKrnlRequestShutdown(BYTE btReasonForShutdown);
+BOOL ODKrnlRefreshUIState(void);
+void ODKrnlGetUIState(tODUIState *pState);
 #endif
-#else
-#define CALL_KERNEL_IF_NEEDED()     od_kernel()
-#endif /* !ODPLAT_NIX */
-#endif /* !OD_MULTITHREADED */
 
-/* Macro used to increment or decrement OpenDoors active semaphore. */
-#ifdef OD_MULTITHREADED
-#define OD_API_ENTRY()              ODSemaphoreUp(hODActiveSemaphore, 1);
-#define OD_API_EXIT()               ODSemaphoreDown(hODActiveSemaphore, 1);
-#else /* !OD_MULTITHREADED */
-#define OD_API_ENTRY()
-#define OD_API_EXIT()
-#endif /* !OD_MULTITHREADED */
+/* Run the cooperative kernel from OpenDoors progress points. */
+#define CALL_KERNEL_IF_NEEDED()     od_kernel()
+
+#include "ODSync.h"
+
+#define OD_API_ENTRY()              ODSyncAPIEntry();
+#define OD_API_EXIT()               ODSyncAPIExit();
+#define OD_RETURN_IF_SESSION_ENDED(value) do { \
+   /* Both operands are Boolean; evaluate both as one guard decision. */ \
+   if((eODLifecycleState >= kODLifecycleExitPending) \
+      | (!bODInitialized)) { \
+      od_control.od_error = ERR_GENERALFAILURE; \
+      return(value); \
+   } \
+} while(0)
+#define OD_RETURN_VOID_IF_SESSION_ENDED() do { \
+   /* Both operands are Boolean; evaluate both as one guard decision. */ \
+   if((eODLifecycleState >= kODLifecycleExitPending) \
+      | (!bODInitialized)) { \
+      od_control.od_error = ERR_GENERALFAILURE; \
+      return; \
+   } \
+} while(0)
 
 #endif /* _INC_ODKRNL */

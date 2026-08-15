@@ -14,10 +14,15 @@ use the [sysop guide](../docs/sysop-guide.md), installed as `SYSOP-GUIDE.md`.
   loopback-only administrator listener.
 - `cepheus-trader-client` is a headless protocol and test exerciser.
 
-All four executables use `cepheus-trader-client-core`, a shared project runtime
-library containing TLS, cryptography, Cap'n Proto transport, and common
-protocol handling. The door additionally links OpenDoors as a private static
-library. Game rules and persistent state remain on the Rust server.
+All four executables use `cepheus-trader-client-core`, a shared TLS and
+cryptography transport library. Its DLL boundary is a narrow C interface:
+opaque handles, fixed-size values, byte buffers, and status codes. C++
+exceptions and standard-library objects stay on the side that created them.
+Failures cross as a structured snapshot containing a stable category, an
+optional native error number, and a caller-copied, untruncated UTF-8 message.
+Cap'n Proto and common protocol handling are linked statically into each
+program. The door additionally links OpenDoors as a private static library.
+Game rules and persistent state remain on the Rust server.
 
 The door supports ISO 646 plain text, ISO 646 with ECMA-48 colour, and CP437
 with ECMA-48 colour. A 40x24 terminal is the supported minimum and 80x24 is the
@@ -61,7 +66,7 @@ moderation.
 Release builders set `CT_PORTABLE_CLIENT=ON`, build pinned Botan and Cap'n
 Proto, link OpenDoors statically, and use static GNU C and C++ runtimes on
 supported GNU targets. CPack includes only the player door, sysop utility,
-their shared client-core runtime, the player and sysop guides, configuration
+their shared TLS transport, the player and sysop guides, configuration
 example, source correspondence, and license notices. The administrator and
 headless exerciser are development and server-operation programs, not BBS
 client-kit contents.

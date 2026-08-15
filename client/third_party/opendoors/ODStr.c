@@ -37,7 +37,7 @@ od_strlwr(char *str)
 	char	*p;
 	
 	for(p=str;*p;p++) 
-		*p=tolower(*p);
+		*p=(char)tolower((unsigned char)*p);
 
 	return(str);
 }
@@ -48,7 +48,7 @@ od_strupr(char *str)
 	char	*p;
 	
 	for(p=str;*p;p++) 
-		*p=toupper(*p);
+		*p=(char)toupper((unsigned char)*p);
 
 	return(str);
 }

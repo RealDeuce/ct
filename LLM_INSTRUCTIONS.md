@@ -158,9 +158,13 @@ and do not persist observation snapshots indefinitely. Travel state uses typed,
 revisioned legs between port, body, and Jump loci; contact work attaches to
 those explicit boundaries.
 
-The implemented `cepheus-trader-door` links the shared C++ client core to the
-vendored OpenDoors source under `client/third_party/opendoors/` as a static
-library.
+The implemented `cepheus-trader-door` links the common protocol layer and the
+vendored OpenDoors source under `client/third_party/opendoors/` as static
+libraries. Botan TLS and cryptography remain in the shared
+`cepheus-trader-client-core` transport library, whose exported ABI is C-only:
+opaque handles, fixed-size values, caller-copied buffers, status codes, and
+structured error snapshots. C++ exceptions and standard-library objects must
+never cross that shared-library boundary.
 OpenDoors owns standard command-line and drop-file parsing; its configuration
 accepts `CTConfig` to locate the shared game configuration. The door resolves
 the BBS real-name-plus-record-index composite (or configured handle) through a
@@ -2139,6 +2143,7 @@ economy behavior.
 
 | Date | Decision | Status |
 | --- | --- | --- |
+| 2026-08-15 | Refresh the vendored OpenDoors production surface from `RealDeuce/OpenDoors` commit `3edf9008a6df2a7d71674f8b43e307d1fc2f721d`, retaining the documented `user_8bit` extension. The shared client library exports only a C transport ABI so independently static-linked Windows GNU runtimes never exchange C++ exceptions, STL objects, or allocations. Errors cross as category, optional native code, and an exact-length caller-copied UTF-8 message. | Current |
 | 2026-08-06 | The common initial product version is `0.7.0`, matching the current Milestone 7 development stage. Product SemVer is separate from protocol, storage, record-codec, and generator compatibility counters. | Current |
 | 2026-08-06 | The standalone repository uses GitHub and GitHub Actions. It vendors the audited production OpenDoors source surface at Synchronet commit `47feab1e8bf776175b44f40dffebbc9560322e20`, statically links it, and includes neither upstream `ex_*` examples nor `xpdev`, which those examples alone use. Portable client packages build pinned static Botan 3.12.0 and Cap'n Proto 1.5.0, contain only the door and sysop programs, and publish checksums, dependency reports, debug-symbol archives, notices, and exact tagged-source correspondence. | Current |
 | 2026-08-06 | With no deployed compatibility contract, player, administrator, and sysop protocols; LMDB storage; every internal record codec; the clock; universe/celestial/BBS-polity generators; coverage, settlement, CNS5, and frontier samplers; and player-setup revision all begin at compatibility version 1. There are no legacy readers or migration paths. | Current |

@@ -275,7 +275,7 @@ jobs:
           SOURCE_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/archive/$SOURCE_REF.tar.gz"
           cmake -S client -B build/package -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_TESTING=OFF \
+            -DBUILD_TESTING=ON \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCT_BOTAN_ROOT=${{ github.workspace }}/build/dependency-cache/botan \
@@ -289,7 +289,9 @@ jobs:
           grep -F "Using cached OpenDoors static library" build/package-configure.log
           ccache --zero-stats
           cmake --build build/package --target \
-            cepheus-trader-door cepheus-trader-sysop
+            cepheus-trader-door cepheus-trader-sysop ct-transport-boundary-test
+          ctest --test-dir build/package -R '^ct-transport-boundary$' \
+            --output-on-failure
           cpack --config build/package/CPackConfig.cmake -B artifacts
           python3 tools/verify_client_package.py artifacts/*.tar.xz \
             --version 0.7.5 --run --require-source-url
@@ -520,7 +522,7 @@ jobs:
           SOURCE_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/archive/$SOURCE_REF.tar.gz"
           cmake -S client -B build/package -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_TESTING=OFF \
+            -DBUILD_TESTING=ON \
             -DCT_BOTAN_ROOT="$PWD/build/dependency-cache/botan" \
             -DCT_CAPNPROTO_ROOT="$PWD/build/dependency-cache/capnproto" \
             -DCT_OPENDOORS_ROOT="$PWD/build/dependency-cache/opendoors" \
@@ -528,7 +530,9 @@ jobs:
             -DCT_PORTABLE_CLIENT=ON \
             -DCT_SOURCE_RELEASE_URL="$SOURCE_URL"
           cmake --build build/package --target \
-            cepheus-trader-door cepheus-trader-sysop
+            cepheus-trader-door cepheus-trader-sysop ct-transport-boundary-test
+          ctest --test-dir build/package -R '^ct-transport-boundary$' \
+            --output-on-failure
           cpack --config build/package/CPackConfig.cmake -B artifacts
           python3 tools/verify_client_package.py artifacts/*.zip \
             --version 0.7.5 --run --require-source-url

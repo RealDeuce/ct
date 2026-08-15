@@ -1,6 +1,5 @@
 #include "ct/bbs_credential.hpp"
-
-#include <botan/mem_ops.h>
+#include "ct/crypto.hpp"
 
 #include <array>
 #include <algorithm>
@@ -77,7 +76,7 @@ BbsCredentialFile decode(std::array<uint8_t, FILE_BYTES>& bytes) {
       .bbs_id = bbs_id,
       .psk = std::vector<uint8_t>(bytes.begin() + 16, bytes.end()),
    };
-   Botan::secure_scrub_memory(bytes.data(), bytes.size());
+   scrub_memory(std::span<uint8_t>(bytes));
    return result;
 }
 
@@ -313,10 +312,10 @@ void create_bbs_credential_file(const std::string& path,
    try {
       write_file(path, bytes);
    } catch(...) {
-      Botan::secure_scrub_memory(bytes.data(), bytes.size());
+      scrub_memory(std::span<uint8_t>(bytes));
       throw;
    }
-   Botan::secure_scrub_memory(bytes.data(), bytes.size());
+   scrub_memory(std::span<uint8_t>(bytes));
 }
 
 BbsCredentialFile read_bbs_credential_file(const std::string& path) {
@@ -324,7 +323,7 @@ BbsCredentialFile read_bbs_credential_file(const std::string& path) {
    try {
       return decode(bytes);
    } catch(...) {
-      Botan::secure_scrub_memory(bytes.data(), bytes.size());
+      scrub_memory(std::span<uint8_t>(bytes));
       throw;
    }
 }

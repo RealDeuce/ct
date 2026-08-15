@@ -66,13 +66,14 @@ ODAPIDEF BOOL ODCALL od_draw_box(BYTE btLeft, BYTE btTop, BYTE btRight,
    BYTE btLine;
 
    /* X size of window. */
-   BYTE btBetweenSize = (btRight - btLeft) - 1;
+   BYTE btBetweenSize;
 
    /* Log function entry if running in trace mode */
    TRACE(TRACE_API, "od_draw_box()");
 
    /* Ensure that OpenDoors has been initialized */
    if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(FALSE);
 
    OD_API_ENTRY();
 
@@ -95,12 +96,15 @@ ODAPIDEF BOOL ODCALL od_draw_box(BYTE btLeft, BYTE btTop, BYTE btRight,
    }
 
    /* Check that parameters are within valid range. */
-   if(btLeft<1 || btTop<1 || btRight>80 || btBottom>25)
+   if(btLeft < 1 || btTop < 1 || btRight > 80 || btBottom > 25
+      || btRight <= btLeft || btBottom <= btTop)
    {
       od_control.od_error = ERR_PARAMETER;
       OD_API_EXIT();
       return(FALSE);
    }
+
+   btBetweenSize = (BYTE)(btRight - btLeft - 1);
 
    /* Move to top corner, if needed. */
    od_set_cursor(btTop, btLeft);

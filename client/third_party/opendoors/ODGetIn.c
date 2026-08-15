@@ -85,6 +85,7 @@ tODKeySequence aKeySequences[] =
    {"\033[H\x1b[2J", OD_KEY_PGDN, FALSE},
    {"\033[H", OD_KEY_HOME, FALSE},
    {"\033[K", OD_KEY_END, FALSE},
+   {"\033[F", OD_KEY_END, FALSE},
    {"\033OP", OD_KEY_F1, FALSE},
    {"\033OQ", OD_KEY_F2, FALSE},
    {"\033OR", OD_KEY_F3, FALSE},
@@ -124,6 +125,10 @@ tODKeySequence aKeySequences[] =
    {"\033Or", OD_KEY_F8, FALSE},
    {"\033Op", OD_KEY_F9, FALSE},
 
+   /* ECMA-48-specific control sequences. */
+   {"\033[V", OD_KEY_PGUP, FALSE},
+   {"\033[U", OD_KEY_PGDN, FALSE},
+
    /* PROCOMM-specific control sequences (non-keypad alternatives). */
    {"\033OA", OD_KEY_UP, FALSE},
    {"\033OB", OD_KEY_DOWN, FALSE},
@@ -159,7 +164,7 @@ tODKeySequence aKeySequences[] =
 
 /* Current control sequence received state. */
 static char szCurrentSequence[SEQUENCE_BUFFER_SIZE] = "";
-#if 0	// Unused...
+#if 0 /* Unused. */
 static tODTimer SequenceFailTimer;
 static BOOL bSequenceFromRemote;
 static int nMatchedSequence = NO_MATCH;
@@ -168,53 +173,153 @@ static BOOL bTimerActive = FALSE;
 static BOOL bDoorwaySequence = FALSE;
 static BOOL bDoorwaySequencePending = FALSE;
 
+typedef struct
+{
+   DWORD dwSeconds;
+   WORD wMilliseconds;
+} tODInputDeadline;
+
 /* Local private function prototypes. */
 static int ODGetCodeIfLongest(WORD wFlags);
 static int ODHaveStartOfSequence(WORD wFlags);
 static int ODLongestFullCode(WORD wFlags);
 static void ODShiftSeq(int chars);
+static tODResult ODGetInputWait(tODInputEvent *pEvent,
+   tODMilliSec TimeToWait);
+static tODMilliSec ODGetInputDeadlineSlice(
+   const tODInputDeadline *pDeadline);
+static tODResult ODGetInputWaitUntil(tODInputEvent *pEvent,
+   const tODInputDeadline *pDeadline, tODMilliSec MaxWait);
+static BOOL ODGetInputCore(tODInputEvent *pInputEvent,
+   tODMilliSec TimeToWait, WORD wFlags,
+   const tODInputDeadline *pDeadline);
 
-/* ----------------------------------------------------------------------------
- * od_get_input()
- *
- * Obtains the next input event of any type, optionally performing
- * translation on input events.
- *
- * Parameters: pInputEvent  - Pointer to a tODInputEvent structure, which
- *                            will be filled by information on the next input
- *                            event, if any is obtained.
- *
- *             TimeToWait   - Number of milliseconds to wait for input to be
- *                            available. A value of 0 causes od_get_input()
- *                            to return immediately if no input is waiting,
- *                            while a value of OD_NO_TIMEOUT causes the
- *                            function to never return unless input has been
- *                            obtained.
- *
- *             wFlags       - Flags which customize od_get_input()'s behaviour.
- *
- *     Return: TRUE if an input event was obtained, FALSE if not.
- */
-ODAPIDEF BOOL ODCALL od_get_input(tODInputEvent *pInputEvent,
-   tODMilliSec TimeToWait, WORD wFlags)
+static tODResult ODGetInputWait(tODInputEvent *pEvent,
+   tODMilliSec TimeToWait)
+{
+   tODTimer Timer;
+   tODMilliSec Slice;
+   tODResult Result;
+#ifdef OD_THREAD_SUPPORT
+   unsigned nSavedAPILevel;
+#endif
+
+   if(TimeToWait != OD_NO_TIMEOUT)
+      ODTimerStart(&Timer, TimeToWait);
+
+   for(;;)
+   {
+      if(TimeToWait == 0)
+         Slice = 0;
+      else if(TimeToWait == OD_NO_TIMEOUT)
+         Slice = 50;
+      else
+      {
+         Slice = ODTimerLeft(&Timer);
+         if(Slice > 50) Slice = 50;
+      }
+
+#ifdef OD_THREAD_SUPPORT
+      if(Slice != 0) nSavedAPILevel = ODSyncAPIRelease();
+#endif
+      Result = ODInQueueGetNextEvent(hODInputQueue, pEvent, Slice);
+#ifdef OD_THREAD_SUPPORT
+      if(Slice != 0) ODSyncAPIReacquire(nSavedAPILevel);
+#endif
+      if(Result == kODRCSuccess || TimeToWait == 0)
+         return(Result);
+      if(!ODSyncAPICheckpoint())
+         return(kODRCGeneralFailure);
+      if(TimeToWait != OD_NO_TIMEOUT && ODTimerElapsed(&Timer))
+         return(kODRCTimeout);
+   }
+}
+
+/* Return the next bounded wait slice, or zero once the deadline is reached. */
+static tODMilliSec ODGetInputDeadlineSlice(
+   const tODInputDeadline *pDeadline)
+{
+   DWORD dwSeconds;
+   WORD wMilliseconds;
+   DWORD dwSecondDifference;
+   tODMilliSec Remaining;
+
+   ODSessionTimeGet(&dwSeconds, &wMilliseconds);
+   if(dwSeconds > pDeadline->dwSeconds
+      || (dwSeconds == pDeadline->dwSeconds
+         && wMilliseconds >= pDeadline->wMilliseconds))
+   {
+      return(0);
+   }
+
+   dwSecondDifference = pDeadline->dwSeconds - dwSeconds;
+   if(dwSecondDifference > 1)
+      return(50);
+   Remaining = dwSecondDifference * 1000UL;
+   if(pDeadline->wMilliseconds >= wMilliseconds)
+      Remaining += pDeadline->wMilliseconds - wMilliseconds;
+   else
+      Remaining -= wMilliseconds - pDeadline->wMilliseconds;
+   return(Remaining > 50 ? 50 : Remaining);
+}
+
+/* Wait for input without ever beginning a queue wait at or after Deadline. */
+static tODResult ODGetInputWaitUntil(tODInputEvent *pEvent,
+   const tODInputDeadline *pDeadline, tODMilliSec MaxWait)
+{
+   tODTimer Timer;
+   tODMilliSec Slice;
+   tODMilliSec RelativeLeft;
+   tODResult Result;
+#ifdef OD_THREAD_SUPPORT
+   unsigned nSavedAPILevel;
+#endif
+
+   if(MaxWait != OD_NO_TIMEOUT)
+      ODTimerStart(&Timer, MaxWait);
+
+   for(;;)
+   {
+      Slice = ODGetInputDeadlineSlice(pDeadline);
+      if(Slice == 0)
+         return(kODRCTimeout);
+
+      if(MaxWait != OD_NO_TIMEOUT)
+      {
+         RelativeLeft = ODTimerLeft(&Timer);
+         if(RelativeLeft == 0)
+            return(kODRCTimeout);
+         if(Slice > RelativeLeft)
+            Slice = RelativeLeft;
+      }
+
+#ifdef OD_THREAD_SUPPORT
+      nSavedAPILevel = ODSyncAPIRelease();
+#endif
+      Result = ODInQueueGetNextEvent(hODInputQueue, pEvent, Slice);
+#ifdef OD_THREAD_SUPPORT
+      ODSyncAPIReacquire(nSavedAPILevel);
+#endif
+      if(Result == kODRCSuccess)
+         return(Result);
+      if(!ODSyncAPICheckpoint())
+         return(kODRCGeneralFailure);
+   }
+}
+
+/* Common input translation for relative and absolute public waits. */
+static BOOL ODGetInputCore(tODInputEvent *pInputEvent,
+   tODMilliSec TimeToWait, WORD wFlags,
+   const tODInputDeadline *pDeadline)
 {
    tODInputEvent LastInputEvent;
    int nSequence;
    int nSequenceLen;
 
-   /* Log function entry if running in trace mode. */
-   TRACE(TRACE_API, "od_get_input()");
-
-   /* Initialize OpenDoors if it hasn't already been done. */
-   if(!bODInitialized) od_init();
-
-   OD_API_ENTRY();
-
    /* Check for parameter validity. */
    if(pInputEvent == NULL)
    {
       od_control.od_error = ERR_PARAMETER;
-      OD_API_EXIT();
       return(FALSE);
    }
 
@@ -232,9 +337,10 @@ ODAPIDEF BOOL ODCALL od_get_input(tODInputEvent *pInputEvent,
 
    /* If no pending input string, wait for the first keystroke */
    if((!szCurrentSequence[0]) && (!bDoorwaySequence)) {
-      if(ODInQueueGetNextEvent(hODInputQueue, &LastInputEvent, TimeToWait)
+      if((pDeadline == NULL
+            ? ODGetInputWait(&LastInputEvent, TimeToWait)
+            : ODGetInputWaitUntil(&LastInputEvent, pDeadline, TimeToWait))
             != kODRCSuccess) {
-         OD_API_EXIT();
          return(FALSE);
       }
 
@@ -246,7 +352,6 @@ ODAPIDEF BOOL ODCALL od_get_input(tODInputEvent *pInputEvent,
             ) {
 #endif
          memcpy(pInputEvent, &LastInputEvent, sizeof(tODInputEvent));
-         OD_API_EXIT();
          return(TRUE);
       }
 
@@ -272,7 +377,6 @@ ODAPIDEF BOOL ODCALL od_get_input(tODInputEvent *pInputEvent,
       pInputEvent->bFromRemote = LastInputEvent.bFromRemote;
       /* Shift the sequence buffer over one */
       ODShiftSeq(1);
-      OD_API_EXIT();
       return(TRUE);
    }
 
@@ -287,14 +391,16 @@ ODAPIDEF BOOL ODCALL od_get_input(tODInputEvent *pInputEvent,
       pInputEvent->bFromRemote = LastInputEvent.bFromRemote;
       /* Shift the sequence buffer... being sure to copy the terminator */
       ODShiftSeq(strlen(aKeySequences[nSequence].pszSequence));
-      OD_API_EXIT();
       return(TRUE);
    }
 
    /* Now, continue adding chars, waiting at MOST MAX_CHARACTER_LATENCY between them */
    CALL_KERNEL_IF_NEEDED();
    while((!bDoorwaySequencePending)
-            && (ODInQueueGetNextEvent(hODInputQueue, &LastInputEvent, MAX_CHARACTER_LATENCY)
+            && ((pDeadline == NULL
+               ? ODGetInputWait(&LastInputEvent, MAX_CHARACTER_LATENCY)
+               : ODGetInputWaitUntil(&LastInputEvent, pDeadline,
+                  MAX_CHARACTER_LATENCY))
             == kODRCSuccess)) {
       /* If you are looking for a doorway sequence, any char completes it (honest!) */
       /* Further, thanks to some lack of planning, it's EXACTLY THE SAME as the char,
@@ -304,7 +410,6 @@ ODAPIDEF BOOL ODCALL od_get_input(tODInputEvent *pInputEvent,
          memcpy(pInputEvent, &LastInputEvent, sizeof(tODInputEvent));
          pInputEvent->EventType = EVENT_EXTENDED_KEY;
          bDoorwaySequence=FALSE;
-         OD_API_EXIT();
          return(TRUE);
       }
 
@@ -317,14 +422,13 @@ ODAPIDEF BOOL ODCALL od_get_input(tODInputEvent *pInputEvent,
       }
 
       /* If you have a *local* char, send it immediately */
-      if((!LastInputEvent.bFromRemote) && (LastInputEvent.chKeyPress != 0)
+      if(!LastInputEvent.bFromRemote
 #if 0
             && (LastInputEvent.EventType == EVENT_EXTENDED_KEY)) {
 #else
             ) {
 #endif
          memcpy(pInputEvent, &LastInputEvent, sizeof(tODInputEvent));
-         OD_API_EXIT();
          return(TRUE);
       }
 
@@ -339,7 +443,6 @@ ODAPIDEF BOOL ODCALL od_get_input(tODInputEvent *pInputEvent,
          pInputEvent->bFromRemote = LastInputEvent.bFromRemote;
          /* Shift the sequence buffer... being sure to copy the terminator */
          ODShiftSeq(strlen(aKeySequences[nSequence].pszSequence));
-         OD_API_EXIT();
          return(TRUE);
       }
       CALL_KERNEL_IF_NEEDED();
@@ -351,7 +454,6 @@ ODAPIDEF BOOL ODCALL od_get_input(tODInputEvent *pInputEvent,
       pInputEvent->EventType = EVENT_CHARACTER;
       pInputEvent->bFromRemote = LastInputEvent.bFromRemote;
       bDoorwaySequence=FALSE;
-      OD_API_EXIT();
       return(TRUE);
    }
 
@@ -362,21 +464,71 @@ ODAPIDEF BOOL ODCALL od_get_input(tODInputEvent *pInputEvent,
       pInputEvent->bFromRemote = LastInputEvent.bFromRemote;
       /* Shift the sequence buffer... being sure to copy the terminator */
       ODShiftSeq(strlen(aKeySequences[nSequence].pszSequence));
-      OD_API_EXIT();
       return(TRUE);
    }
 
    /* If we don't have a complete sequence, send a single char */
    pInputEvent->chKeyPress = szCurrentSequence[0];
-   if(szCurrentSequence[0]) {
-      pInputEvent->EventType = EVENT_CHARACTER;
-      pInputEvent->bFromRemote = LastInputEvent.bFromRemote;
-      /* Shift the sequence buffer over one */
-      ODShiftSeq(1);
-   }
-   OD_API_EXIT();
+   pInputEvent->EventType = EVENT_CHARACTER;
+   pInputEvent->bFromRemote = LastInputEvent.bFromRemote;
+   /* Shift the sequence buffer over one */
+   ODShiftSeq(1);
    /* Return false if something broke */
    return(pInputEvent->chKeyPress);
+}
+
+/* ----------------------------------------------------------------------------
+ * od_get_input()
+ *
+ * Obtains the next input event with an optional relative timeout.
+ */
+ODAPIDEF BOOL ODCALL od_get_input(tODInputEvent *pInputEvent,
+   tODMilliSec TimeToWait, WORD wFlags)
+{
+   BOOL bResult;
+
+   TRACE(TRACE_API, "od_get_input()");
+   if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(FALSE);
+   OD_API_ENTRY();
+   bResult = ODGetInputCore(pInputEvent, TimeToWait, wFlags, NULL);
+   OD_API_EXIT();
+   return(bResult);
+}
+
+/* ----------------------------------------------------------------------------
+ * od_get_input_until()
+ *
+ * Obtains the next input event before an absolute session-time deadline.
+ */
+ODAPIDEF BOOL ODCALL od_get_input_until(tODInputEvent *pInputEvent,
+   DWORD dwSeconds, WORD wMilliseconds, WORD wFlags)
+{
+   tODInputDeadline Deadline;
+   BOOL bResult;
+
+   TRACE(TRACE_API, "od_get_input_until()");
+   if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(FALSE);
+   OD_API_ENTRY();
+
+   if(pInputEvent == NULL || wMilliseconds >= 1000U)
+   {
+      od_control.od_error = ERR_PARAMETER;
+      OD_API_EXIT();
+      return(FALSE);
+   }
+
+   Deadline.dwSeconds = dwSeconds;
+   Deadline.wMilliseconds = wMilliseconds;
+   if(ODGetInputDeadlineSlice(&Deadline) == 0)
+   {
+      OD_API_EXIT();
+      return(FALSE);
+   }
+   bResult = ODGetInputCore(pInputEvent, OD_NO_TIMEOUT, wFlags, &Deadline);
+   OD_API_EXIT();
+   return(bResult);
 }
 
 /* ----------------------------------------------------------------------------
@@ -393,7 +545,7 @@ static int ODLongestFullCode(WORD wFlags)
 {
    int CurrLen=0;
    int seqlen;
-   int i;
+   size_t i;
    int retval=NO_MATCH;;
 
    if(wFlags & GETIN_RAW)
@@ -405,7 +557,7 @@ static int ODLongestFullCode(WORD wFlags)
       seqlen=strlen(aKeySequences[i].pszSequence);
       if(seqlen>CurrLen) {
          if(strncmp(aKeySequences[i].pszSequence, szCurrentSequence, seqlen)==0) {
-            retval=i;
+            retval=(int)i;
             CurrLen=seqlen;
          }
       }
@@ -427,7 +579,7 @@ static int ODHaveStartOfSequence(WORD wFlags)
 {
    int seqlen1;
    int seqlen2;
-   int i;
+   size_t i;
 
    if(wFlags & GETIN_RAW)
       return(FALSE);
@@ -462,7 +614,7 @@ static int ODGetCodeIfLongest(WORD wFlags)
    int CurrLen=0;
    int seqlen1;
    int seqlen2;
-   int i;
+   size_t i;
    int retval=NO_MATCH;;
 
    if(wFlags & GETIN_RAW)
@@ -476,7 +628,7 @@ static int ODGetCodeIfLongest(WORD wFlags)
       if(seqlen2>CurrLen) {
          if(seqlen2<=seqlen1) {	/* The sequence would be completed in buffer */
             if(strncmp(aKeySequences[i].pszSequence, szCurrentSequence, seqlen2)==0) {
-               retval=i;
+               retval=(int)i;
                CurrLen=seqlen2;
             }
          }
@@ -517,4 +669,3 @@ static void ODShiftSeq(int chars)
    }
    *out=*in;
 }
-

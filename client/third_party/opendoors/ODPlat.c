@@ -56,8 +56,17 @@
 #include <time.h>
 #include <ctype.h>
 #include <string.h>
+#include <stddef.h>
 
 #include "OpenDoor.h"
+#if (defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)) \
+   && (defined(__WATCOMC__) || defined(__TURBOC__))
+#include <dos.h>
+#endif
+#ifdef ODPLAT_DOS32
+#include <direct.h>
+#include "OD32DPMI.h"
+#endif
 #ifdef ODPLAT_NIX
 #include <sys/time.h>
 #include <sys/types.h>
@@ -75,6 +84,7 @@
 
 #ifdef ODPLAT_WIN32
 #include "windows.h"
+#include <process.h>
 #endif /* ODPLAT_WIN32 */
 
 
@@ -83,6 +93,47 @@
 tODMultitasker ODMultitasker = kMultitaskerNone;
 static void ODPlatYield(void);
 #endif /* ODPLAT_DOS */
+
+#ifdef ODPLAT_WIN32
+/* ----------------------------------------------------------------------------
+ * ODPlatGetWindowsSubsystem()
+ *
+ * Returns the subsystem declared by the executable which created this
+ * process. The executable and this library necessarily have the same
+ * architecture, so IMAGE_NT_HEADERS selects the matching PE32/PE32+ layout.
+ */
+tODWindowsSubsystem ODPlatGetWindowsSubsystem(void)
+{
+   const BYTE *pImage;
+   const IMAGE_DOS_HEADER *pDOSHeader;
+   const IMAGE_NT_HEADERS *pNTHeaders;
+   size_t nSubsystemEnd;
+
+   pImage = (const BYTE *)GetModuleHandle(NULL);
+   if(pImage == NULL)
+      return(kODWindowsSubsystemUnknown);
+
+   pDOSHeader = (const IMAGE_DOS_HEADER *)pImage;
+   if(pDOSHeader->e_magic != IMAGE_DOS_SIGNATURE || pDOSHeader->e_lfanew <= 0)
+      return(kODWindowsSubsystemUnknown);
+
+   pNTHeaders = (const IMAGE_NT_HEADERS *)(pImage + pDOSHeader->e_lfanew);
+   nSubsystemEnd = offsetof(IMAGE_OPTIONAL_HEADER, Subsystem)
+      + sizeof(pNTHeaders->OptionalHeader.Subsystem);
+   if(pNTHeaders->Signature != IMAGE_NT_SIGNATURE
+      || pNTHeaders->FileHeader.SizeOfOptionalHeader < nSubsystemEnd
+      || pNTHeaders->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR_MAGIC)
+   {
+      return(kODWindowsSubsystemUnknown);
+   }
+
+   if(pNTHeaders->OptionalHeader.Subsystem == IMAGE_SUBSYSTEM_WINDOWS_GUI)
+      return(kODWindowsSubsystemGUI);
+   if(pNTHeaders->OptionalHeader.Subsystem == IMAGE_SUBSYSTEM_WINDOWS_CUI)
+      return(kODWindowsSubsystemConsole);
+   return(kODWindowsSubsystemUnknown);
+}
+#endif /* ODPLAT_WIN32 */
 
 /* ----------------------------------------------------------------------------
  * ODPlatInit()
@@ -101,6 +152,39 @@ void ODPlatInit(void)
    /* determine what multitasker we are running under.                */
 
    /* Check whether running under OS/2. */
+#ifdef __WATCOMC__
+   {
+      union REGS Registers;
+
+      Registers.h.ah = 0x30;
+      intdos(&Registers, &Registers);
+      if(Registers.h.al >= 0x0a)
+      {
+         ODMultitasker = kMultitaskerOS2;
+         return;
+      }
+
+      Registers.x.cx = 0x4445;
+      Registers.x.dx = 0x5351;
+      Registers.x.ax = 0x2b01;
+      intdos(&Registers, &Registers);
+      if(Registers.h.al != 0xff)
+      {
+         ODMultitasker = kMultitaskerDV;
+         return;
+      }
+
+      Registers.x.ax = 0x1600;
+      int86(0x2f, &Registers, &Registers);
+      if(Registers.h.al != 0x00 && Registers.h.al != 0x80)
+      {
+         ODMultitasker = kMultitaskerWin;
+         return;
+      }
+
+      ODMultitasker = kMultitaskerNone;
+   }
+#else
    ASM       mov ah, 0x30
    ASM       int 0x21
    ASM       cmp al, 0x0a
@@ -121,6 +205,7 @@ NoOS2:
 
    /* If we get to this point, then DesqView has been detected. */
    ODMultitasker = kMultitaskerDV;
+   return;
 
 NoDesqView:
    /* Check whether we are running under Windows. */
@@ -137,9 +222,11 @@ NoDesqView:
 
     /* If we get to this point, then Windows has been detected. */
    ODMultitasker = kMultitaskerWin;
+   return;
 
 NoWindows:
    ODMultitasker = kMultitaskerNone;
+#endif
 #endif /* ODPLAT_DOS */
 }
 
@@ -181,60 +268,23 @@ static void ODPlatYield(void)
 /* Multithreading and synchronization support.                               */
 /* ========================================================================= */
 
-/*
- * NOTE: ODThreadTerminate() and ODThreadSuspend() are just plain bad
- *       ideas.
- * 
- * ODThreadTerminate() is inherently dangerous, and appears to have been
- * used just to avoid a proper termination signaling method.
- * 
- * ODThreadSuspend() is used to prevent internal calls to OpenDoors API
- * functions from allowing the client thread to run when
- * bHaveExclusiveControl is TRUE. This is a blunt hammer approach to
- * what is basically just a mutual exclusion issue. This one is also the
- * only reason ODThreadResume() and ODThreadGetCurrent() are
- * implemented.
- * 
- * ODThreadExit() is not used and could be removed, but it would be the
- * better way to handle the chat thread.
- * 
- * So basically, what we should need:
- * ODThreadCreate() - Should take a priority.
- * ODThreadExit()
- * ODThreadWaitForExit()
- * ODSemaphoreAlloc()
- * ODSemaphoreFree()
- * ODSemaphoreUp()
- * ODSemaphoreDown()
- * 
- * The current threads:
- * ODFrameThreadProc()        Handles the local window - Windows only
- * ODKrnlRemoteInputThread()  Sits in ODComGetByte() which has no way
- *                            to abort. But at least it blocks.
- *                            Well, it loops for UART...
- * ODKrnlNoCarrierThread()    Sits in ODComWaitEvent(hSerialPort, kNoCarrier)
- *                            This can end up polling.
- * ODKrnlTimeUpdateThread()   od_sleep()s for three seconds then calls
- *                            ODKrnlTimeUpdate(), not abortable.
- * ODKrnlChatThread()         Started when chat is initiated terminated at end
- * ODScrnThreadProc()         Prompts for local username, then handles the window.
- *                            Not ODPLAT_WIN32 only, but should be
- */
+/* Threads created here have cooperative stop protocols owned by their
+ * modules. This layer deliberately provides creation and joining, but no
+ * asynchronous suspension, cancellation, or forced termination operation. */
 
-#ifdef OD_MULTITHREADED
+#ifdef OD_THREAD_SUPPORT
 
-#ifdef ODPLAT_NIX
 struct odthread_args {
    ptODThreadProc *func;
    void *arg;
 };
 
-void *odthread_wrapper(void *args) {
+static unsigned __stdcall odthread_wrapper(void *args)
+{
    struct odthread_args cp = *(struct odthread_args *)args;
    free(args);
-   return (void*)(uintptr_t)cp.func(cp.arg);
+   return (unsigned)cp.func(cp.arg);
 }
-#endif
 
 /* ----------------------------------------------------------------------------
  * ODThreadCreate()
@@ -258,228 +308,27 @@ tODResult ODThreadCreate(tODThreadHandle *phThread,
    ASSERT(phThread != NULL);
    ASSERT(pfThreadProc != NULL);
    
-#ifdef ODPLAT_WIN32
-   DWORD dwThreadID;
-   HANDLE hNewThread;
+   unsigned nThreadID;
+   DWORD_PTR nThreadHandle;
+   struct odthread_args *pa;
 
-   /* Attempt to create the new thread. */
-   hNewThread = CreateThread(NULL, 0, pfThreadProc, pThreadParam,
-      0, &dwThreadID);
-
-   /* Check for thread creation failure. */
-   if(hNewThread == NULL)
-   {
-      return(kODRCGeneralFailure);
-   }
-
-   /* Pass newly created thread's handle back to the caller. */
-   *phThread = hNewThread;
-
-   /* Return with success. */
-   return(kODRCSuccess);
-#endif /* ODPLAT_WIN32 */
-
-#ifdef ODPLAT_NIX
-   pthread_t threadID;
-   struct odthread_args *pa = malloc(sizeof(struct odthread_args));
-   if (pa == NULL)
-      return kODRCGeneralFailure;
+   pa = malloc(sizeof(*pa));
+   if(pa == NULL)
+      return(kODRCNoMemory);
    pa->func = pfThreadProc;
    pa->arg = pThreadParam;
 
-   if (pthread_create(&threadID, NULL, odthread_wrapper, pa)) {
-      free(pa);
-      return kODRCGeneralFailure;
-   }
-   *phThread = threadID;
-   return(kODRCSuccess);
-#endif
-}
+   nThreadHandle = _beginthreadex(NULL, 0, odthread_wrapper, pa,
+      0, &nThreadID);
 
-
-/* ----------------------------------------------------------------------------
- * ODThreadExit()
- *
- * Causes the calling thread to be terminated.
- *
- * Parameters: none
- *
- *     Return: Never returns!
- */
-void ODThreadExit()
-{
-#ifdef ODPLAT_WIN32
-   ExitThread(0);
-#endif /* ODPLAT_WIN32 */
-
-#ifdef ODPLAT_NIX
-   pthread_exit(NULL);
-#endif
-
-   /* We should never get here. */
-   ASSERT(FALSE);
-}
-
-
-/* ----------------------------------------------------------------------------
- * ODThreadTerminate()
- *
- * Terminates the specified thread. 
- *
- * Parameters: hThread - Handle to the thread to be terminated.
- *
- *     Return: kOCRCSuccess on success, or an error code on failure.
- */
-tODResult ODThreadTerminate(tODThreadHandle hThread)
-{
-   ASSERT(hThread != NULL);
-
-#ifdef ODPLAT_WIN32
-   return(TerminateThread(hThread, 0) ? kODRCSuccess : kODRCGeneralFailure);
-#endif /* ODPLAT_WIN32 */
-
-#ifdef ODPLAT_NIX
-   // Try to do this nicely...
-   if (pthread_cancel(hThread))
-      return kODRCGeneralFailure;
-   if (pthread_join(hThread, NULL))
-      return kODRCGeneralFailure;
-   return kODRCSuccess;
-#endif
-}
-
-
-/* ----------------------------------------------------------------------------
- * ODThreadSuspend()
- *
- * Pauses execution of the specified thread, until the ODThreadResume()
- * function is called.
- *
- * Parameters: hThread - Handle to the thread to be suspended.
- *
- *     Return: kOCRCSuccess on success, or an error code on failure.
- */
-tODResult ODThreadSuspend(tODThreadHandle hThread)
-{
-   ASSERT(hThread != NULL);
-
-#ifdef ODPLAT_WIN32
-   return(SuspendThread(hThread) == 0xFFFFFFFF ? kODRCGeneralFailure
-      : kODRCSuccess);
-#endif /* ODPLAT_WIN32 */
-
-#ifdef ODPLAT_NIX
-   // This is some garbage tier design right here...
-   return pthread_suspend_np(hThread) ? kODRCGeneralFailure : kODRCSuccess;
-#endif
-}
-
-
-/* ----------------------------------------------------------------------------
- * ODThreadResume()
- *
- * Continues execution of a thread previously paused by a call to
- * ODThreadSuspend().
- *
- * Parameters: hThread - Handle to the thread to be resumed.
- *
- *     Return: kOCRCSuccess on success, or an error code on failure.
- */
-tODResult ODThreadResume(tODThreadHandle hThread)
-{
-   ASSERT(hThread != NULL);
-
-#ifdef ODPLAT_WIN32
-   return(ResumeThread(hThread) == 0xFFFFFFFF ? kODRCGeneralFailure
-      : kODRCSuccess);
-#endif /* ODPLAT_WIN32 */
-
-#ifdef ODPLAT_NIX
-   // This is some garbage tier design right here...
-   return pthread_resume_np(hThread) ? kODRCGeneralFailure : kODRCSuccess;
-#endif
-}
-
-
-/* ----------------------------------------------------------------------------
- * ODThreadSetPriority()
- *
- * Changes the execution priority of a thread. Since the exact semantics of
- * thread priorities are different for each platform, this function should
- * be used carefully. The caller should assume that no thread will run if there
- * exists a non-blocked thread with a higher priority.
- *
- * Parameters: hThread        - Handle to the thread to change the priority of.
- *
- *             ThreadPriority - New priority to assign to the thread.
- *
- *     Return: kODRCSuccess on success, or an error code on failure.
- */
-tODResult ODThreadSetPriority(tODThreadHandle hThread,
-   tODThreadPriority ThreadPriority)
-{
-#ifdef ODPLAT_WIN32
-   int nWindowsThreadPriority;
-
-   ASSERT(hThread != NULL);
-
-   /* Determine the Windows thread priority to assign to the thread. */
-   switch(ThreadPriority)   
+   if(nThreadHandle == 0)
    {
-      case OD_PRIORITY_LOWEST:
-         nWindowsThreadPriority = THREAD_PRIORITY_LOWEST;
-         break;
-      case OD_PRIORITY_BELOW_NORMAL:
-         nWindowsThreadPriority = THREAD_PRIORITY_BELOW_NORMAL;
-         break;
-      case OD_PRIORITY_NORMAL:
-         nWindowsThreadPriority = THREAD_PRIORITY_NORMAL;
-         break;
-      case OD_PRIORITY_ABOVE_NORMAL:
-         nWindowsThreadPriority = THREAD_PRIORITY_ABOVE_NORMAL;
-         break;
-      case OD_PRIORITY_HIGHEST:
-         nWindowsThreadPriority = THREAD_PRIORITY_HIGHEST;
-         break;
-      default:
-         ASSERT(FALSE);
-         return kODRCInvalidCall;
+      free(pa);
+      return(kODRCGeneralFailure);
    }
 
-   /* Update the thread's priority. */
-   return(SetThreadPriority(hThread, nWindowsThreadPriority)
-      ? kODRCSuccess : kODRCGeneralFailure);
-
-#endif /* ODPLAT_WIN32 */
-
-#ifdef ODPLAT_NIX
-   int min = sched_get_priority_min(SCHED_OTHER);
-   int max = sched_get_priority_max(SCHED_OTHER);
-   struct sched_param sp = {0};
-
-   switch(ThreadPriority) {
-      case OD_PRIORITY_LOWEST:
-         sp.sched_priority = min;
-         break;
-      case OD_PRIORITY_BELOW_NORMAL:
-         sp.sched_priority = min + (max - min + 1) / 4;
-         break;
-      case OD_PRIORITY_NORMAL:
-         sp.sched_priority = (min + max) / 2;
-         break;
-      case OD_PRIORITY_ABOVE_NORMAL:
-         sp.sched_priority = max - (max - min + 1) / 4;
-         break;
-      case OD_PRIORITY_HIGHEST:
-         sp.sched_priority = max;
-         break;
-      default:
-         ASSERT(FALSE);
-         return kODRCInvalidCall;
-   }
-
-   return pthread_setschedparam(hThread, SCHED_OTHER, &sp) ? kODRCGeneralFailure : kODRCSuccess;
-#endif
+   *phThread = (HANDLE)nThreadHandle;
+   return(kODRCSuccess);
 }
 
 
@@ -494,40 +343,15 @@ tODResult ODThreadSetPriority(tODThreadHandle hThread,
  */
 void ODThreadWaitForExit(tODThreadHandle hThread)
 {
-#ifdef ODPLAT_WIN32
+   ASSERT(!ODSyncAPILevelActive());
    WaitForSingleObject(hThread, INFINITE);
-#endif /* ODPLAT_WIN32 */
-
-#ifdef ODPLAT_NIX
-   pthread_join(hThread, NULL);
-#endif
 }
 
 
-/* ----------------------------------------------------------------------------
- * ODThreadGetCurrent()
- *
- * Obtains a handle to the thread that called this function.
- *
- * Parameters: None.
- *
- *     Return: Handle to the current thread.
- */
-tODThreadHandle ODThreadGetCurrent(void)
+void ODThreadSleep(tODMilliSec Milliseconds)
 {
-#ifdef ODPLAT_WIN32
-   HANDLE hDuplicate;
-   if(!DuplicateHandle(GetCurrentProcess(), GetCurrentThread(),
-      GetCurrentProcess(), &hDuplicate, 0, FALSE, DUPLICATE_SAME_ACCESS))
-   {
-      return(NULL);
-   }
-   return(hDuplicate);
-#endif /* ODPLAT_WIN32 */
-
-#ifdef ODPLAT_NIX
-   return pthread_self();
-#endif
+   ASSERT(!ODSyncAPILevelActive());
+   Sleep(Milliseconds);
 }
 
 
@@ -553,20 +377,10 @@ tODResult ODSemaphoreAlloc(tODSemaphoreHandle *phSemaphore, INT nInitialCount,
    ASSERT(nInitialCount >= 0);
    ASSERT(nMaximumCount >= nInitialCount);
 
-#ifdef ODPLAT_WIN32
    *phSemaphore = CreateSemaphore(NULL, (LONG)nInitialCount,
       (LONG)nMaximumCount, NULL);
 
    return(*phSemaphore == NULL ? kODRCGeneralFailure : kODRCSuccess);
-#endif /* ODPLAT_WIN32 */
-
-#ifdef ODPLAT_NIX
-   // ffs
-   *phSemaphore = malloc(sizeof(sem_t));
-   if (*phSemaphore == NULL)
-      return kODRCNoMemory;
-   return sem_init(*phSemaphore, 0, nInitialCount) ? kODRCGeneralFailure : kODRCSuccess;
-#endif
 }
 
 
@@ -583,14 +397,7 @@ void ODSemaphoreFree(tODSemaphoreHandle hSemaphore)
 {
    ASSERT(hSemaphore != NULL);
 
-#ifdef ODPLAT_WIN32
-   DeleteObject(hSemaphore);
-#endif /* ODPLAT_WIN32 */
-
-#ifdef ODPLAT_NIX
-   sem_destroy(hSemaphore);
-   free(hSemaphore);
-#endif
+   CloseHandle(hSemaphore);
 }
 
 
@@ -610,14 +417,7 @@ void ODSemaphoreUp(tODSemaphoreHandle hSemaphore, INT nIncrementBy)
    ASSERT(hSemaphore != NULL);
    ASSERT(nIncrementBy > 0);
 
-#ifdef ODPLAT_WIN32
    ReleaseSemaphore(hSemaphore, nIncrementBy, NULL);
-#endif /* ODPLAT_WIN32 */
-
-#ifdef ODPLAT_NIX
-   for (int i = 0; i < nIncrementBy; i++)
-      sem_post(hSemaphore);
-#endif
 }
 
 
@@ -643,52 +443,16 @@ tODResult ODSemaphoreDown(tODSemaphoreHandle hSemaphore, tODMilliSec Timeout)
 {
    ASSERT(hSemaphore != NULL);
 
-#ifdef ODPLAT_WIN32
    if(WaitForSingleObject(hSemaphore, Timeout) != WAIT_OBJECT_0)
    {
       return(kODRCTimeout);
    }
-#endif /* ODPLAT_WIN32 */
-
-#ifdef ODPLAT_NIX
-   int ret;
-   struct timespec ts;
-   tODMilliSec remain = Timeout;
-
-   if (Timeout != OD_NO_TIMEOUT) {
-      clock_gettime(CLOCK_REALTIME, &ts);
-      // First, add on full seconds...
-      if (remain > 1000) {
-         ts.tv_sec += Timeout / 1000;
-         remain %= 1000;
-      }
-      ts.tv_nsec += remain * 1000000;
-      // This nad better not loop more than once. :D
-      while (ts.tv_nsec >= 1000000000) {
-         ts.tv_sec += 1;
-         ts.tv_nsec -= 1000000000;
-      }
-   }
-
-   do {
-      if (Timeout == OD_NO_TIMEOUT)
-         ret = sem_wait(hSemaphore);
-      else
-         ret = sem_timedwait(hSemaphore, &ts);
-   } while (ret && errno == EINTR);
-   if (ret) {
-      if (errno == ETIMEDOUT || errno == EAGAIN)
-         return kODRCTimeout;
-      return kODRCGeneralFailure;
-   }
-
-#endif
 
    /* Return with success. */
    return(kODRCSuccess);
 }
 
-#endif /* OD_MULTITHREADED */
+#endif /* OD_THREAD_SUPPORT */
 
 
 /* ----------------------------------------------------------------------------
@@ -710,6 +474,275 @@ void ODProcessExit(INT nExitCode)
 }
 
 
+/* Rings the local platform bell without consulting application-owned state. */
+void ODPlatRingBell(void)
+{
+#ifdef ODPLAT_DOS
+   ASM    mov ah, 0x02
+   ASM    mov dl, 7
+   ASM    int 0x21
+#endif
+#ifdef ODPLAT_DOS32
+   fputc('\a', stdout);
+   fflush(stdout);
+#endif
+#ifdef ODPLAT_WIN32
+   MessageBeep(0xffffffff);
+#endif
+}
+
+
+/* ========================================================================= */
+/* Session-relative wall clock.                                              */
+/* ========================================================================= */
+
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
+static DWORD dwODSessionStartDays;
+static DWORD dwODSessionStartSeconds;
+static WORD wODSessionStartMilliseconds;
+
+#ifdef ODPLAT_DOS32
+#define OD_DOS_DATE_YEAR(Registers) ((Registers).w.cx)
+#else
+#define OD_DOS_DATE_YEAR(Registers) ((Registers).x.cx)
+#endif
+
+static const BYTE abODDaysInMonth[12] =
+   {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+
+/* Read the DOS civil clock coherently across a possible midnight boundary. */
+static void ODDOSReadSessionClock(DWORD *pdwDays, DWORD *pdwSeconds,
+   WORD *pwMilliseconds)
+{
+   union REGS DateBefore;
+   union REGS TimeNow;
+   union REGS DateAfter;
+   WORD wYear;
+   BYTE btMonth;
+   BYTE btDay;
+   WORD wIndex;
+   DWORD dwDays;
+
+   do
+   {
+      memset(&DateBefore, 0, sizeof(DateBefore));
+      DateBefore.h.ah = 0x2a;
+      intdos(&DateBefore, &DateBefore);
+
+      memset(&TimeNow, 0, sizeof(TimeNow));
+      TimeNow.h.ah = 0x2c;
+      intdos(&TimeNow, &TimeNow);
+
+      memset(&DateAfter, 0, sizeof(DateAfter));
+      DateAfter.h.ah = 0x2a;
+      intdos(&DateAfter, &DateAfter);
+   } while(OD_DOS_DATE_YEAR(DateBefore) != OD_DOS_DATE_YEAR(DateAfter)
+      || DateBefore.h.dh != DateAfter.h.dh
+      || DateBefore.h.dl != DateAfter.h.dl);
+
+   wYear = OD_DOS_DATE_YEAR(DateAfter);
+   btMonth = DateAfter.h.dh;
+   btDay = DateAfter.h.dl;
+   dwDays = 0;
+
+   for(wIndex = 1980; wIndex < wYear; ++wIndex)
+   {
+      dwDays += (wIndex % 4 == 0
+         && (wIndex % 100 != 0 || wIndex % 400 == 0)) ? 366UL : 365UL;
+   }
+   for(wIndex = 1; wIndex < btMonth; ++wIndex)
+   {
+      dwDays += abODDaysInMonth[wIndex - 1];
+      if(wIndex == 2 && wYear % 4 == 0
+         && (wYear % 100 != 0 || wYear % 400 == 0))
+      {
+         ++dwDays;
+      }
+   }
+   if(btDay != 0)
+      dwDays += btDay - 1;
+
+   *pdwDays = dwDays;
+   *pdwSeconds = (DWORD)TimeNow.h.ch * 3600UL
+      + (DWORD)TimeNow.h.cl * 60UL + (DWORD)TimeNow.h.dh;
+   *pwMilliseconds = (WORD)TimeNow.h.dl * 10U;
+}
+
+#undef OD_DOS_DATE_YEAR
+#endif
+
+#ifdef ODPLAT_WIN32
+static ULARGE_INTEGER ODSessionStartFileTime;
+#endif
+#ifdef ODPLAT_NIX
+static struct timespec ODSessionStartTime;
+#endif
+static DWORD dwODSessionLastSeconds;
+static WORD wODSessionLastMilliseconds;
+static BOOL bODSessionTimeInitialized = FALSE;
+
+/* Establish time zero for the session before initialization callbacks run. */
+void ODSessionTimeInitialize(void)
+{
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
+   ODDOSReadSessionClock(&dwODSessionStartDays,
+      &dwODSessionStartSeconds, &wODSessionStartMilliseconds);
+#endif
+#ifdef ODPLAT_WIN32
+   {
+      FILETIME FileTime;
+      GetSystemTimeAsFileTime(&FileTime);
+      ODSessionStartFileTime.LowPart = FileTime.dwLowDateTime;
+      ODSessionStartFileTime.HighPart = FileTime.dwHighDateTime;
+   }
+#endif
+#ifdef ODPLAT_NIX
+   clock_gettime(CLOCK_REALTIME, &ODSessionStartTime);
+#endif
+   dwODSessionLastSeconds = 0;
+   wODSessionLastMilliseconds = 0;
+   bODSessionTimeInitialized = TRUE;
+}
+
+/* Return elapsed wall-clock time since ODSessionTimeInitialize(). */
+void ODSessionTimeGet(DWORD *pdwSeconds, WORD *pwMilliseconds)
+{
+   DWORD dwSeconds = 0;
+   WORD wMilliseconds = 0;
+
+   ASSERT(pdwSeconds != NULL || pwMilliseconds != NULL);
+   if(!bODSessionTimeInitialized)
+      ODSessionTimeInitialize();
+
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
+   {
+      DWORD dwDays;
+      DWORD dwSecondsToday;
+      WORD wMillisecondsToday;
+      DWORD dwDayDifference;
+
+      ODDOSReadSessionClock(&dwDays, &dwSecondsToday,
+         &wMillisecondsToday);
+      if(dwDays > dwODSessionStartDays
+         || (dwDays == dwODSessionStartDays
+            && (dwSecondsToday > dwODSessionStartSeconds
+               || (dwSecondsToday == dwODSessionStartSeconds
+                  && wMillisecondsToday >= wODSessionStartMilliseconds))))
+      {
+         dwDayDifference = dwDays - dwODSessionStartDays;
+         if(dwSecondsToday < dwODSessionStartSeconds)
+         {
+            --dwDayDifference;
+            dwSeconds = 86400UL - dwODSessionStartSeconds
+               + dwSecondsToday;
+         }
+         else
+         {
+            dwSeconds = dwSecondsToday - dwODSessionStartSeconds;
+         }
+         dwSeconds += dwDayDifference * 86400UL;
+
+         if(wMillisecondsToday < wODSessionStartMilliseconds)
+         {
+            --dwSeconds;
+            wMilliseconds = (WORD)(1000U + wMillisecondsToday
+               - wODSessionStartMilliseconds);
+         }
+         else
+         {
+            wMilliseconds = (WORD)(wMillisecondsToday
+               - wODSessionStartMilliseconds);
+         }
+      }
+   }
+#endif
+
+#ifdef ODPLAT_WIN32
+   {
+      FILETIME FileTime;
+      ULARGE_INTEGER CurrentTime;
+      ULONGLONG ullElapsed;
+
+      GetSystemTimeAsFileTime(&FileTime);
+      CurrentTime.LowPart = FileTime.dwLowDateTime;
+      CurrentTime.HighPart = FileTime.dwHighDateTime;
+      if(CurrentTime.QuadPart >= ODSessionStartFileTime.QuadPart)
+      {
+         ullElapsed = CurrentTime.QuadPart - ODSessionStartFileTime.QuadPart;
+         dwSeconds = (DWORD)(ullElapsed / 10000000UL);
+         wMilliseconds = (WORD)((ullElapsed % 10000000UL) / 10000UL);
+      }
+   }
+#endif
+
+#ifdef ODPLAT_NIX
+   {
+      struct timespec CurrentTime;
+      time_t Seconds;
+      long Nanoseconds;
+
+      clock_gettime(CLOCK_REALTIME, &CurrentTime);
+      if(CurrentTime.tv_sec > ODSessionStartTime.tv_sec
+         || (CurrentTime.tv_sec == ODSessionStartTime.tv_sec
+            && CurrentTime.tv_nsec >= ODSessionStartTime.tv_nsec))
+      {
+         Seconds = CurrentTime.tv_sec - ODSessionStartTime.tv_sec;
+         Nanoseconds = CurrentTime.tv_nsec - ODSessionStartTime.tv_nsec;
+         if(Nanoseconds < 0)
+         {
+            --Seconds;
+            Nanoseconds += 1000000000L;
+         }
+         dwSeconds = (DWORD)Seconds;
+         wMilliseconds = (WORD)(Nanoseconds / 1000000L);
+      }
+   }
+#endif
+
+   /* A civil-clock correction may move the source backward. Never expose a
+    * decreasing session time to callers. */
+   if(dwSeconds < dwODSessionLastSeconds
+      || (dwSeconds == dwODSessionLastSeconds
+         && wMilliseconds < wODSessionLastMilliseconds))
+   {
+      dwSeconds = dwODSessionLastSeconds;
+      wMilliseconds = wODSessionLastMilliseconds;
+   }
+   else
+   {
+      dwODSessionLastSeconds = dwSeconds;
+      wODSessionLastMilliseconds = wMilliseconds;
+   }
+
+   if(pdwSeconds != NULL) *pdwSeconds = dwSeconds;
+   if(pwMilliseconds != NULL) *pwMilliseconds = wMilliseconds;
+}
+
+/* ----------------------------------------------------------------------------
+ * od_get_time()
+ *
+ * Returns a zero-based seconds/milliseconds pair for the current session.
+ */
+ODAPIDEF void ODCALL od_get_time(DWORD *pdwSeconds, WORD *pwMilliseconds)
+{
+   TRACE(TRACE_API, "od_get_time()");
+
+   if(!bODInitialized) od_init();
+   OD_RETURN_VOID_IF_SESSION_ENDED();
+   OD_API_ENTRY();
+
+   if(pdwSeconds == NULL && pwMilliseconds == NULL)
+   {
+      od_control.od_error = ERR_PARAMETER;
+      OD_API_EXIT();
+      return;
+   }
+
+   ODSessionTimeGet(pdwSeconds, pwMilliseconds);
+   OD_API_EXIT();
+}
+
+
 /* ========================================================================= */
 /* Millisecond timer functions.                                              */
 /* ========================================================================= */
@@ -719,6 +752,14 @@ void ODProcessExit(INT nExitCode)
 /* clock tick.                                                          */
 #define MILLISEC_PER_TICK 55           /* (approx. == 1000 / CLOCKS_PER_SEC) */
 #endif /* ODPLAT_DOS */
+
+#ifdef ODPLAT_DOS32
+#define OD_DOS32_TICKS_PER_DAY 0x001800b0UL
+static DWORD OD32BIOSClock(void)
+{
+   return(*(volatile DWORD *)0x0000046cUL);
+}
+#endif /* ODPLAT_DOS32 */
 
 /* ----------------------------------------------------------------------------
  * ODTimerStart()
@@ -741,19 +782,31 @@ void ODProcessExit(INT nExitCode)
 void ODTimerStart(tODTimer *pTimer, tODMilliSec Duration)
 {
 #ifdef ODPLAT_NIX
-   struct timeval tv;
+   struct timespec ts;
 #endif
    ASSERT(pTimer != NULL);
    ASSERT(Duration >= 0);
 
 #ifdef ODPLAT_DOS
-   /* Store timer start time right away. */
-   pTimer->Start = clock();
+   {
+      DWORD dwRemainder;
 
-   /* Calculate duration of timer. */
-   ODDWordDivide((DWORD *)&pTimer->Duration, NULL, Duration,
-      MILLISEC_PER_TICK);
+      /* Store timer start time right away. */
+      pTimer->Start = clock();
+
+      /* Round nonzero durations up so the timer cannot elapse before the
+       * requested interval. */
+      ODDWordDivide((DWORD *)&pTimer->Duration, &dwRemainder, Duration,
+         MILLISEC_PER_TICK);
+      if(dwRemainder != 0)
+         ++pTimer->Duration;
+   }
 #endif /* ODPLAT_DOS */
+
+#ifdef ODPLAT_DOS32
+   pTimer->Start = OD32BIOSClock();
+   pTimer->Duration = Duration / 55UL + (Duration % 55UL != 0);
+#endif /* ODPLAT_DOS32 */
 
 #ifdef ODPLAT_WIN32
    /* Store timer start time now. */
@@ -762,8 +815,9 @@ void ODTimerStart(tODTimer *pTimer, tODMilliSec Duration)
 #endif /* ODPLAT_WIN32 */
 
 #ifdef ODPLAT_NIX
-   gettimeofday(&tv,NULL);
-   pTimer->Start=tv.tv_sec*1000+tv.tv_usec/1000;
+   clock_gettime(CLOCK_MONOTONIC, &ts);
+   pTimer->Start = (tODMilliSec)ts.tv_sec * 1000UL
+      + (tODMilliSec)(ts.tv_nsec / 1000000L);
    pTimer->Duration = Duration;
 #endif
 }
@@ -782,19 +836,7 @@ void ODTimerStart(tODTimer *pTimer, tODMilliSec Duration)
 BOOL ODTimerElapsed(tODTimer *pTimer)
 {
    ASSERT(pTimer != NULL);
-
-#ifdef ODPLAT_DOS
-   return(clock() > pTimer->Start + pTimer->Duration
-      || clock() < pTimer->Start);
-#endif /* ODPLAT_DOS */
-
-#ifdef ODPLAT_WIN32
-   return(ODTimerLeft(pTimer)==0);
-#endif /* ODPLAT_WIN32 */
-
-#ifdef ODPLAT_NIX
-	return(ODTimerLeft(pTimer)==0);
-#endif
+   return(ODTimerLeft(pTimer) == 0);
 }
 
 
@@ -826,13 +868,24 @@ void ODTimerWaitForElapse(tODTimer *pTimer)
       od_sleep(0);
    }
 
-#else /* !ODPLAT_DOS */
+#elif defined(ODPLAT_DOS32)
+   for(;;)
+   {
+      tODMilliSec Now = OD32BIOSClock();
+      tODMilliSec Elapsed = Now >= pTimer->Start
+         ? Now - pTimer->Start
+         : OD_DOS32_TICKS_PER_DAY - pTimer->Start + Now;
+
+      if(Elapsed >= pTimer->Duration)
+         break;
+   }
+#else /* !ODPLAT_DOS && !ODPLAT_DOS32 */
    /* Under other platforms, timer resolution is high enough that we can */
    /* ask the OS to block this thread for the amount of time required    */
    /* for the timer to elapse.                                           */
 
    od_sleep(ODTimerLeft(pTimer));
-#endif /* !ODPLAT_DOS */
+#endif /* !ODPLAT_DOS && !ODPLAT_DOS32 */
 }
 
 
@@ -850,51 +903,61 @@ void ODTimerWaitForElapse(tODTimer *pTimer)
 tODMilliSec ODTimerLeft(tODTimer *pTimer)
 {
 #ifdef ODPLAT_NIX
-   struct timeval tv;
-   time_t nowtick;
+   struct timespec ts;
 #endif
    ASSERT(pTimer != NULL);
 
 #ifdef ODPLAT_DOS
    {
       clock_t Now = clock();
-      clock_t Left;
+      /* Unsigned subtraction preserves elapsed time across counter rollover. */
+      DWORD Elapsed = (DWORD)Now - (DWORD)pTimer->Start;
 
       /* If timer has elapsed, return 0. */
-      if(Now > pTimer->Start + pTimer->Duration
-         || Now < pTimer->Start)
+      if(Elapsed >= (DWORD)pTimer->Duration)
       {
          return(0);
       }
 
-      Left = pTimer->Start + pTimer->Duration - Now;
-
-      return(ODDWordMultiply(Left, MILLISEC_PER_TICK));
+      return(ODDWordMultiply((DWORD)pTimer->Duration - Elapsed,
+         MILLISEC_PER_TICK));
    }
-#elif defined(ODPLAT_NIX)
-   gettimeofday(&tv,NULL);
-   nowtick=tv.tv_sec*1000+(tv.tv_usec/1000);
-   if(pTimer->Start+pTimer->Duration <= nowtick)
-      return(0);
-   return((tODMilliSec)(pTimer->Start + pTimer->Duration - nowtick));
-#else /* !ODPLAT_DOS */
+#elif defined(ODPLAT_DOS32)
+   {
+      tODMilliSec Now = OD32BIOSClock();
+      tODMilliSec Elapsed = Now >= pTimer->Start
+         ? Now - pTimer->Start
+         : OD_DOS32_TICKS_PER_DAY - pTimer->Start + Now;
+
+      if(Elapsed >= pTimer->Duration)
+         return(0);
+      return((pTimer->Duration - Elapsed) * 55UL);
+   }
+#else /* !ODPLAT_DOS && !ODPLAT_DOS32 */
    {
       tODMilliSec Now;
+      tODMilliSec Elapsed;
 
 #ifdef ODPLAT_WIN32      
       Now = GetTickCount();
 #endif /* ODPLAT_WIN32 */
+#ifdef ODPLAT_NIX
+      clock_gettime(CLOCK_MONOTONIC, &ts);
+      Now = (tODMilliSec)ts.tv_sec * 1000UL
+         + (tODMilliSec)(ts.tv_nsec / 1000000L);
+#endif /* ODPLAT_NIX */
+      /* Unsigned subtraction preserves elapsed time across counter rollover. */
+      Elapsed = Now - pTimer->Start;
 
       /* If timer has elapsed, return 0. */
-      if(Now > pTimer->Start + pTimer->Duration
-         || Now < pTimer->Start)
+      if(Elapsed >= pTimer->Duration)
       {
          return(0);
       }
 
-      return(pTimer->Start + pTimer->Duration - Now);
+      return(pTimer->Duration - Elapsed);
    }
-#endif /* !ODPLAT_DOS */
+#endif /* !ODPLAT_DOS && !ODPLAT_DOS32 */
 }
 
 
@@ -917,11 +980,22 @@ ODAPIDEF void ODCALL od_sleep(tODMilliSec Milliseconds)
 #ifdef ODPLAT_NIX
    struct timespec ts;
 #endif
+#ifdef OD_THREAD_SUPPORT
+   tODTimer SleepTimer;
+   tODMilliSec Slice;
+   unsigned nSavedAPILevel;
+#endif
    /* Log function entry if running in trace mode. */
    TRACE(TRACE_API, "od_sleep()");
 
    /* Ensure that OpenDoors is initialized before proceeding. */
+   if(eODLifecycleState != kODLifecycleFinalizing
+      || !ODSyncAPIIsNested())
+   {
+      if(!ODSyncPublicCallAllowed()) return;
+   }
    if(!bODInitialized) od_init();
+   OD_RETURN_VOID_IF_SESSION_ENDED();
 
    OD_API_ENTRY();
 
@@ -942,11 +1016,66 @@ ODAPIDEF void ODCALL od_sleep(tODMilliSec Milliseconds)
    }
 #endif /* ODPLAT_DOS */
 
+#ifdef ODPLAT_DOS32
+   if(Milliseconds == 0)
+   {
+      tOD32RealModeRegisters Registers;
+
+      memset(&Registers, 0, sizeof(Registers));
+      Registers.eax = 0x1680;
+      OD32DPMIRealModeInterrupt(0x2f, &Registers);
+   }
+   else
+   {
+      tODTimer SleepTimer;
+
+      ODTimerStart(&SleepTimer, Milliseconds);
+      ODTimerWaitForElapse(&SleepTimer);
+   }
+#endif /* ODPLAT_DOS32 */
+
 #ifdef ODPLAT_WIN32
+#ifdef OD_THREAD_SUPPORT
+   if(Milliseconds == 0)
+   {
+      nSavedAPILevel = ODSyncAPIRelease();
+      Sleep(0);
+      ODSyncAPIReacquire(nSavedAPILevel);
+      ODSyncAPICheckpoint();
+   }
+   else
+   {
+      ODTimerStart(&SleepTimer, Milliseconds);
+      do
+      {
+         Slice = ODTimerLeft(&SleepTimer);
+         if(Slice > 50) Slice = 50;
+         nSavedAPILevel = ODSyncAPIRelease();
+         Sleep(Slice);
+         ODSyncAPIReacquire(nSavedAPILevel);
+         if(!ODSyncAPICheckpoint()) break;
+      } while(!ODTimerElapsed(&SleepTimer));
+   }
+#else
    Sleep(Milliseconds);
+#endif
 #endif /* ODPLAT_WIN32 */
 
 #ifdef ODPLAT_NIX
+#ifdef OD_THREAD_SUPPORT
+   if(Milliseconds != 0) ODTimerStart(&SleepTimer, Milliseconds);
+   do
+   {
+      Slice = Milliseconds == 0 ? 0 : ODTimerLeft(&SleepTimer);
+      if(Slice > 50) Slice = 50;
+      ts.tv_sec = Slice / 1000;
+      ts.tv_nsec = Slice == 0 ? 100000 : (long)(Slice % 1000) * 1000000L;
+      nSavedAPILevel = ODSyncAPIRelease();
+      while(nanosleep(&ts, &ts) == EINTR) ;
+      ODSyncAPIReacquire(nSavedAPILevel);
+      if(!ODSyncAPICheckpoint()) break;
+   } while(Milliseconds != 0 && !ODTimerElapsed(&SleepTimer));
+#else
    clock_gettime(CLOCK_REALTIME, &ts);
 
    if(Milliseconds==0)  {
@@ -961,6 +1090,7 @@ ODAPIDEF void ODCALL od_sleep(tODMilliSec Milliseconds)
    while (nanosleep(&ts, &ts) == EINTR)
       ;
 #endif
+#endif
 
    OD_API_EXIT();
 }
@@ -971,7 +1101,10 @@ ODAPIDEF void ODCALL od_sleep(tODMilliSec Milliseconds)
 /* ========================================================================= */
 
 /* Structure for directories entries returned by DOS. */
-#ifdef ODPLAT_DOS
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
+#ifdef ODPLAT_DOS32
+#pragma pack( __push, 1 )
+#endif
 typedef struct
 {
    BYTE abtReserved[21];
@@ -981,16 +1114,20 @@ typedef struct
    DWORD dwFileSize;
    char szFileName[13];
 } tDOSDirEntry;
-#endif /* ODPLAT_DOS */
+#ifdef ODPLAT_DOS32
+#pragma pack( __pop )
+typedef char tODDOSDirEntrySizeCheck[(sizeof(tDOSDirEntry) == 43) ? 1 : -1];
+#endif
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */
 
 
 /* Dir handle structure. */
 typedef struct
 {
    BOOL bEOF;
-#ifdef ODPLAT_DOS
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
    tDOSDirEntry FindBlock;
-#endif /* ODPLAT_DOS */
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */
 #ifdef ODPLAT_WIN32
    HANDLE hWindowsDir;
    WIN32_FIND_DATA WindowsDirEntry;
@@ -998,21 +1135,21 @@ typedef struct
 #endif /* ODPLAT_WIN32 */
 #ifdef ODPLAT_NIX
    glob_t	g;
-   int		pos;
+   size_t	pos;
    int		wAttributes;
 #endif
 } tODDirInfo;
 
 
 /* Directory access private function prototypes. */
-#if defined(ODPLAT_DOS) || defined(ODPLAT_WIN32)
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32) || defined(ODPLAT_WIN32)
 static time_t DOSToCTime(WORD wDate, WORD wTime);
 #endif
-#ifdef ODPLAT_DOS
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
 static INT ODDirDOSFindFirst(CONST char *pszPath, tDOSDirEntry *pBlock,
    WORD wAttributes);
 static INT ODDirDOSFindNext(tDOSDirEntry *pBlock);
-#endif /* ODPLAT_DOS */
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */
 #ifdef ODPLAT_WIN32
 static BOOL ODDirWinMatchesAttributes(tODDirInfo *pDirInfo);
 #endif /* ODPLAT_WIN32 */
@@ -1031,18 +1168,30 @@ static BOOL ODDirWinMatchesAttributes(tODDirInfo *pDirInfo);
  *                           are no matching files, ODDirOpen() returns with
  *                           kODRCNoMatch.
  *
- *             nAttributes - One or more of the DIR_ATTRIB_... constants,
- *                           connected by the bitmap-OR (|) operator.
+ *             wAttributes - One or more of the DIR_ATTRIB_... constants,
+ *                           connected by the bitmap-OR (|) operator. Normal
+ *                           files are always included. DIR_ATTRIB_HIDDEN,
+ *                           DIR_ATTRIB_SYSTEM, DIR_ATTRIB_LABEL, and
+ *                           DIR_ATTRIB_DIREC include those entry types.
+ *                           DIR_ATTRIB_RDONLY and DIR_ATTRIB_ARCH do not
+ *                           affect matching.
  *
  *             phDir       - Pointer to a tODDirHandle, into which ODDirOpen()
  *                           will place a valid directory handle if and only
  *                           if it returns kODRCSuccess.
  *
- *     Return: A tODResult indicating success or reason for failure.
+ *     Return: kODRCSuccess when a matching search is ready, kODRCNoMemory if
+ *             the directory information cannot be allocated, or
+ *             kODRCNoMatch if the platform search fails or finds no paths.
+ *             UNIX path-expansion storage and Windows search handles are
+ *             released before a failed setup returns.
  */
 tODResult ODDirOpen(CONST char *pszPath, WORD wAttributes, tODDirHandle *phDir)
 {
    tODDirInfo *pDirInfo;
+#ifdef ODPLAT_NIX
+   INT nGlobResult;
+#endif
 
    ASSERT(pszPath != NULL);
    ASSERT(phDir != NULL);
@@ -1058,7 +1207,7 @@ tODResult ODDirOpen(CONST char *pszPath, WORD wAttributes, tODDirHandle *phDir)
    /* Initialize directory information structure. */
    pDirInfo->bEOF = FALSE;
 
-#ifdef ODPLAT_DOS
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
    /* Read the first matching directory entry structure. */
    if(ODDirDOSFindFirst(pszPath, &pDirInfo->FindBlock, wAttributes))
    {
@@ -1067,7 +1216,7 @@ tODResult ODDirOpen(CONST char *pszPath, WORD wAttributes, tODDirHandle *phDir)
       free(pDirInfo);
       return(kODRCNoMatch);
    }
-#endif /* ODPLAT_DOS */
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */
 
 #ifdef ODPLAT_WIN32
    /* Store a copy of the attributes passed to open function. */
@@ -1093,6 +1242,7 @@ tODResult ODDirOpen(CONST char *pszPath, WORD wAttributes, tODDirHandle *phDir)
       {
          /* If unable to find matching directory entry, then release       */
          /* structure, return indicating that there are no matching files. */
+         FindClose(pDirInfo->hWindowsDir);
          free(pDirInfo);
          return(kODRCNoMatch);
       }
@@ -1100,10 +1250,12 @@ tODResult ODDirOpen(CONST char *pszPath, WORD wAttributes, tODDirHandle *phDir)
 #endif /* ODPLAT_WIN32 */
 
 #ifdef ODPLAT_NIX
-   if(glob(pszPath,GLOB_NOSORT,NULL,&(pDirInfo->g)))
-      return(kODRCNoMatch);
-   if(pDirInfo->g.gl_pathc==0)  {
-      globfree(&(pDirInfo->g));
+   memset(&pDirInfo->g, 0, sizeof(pDirInfo->g));
+   nGlobResult = glob(pszPath, GLOB_NOSORT, NULL, &pDirInfo->g);
+   if(nGlobResult != 0 || pDirInfo->g.gl_pathc == 0)
+   {
+      globfree(&pDirInfo->g);
+      free(pDirInfo);
       return(kODRCNoMatch);
    }
    pDirInfo->pos=0;
@@ -1120,6 +1272,29 @@ tODResult ODDirOpen(CONST char *pszPath, WORD wAttributes, tODDirHandle *phDir)
 
 
 /* ----------------------------------------------------------------------------
+ * ODDirAttributesMatch()                             *** PRIVATE FUNCTION ***
+ *
+ * Applies the attribute-selection rules used by the DOS find-first service.
+ *
+ * Parameters: wEntryAttributes  - Attributes of the directory entry.
+ *
+ *             wSearchAttributes - Attributes included in the search.
+ *
+ *     Return: TRUE if the entry is included, or FALSE otherwise.
+ */
+BOOL ODDirAttributesMatch(WORD wEntryAttributes, WORD wSearchAttributes)
+{
+   WORD wSelectiveAttributes;
+
+   wSelectiveAttributes = wEntryAttributes
+      & (DIR_ATTRIB_HIDDEN | DIR_ATTRIB_SYSTEM | DIR_ATTRIB_LABEL
+         | DIR_ATTRIB_DIREC);
+   return((wSelectiveAttributes & wSearchAttributes)
+      == wSelectiveAttributes);
+}
+
+
+/* ----------------------------------------------------------------------------
  * ODDirRead()
  *
  * Reads the next directory entry from an open directory, placing the directory
@@ -1129,11 +1304,16 @@ tODResult ODDirOpen(CONST char *pszPath, WORD wAttributes, tODDirHandle *phDir)
  *                         ODDirOpen().
  *
  *             pDirEntry - Pointer to structure into which directory entry
- *                         information should be placed.
+ *                         information should be placed. szFileName receives
+ *                         the entry basename without a directory prefix. On
+ *                         UNIX, wAttributes includes DIR_ATTRIB_DIREC only
+ *                         when the entry is a directory.
  *
- *     Return: A tODResult indicating success or reason for failure. After the
- *             last directory entry has been read, all subsequent calls to
- *             ODDirRead() will return kODRCEndOfFile.
+ *     Return: A tODResult indicating success or reason for failure. On UNIX,
+ *             entries whose metadata cannot be read are skipped. Exhausting
+ *             the directory search, including skipped or filtered entries,
+ *             marks the search complete. That call and all subsequent calls
+ *             return kODRCEndOfFile.
  */
 tODResult ODDirRead(tODDirHandle hDir, tODDirEntry *pDirEntry)
 {
@@ -1144,6 +1324,8 @@ tODResult ODDirRead(tODDirHandle hDir, tODDirEntry *pDirEntry)
 #endif /* ODPLAT_WIN32 */
 #ifdef ODPLAT_NIX
    struct stat st;
+   CONST char *pszPath;
+   CONST char *pszBaseName;
 #endif
    
    ASSERT(pDirEntry != NULL);
@@ -1156,7 +1338,7 @@ tODResult ODDirRead(tODDirHandle hDir, tODDirEntry *pDirEntry)
       return(kODRCEndOfFile);
    }
 
-#ifdef ODPLAT_DOS
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
    /* Provide the caller with the information from the previously read */
    /* directory entry.                                                 */
 
@@ -1177,7 +1359,7 @@ tODResult ODDirRead(tODDirHandle hDir, tODDirEntry *pDirEntry)
    /* Read next directory entry, if any. */
    pDirInfo->bEOF = ODDirDOSFindNext(&pDirInfo->FindBlock);
 
-#endif /* ODPLAT_DOS */
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */
 
 #ifdef ODPLAT_WIN32
    /* Provide the caller with the information from the previously read */
@@ -1226,39 +1408,57 @@ tODResult ODDirRead(tODDirHandle hDir, tODDirEntry *pDirEntry)
       &wDOSTime);
    pDirEntry->LastWriteTime = DOSToCTime(wDOSDate, wDOSTime);
 
-   /* Find next matching entry, if any. */
-   do
+   /* Find the next entry accepted by the attribute filter. If the search is */
+   /* exhausted while filtering entries, mark it complete immediately.      */
+   for(;;)
    {
       if(!FindNextFile(pDirInfo->hWindowsDir, &pDirInfo->WindowsDirEntry))
       {
          pDirInfo->bEOF = TRUE;
+         break;
       }
-   } while(!ODDirWinMatchesAttributes(pDirInfo));
+      if(ODDirWinMatchesAttributes(pDirInfo))
+      {
+         break;
+      }
+   }
 #endif /* ODPLAT_WIN32 */
 
 #ifdef ODPLAT_NIX
-   while(!pDirInfo->bEOF)  {
-      if(strrchr(pDirInfo->g.gl_pathv[pDirInfo->pos],DIRSEP)==NULL)
-	     strcpy(pDirEntry->szFileName,pDirInfo->g.gl_pathv[pDirInfo->pos]);
-	  else
-	     strcpy(pDirEntry->szFileName,strrchr(pDirInfo->g.gl_pathv[pDirInfo->pos],DIRSEP));
-	  stat(pDirInfo->g.gl_pathv[pDirInfo->pos],&st);
-	  pDirEntry->wAttributes=DIR_ATTRIB_NORMAL;
-	  if(st.st_mode & S_IFDIR)
-	  	 pDirEntry->wAttributes |= DIR_ATTRIB_DIREC;
-	  if(!(st.st_mode & S_IWUSR))
-	  	 pDirEntry->wAttributes |= DIR_ATTRIB_RDONLY;
-	  if(!(st.st_mode & S_IRUSR))
-	  	 pDirEntry->wAttributes |= DIR_ATTRIB_SYSTEM;
-	  pDirEntry->LastWriteTime=st.st_mtime;
-	  pDirEntry->dwFileSize=st.st_size;
-	  pDirInfo->pos++;
-	  if(pDirInfo->pos==pDirInfo->g.gl_pathc)
-	     pDirInfo->bEOF=TRUE;
-	  if(pDirEntry->wAttributes==pDirInfo->wAttributes)
-	     return(kODRCSuccess);
-	  if(pDirInfo->bEOF==TRUE)
-	    return(kODRCEndOfFile);
+   for(;;)
+   {
+      pszPath = pDirInfo->g.gl_pathv[pDirInfo->pos];
+      ++pDirInfo->pos;
+      if(pDirInfo->pos == pDirInfo->g.gl_pathc)
+         pDirInfo->bEOF = TRUE;
+
+      if(stat(pszPath, &st) != 0)
+      {
+         if(pDirInfo->bEOF)
+            return(kODRCEndOfFile);
+         continue;
+      }
+
+      pszBaseName = strrchr(pszPath, DIRSEP);
+      if(pszBaseName == NULL)
+         pszBaseName = pszPath;
+      else
+         ++pszBaseName;
+      ODStringCopy(pDirEntry->szFileName, pszBaseName, DIR_FILENAME_SIZE);
+      pDirEntry->wAttributes = DIR_ATTRIB_NORMAL;
+      if(S_ISDIR(st.st_mode))
+         pDirEntry->wAttributes |= DIR_ATTRIB_DIREC;
+      if(!(st.st_mode & S_IWUSR))
+         pDirEntry->wAttributes |= DIR_ATTRIB_RDONLY;
+      if(!(st.st_mode & S_IRUSR))
+         pDirEntry->wAttributes |= DIR_ATTRIB_SYSTEM;
+      pDirEntry->LastWriteTime = st.st_mtime;
+      pDirEntry->dwFileSize = st.st_size;
+      if(ODDirAttributesMatch(pDirEntry->wAttributes,
+         pDirInfo->wAttributes))
+         return(kODRCSuccess);
+      if(pDirInfo->bEOF)
+         return(kODRCEndOfFile);
    }
 #endif
 
@@ -1297,7 +1497,7 @@ void ODDirClose(tODDirHandle hDir)
 }
 
 
-#if defined(ODPLAT_DOS) || defined(ODPLAT_WIN32)
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32) || defined(ODPLAT_WIN32)
 /* ----------------------------------------------------------------------------
  * DOSToCTime()                                        *** PRIVATE FUNCTION ***
  *
@@ -1311,8 +1511,23 @@ void ODDirClose(tODDirHandle hDir)
  */
 static time_t DOSToCTime(WORD wDate, WORD wTime)
 {
-   struct tm TimeStruct;
+#ifdef __TURBOC__
+   struct date DateStruct;
+   struct time TimeStruct;
 
+   DateStruct.da_day = wDate & 0x001f;
+   DateStruct.da_mon = (wDate & 0x01e0) >> 5;
+   DateStruct.da_year = 1980 + ((wDate & 0xfe00) >> 9);
+   TimeStruct.ti_hour = (wTime & 0xf800) >> 11;
+   TimeStruct.ti_min = (wTime & 0x07e0) >> 5;
+   TimeStruct.ti_sec = (wTime & 0x001f) * 2;
+   TimeStruct.ti_hund = 0;
+
+   return((time_t)dostounix(&DateStruct, &TimeStruct));
+#else
+   struct tm TimeStruct = {0};
+
+   TimeStruct.tm_isdst = -1;
    TimeStruct.tm_sec = (wTime & 0x001f) * 2;
    TimeStruct.tm_min = (wTime & 0x07e0) >> 5;
    TimeStruct.tm_hour = (wTime & 0xf800) >> 11;
@@ -1321,12 +1536,13 @@ static time_t DOSToCTime(WORD wDate, WORD wTime)
    TimeStruct.tm_year = 80 + ((wDate & 0xfe00) >> 9);
 
    return(mktime(&TimeStruct));
+#endif
 }
 #endif
 
 
 /* MS-DOS specific functions for directory access. */
-#ifdef ODPLAT_DOS
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
 
 /* ----------------------------------------------------------------------------
  * ODDirDOSFindFirst()                                 *** PRIVATE FUNCTION ***
@@ -1347,6 +1563,13 @@ static time_t DOSToCTime(WORD wDate, WORD wTime)
 static int ODDirDOSFindFirst(CONST char *pszPath, tDOSDirEntry *pBlock,
    WORD wAttributes)
 {
+#ifdef __WATCOMC__
+   ASSERT(pszPath != NULL);
+   ASSERT(pBlock != NULL);
+
+   return(_dos_findfirst(pszPath, wAttributes, (struct find_t *)pBlock) == 0
+      ? 0 : -1);
+#else
    int nToReturn;
 
    ASSERT(pszPath != NULL);
@@ -1384,6 +1607,7 @@ after_result:
    ASM     int 0x21                             /* Reset DOS DTA to original */
    ASM     pop ds                   /* Restore DS stored at function startup */
    return(nToReturn);
+#endif
 }
 
 
@@ -1401,6 +1625,11 @@ after_result:
  */
 static int ODDirDOSFindNext(tDOSDirEntry *pBlock)
 {
+#ifdef __WATCOMC__
+   ASSERT(pBlock != NULL);
+
+   return(_dos_findnext((struct find_t *)pBlock) == 0 ? 0 : -1);
+#else
    int nToReturn;
 
    ASSERT(pBlock != NULL);
@@ -1431,9 +1660,10 @@ after_result:
    ASM     int 0x21                             /* Reset DOS DTA to original */
    ASM     pop ds                   /* Restore DS stored at function startup */
    return(nToReturn);
+#endif
 }
 
-#endif /* ODPLAT_DOS */
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */
 
 
 /* Win32 specific private functions for directory access. */
@@ -1442,7 +1672,7 @@ after_result:
  * ODDirWinMatchesAttributes()                         *** PRIVATE FUNCTION ***
  *
  * Determines whether or not the directory entry pDirInfo->WindowsDirEntry
- * meets the attribute requirements specified in pDirInfo->nAttributes
+ * meets the attribute requirements specified in pDirInfo->wAttributes.
  *
  * Parameters: pDirInfo - Pointer to a directory information structure with
  *                        attribute and directory entry values.
@@ -1451,37 +1681,35 @@ after_result:
  */
 static BOOL ODDirWinMatchesAttributes(tODDirInfo *pDirInfo)
 {
-   if((pDirInfo->WindowsDirEntry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-      && !(pDirInfo->wAttributes & DIR_ATTRIB_DIREC))
-   {
-      return(FALSE);
-   }
+   WORD wEntryAttributes = DIR_ATTRIB_NORMAL;
 
    if((pDirInfo->WindowsDirEntry.dwFileAttributes & FILE_ATTRIBUTE_ARCHIVE)
-      && !(pDirInfo->wAttributes & DIR_ATTRIB_ARCH))
+      != 0)
    {
-      return(FALSE);
+      wEntryAttributes |= DIR_ATTRIB_ARCH;
    }
-
    if((pDirInfo->WindowsDirEntry.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN)
-      && !(pDirInfo->wAttributes & DIR_ATTRIB_HIDDEN))
+      != 0)
    {
-      return(FALSE);
+      wEntryAttributes |= DIR_ATTRIB_HIDDEN;
    }
-
    if((pDirInfo->WindowsDirEntry.dwFileAttributes & FILE_ATTRIBUTE_READONLY)
-      && !(pDirInfo->wAttributes & DIR_ATTRIB_RDONLY))
+      != 0)
    {
-      return(FALSE);
+      wEntryAttributes |= DIR_ATTRIB_RDONLY;
    }
-
    if((pDirInfo->WindowsDirEntry.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)
-      && !(pDirInfo->wAttributes & DIR_ATTRIB_SYSTEM))
+      != 0)
    {
-      return(FALSE);
+      wEntryAttributes |= DIR_ATTRIB_SYSTEM;
+   }
+   if((pDirInfo->WindowsDirEntry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+      != 0)
+   {
+      wEntryAttributes |= DIR_ATTRIB_DIREC;
    }
 
-   return(TRUE);
+   return(ODDirAttributesMatch(wEntryAttributes, pDirInfo->wAttributes));
 }
 #endif /* ODPLAT_WIN32 */
 
@@ -1502,18 +1730,25 @@ void ODDirChangeCurrent(char *pszPath)
 
    if(pszPath[1] == ':')
    {
-      nDrive = (toupper(pszPath[0]) - 'A');
+      nDrive = (toupper((unsigned char)pszPath[0]) - 'A');
    }
 
    _setdrvcd(nDrive, (char *)pszPath);
 #endif /* ODPLAT_DOS */
+
+#ifdef ODPLAT_DOS32
+   if(pszPath[1] == ':')
+      _chdrive(toupper((unsigned char)pszPath[0]) - 'A' + 1);
+   chdir(pszPath);
+#endif /* ODPLAT_DOS32 */
 
 #ifdef ODPLAT_WIN32
    SetCurrentDirectory(pszPath);
 #endif /* ODPLAT_WIN32 */
 
 #ifdef ODPLAT_NIX
-   chdir(pszPath);
+   if(chdir(pszPath) != 0)
+      return;
 #endif
 }
 
@@ -1544,12 +1779,26 @@ void ODDirGetCurrent(char *pszPath, INT nMaxPathChars)
    _getcd(0, (char *)pszPath + 3);
 #endif /* ODPLAT_DOS */
 
+#ifdef ODPLAT_DOS32
+   if(nMaxPathChars < 4)
+   {
+      pszPath[0] = '\0';
+      return;
+   }
+   if(_getdcwd(0, pszPath, (size_t)nMaxPathChars) == NULL)
+      pszPath[0] = '\0';
+#endif /* ODPLAT_DOS32 */
+
 #ifdef ODPLAT_WIN32
    GetCurrentDirectory(nMaxPathChars, pszPath);
 #endif /* ODPLAT_WIN32 */
 
 #ifdef ODPLAT_NIX
-   getcwd(pszPath,nMaxPathChars);
+   if(getcwd(pszPath,nMaxPathChars) == NULL)
+   {
+      pszPath[0] = '\0';
+      return;
+   }
 #endif
 
    ASSERT((INT)strlen(pszPath) + 1 <= nMaxPathChars);
@@ -1571,8 +1820,14 @@ void ODDirGetCurrent(char *pszPath, INT nMaxPathChars)
  */
 tODResult ODFileDelete(CONST char *pszPath)
 {
+#ifdef ODPLAT_DOS32
+   return(remove(pszPath) == 0 ? kODRCSuccess : kODRCGeneralFailure);
+#endif
 #ifdef ODPLAT_DOS
    {
+#ifdef __WATCOMC__
+      return(remove(pszPath) == 0 ? kODRCSuccess : kODRCGeneralFailure);
+#else
       tODResult Result;
 
       ASM    push ds
@@ -1594,6 +1849,7 @@ Done:
       ASM    pop ds
 
       return(Result);
+#endif
    }
 #endif /* ODPLAT_DOS */
 
@@ -1602,7 +1858,7 @@ Done:
 #endif /* ODPLAT_WIN32 */
 
 #ifdef ODPLAT_NIX
-   return(unlink(pszPath));
+   return(unlink(pszPath) == 0 ? kODRCSuccess : kODRCGeneralFailure);
 #endif
 }
 
@@ -1622,13 +1878,13 @@ Done:
  *     Return: FALSE if file can be accessed or TRUE if file cannot be
  *             accessed.
  */
-BOOL ODFileAccessMode(char *pszFilename, int nAccessMode)
+BOOL ODFileAccessMode(const char *pszFilename, int nAccessMode)
 {
    FILE *pfFileToTest;
    char *pszModeString;
    tODDirHandle hDir;
 
-#ifdef ODPLAT_DOS
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
    BYTE nLength;
    /* If we are looking for the root directory. */
    nLength = strlen(pszFilename);
@@ -1637,6 +1893,11 @@ BOOL ODFileAccessMode(char *pszFilename, int nAccessMode)
    {
       if(nAccessMode == 0)
       {
+#ifdef __WATCOMC__
+         unsigned nAttributes;
+
+         return(_dos_getfileattr(pszFilename, &nAttributes) != 0);
+#else
           int to_return = FALSE;
 
 #ifdef LARGEDATA
@@ -1654,13 +1915,14 @@ done:
          ASM pop ds
 #endif
           return(to_return);
+#endif
       }
       else
       {
           return(TRUE);
       }
    }
-#endif /* ODPLAT_DOS */
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */
 
    /* If the file doesn't exit, we fail in any mode. */
    if(ODDirOpen(pszFilename,

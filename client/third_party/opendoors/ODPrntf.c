@@ -45,6 +45,8 @@
 
 #include "OpenDoor.h"
 #include "ODCore.h"
+#include "ODFormat.h"
+#include "ODSafe.h"
 #include "ODGen.h"
 #include "ODKrnl.h"
 
@@ -76,32 +78,60 @@ ODAPIDEF void ODVCALL od_printf(const char *pszFormat,...)
    char *pchStart;
    BOOL bNotFound;
    INT nCharCount;
+   INT nRequired;
+   INT nWritten;
+   size_t nRequiredSize;
+   static size_t nWorkBufferSize = 0;
+   char *pszNewBuffer;
 
    /* Log function entry if running in trace mode. */
    TRACE(TRACE_API, "od_printf()");
 
    /* Initialize OpenDoors if it hasn't already been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_VOID_IF_SESSION_ENDED();
 
    OD_API_ENTRY();
 
-   /* Allocate work buffer if none has been allocated yet. */
-   if(pszWorkBuffer == NULL &&
-      (pszWorkBuffer = malloc(WORK_BUFFER_SIZE)) == NULL)
+   /* Determine the exact size required. A non-NULL probe is used for old
+    * bounded-formatting implementations even though its size is zero. */
+   va_start(pArgumentList, pszFormat);
+   nRequired = ODVsnprintf(szODWorkString, 0, pszFormat, pArgumentList);
+   va_end(pArgumentList);
+
+   if(nRequired < 0 || !ODSizeAdd((size_t)nRequired, 1, &nRequiredSize))
    {
-      /* If we are unable to allocate a buffer, return with a memory error. */
-      od_control.od_error = ERR_MEMORY;
-      OD_API_EXIT();
-      return;
+      od_control.od_error = ERR_LIMIT;
+      goto exit_now;
+   }
+
+   if(nRequiredSize > nWorkBufferSize)
+   {
+      pszNewBuffer = (char *)realloc(pszWorkBuffer,
+         MAX(nRequiredSize, (size_t)WORK_BUFFER_SIZE));
+      if(pszNewBuffer == NULL)
+      {
+         od_control.od_error = ERR_MEMORY;
+         goto exit_now;
+      }
+      pszWorkBuffer = pszNewBuffer;
+      nWorkBufferSize = MAX(nRequiredSize, (size_t)WORK_BUFFER_SIZE);
    }
 
    /* Copy the arguments after the format string. */
    va_start(pArgumentList, pszFormat);
 
-   /* Perform a string printf to the working buffer. */
-   vsprintf(pszWorkBuffer, pszFormat, pArgumentList);
+   /* Perform a bounded string printf to the working buffer. */
+   nWritten = ODVsnprintf(pszWorkBuffer, nWorkBufferSize, pszFormat,
+      pArgumentList);
 
    va_end(pArgumentList);
+
+   if(nWritten != nRequired)
+   {
+      od_control.od_error = ERR_GENERALFAILURE;
+      goto exit_now;
+   }
 
    /* If no color characters are defined, then just display the entire */
    /* buffer in one shot.                                              */
@@ -127,22 +157,17 @@ ODAPIDEF void ODVCALL od_printf(const char *pszFormat,...)
 
          if(!*(++pchCurrent))
          {
-            chColorCheck = 0;
-            OD_API_EXIT();
-            return;
+            goto exit_now;
          }
          od_set_attrib(od_color_config(pchCurrent));
          if(!*(pchCurrent = (char *)pchColorEndPos))
          {
-            chColorCheck = 0;
-            OD_API_EXIT();
-            return;
+            goto exit_now;
          }
 
          if(!*(++pchCurrent))
          {
-            OD_API_EXIT();
-            return;
+            goto exit_now;
          }
          pchStart = (char *)pchCurrent;
          nCharCount = 0;
@@ -159,15 +184,13 @@ ODAPIDEF void ODVCALL od_printf(const char *pszFormat,...)
 
          if(!*(++pchCurrent))
          {
-            OD_API_EXIT();
-            return;
+            goto exit_now;
          }
          od_set_attrib(*pchCurrent);
 
          if(!*(++pchCurrent))
          {
-            OD_API_EXIT();
-            return;
+            goto exit_now;
          }
          pchStart = (char *)pchCurrent;
          nCharCount = 0;
@@ -187,11 +210,13 @@ quick_print:
       /* Display the entire string in one shot. */
       od_disp_str(pszWorkBuffer);
    }
-   else if(nCharCount != 0)
+   else
    {
       /* If there are remaining characters in the string, then display them. */
       od_disp(pchStart, nCharCount, TRUE);
    }
 
+exit_now:
+   chColorCheck = 0;
    OD_API_EXIT();
 }

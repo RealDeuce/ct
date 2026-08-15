@@ -44,6 +44,7 @@
 #include <stdio.h>
 
 #include "OpenDoor.h"
+#include "ODSafe.h"
 #include "ODStr.h"
 #include "ODUtil.h"
 #include "ODGen.h"
@@ -83,6 +84,41 @@ void ODStringCopy(char *pszDest, CONST char *pszSource, INT nSizeofDest)
    /* Ensure that destination string is '\0' terminated. This will not */
    /* already be the case if strlen(pszSource) >= nSizeofDest.         */
    pszDest[nSizeofDest - 1] = '\0';
+}
+
+
+/* ----------------------------------------------------------------------------
+ * ODStringNormalizeLine()
+ *
+ * Removes a trailing line ending from a physical text-file line.
+ *
+ * Parameters: pszLine        - Nul-terminated line to normalize.
+ *
+ *             pbLineComplete - Set to TRUE if the line ended with LF.
+ *
+ *     Return: Length of the normalized line.
+ */
+size_t ODStringNormalizeLine(char *pszLine, BOOL *pbLineComplete)
+{
+   size_t nLineLength;
+
+   ASSERT(pszLine != NULL);
+   ASSERT(pbLineComplete != NULL);
+
+   nLineLength = strlen(pszLine);
+   *pbLineComplete = FALSE;
+
+   if(nLineLength != 0 && pszLine[nLineLength - 1] == '\n')
+   {
+      pszLine[--nLineLength] = '\0';
+      *pbLineComplete = TRUE;
+   }
+   if(nLineLength != 0 && pszLine[nLineLength - 1] == '\r')
+   {
+      pszLine[--nLineLength] = '\0';
+   }
+
+   return(nLineLength);
 }
 
 
@@ -194,7 +230,8 @@ BOOL ODStringHasTail(char *pszFullString, char *pszTail)
  * Parameters: pszOut      - String to store generated filename in.
  *
  *             pszPath     - Directory name. May be the same as pszOut, or
- *                           may be different.
+ *                           may be different. An empty path returns the base
+ *                           filename without a directory separator.
  *
  *             pszFilename - Base filename.
  *
@@ -202,11 +239,17 @@ BOOL ODStringHasTail(char *pszFullString, char *pszTail)
  *                           than the maximum number of characters to be
  *                           stored in the output string.
  *
- *     Return: kODRCSuccess on success, or an error code on failure.
+ *     Return: kODRCSuccess on success, or kODRCFilenameTooLong if the complete
+ *             filename and its terminator do not fit in nMaxOutSize bytes.
  */
 tODResult ODMakeFilename(char *pszOut, CONST char *pszPath,
    CONST char *pszFilename, INT nMaxOutSize)
 {
+   size_t nPathLength;
+   size_t nFilenameLength;
+   size_t nRequiredSize;
+   BOOL bNeedsSeparator;
+
    /* Validate parameters in debug mode */
    ASSERT(pszPath != NULL);
    ASSERT(pszFilename != NULL);
@@ -214,9 +257,16 @@ tODResult ODMakeFilename(char *pszOut, CONST char *pszPath,
    ASSERT(pszFilename != pszOut);
    ASSERT(nMaxOutSize > 0);
 
-   /* Check that there is enough room in the destination string to hold */
-   /* both source strings plus possibly an additional \-seperator.      */
-   if((INT)(strlen(pszPath) + strlen(pszFilename) + 1) > nMaxOutSize - 1)
+   nPathLength = strlen(pszPath);
+   nFilenameLength = strlen(pszFilename);
+   bNeedsSeparator = nPathLength != 0
+      && pszPath[nPathLength - 1] != DIRSEP;
+
+   /* Include the path, optional separator, filename, and terminator. */
+   if(!ODSizeAdd(nPathLength, nFilenameLength, &nRequiredSize)
+      || (bNeedsSeparator && !ODSizeAdd(nRequiredSize, 1, &nRequiredSize))
+      || !ODSizeAdd(nRequiredSize, 1, &nRequiredSize)
+      || nRequiredSize > (size_t)nMaxOutSize)
    {
       return(kODRCFilenameTooLong);
    }
@@ -227,15 +277,12 @@ tODResult ODMakeFilename(char *pszOut, CONST char *pszPath,
       strcpy(pszOut, pszPath);
    }
 
-   /* Ensure there is a trailing backslash, if path was not empty. */
-#ifdef ODPLAT_NIX
-
-#else
-   if(pszOut[strlen(pszOut) - 1] != DIRSEP && strlen(pszOut) > 0)
+   /* Ensure there is a trailing directory separator if the path is not */
+   /* empty.                                                            */
+   if(pszOut[0] != '\0' && pszOut[strlen(pszOut) - 1] != DIRSEP)
    {
       strcat(pszOut, DIRSEP_STR);
    }
-#endif
 
    /* Append base filename. */
    strcat(pszOut, pszFilename);

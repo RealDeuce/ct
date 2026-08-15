@@ -29,9 +29,11 @@ private:
 };
 
 std::array<uint8_t, 16> random_command_id();
+std::array<uint8_t, 32> sha256(std::span<const uint8_t> bytes);
 std::vector<uint8_t> hex_decode(std::string_view encoded);
 std::string hex_encode(std::span<const uint8_t> bytes);
 void scrub_memory(std::string& value) noexcept;
 void scrub_memory(std::vector<uint8_t>& value) noexcept;
+void scrub_memory(std::span<uint8_t> value) noexcept;
 
 }  // namespace ct

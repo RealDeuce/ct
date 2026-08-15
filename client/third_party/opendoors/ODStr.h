@@ -31,6 +31,8 @@
 #define _INC_ODSTR
 
 #ifdef ODPLAT_NIX
+#include <strings.h>
+
 #define strnicmp      strncasecmp
 #define stricmp       strcasecmp
 #define strlwr(x)	od_strlwr(x)

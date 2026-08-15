@@ -52,45 +52,45 @@
 #define OD_DLL_NAME "ODOORS63"
 #endif /* ODPLAT_WIN32 */
 
-/* Mutlithreading specific definitions. */
+/* Windows always needs synchronization primitives; GUI applications also
+ * use the internal frame thread. This capability does not select the input
+ * or presentation policy. */
 #ifdef ODPLAT_WIN32
-#define OD_MULTITHREADED
+#define OD_THREAD_SUPPORT 1
 #endif /* ODPLAT_WIN32 */
 
-/* For pthreads, we need pthread_suspend_np(pthread_t) */
-#if defined(__FreeBSD__) || defined(__NetBSD__)
-/*
- * Disable this for now... the thread suspend thing should be
- * reworked to use standard primatives, and the ability/need
- * to just murder a thread at an arbitrary place is gross.
- */
-//#define OD_MULTITHREADED
-#endif
-
 /* Text mode specific definitions. */
-#if defined(ODPLAT_DOS)
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
 #define OD_TEXTMODE
-#endif /* ODPLAT_DOS */
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */
+
+/* Platforms that can present DOS-style local personalities. Windows selects
+ * this capability at run time for console-subsystem applications. */
+#if defined(OD_TEXTMODE) || defined(ODPLAT_WIN32)
+#define OD_PERSONALITY_SUPPORT
+#endif
 
 /* Headless mode specific definitions. */
 #if defined(ODPLAT_NIX)
 #define OD_HEADLESS
 #endif /* ODPLAT_DOS */
 
-/* DOS specific definitions. */
-#ifdef ODPLAT_DOS
+/* DOS-family compiler definitions. */
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
 
 /* Keyword to flag ISR functions. */
 #define INTERRUPT interrupt
 
 /* Inline assembly keyword varies from compiler to compiler. */
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__WATCOMC__)
 #define ASM __asm
 #else
 #define ASM asm
 #endif
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */
 
 /* Memory model information. */
+#ifdef ODPLAT_DOS
 #ifdef __TINY__
 #define SMALLDATA
 #define SMALLCODE
@@ -116,8 +116,6 @@
 #define LARGECODE
 #endif
 #endif /* ODPLAT_DOS */
-
-
 /* VERSION INFORMATION CONSTANTS. */
 #define OD_VER_SHORTNAME   "OpenDoors"
 #define OD_VER_STATUSLINE  "  OpenDoors 6.30 - (C) Copyright 1991-2001" \
@@ -130,6 +128,11 @@
                            "(C) Copyright 1991-2001 by Brian Pirie]\n\r"
 #define OD_VER_FULLNAME    "OpenDoors 6.30/DOS"
 #endif /* ODPLAT_DOS */
+#ifdef ODPLAT_DOS32
+#define OD_VER_SIGNON      "[OpenDoors 6.30/DOS32 - " \
+                           "(C) Copyright 1991-2001 by Brian Pirie]\n\r"
+#define OD_VER_FULLNAME    "OpenDoors 6.30/DOS32"
+#endif /* ODPLAT_DOS32 */
 #ifdef ODPLAT_WIN32
 #define OD_VER_SIGNON      "[OpenDoors 6.30/Win32 - " \
                            "(C) Copyright 1991-2001 by Brian Pirie]\n\r"

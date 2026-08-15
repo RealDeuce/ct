@@ -61,15 +61,15 @@ tODResult ODScrnInitialize(void);
 void ODScrnShutdown(void);
 
 /* Basic text output functions. */
-void ODScrnDisplayChar(unsigned char chToOutput);
-void ODScrnDisplayBuffer(const char *pBuffer, INT nCharsToDisplay);
-void ODScrnDisplayString(const char *pszString);
-INT ODScrnPrintf(char *pszFormat, ...);
+void ODCALL ODScrnDisplayChar(unsigned char chToOutput);
+void ODCALL ODScrnDisplayBuffer(const char *pBuffer, INT nCharsToDisplay);
+void ODCALL ODScrnDisplayString(const char *pszString);
+INT ODVCALL ODScrnPrintf(char *pszFormat, ...);
 
 /* Functions for manipulating rectangular areas of the screen buffer. */
-BOOL ODScrnGetText(BYTE btLeft, BYTE btTop, BYTE btRight, BYTE btBottom,
+BOOL ODCALL ODScrnGetText(BYTE btLeft, BYTE btTop, BYTE btRight, BYTE btBottom,
    void *pbtBuffer);
-BOOL ODScrnPutText(BYTE btLeft, BYTE btTop, BYTE btRight, BYTE btBottom,
+BOOL ODCALL ODScrnPutText(BYTE btLeft, BYTE btTop, BYTE btRight, BYTE btBottom,
    void *pbtBuffer);
 BOOL ODScrnCopyText(BYTE btLeft, BYTE btTop, BYTE btRight, BYTE btBottom,
    BYTE btDestColumn, BYTE btDestRow);
@@ -80,8 +80,8 @@ void ODScrnClearToEndOfLine(void);
 
 /* Functions for setting or obtaining current display settings. */
 void ODScrnSetBoundary(BYTE btLeft, BYTE btTop, BYTE btRight, BYTE btBottom);
-void ODScrnSetCursorPos(BYTE btColumn, BYTE btRow);
-void ODScrnSetAttribute(BYTE btAttribute);
+void ODCALL ODScrnSetCursorPos(BYTE btColumn, BYTE btRow);
+void ODCALL ODScrnSetAttribute(BYTE btAttribute);
 void ODScrnEnableScrolling(BOOL bEnable);
 void ODScrnEnableCaret(BOOL bEnable);
 void ODScrnGetTextInfo(tODScrnTextInfo *pTextInfo);
@@ -91,7 +91,7 @@ void *ODScrnShowMessage(char *pszText, int nFlags);
 void ODScrnRemoveMessage(void *pMessageInfo);
 
 /* Additional local output functions for text mode based versions. */
-#if defined(OD_TEXTMODE) || defined(OD_HEADLESS)
+#if defined(OD_TEXTMODE) || defined(OD_HEADLESS) || defined(ODPLAT_WIN32)
 void *ODScrnCreateWindow(BYTE btLeft, BYTE btTop, BYTE btRight,
    BYTE btBottom, BYTE btAttribute, char *pszTitle, BYTE btTitleAttribute);
 void ODScrnDestroyWindow(void *pWindow);
@@ -101,8 +101,9 @@ void ODScrnLocalInput(BYTE btLeft, BYTE btRow, char *pszString,
 
 /* Functions for local screen window under Win32 version. */
 #ifdef ODPLAT_WIN32
-tODResult ODScrnStartWindow(HANDLE hInstance, tODThreadHandle *phScreenThread,
-   HWND hwndFrame);
+tODResult ODScrnStartWindow(HANDLE hInstance, HWND hwndFrame);
+void ODScrnStopWindow(void);
+void ODScrnPublish(void);
 void ODScrnSetFocusToWindow(void);
 void ODScrnAdjustWindows(void);
 #endif /* ODPLAT_WIN32 */

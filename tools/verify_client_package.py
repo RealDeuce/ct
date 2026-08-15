@@ -101,6 +101,27 @@ def main() -> int:
                         f"{program} version probe returned {result.stdout.strip()!r}, "
                         f"expected {expected!r}"
                     )
+            sysop = next(
+                path for path in paths
+                if normalize_program(path.name) == "cepheus-trader-sysop"
+            )
+            missing_config = root / "deliberately-missing-client.conf"
+            result = subprocess.run(
+                [
+                    os.fspath(sysop),
+                    "--config",
+                    os.fspath(missing_config),
+                    "get-config",
+                ],
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            if result.returncode != 1 or "cannot open BBS configuration file" not in result.stderr:
+                raise SystemExit(
+                    "cepheus-trader-sysop did not report a missing configuration cleanly"
+                )
         print(f"client package check: OK ({args.archive})")
     return 0
 

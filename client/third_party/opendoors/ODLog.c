@@ -34,11 +34,13 @@
 
 #define BUILDING_OPENDOORS
 
+#include <errno.h>
 #include <stdio.h>
 #include <time.h>
 
 #include "OpenDoor.h"
 #include "ODCore.h"
+#include "ODFormat.h"
 #include "ODGen.h"
 #include "ODInEx.h"
 #include "ODKrnl.h"
@@ -49,8 +51,49 @@ static FILE *logfile_pointer;
 
 
 /* Private helper functions. */
-static BOOL ODLogWriteStandardMsg(INT nLogfileMessage);
-static void ODLogClose(INT nReason);
+static BOOL ODCALL ODLogWriteStandardMsg(INT nLogfileMessage);
+static BOOL ODCALL ODLogClose(INT nReason);
+static BOOL ODVCALL ODLogFormatWorkString(const char *pszFormat, ...);
+BOOL ODCALL ODLogTimeRecordSucceeded(time_t nUnixTime,
+   const struct tm *ptmTimeRecord);
+
+
+/* ----------------------------------------------------------------------------
+ * ODLogTimeRecordSucceeded()                          *** PRIVATE FUNCTION ***
+ *
+ * Validates the results returned while obtaining a logfile timestamp.
+ */
+BOOL ODCALL ODLogTimeRecordSucceeded(time_t nUnixTime,
+   const struct tm *ptmTimeRecord)
+{
+   return(nUnixTime != (time_t)-1 && ptmTimeRecord != NULL);
+}
+
+
+/* ----------------------------------------------------------------------------
+ * ODLogFormatWorkString()                             *** PRIVATE FUNCTION ***
+ *
+ * Formats a configured logfile message without exceeding the shared work
+ * buffer. This uses the C89-compatible bounded formatter on 16-bit DOS.
+ */
+static BOOL ODVCALL ODLogFormatWorkString(const char *pszFormat, ...)
+{
+   va_list ArgumentList;
+   int nWritten;
+
+   va_start(ArgumentList, pszFormat);
+   nWritten = ODVsnprintf(szODWorkString, sizeof(szODWorkString), pszFormat,
+      ArgumentList);
+   va_end(ArgumentList);
+
+   if(nWritten < 0 || (size_t)nWritten >= sizeof(szODWorkString))
+   {
+      szODWorkString[0] = '\0';
+      od_control.od_error = ERR_LIMIT;
+      return(FALSE);
+   }
+   return(TRUE);
+}
 
 
 /* ----------------------------------------------------------------------------
@@ -65,6 +108,7 @@ static void ODLogClose(INT nReason);
  */
 ODAPIDEF void ODCALL ODLogEnable(void)
 {
+   if(!ODSyncPublicCallAllowed()) return;
    /* At this time, this function simply maps to a call to od_log_open(). */
    od_log_open();
 }
@@ -84,12 +128,17 @@ ODAPIDEF BOOL ODCALL od_log_open()
 {
    time_t nUnixTime;
    struct tm *ptmTimeRecord;
+   int nWriteError;
 
    /* Log function entry if running in trace mode. */
    TRACE(TRACE_API, "od_log_open()");
 
    /* Initialize OpenDoors if not already done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(FALSE);
+
+   /* An existing stream already represents the active logging session. */
+   if(logfile_pointer != NULL) return(TRUE);
 
    /* Don't open logfile if it has been disabled in config file, etc. */
    if(od_control.od_logfile_disable) return(TRUE);
@@ -102,20 +151,48 @@ ODAPIDEF BOOL ODCALL od_log_open()
 
    /* Get the current time. */
    nUnixTime = time(NULL);
-   ptmTimeRecord = localtime(&nUnixTime);
+   ptmTimeRecord = nUnixTime == (time_t)-1 ? NULL : localtime(&nUnixTime);
+   if(!ODLogTimeRecordSucceeded(nUnixTime, ptmTimeRecord))
+   {
+      nWriteError = errno;
+      fclose(logfile_pointer);
+      logfile_pointer = NULL;
+      pfLogWrite = NULL;
+      pfLogClose = NULL;
+      errno = nWriteError;
+      return(FALSE);
+   }
 
    /* Print logfile tear line. */
-   fprintf(logfile_pointer, "\n----------  %s %02d %s %02d, %s\n",
+   if(fprintf(logfile_pointer, "\n----------  %s %02d %s %02d, %s\n",
       od_control.od_day[ptmTimeRecord->tm_wday],
       ptmTimeRecord->tm_mday,
       od_control.od_month[ptmTimeRecord->tm_mon],
       ptmTimeRecord->tm_year % 100,
-      od_program_name);
+      od_program_name) < 0)
+   {
+      nWriteError = errno;
+      fclose(logfile_pointer);
+      logfile_pointer = NULL;
+      pfLogWrite = NULL;
+      pfLogClose = NULL;
+      errno = nWriteError;
+      return(FALSE);
+   }
 
    /* Print message of door start up. */
-   sprintf(szODWorkString, (char *)od_control.od_logfile_messages[11],
-      od_control.user_name);
-   od_log_write(szODWorkString);
+   if(!ODLogFormatWorkString(
+      (char *)od_control.od_logfile_messages[11], od_control.user_name)
+      || !od_log_write(szODWorkString))
+   {
+      nWriteError = errno;
+      fclose(logfile_pointer);
+      logfile_pointer = NULL;
+      pfLogWrite = NULL;
+      pfLogClose = NULL;
+      errno = nWriteError;
+      return(FALSE);
+   }
 
    /* Set internal function hooks to enable calling of logfile features */
    /* from elsewhere in OpenDoors. */
@@ -136,21 +213,31 @@ ODAPIDEF BOOL ODCALL od_log_open()
  *
  *     Return: TRUE on success, or FALSE on failure.
  */
-static BOOL ODLogWriteStandardMsg(INT nLogfileMessage)
+static BOOL ODCALL ODLogWriteStandardMsg(INT nLogfileMessage)
 {
+   BOOL bWriteSucceeded;
+
    if(nLogfileMessage < 0 || nLogfileMessage > 11)
    {
       return(FALSE);
    }
 
-   od_log_write((char *)od_control.od_logfile_messages[nLogfileMessage]);
+   bWriteSucceeded = od_log_write(
+      (char *)od_control.od_logfile_messages[nLogfileMessage]);
+   if(!bWriteSucceeded)
+   {
+      return(FALSE);
+   }
 
    if(nLogfileMessage == 8)
    {
-      sprintf(szODWorkString, od_control.od_logfile_messages[12],
-         od_control.user_reasonforchat);
+      if(!ODLogFormatWorkString(od_control.od_logfile_messages[12],
+         od_control.user_reasonforchat))
+      {
+         return(FALSE);
+      }
       szODWorkString[67] = '\0';
-      od_log_write(szODWorkString);
+      return(od_log_write(szODWorkString));
    }
 
    return(TRUE);
@@ -171,9 +258,11 @@ ODAPIDEF BOOL ODCALL od_log_write(const char *pszMessage)
    char *pszFormat;
    time_t nUnixTime;
    struct tm *ptmTimeRecord;
+   int nWriteError;
 
    /* Verify that OpenDoors has been initialized. */
    if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(FALSE);
 
    OD_API_ENTRY();
 
@@ -196,7 +285,14 @@ ODAPIDEF BOOL ODCALL od_log_write(const char *pszMessage)
 
    /* Get the current system time. */
    nUnixTime=time(NULL);
-   ptmTimeRecord=localtime(&nUnixTime);
+   ptmTimeRecord = nUnixTime == (time_t)-1 ? NULL : localtime(&nUnixTime);
+   if(!ODLogTimeRecordSucceeded(nUnixTime, ptmTimeRecord))
+   {
+      nWriteError = errno;
+      OD_API_EXIT();
+      errno = nWriteError;
+      return(FALSE);
+   }
 
    /* Determine which logfile format string to use. */
    if(ptmTimeRecord->tm_hour<10)
@@ -209,8 +305,15 @@ ODAPIDEF BOOL ODCALL od_log_write(const char *pszMessage)
    }
 
    /* Write a line to the logfile. */
-   fprintf(logfile_pointer, pszFormat, ptmTimeRecord->tm_hour,
-      ptmTimeRecord->tm_min, ptmTimeRecord->tm_sec, pszMessage);
+   if(fprintf(logfile_pointer, pszFormat, ptmTimeRecord->tm_hour,
+      ptmTimeRecord->tm_min, ptmTimeRecord->tm_sec, pszMessage) < 0
+      || fflush(logfile_pointer) == EOF)
+   {
+      nWriteError = errno;
+      OD_API_EXIT();
+      errno = nWriteError;
+      return(FALSE);
+   }
 
    OD_API_EXIT();
    return(TRUE);
@@ -224,35 +327,89 @@ ODAPIDEF BOOL ODCALL od_log_write(const char *pszMessage)
  *
  * Parameters: nReason  - Specifies the reason why OpenDoors is exiting.
  *
- *     Return: void
+ *     Return: TRUE if the final entry and close succeeded, or FALSE if either
+ *             operation failed.
  */
-static void ODLogClose(INT nReason)
+static BOOL ODCALL ODLogClose(INT nReason)
 {
-   /* Stop if logfile has been disabled in the config file, etc. */
-   if(od_control.od_logfile_disable) return;
+   BOOL bCloseSucceeded = TRUE;
+   BOOL bLimitFailure = FALSE;
+   BOOL bHaveRuntimeError = FALSE;
+   int nRuntimeError = 0;
 
    /* If logfile has not been opened, then abort. */
-   if(logfile_pointer==NULL) return;
+   if(logfile_pointer==NULL) return(TRUE);
 
-   if(bPreOrExit)
+   /* Write the final entry unless logging was disabled after this stream was
+    * opened. The stream itself must still be closed in either case. */
+   if(!od_control.od_logfile_disable)
    {
-      od_log_write((char *)od_control.od_logfile_messages[13]);
-   }
-   else if(btExitReason<=5 && btExitReason>=1)
-   {
-      od_log_write((char *)od_control.od_logfile_messages[btExitReason-1]);
-   }
-   else
-   {
-      sprintf(szODWorkString,(char *)od_control.od_logfile_messages[5],nReason);
-      od_log_write(szODWorkString);
+      if(bPreOrExit)
+      {
+         if(!od_log_write((char *)od_control.od_logfile_messages[13]))
+         {
+            bCloseSucceeded = FALSE;
+            bHaveRuntimeError = TRUE;
+            nRuntimeError = errno;
+         }
+      }
+      else if(btExitReason<=5 && btExitReason>=1)
+      {
+         if(!od_log_write(
+            (char *)od_control.od_logfile_messages[btExitReason-1]))
+         {
+            bCloseSucceeded = FALSE;
+            bHaveRuntimeError = TRUE;
+            nRuntimeError = errno;
+         }
+      }
+      else
+      {
+         if(ODLogFormatWorkString(
+            (char *)od_control.od_logfile_messages[5], nReason))
+         {
+            if(!od_log_write(szODWorkString))
+            {
+               bCloseSucceeded = FALSE;
+               bHaveRuntimeError = TRUE;
+               nRuntimeError = errno;
+            }
+         }
+         else
+         {
+            bCloseSucceeded = FALSE;
+            bLimitFailure = TRUE;
+         }
+      }
    }
 
    /* Close the logfile. */
-   fclose(logfile_pointer);
+   if(fclose(logfile_pointer) != 0)
+   {
+      if(!bHaveRuntimeError)
+      {
+         bHaveRuntimeError = TRUE;
+         nRuntimeError = errno;
+      }
+      bCloseSucceeded = FALSE;
+   }
 
    /* Prevent further use of logfile without first re-opening it. */
    pfLogWrite = NULL;
    pfLogClose = NULL;
    logfile_pointer = NULL;
+
+   if(!bCloseSucceeded)
+   {
+      if(!bLimitFailure)
+      {
+         od_control.od_error = ERR_GENERALFAILURE;
+      }
+      if(bHaveRuntimeError)
+      {
+         errno = nRuntimeError;
+      }
+      return(FALSE);
+   }
+   return(TRUE);
 }

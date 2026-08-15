@@ -56,6 +56,8 @@
 #include "ODPlat.h"
 #include "ODKrnl.h"
 #include "ODStat.h"
+#include "ODScrn.h"
+#include "ODVScrn.h"
 
 
 /* Current od_edit_str() state and settings. */
@@ -72,6 +74,7 @@ static char chCurrentBlank;
 static BOOL ODEditIsCharValidForPos(char chEntered, INT nPosition);
 static char ODEditAsCharForPos(char chEntered, INT nPosition);
 static void ODEditDisplayPermaliteral(WORD nFlags);
+static void ODEditGetWindowSize(INT *pnWidth, INT *pnHeight);
 
 
 /* ----------------------------------------------------------------------------
@@ -116,15 +119,19 @@ ODAPIDEF WORD ODCALL od_edit_str(char *pszInput, char *pszFormat, INT nRow,
    INT nKeysPressed = 0;
    WORD wToReturn;
    BOOL bInsertMode = TRUE;
+   BOOL bCheckAutoEnter = FALSE;
    char chAddAtEnd = '\0';
-   BOOL bNormal = TRUE;
    tODInputEvent InputEvent;
+   INT nWindowWidth;
+   INT nWindowHeight;
+   INT nMaximumColumn;
 
    /* Log function entry if running in trace mode */
    TRACE(TRACE_API, "od_edit_str()");
 
    /* Verify that OpenDoors has been initialized. */
    if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(0);
 
    OD_API_ENTRY();
 
@@ -233,6 +240,21 @@ ODAPIDEF WORD ODCALL od_edit_str(char *pszInput, char *pszFormat, INT nRow,
       return(EDIT_RETURN_ERROR);
    }
 
+   /* Ensure that every field position and the trailing working cell fit in */
+   /* the active output window without writing its last physical column.    */
+   ODEditGetWindowSize(&nWindowWidth, &nWindowHeight);
+   nMaximumColumn = nWindowWidth - 1;
+   if(od_control.user_avatar && nMaximumColumn > 255)
+      nMaximumColumn = 255;
+   if(nRow > nWindowHeight || (od_control.user_avatar && nRow > 255)
+      || nColumn > nMaximumColumn
+      || (INT)nCurrentStringLength > nMaximumColumn - nColumn)
+   {
+      od_control.od_error = ERR_PARAMETER;
+      OD_API_EXIT();
+      return(EDIT_RETURN_ERROR);
+   }
+
    /* If editing an existing string. */
    if(nFlags & EDIT_FLAG_EDIT_STRING)
    {
@@ -312,13 +334,10 @@ ODAPIDEF WORD ODCALL od_edit_str(char *pszInput, char *pszFormat, INT nRow,
    /* Set the cursor to appropriate position. */
    od_set_cursor(nRow, nColumn + nCursorPos);
 
-   /* Normally, we start the input loop at the keep_going tag. */
-   if(bNormal) goto keep_going;
-
    for(;;)
    {
       /* If auto-accept mode has been specified ... */
-      if(nFlags & EDIT_FLAG_AUTO_ENTER)
+      if(bCheckAutoEnter && (nFlags & EDIT_FLAG_AUTO_ENTER))
       {
          /* ... then check whether we have reached the end of the string. */
          if(strlen(pszCurrentInput) == nCurrentStringLength)
@@ -330,6 +349,8 @@ ODAPIDEF WORD ODCALL od_edit_str(char *pszInput, char *pszFormat, INT nRow,
             goto try_to_accept;
          }
       }
+
+      bCheckAutoEnter = TRUE;
 
 keep_going:
       /* Check whether we have reached a literal character in permaliteral */
@@ -353,7 +374,12 @@ keep_going:
 get_another_key:
       /* Block, waiting for the next key pressed by the user. */
 
-      od_get_input(&InputEvent, OD_NO_TIMEOUT, GETIN_NORMAL);
+      if(!od_get_input(&InputEvent, OD_NO_TIMEOUT, GETIN_NORMAL))
+      {
+         strcpy(pszCurrentInput, szCurrentOriginalString);
+         wToReturn = EDIT_RETURN_CANCEL;
+         goto exit_without_redraw;
+      }
       
       /* Increment total number of keystrokes. */
       ++nKeysPressed;
@@ -612,6 +638,12 @@ try_this_character:
 
                /* Blank out the current string contents. */
                pszCurrentInput[0] = '\0';
+
+               /* Control-Y only clears the field; it is not field data. */
+               if(chTemp == 25)
+               {
+                  continue;
+               }
             }
 
    add_another_key:
@@ -914,6 +946,7 @@ exit_and_redraw:
       }
    }
 
+exit_without_redraw:
    /* Release exclusive use of arrow keys. */
    ODStatEndArrowUse();
 
@@ -1017,6 +1050,8 @@ static BOOL ODEditIsCharValidForPos(char chEntered, INT nPosition)
       /* If only MS-DOS filename characters are to be permitted. */
       case 'F':
       case 'f':
+      case 'W':
+      case 'w':
          if(chEntered >= 'A' && chEntered <= 'Z') break;
          if(chEntered >= '0' && chEntered <= '9') break;
          if(chEntered >= 'a' && chEntered <= 'z') break;
@@ -1068,19 +1103,6 @@ static BOOL ODEditIsCharValidForPos(char chEntered, INT nPosition)
             break;
          }
          return(FALSE);
-
-      /* If filenames with wildcards are to be permitted. */
-      case 'W':
-      case 'w':
-         if(chEntered >= 'A' && chEntered <= 'Z') break;
-         if(chEntered >= 'a' && chEntered <= 'z') break;
-         if(chEntered == ':' || chEntered == '.' || chEntered == DIRSEP
-            || chEntered == '*' || chEntered == '?')
-         {
-            break;
-         }
-         return(FALSE);
-
       /* If alpha-numeric characters are to be permitted. */
       case 'X':
       case 'x':
@@ -1139,22 +1161,22 @@ static char ODEditAsCharForPos(char chEntered, INT nPosition)
       /* If Yes/No characters are required. */
       case 'Y':
       case 'y':
-         return(toupper(chEntered));
+         return((char)toupper((unsigned char)chEntered));
 
       /* If filename characters are required. */
       case 'F':                                       
       case 'f':
-         return(toupper(chEntered));
+         return((char)toupper((unsigned char)chEntered));
 
       /* If lower case characters are required. */
       case 'L':
       case 'l':
-         return(tolower(chEntered));
+         return((char)tolower((unsigned char)chEntered));
 
       /* If upper case characters are required. */
       case 'U':
       case 'u':
-         return(toupper(chEntered));
+         return((char)toupper((unsigned char)chEntered));
 
       /* If automatic capitalization is required. */
       case 'M':
@@ -1162,17 +1184,12 @@ static char ODEditAsCharForPos(char chEntered, INT nPosition)
       case 'C':
       case 'c':
          /* First character is always upper case. */
-         if(nPosition == 0) return(toupper(chEntered));
+         if(nPosition == 0)
+            return((char)toupper((unsigned char)chEntered));
 
          /* Check for other base cases. */
-         if(abCurrentFormatLiteral[nPosition-1]) return(toupper(chEntered));
-         if(toupper(pszCurrentFormat[anCurrentFormatOffset[nPosition]]) != 'M'
-            && toupper(pszCurrentFormat[anCurrentFormatOffset[nPosition]])
-            != 'C')
-         {
-            return(toupper(chEntered));
-         }
-
+         if(abCurrentFormatLiteral[nPosition-1])
+            return((char)toupper((unsigned char)chEntered));
          /* If previous character is a word delimiter, then this character */
          /* should be uppper case.                                         */
          if(pszCurrentInput[nPosition-1] == ' '
@@ -1180,11 +1197,11 @@ static char ODEditAsCharForPos(char chEntered, INT nPosition)
             || pszCurrentInput[nPosition-1] == ','
             || pszCurrentInput[nPosition-1] == '-')
          {
-            return(toupper(chEntered));                                             /* Otherwise, this should be lower */
+            return((char)toupper((unsigned char)chEntered));
          }
 
          /* Otherwise, this character should be lower-case. */
-         return(tolower(chEntered));
+         return((char)tolower((unsigned char)chEntered));
    }
 
    return(chEntered);
@@ -1236,4 +1253,29 @@ static void ODEditDisplayPermaliteral(WORD nFlags)
    }
 
    if(btRepeat > 0) od_repeat(chCurrentBlank, btRepeat);
+}
+
+
+/* ----------------------------------------------------------------------------
+ * ODEditGetWindowSize()                                *** PRIVATE FUNCTION ***
+ *
+ * Obtains the dimensions of the active local or virtual output window.
+ */
+static void ODEditGetWindowSize(INT *pnWidth, INT *pnHeight)
+{
+   tODScrnTextInfo LocalInfo;
+   tODVScreenInfo SessionInfo;
+
+   if(ODSessionScreenAvailable())
+   {
+      ODSessionScreenGetInfo(&SessionInfo);
+      *pnWidth = SessionInfo.winright - SessionInfo.winleft + 1;
+      *pnHeight = SessionInfo.winbottom - SessionInfo.wintop + 1;
+   }
+   else
+   {
+      ODScrnGetTextInfo(&LocalInfo);
+      *pnWidth = LocalInfo.winright - LocalInfo.winleft + 1;
+      *pnHeight = LocalInfo.winbottom - LocalInfo.wintop + 1;
+   }
 }

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import subprocess
 import sys
@@ -43,6 +44,21 @@ def inspect(path: Path) -> str:
         command = ["ldd", str(path)]
     result = subprocess.run(command, check=True, text=True, stdout=subprocess.PIPE)
     if path.suffix.lower() in {".dll", ".exe"}:
+        if path.name.lower() == "cepheus-trader-client-core.dll":
+            marker = "[Ordinal/Name Pointer] Table"
+            if marker not in result.stdout:
+                raise SystemExit(f"{path}: PE export name table is missing")
+            export_table = result.stdout.split(marker, 1)[1]
+            export_table = export_table.split("The Function Table", 1)[0]
+            names = re.findall(
+                r"^\s*\[\s*\d+\]\s+\+base\[.*?\]\s+[0-9a-fA-F]+\s+(\S+)\s*$",
+                export_table,
+                re.MULTILINE,
+            )
+            unexpected = [name for name in names if not name.startswith("ct_client_")]
+            if not names or unexpected:
+                detail = ", ".join(unexpected) if unexpected else "none found"
+                raise SystemExit(f"{path}: unexpected C ABI exports: {detail}")
         return "\n".join(
             line.strip() for line in result.stdout.splitlines() if "DLL Name:" in line
         )

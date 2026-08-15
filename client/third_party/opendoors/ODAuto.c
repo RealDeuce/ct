@@ -93,6 +93,7 @@ ODAPIDEF void ODCALL od_autodetect(INT nFlags)
 
    /* Initialize OpenDoors if it hasn't aready been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_VOID_IF_SESSION_ENDED();
 
    OD_API_ENTRY();
 
@@ -154,6 +155,11 @@ ODAPIDEF void ODCALL od_autodetect(INT nFlags)
             od_control.user_rip = TRUE;
             /* Discard the rest of the RIP ID */
             ODWaitDiscard(RIP_DISCARD, RIP_WAIT);
+            if(!bODInitialized)
+            {
+               OD_API_EXIT();
+               return;
+            }
             break;
          }
       }
@@ -204,6 +210,13 @@ static char ODWaitNoCase(char *pszWaitFor, tODMilliSec WaitTime)
             return(TRUE);
          }
       }
+#ifdef OD_THREAD_SUPPORT
+      else
+      {
+         od_sleep(0);
+         if(!bODInitialized) return(FALSE);
+      }
+#endif
    } while(!ODTimerElapsed(&Timer));
 
    return(FALSE);

@@ -67,8 +67,8 @@ extern char szODWorkString[OD_GLOBAL_WORK_STRING_SIZE];
 extern tODScrnTextInfo ODTextInfo;
 
 /* Logfile function hooks. */
-extern BOOL (*pfLogWrite)(INT);
-extern void (*pfLogClose)(INT);
+extern BOOL (ODCALL *pfLogWrite)(INT);
+extern BOOL (ODCALL *pfLogClose)(INT);
 
 /* od_colour_config() support for od_printf(). */
 extern char chColorCheck;
@@ -93,10 +93,14 @@ extern BYTE btOutputBottom;
 
 /* Core functions used throughout OpenDoors. */
 void ODWaitDrain(tODMilliSec MaxWait);
+tODResult ODCoreSendRemoteByte(BYTE btToSend);
+tODResult ODCoreSendRemoteBuffer(const void *pBuffer, INT nSize);
 void ODStoreTextInfo(void);
 void ODRestoreTextInfo(void);
 void ODStringToName(char *pszToConvert);
 BOOL ODPagePrompt(BOOL *pbPausing);
+BOOL ODCoreCarrierResult(tODResult Result, BOOL bIsCarrier);
+void ODCoreSetDTRResult(tODResult Result);
 
 
 /* Number of built-in configuration file options. */

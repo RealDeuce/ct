@@ -59,12 +59,15 @@ typedef enum
 } tODResult;
 
 /* Callback function types. */
-#ifdef _MSC_VER
+#ifdef ODPLAT_DOS32
 typedef void ODCALL OD_COMPONENT_CALLBACK(void);
-typedef void ODCALL OD_PERSONALITY_CALLBACK(BYTE btOperation);
-#else /* !_MSC_VER */
+#else
 typedef void OD_COMPONENT_CALLBACK(void);
+#endif
+#ifdef ODPLAT_DOS32
+typedef void ODCALL OD_PERSONALITY_CALLBACK(BYTE btOperation);
+#else
 typedef void OD_PERSONALITY_CALLBACK(BYTE btOperation);
-#endif /* !_MSC_VER */
+#endif
 
 #endif /* !_INC_ODTYPES */

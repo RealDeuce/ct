@@ -80,7 +80,6 @@
 #define BUILDING_OPENDOORS
 
 #include <ctype.h>
-#include <locale.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -89,6 +88,7 @@
 
 #include "OpenDoor.h"
 #ifdef ODPLAT_NIX
+#include <locale.h>
 #include <termios.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -98,8 +98,10 @@
 #include "ODCore.h"
 #include "ODGen.h"
 #include "ODScrn.h"
+#include "ODVScrn.h"
 #include "ODInQue.h"
 #include "ODKrnl.h"
+#include "ODMulti.h"
 #include "ODInEx.h"
 #include "ODUtil.h"
 #ifdef ODPLAT_WIN32
@@ -108,7 +110,7 @@
 #endif /* ODPLAT_WIN32 */
 
 /* Default size of local/remote combined keyboard buffer. */
-#define DEFAULT_EVENT_QUEUE_SIZE    128
+#define DEFAULT_EVENT_QUEUE_SIZE    256
 
 
 /* Local private helper functions. */
@@ -122,7 +124,7 @@ static BOOL ODFramingIsEightBit(const char *framing)
 {
    while(isspace((unsigned char)*framing))
       ++framing;
-   return framing[0] == '8' || strstr(framing, ",8,") != NULL;
+   return(framing[0] == '8' || strstr(framing, ",8,") != NULL);
 }
 
 
@@ -132,6 +134,10 @@ static BYTE btRAStatusToSet = 0;
 static BOOL bPreset = TRUE;
 #endif /* !ODPLAT_WIN32 */
 static char szIFTemp[256];
+#ifdef ODPLAT_WIN32
+static char szWindowsStartupUserName[sizeof(od_control.user_name)];
+static BOOL bWindowsStartupCancelled;
+#endif
 
 /* Configuration file keywords. */
 static char *apszConfigText[] =
@@ -343,15 +349,46 @@ static char *
 safe_strcat(char *dst, const char *src, size_t sz)
 {
 	size_t olen = strlen(dst);
+	size_t remain;
+	size_t len;
+
 	if (olen >= sz)
 		return dst;
-	size_t remain = sz - olen;
-	size_t len = strlen(src);
+	remain = sz - olen;
+	len = strlen(src);
 	if (len >= remain)
 		len = remain - 1;
 	memcpy(&dst[olen], src, len);
 	dst[olen + len] = 0;
 	return dst;
+}
+
+
+/* ----------------------------------------------------------------------------
+ * od_set_port()
+ *
+ * Records an explicit communications-port selection before initialization.
+ *
+ * Parameters: nPort - Zero-based port number.
+ *
+ *     Return: TRUE on success, or FALSE if the value is invalid or OpenDoors
+ *             has already been initialized.
+ */
+ODAPIDEF BOOL ODCALL od_set_port(INT nPort)
+{
+   TRACE(TRACE_API, "od_set_port()");
+
+   if(!ODSyncPublicCallAllowed()) return(FALSE);
+
+   if(bODInitialized || nPort < 0 || nPort > 255)
+   {
+      od_control.od_error = ERR_PARAMETER;
+      return(FALSE);
+   }
+
+   od_control.port = (INT16)nPort;
+   nForcedPort = nPort;
+   return(TRUE);
 }
 
 /* ----------------------------------------------------------------------------
@@ -370,6 +407,7 @@ safe_strcat(char *dst, const char *src, size_t sz)
 ODAPIDEF void ODCALL od_init(void)
 {
    BYTE btCount;
+   tODResult Result;
    FILE *pfDropFile=NULL;
    char *pointer;
    INT nFound = FOUND_NONE;
@@ -383,6 +421,12 @@ ODAPIDEF void ODCALL od_init(void)
    /* Log function entry if running in trace mode. */
    TRACE(TRACE_API, "od_init()");
 
+   if(eODLifecycleState >= kODLifecycleExitPending)
+   {
+      od_control.od_error = ERR_GENERALFAILURE;
+      return;
+   }
+
    /* If a callback function is active, then don't do anything. */
    if(bIsCallbackActive) return;
 
@@ -393,9 +437,19 @@ ODAPIDEF void ODCALL od_init(void)
       /* doing anything.                                                */
       if(bODInitialized) return;
 
+      Result = ODSyncSessionInitialize();
+      if(Result != kODRCSuccess)
+      {
+         od_control.od_error = ERR_GENERALFAILURE;
+         ODInitError("Unable to initialize OpenDoors synchronization.");
+         return;
+      }
+
       /* Otherwise, set the initialized flag so that od_init() won't be */
       /* run again.                                                     */
       bODInitialized = TRUE;
+      eODLifecycleState = kODLifecycleInitializing;
+      ODSessionTimeInitialize();
 
       /* Initialize program name string. */
       if(od_control.od_prog_name[0] == '\0')
@@ -431,13 +485,18 @@ ODAPIDEF void ODCALL od_init(void)
          }
       }
 
-      /* Enable multiple personality system if it has been installed. */
-#ifdef OD_TEXTMODE
-      if(od_control.od_mps != NULL)
+      /* Enable the DOS-style multiple personality system where the local
+       * presenter supports it. The Windows GUI keeps its native frame. */
+#ifdef OD_PERSONALITY_SUPPORT
+      if(od_control.od_mps != NULL
+#ifdef ODPLAT_WIN32
+         && ODPlatGetWindowsSubsystem() == kODWindowsSubsystemConsole
+#endif
+         )
       {
          (*(OD_COMPONENT_CALLBACK *)od_control.od_mps)();
       }
-#endif /* !OD_TEXTMODE */
+#endif /* OD_PERSONALITY_SUPPORT */
 
       /* If baud rate has been set in od_control, then remember the forced */
       /* rate for later use.                                               */
@@ -461,6 +520,16 @@ ODAPIDEF void ODCALL od_init(void)
       if(od_control.config_file != NULL)
       {
          (*(OD_COMPONENT_CALLBACK *)od_control.config_file)();
+         if(!bODInitialized)
+            return;
+         eODLifecycleState = kODLifecycleActive;
+         if(bODExitRequestedDuringInitialization)
+         {
+            INT nSavedErrorLevel = nODPendingExitErrorLevel;
+            BOOL bSavedTermCall = bODPendingExitTermCall;
+            bODExitRequestedDuringInitialization = FALSE;
+            od_exit(nSavedErrorLevel, bSavedTermCall);
+         }
          return;
       }
    }
@@ -510,8 +579,10 @@ malloc_error:
       od_control.user_avatar = FALSE;
       od_control.user_rip = FALSE;
       od_control.user_attribute = 0x06;
-      od_control.user_screen_length = 23;
-      od_control.user_screenwidth = 80;
+      if(od_control.user_screen_length == 0)
+         od_control.user_screen_length = 23;
+      if(od_control.user_screenwidth == 0)
+         od_control.user_screenwidth = 80;
       od_control.od_page_pausing = TRUE;
       od_control.od_page_len = 15;
    }
@@ -552,8 +623,10 @@ malloc_error:
 force_local:
       /* No door information file is being used. */
       od_control.od_info_type = NO_DOOR_FILE;
-      if (strstr(setlocale(LC_ALL, ""), "UTF-8"))
-	od_control.od_cp437_to_utf8_out = TRUE;
+#ifdef ODPLAT_NIX
+      if(strstr(setlocale(LC_ALL, ""), "UTF-8"))
+         od_control.od_cp437_to_utf8_out = TRUE;
+#endif
 
       /* Operate in local mode. */
 #ifdef ODPLAT_NIX
@@ -706,7 +779,7 @@ read_dorinfox:
           if(fgets(szIFTemp,255,pfDropFile)==NULL) goto DropFileFail;
           od_control.port=szIFTemp[3]-'1';
                                           /* determine BPS rate of connection */
-          if(fgets((char *)apszDropFileInfo[0],255,pfDropFile)==NULL) goto DropFileFail;
+          if(fgets((char *)apszDropFileInfo[0],80,pfDropFile)==NULL) goto DropFileFail;
 #ifdef ODPLAT_NIX
           od_control.baud= (od_control.port == -1) ? 1 : atol((char *)apszDropFileInfo[0]);
 #else
@@ -1059,13 +1132,17 @@ again:
 
                                         /* Beginning of extending DOOR.SYS data */
              /* Read line 32. */
-             fgets((char *)apszDropFileInfo[7],80,pfDropFile);
+             if(fgets((char *)apszDropFileInfo[7],80,pfDropFile)==NULL)
+                apszDropFileInfo[7][0] = '\0';
              /* Read line 33. */
-             fgets((char *)apszDropFileInfo[11],80,pfDropFile);
+             if(fgets((char *)apszDropFileInfo[11],80,pfDropFile)==NULL)
+                apszDropFileInfo[11][0] = '\0';
              /* Read line 34. */
-             fgets((char *)apszDropFileInfo[12],80,pfDropFile);
+             if(fgets((char *)apszDropFileInfo[12],80,pfDropFile)==NULL)
+                apszDropFileInfo[12][0] = '\0';
              /* Read line 35. */
-             fgets((char *)apszDropFileInfo[13],80,pfDropFile);
+             if(fgets((char *)apszDropFileInfo[13],80,pfDropFile)==NULL)
+                apszDropFileInfo[13][0] = '\0';
              /* Read line 36. */
              if(fgets((char *)apszDropFileInfo[14],80,pfDropFile)!=NULL)
              {
@@ -1420,7 +1497,7 @@ finished:
           od_control.od_open_handle	= atoi(szIFTemp);
 
 			 /* Read line 3: Baud rate */
-          if(fgets((char *)apszDropFileInfo[0],255,pfDropFile)==NULL) goto DropFileFail;
+          if(fgets((char *)apszDropFileInfo[0],80,pfDropFile)==NULL) goto DropFileFail;
 #ifdef ODPLAT_NIX
           od_control.baud= (od_control.port == -1) ? 1 : atol((char *)apszDropFileInfo[0]);
 #else
@@ -1513,6 +1590,19 @@ DropFileFail:
    }
 
    ODInitPartTwo();
+   if(!bODInitialized)
+      return;
+   if(!bCalledFromConfig)
+   {
+      eODLifecycleState = kODLifecycleActive;
+      if(bODExitRequestedDuringInitialization)
+      {
+         INT nSavedErrorLevel = nODPendingExitErrorLevel;
+         BOOL bSavedTermCall = bODPendingExitTermCall;
+         bODExitRequestedDuringInitialization = FALSE;
+         od_exit(nSavedErrorLevel, bSavedTermCall);
+      }
+   }
 }
 
 
@@ -1528,135 +1618,144 @@ DropFileFail:
 static BOOL ODInitReadSFDoorsDAT(void)
 {
    FILE *pfDropFile;
+   long nLoginMinutes;
+   unsigned int nLoginMinutePart;
+   unsigned int nLoginHourPart;
 
    if((pfDropFile=fopen(szDropFilePath,"r"))==NULL) return(FALSE);
 
    /* Line 1: User number. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    od_control.user_num=atoi(szIFTemp);
 
    /* Line 2: User name. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    szIFTemp[35]='\0';
    ODStringToName(szIFTemp);
    strcpy(od_control.user_name,szIFTemp);
 
    /* Line 3: User password. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    szIFTemp[15]='\0';
    ODStringToName(szIFTemp);
    strcpy(od_control.user_password,szIFTemp);
 
    /* Line 4: Unused. */
-   if(fgets((char *)apszDropFileInfo[0],80,pfDropFile)==NULL) return(FALSE);
+   if(fgets((char *)apszDropFileInfo[0],80,pfDropFile)==NULL) goto ReadFailure;
 
    /* Line 5: Modem <-> Serial port bps rate. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    od_control.baud=atol(szIFTemp);
 
    /* Line 6: Serial port number. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    od_control.port=atoi(szIFTemp)-1;
 
    /* Line 7: User's time remaining. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    od_control.user_timelimit=atoi(szIFTemp);
 
    /* Line 8: Unused. */
-   if(fgets((char *)apszDropFileInfo[13],80,pfDropFile)==NULL) return(FALSE);
+   if(fgets((char *)apszDropFileInfo[13],80,pfDropFile)==NULL) goto ReadFailure;
 
    /* Line 9: Unused. */
-   if(fgets((char *)apszDropFileInfo[14],80,pfDropFile)==NULL) return(FALSE);
+   if(fgets((char *)apszDropFileInfo[14],80,pfDropFile)==NULL) goto ReadFailure;
 
    /* Line 10: User's ANSI mode setting. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    strupr(szIFTemp);
    od_control.user_ansi=(szIFTemp[0]=='T');
 
    /* Line 11: User's security level. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    od_control.user_security=atoi(szIFTemp);
 
    /* Line 12: User's upload count. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    od_control.user_uploads=atoi(szIFTemp);
 
    /* Line 13: User's download count. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    od_control.user_downloads=atoi(szIFTemp);
 
    /* Line 14: Unused. */
-   if(fgets((char *)apszDropFileInfo[1],80,pfDropFile)==NULL) return(FALSE);
+   if(fgets((char *)apszDropFileInfo[1],80,pfDropFile)==NULL) goto ReadFailure;
 
    /* Line 15: User's login time. */
-   if(fgets((char *)apszDropFileInfo[2],255,pfDropFile)==NULL) return(FALSE);
-   sprintf(od_control.user_logintime, "%02d:%02d",
-      atoi((char *)apszDropFileInfo[2]) % 60,
-      atoi((char *)apszDropFileInfo[2]) / 60);
+   if(fgets((char *)apszDropFileInfo[2],80,pfDropFile)==NULL) goto ReadFailure;
+   nLoginMinutes = atol((char *)apszDropFileInfo[2]);
+   if(nLoginMinutes < 0)
+      nLoginMinutes = 0;
+   else if(nLoginMinutes > 5999)
+      nLoginMinutes = 5999;
+   nLoginMinutePart = (unsigned int)(nLoginMinutes % 60);
+   nLoginHourPart = (unsigned int)(nLoginMinutes / 60);
+   sprintf(od_control.user_logintime, "%02u:%02u",
+      nLoginHourPart, nLoginMinutePart);
 
    /* Line 16: Unused. */
-   if(fgets((char *)apszDropFileInfo[3],80,pfDropFile)==NULL) return(FALSE);
+   if(fgets((char *)apszDropFileInfo[3],80,pfDropFile)==NULL) goto ReadFailure;
 
    /* Line 17: Sysop next flag. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    strupr(szIFTemp);
    od_control.sysop_next=(szIFTemp[0]=='T');
 
    /* Line 18: Unused. */
-   if(fgets((char *)apszDropFileInfo[4],80,pfDropFile)==NULL) return(FALSE);
+   if(fgets((char *)apszDropFileInfo[4],80,pfDropFile)==NULL) goto ReadFailure;
 
    /* Line 19: Unused. */
-   if(fgets((char *)apszDropFileInfo[5],80,pfDropFile)==NULL) return(FALSE);
+   if(fgets((char *)apszDropFileInfo[5],80,pfDropFile)==NULL) goto ReadFailure;
 
    /* Line 20: Unused. */
-   if(fgets((char *)apszDropFileInfo[6],80,pfDropFile)==NULL) return(FALSE);
+   if(fgets((char *)apszDropFileInfo[6],80,pfDropFile)==NULL) goto ReadFailure;
 
    /* Line 21: Error free connection flag. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    strupr(szIFTemp);
    od_control.user_error_free=(szIFTemp[0]=='T');
 
    /* Line 22: Current message area. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    od_control.user_msg_area=atoi(szIFTemp);
 
    /* Line 23: Current file area. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    od_control.user_file_area=atoi(szIFTemp);
 
    /* Line 24: Current node number. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    od_control.od_node=atoi(szIFTemp);
 
    /* Line 25: Unused. */
-   if(fgets((char *)apszDropFileInfo[10],80,pfDropFile)==NULL) return(FALSE);
+   if(fgets((char *)apszDropFileInfo[10],80,pfDropFile)==NULL) goto ReadFailure;
 
    /* Line 26: Unused. */
-   if(fgets((char *)apszDropFileInfo[11],80,pfDropFile)==NULL) return(FALSE);
+   if(fgets((char *)apszDropFileInfo[11],80,pfDropFile)==NULL) goto ReadFailure;
 
    /* Line 27: Unused. */
-   if(fgets((char *)apszDropFileInfo[12],80,pfDropFile)==NULL) return(FALSE);
+   if(fgets((char *)apszDropFileInfo[12],80,pfDropFile)==NULL) goto ReadFailure;
 
    /* Line 28: Kilobytes downloaded today. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    od_control.user_todayk=atoi(szIFTemp);
 
    /* Line 29: Kilobytes uploaded in total. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    od_control.user_upk=atoi(szIFTemp);
 
    /* Line 30: Kilobytes downloaded in total. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    od_control.user_downk=atoi(szIFTemp);
 
    /* Line 31: User's home phone number. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    szIFTemp[15]='\0';
    ODStringToName(szIFTemp);
    strcpy(od_control.user_homephone,szIFTemp);
 
    /* Line 32: User's home location. */
-   if(fgets(szIFTemp,255,pfDropFile)==NULL) return(FALSE);
+   if(fgets(szIFTemp,255,pfDropFile)==NULL) goto ReadFailure;
    szIFTemp[25]='\0';
    ODStringToName(szIFTemp);
    strcpy(od_control.user_location,szIFTemp);
@@ -1708,6 +1807,10 @@ static BOOL ODInitReadSFDoorsDAT(void)
    fclose(pfDropFile);
 
    return(TRUE);
+
+ReadFailure:
+   fclose(pfDropFile);
+   return(FALSE);
 }
 
 
@@ -1742,6 +1845,7 @@ static void ODInitReadExitInfo(void)
          {
             if(fread(pRA2ExitInfoRecord,1,2363,pfDropFile)==2363)
             {
+               ODExitInfoRA2Endian(pRA2ExitInfoRecord, TRUE);
                od_control.od_ra_info=TRUE;
                od_control.od_extended_info=TRUE;
                od_control.od_info_type=RA2EXITINFO;
@@ -1751,7 +1855,12 @@ static void ODInitReadExitInfo(void)
                ODStringPascalToC(od_control.system_last_caller,pRA2ExitInfoRecord->last_caller,35);
                ODStringPascalToC(od_control.system_last_handle,pRA2ExitInfoRecord->sLastHandle,35);
                ODStringPascalToC(od_control.timelog_start_date,pRA2ExitInfoRecord->start_date,8);
-               memcpy(&od_control.timelog_busyperhour,&pRA2ExitInfoRecord->busyperhour,62);
+               memcpy(od_control.timelog_busyperhour,
+                  pRA2ExitInfoRecord->busyperhour,
+                  sizeof(od_control.timelog_busyperhour));
+               memcpy(od_control.timelog_busyperday,
+                  pRA2ExitInfoRecord->busyperday,
+                  sizeof(od_control.timelog_busyperday));
                ODStringPascalToC(od_control.user_name,pRA2ExitInfoRecord->name,35);
                ODStringPascalToC(od_control.user_location,pRA2ExitInfoRecord->location,25);
                ODStringPascalToC(od_control.user_org,pRA2ExitInfoRecord->organisation,50);
@@ -1807,6 +1916,7 @@ static void ODInitReadExitInfo(void)
                ODStringPascalToC(od_control.user_emsi_software,pRA2ExitInfoRecord->emsi_software,40);
                memcpy(&od_control.user_hold_attr1,&pRA2ExitInfoRecord->hold_attr1,3);
                ODStringPascalToC(od_control.user_reasonforchat,pRA2ExitInfoRecord->page_reason,77);
+               bRAStatus = TRUE;
                btRAStatusToSet = pRA2ExitInfoRecord->status_line-1;
                ODStringPascalToC(od_control.user_last_cost_menu,pRA2ExitInfoRecord->last_cost_menu,8);
                od_control.user_menu_cost=pRA2ExitInfoRecord->menu_cost_per_min;
@@ -1820,6 +1930,7 @@ static void ODInitReadExitInfo(void)
             else
             {
                free(pRA2ExitInfoRecord);
+               pRA2ExitInfoRecord = NULL;
             }
          }
       }
@@ -1832,6 +1943,7 @@ static void ODInitReadExitInfo(void)
             {
                if(fread(pExtendedExitInfo,1,sizeof(tExtendedExitInfo), pfDropFile)==sizeof(tExtendedExitInfo))
                {                 /* transfer info into od_control struct */
+                  ODExitInfoExtendedEndian(pExtendedExitInfo, TRUE);
                   ODStringPascalToC(od_control.user_timeofcreation,pExitInfoRecord->bbs.ra.timeofcreation,5);
                   ODStringPascalToC(od_control.user_logonpassword,pExitInfoRecord->bbs.ra.logonpassword,15);
                   od_control.user_wantchat=pExitInfoRecord->bbs.ra.wantchat;
@@ -1865,6 +1977,11 @@ static void ODInitReadExitInfo(void)
                   od_control.od_ra_info=TRUE;
                   od_control.od_extended_info=TRUE;
                   od_control.od_info_type=RA1EXITINFO;
+               }
+               else
+               {
+                  free(pExtendedExitInfo);
+                  pExtendedExitInfo = NULL;
                }
             }
          }
@@ -1915,6 +2032,142 @@ static void ODInitReadExitInfo(void)
 }
 
 
+#ifdef ODPLAT_NIX
+/* ----------------------------------------------------------------------------
+ * ODInitTerminalSpeedToBaud()                       *** PRIVATE FUNCTION ***
+ *
+ * Converts a POSIX termios speed token to its numeric BPS value. POSIX does
+ * not require speed_t constants to contain their corresponding numeric rates.
+ *
+ * Parameters: nSpeed - A speed_t value returned by cfgetispeed() or
+ *                      cfgetospeed().
+ *
+ *     Return: The numeric BPS value, or zero when nSpeed is not recognized.
+ */
+static DWORD ODInitTerminalSpeedToBaud(speed_t nSpeed)
+{
+   if(nSpeed == B50) return(50L);
+   if(nSpeed == B75) return(75L);
+   if(nSpeed == B110) return(110L);
+   if(nSpeed == B134) return(134L);
+   if(nSpeed == B150) return(150L);
+   if(nSpeed == B200) return(200L);
+   if(nSpeed == B300) return(300L);
+   if(nSpeed == B600) return(600L);
+   if(nSpeed == B1200) return(1200L);
+   if(nSpeed == B1800) return(1800L);
+   if(nSpeed == B2400) return(2400L);
+   if(nSpeed == B4800) return(4800L);
+   if(nSpeed == B9600) return(9600L);
+   if(nSpeed == B19200) return(19200L);
+   if(nSpeed == B38400) return(38400L);
+#ifdef B7200
+   if(nSpeed == B7200) return(7200L);
+#endif
+#ifdef B14400
+   if(nSpeed == B14400) return(14400L);
+#endif
+#ifdef B28800
+   if(nSpeed == B28800) return(28800L);
+#endif
+#ifdef B57600
+   if(nSpeed == B57600) return(57600L);
+#endif
+#ifdef B76800
+   if(nSpeed == B76800) return(76800L);
+#endif
+#ifdef B115200
+   if(nSpeed == B115200) return(115200L);
+#endif
+#ifdef B230400
+   if(nSpeed == B230400) return(230400L);
+#endif
+#ifdef B460800
+   if(nSpeed == B460800) return(460800L);
+#endif
+#ifdef B500000
+   if(nSpeed == B500000) return(500000L);
+#endif
+#ifdef B576000
+   if(nSpeed == B576000) return(576000L);
+#endif
+#ifdef B921600
+   if(nSpeed == B921600) return(921600L);
+#endif
+#ifdef B1000000
+   if(nSpeed == B1000000) return(1000000L);
+#endif
+#ifdef B1152000
+   if(nSpeed == B1152000) return(1152000L);
+#endif
+#ifdef B1500000
+   if(nSpeed == B1500000) return(1500000L);
+#endif
+#ifdef B2000000
+   if(nSpeed == B2000000) return(2000000L);
+#endif
+#ifdef B2500000
+   if(nSpeed == B2500000) return(2500000L);
+#endif
+#ifdef B3000000
+   if(nSpeed == B3000000) return(3000000L);
+#endif
+#ifdef B3500000
+   if(nSpeed == B3500000) return(3500000L);
+#endif
+#ifdef B4000000
+   if(nSpeed == B4000000) return(4000000L);
+#endif
+   return(0L);
+}
+
+
+/* ----------------------------------------------------------------------------
+ * ODInitSelectTerminalBaud()                         *** PRIVATE FUNCTION ***
+ *
+ * Selects a numeric BPS value for a Unix standard-I/O session. The terminal's
+ * input speed takes precedence, followed by its output speed and the nominal
+ * 19,200 BPS fallback.
+ */
+DWORD ODInitSelectTerminalBaud(speed_t nInputSpeed, speed_t nOutputSpeed)
+{
+   DWORD dwBaud;
+
+   dwBaud = ODInitTerminalSpeedToBaud(nInputSpeed);
+   if(dwBaud == 0)
+      dwBaud = ODInitTerminalSpeedToBaud(nOutputSpeed);
+
+   return(dwBaud == 0 ? 19200L : dwBaud);
+}
+
+
+/* ----------------------------------------------------------------------------
+ * ODInitApplyUserInfo()                              *** PRIVATE FUNCTION ***
+ *
+ * Applies the available account-directory names to a Unix forced-local
+ * session. Existing values are retained when the account record or either
+ * source string is unavailable.
+ */
+void ODInitApplyUserInfo(const struct passwd *pUserInfo)
+{
+   if(pUserInfo == NULL)
+      return;
+
+   if(pUserInfo->pw_name != NULL)
+   {
+      ODStringCopy(od_control.user_handle, pUserInfo->pw_name,
+         sizeof(od_control.user_handle));
+   }
+
+   if(pUserInfo->pw_gecos != NULL)
+   {
+      ODStringCopy(od_control.user_name, pUserInfo->pw_gecos,
+         sizeof(od_control.user_name));
+   }
+}
+#endif /* ODPLAT_NIX */
+
+
 /* ----------------------------------------------------------------------------
  * ODInitPartTwo()                                     *** PRIVATE FUNCTION ***
  *
@@ -1930,6 +2183,7 @@ static void ODInitReadExitInfo(void)
 static void ODInitPartTwo(void)
 {
    BYTE btCount;
+   tODResult Result;
 #ifdef ODPLAT_NIX
    struct termios term;
    struct passwd  *uinfo;
@@ -1989,7 +2243,7 @@ static void ODInitPartTwo(void)
    od_control.od_inactivity_timeout = "\n\rMaximum user inactivity time has elapsed, please call again.\n\r\n\r";
    od_control.od_inactivity_warning = "\n\rWARNING: Inactivity timeout in 10 seconds, press a key now to remain online.\n\r\n\r";
    od_control.od_time_warning = "\n\rWARNING: You only have %d minute(s) remaining for this session.\n\r\n\r";
-   od_control.od_time_left = "%d mins   ";
+   od_control.od_time_left = "%4d mins  ";
    od_control.od_sysop_next = "[SN] ";
    od_control.od_no_keyboard = "[Keyboard]";
    od_control.od_want_chat = "[Want-Chat]";
@@ -2275,19 +2529,41 @@ malloc_error:
       }
    }
 
-   /* If we are operating in local mode, then disable silent mode. */
+#ifndef ODPLAT_WIN32
+   /* Traditional non-Windows local mode always has a local display. */
    if(od_control.baud == 0)
-   {
       od_control.od_silent_mode = FALSE;
-   }
+#endif
 
    /* Setup local screen. */
-   ODScrnInitialize();
-#ifdef OD_TEXTMODE
+   Result = ODScrnInitialize();
+   if(Result != kODRCSuccess)
+   {
+      od_control.od_error = ERR_GENERALFAILURE;
+      ODInitError("Unable to initialize the OpenDoors local display.");
+      exit(od_control.od_errorlevel[1]);
+   }
+#ifdef ODPLAT_WIN32
+   if(ODPlatGetWindowsSubsystem() == kODWindowsSubsystemConsole)
+   {
+      ODScrnSetBoundary(1, 1, 80, 23);
+      ODSessionScreenInitialize(od_control.user_screenwidth,
+         od_control.user_screen_length);
+   }
+   else
+   {
+      ODScrnSetBoundary(1, 1, 80, 25);
+      ODSessionScreenInitialize(80, 25);
+   }
+#else /* !ODPLAT_WIN32 */
+#if defined(OD_TEXTMODE)
    ODScrnSetBoundary(1, 1, 80, 23);
+   ODSessionScreenInitialize(80, 23);
 #else /* !OD_TEXTMODE */
    ODScrnSetBoundary(1, 1, 80, 25);
+   ODSessionScreenInitialize(80, 25);
 #endif /* !OD_TEXTMODE */
+#endif /* !ODPLAT_WIN32 */
 
 #ifndef ODPLAT_WIN32
    if(bPreset)
@@ -2303,22 +2579,17 @@ malloc_error:
       od_clr_scr();
    }
 
-#ifdef ODPLAT_WIN32
-   /* Startup the OpenDoors frame window, if we are not operating in silent */
-   /* mode.                                                                 */
-   if(!od_control.od_silent_mode)
+   /* Initialize the cooperative kernel before application callbacks can
+    * enter other OpenDoors APIs. */
+   Result = ODKrnlInitialize();
+   if(Result != kODRCSuccess)
    {
-      HANDLE h = GetModuleHandle(OD_DLL_NAME);
-      if (h == NULL)
-         h = GetModuleHandle(NULL);
-      ODFrameStart(h, &hFrameThread);
+      od_control.od_error = ERR_GENERALFAILURE;
+      bODInitialized = FALSE;
+      ODInitError("Unable to start the OpenDoors kernel.");
+      return;
    }
-#endif /* ODPLAT_WIN32 */
 
-   /* Initialize the OpenDoors kernel. */
-   ODKrnlInitialize();
-
-#ifndef ODPLAT_WIN32
 #ifdef ODPLAT_NIX
    if(bPromptForUserName)
    {
@@ -2326,20 +2597,21 @@ malloc_error:
       od_control.baud=19200;
       gethostname(od_control.system_name,sizeof(od_control.system_name));
       od_control.system_name[sizeof(od_control.system_name)-1]=0;
-      if (isatty(STDIN_FILENO))  {
-        tcgetattr(STDIN_FILENO,&term);
-   	  od_control.baud=cfgetispeed(&term);
-        if(!od_control.baud)
-   	    od_control.baud=cfgetispeed(&term);
-        if(!od_control.baud)
-   		 od_control.baud=19200;
+      if(isatty(STDIN_FILENO) && tcgetattr(STDIN_FILENO, &term) == 0)
+      {
+         od_control.baud = ODInitSelectTerminalBaud(cfgetispeed(&term),
+            cfgetospeed(&term));
       }
       uinfo=getpwuid(getuid());
-      ODStringCopy(od_control.user_handle, uinfo->pw_name,sizeof(od_control.user_handle));
-      ODStringCopy(od_control.user_name, uinfo->pw_gecos,sizeof(od_control.user_name));
+      ODInitApplyUserInfo(uinfo);
    }
 #else
-   if(bPromptForUserName)
+   if(bPromptForUserName
+#ifdef ODPLAT_WIN32
+      && ODPlatGetWindowsSubsystem() == kODWindowsSubsystemConsole
+      && !od_control.od_silent_mode
+#endif
+      )
    {
       void *pWindow = ODScrnCreateWindow(10, 8, 70, 15,
          od_control.od_local_win_col, od_control.od_prog_name,
@@ -2366,20 +2638,28 @@ malloc_error:
       }
    }
 #endif /* !ODPLAT_NIX */
-#endif /* !ODPLAT_WIN32 */
 
-#ifdef OD_TEXTMODE
+#if defined(OD_TEXTMODE) || defined(ODPLAT_WIN32)
+#ifdef ODPLAT_WIN32
+   if(ODPlatGetWindowsSubsystem() == kODWindowsSubsystemConsole)
+   {
+#endif
    /* Setup sysop status line/function key personality. */
    if(pfSetPersonality == NULL)
    {
 no_default:
       if (od_control.od_default_personality == NULL)
       {
+#ifdef ODPLAT_WIN32
+         pfCurrentPersonality = ODMultiResolvePersonality(NULL);
+#else
          pfCurrentPersonality = pdef_opendoors;
+#endif
       }
       else
       {
-         pfCurrentPersonality = od_control.od_default_personality;
+         pfCurrentPersonality = ODMultiResolvePersonality(
+            od_control.od_default_personality);
       }
       (*pfCurrentPersonality)(20);
       if(bRAStatus)
@@ -2398,7 +2678,10 @@ no_default:
          goto no_default;
       }
    }
-#endif /* OD_TEXTMODE */
+#ifdef ODPLAT_WIN32
+   }
+#endif
+#endif /* OD_TEXTMODE || ODPLAT_WIN32 */
 
    /* If connect speed has not been set yet, then set it to the */
    /* serial port speed.                                        */
@@ -2441,6 +2724,60 @@ no_default:
    {
        (*(OD_COMPONENT_CALLBACK *)od_control.od_logfile)();
    }
+
+#ifdef ODPLAT_WIN32
+   ODStringCopy(szWindowsStartupUserName, od_control.user_name,
+      sizeof(szWindowsStartupUserName));
+   bWindowsStartupCancelled = FALSE;
+
+   if(ODPlatGetWindowsSubsystem() == kODWindowsSubsystemConsole)
+   {
+      /* od_init() is not enclosed by an API boundary, so publish the first
+       * completed console generation explicitly. */
+      ODScrnPublish();
+   }
+   else if(!ODKrnlRefreshUIState())
+   {
+      ODKrnlShutdown();
+      od_control.od_error = ERR_GENERALFAILURE;
+      bODInitialized = FALSE;
+      ODInitError("Unable to initialize the OpenDoors local window state.");
+      return;
+   }
+
+   /* Start the Windows command UI after the application dispatcher is ready. */
+   if(ODPlatGetWindowsSubsystem() == kODWindowsSubsystemGUI
+      && !od_control.od_silent_mode)
+   {
+      HANDLE h = GetModuleHandle(OD_DLL_NAME);
+      if(h == NULL)
+         h = GetModuleHandle(NULL);
+      /* Hand the completed initialization screen to the UI before its first
+       * paint. od_init() itself is not enclosed by an OD_API_EXIT boundary. */
+      ODScrnPublish();
+      Result = ODFrameStart(h, &hFrameThread);
+      if(Result != kODRCSuccess)
+      {
+         ODKrnlShutdown();
+         if(bWindowsStartupCancelled)
+            exit(od_control.od_errorlevel[1]);
+         od_control.od_error = ERR_GENERALFAILURE;
+         bODInitialized = FALSE;
+         ODInitError("Unable to start the OpenDoors local window.");
+         return;
+      }
+
+      if(bPromptForUserName)
+      {
+         ODStringCopy(od_control.user_name, szWindowsStartupUserName,
+            sizeof(od_control.user_name));
+         ODStringCopy(od_control.user_handle, od_control.user_name,
+            sizeof(od_control.user_handle));
+         (void)ODKrnlRefreshUIState();
+      }
+   }
+#endif /* ODPLAT_WIN32 */
+
 }
 
 
@@ -2457,7 +2794,7 @@ no_default:
  */
 void ODInitError(char *pszErrorText)
 {
-#ifdef ODPLAT_DOS
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
    printf("%s: %s\n", od_control.od_prog_name, pszErrorText);
    if(bParsedCmdLine)
    {
@@ -2466,6 +2803,14 @@ void ODInitError(char *pszErrorText)
 #endif
 #ifdef ODPLAT_WIN32
    char *pszMessage;
+   if(ODPlatGetWindowsSubsystem() == kODWindowsSubsystemConsole)
+   {
+      fprintf(stderr, "%s: %s\n", od_control.od_prog_name, pszErrorText);
+      if(bParsedCmdLine)
+         fputs("Use the -HELP command line option for help, or -LOCAL for local mode.\n",
+            stderr);
+      return;
+   }
    if(!bParsedCmdLine ||
       (pszMessage = malloc(strlen(pszErrorText) + 80)) == NULL)
    {
@@ -2510,15 +2855,23 @@ INT_PTR CALLBACK ODInitLoginDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam,
    switch(uMsg)
    {
       case WM_INITDIALOG:
+      {
+         char szProgramName[sizeof(od_control.od_prog_name)];
+         tODUIState State;
+
+         ODKrnlGetUIState(&State);
+         ODStringCopy(szProgramName, State.szProgramName,
+            sizeof(szProgramName));
+
          ODFrameCenterWindowInParent(hwndDlg);
 
          /* Set the title of the dialog box to the name of this program. */
-         SetWindowText(hwndDlg, od_control.od_prog_name);
+         SetWindowText(hwndDlg, szProgramName);
 
          /* The initial text in the user name dialog box should be the */
          /* default user name.                                         */
          SetWindowText(GetDlgItem(hwndDlg, IDC_USER_NAME),
-            od_control.user_name);
+            szWindowsStartupUserName);
 
          /* Limit the number of characters that may be entered as the */
          /* user's name to the maximum size of the string.            */
@@ -2526,25 +2879,28 @@ INT_PTR CALLBACK ODInitLoginDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam,
             sizeof(od_control.user_name), 0L);
 
          return(TRUE);
+      }
 
       case WM_COMMAND:
          /* If a command has been chosen. */
          switch(LOWORD(wParam))
          {
             case IDOK:
+            {
                /* If the OK button has been pressed, obtain the entered */
                /* user name.                                            */
                GetWindowText(GetDlgItem(hwndDlg, IDC_USER_NAME),
-                  od_control.user_name, sizeof(od_control.user_name));
-               ODStringCopy(od_control.user_handle, od_control.user_name,
-                  sizeof(od_control.user_name));
+                  szWindowsStartupUserName,
+                  sizeof(szWindowsStartupUserName));
 
                /* Now close the dialog. */
                EndDialog(hwndDlg, IDOK);
                break;
+            }
 
             case IDCANCEL:
                /* If the Cancel button has benn pressed, close the dialog. */
+               bWindowsStartupCancelled = TRUE;
                EndDialog(hwndDlg, IDCANCEL);
                break;
          }

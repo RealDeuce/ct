@@ -1,6 +1,5 @@
 #include "ct/player_identity_registry.hpp"
-
-#include <botan/hash.h>
+#include "ct/crypto.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -70,9 +69,7 @@ void write_version_one_registry(const std::filesystem::path& path) {
    append_u32(bytes, 1);
    append_u32(bytes, 42);
    bytes.insert(bytes.end(), {'L', 'e', 'g', 'a', 'c', 'y'});
-   auto hash = Botan::HashFunction::create_or_throw("SHA-256");
-   hash->update(bytes);
-   const auto digest = hash->final();
+   const auto digest = ct::sha256(bytes);
    bytes.insert(bytes.end(), digest.begin(), digest.end());
    std::ofstream output(path, std::ios::binary);
    output.write(reinterpret_cast<const char*>(bytes.data()),
@@ -98,9 +95,7 @@ void write_version_two_registry(const std::filesystem::path& path) {
    append_u32(bytes, 1);
    append_u32(bytes, 43);
    bytes.insert(bytes.end(), {'V', '2', ' ', 'U', 's', 'e', 'r', '!'});
-   auto hash = Botan::HashFunction::create_or_throw("SHA-256");
-   hash->update(bytes);
-   const auto digest = hash->final();
+   const auto digest = ct::sha256(bytes);
    bytes.insert(bytes.end(), digest.begin(), digest.end());
    std::ofstream output(path, std::ios::binary);
    output.write(reinterpret_cast<const char*>(bytes.data()),

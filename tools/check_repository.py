@@ -155,6 +155,8 @@ def main() -> int:
         errors.append("vendored OpenDoors contains xpdev material used only by examples")
     provenance = read("client/third_party/opendoors/README.md")
     for required in (
+        "https://github.com/RealDeuce/OpenDoors",
+        "3edf9008a6df2a7d71674f8b43e307d1fc2f721d",
         "https://gitlab.synchro.net/main/sbbs",
         "47feab1e8bf776175b44f40dffebbc9560322e20",
         "aab6ab1aca4246a11ae83f3f7d74d6cefbce6fa9",

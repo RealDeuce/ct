@@ -18,7 +18,7 @@
  *
  *        File: ODFrame.h
  *
- * Description: Defines the public interface to the OpenDoors frame window.
+ * Description: Defines the internal interface to the OpenDoors frame window.
  *              This file is only applicable when building the Win32 version
  *              of OpenDoors.
  *
@@ -39,14 +39,17 @@
 
 #ifdef ODPLAT_WIN32
 
-/* Public frame window functions. */
+/* Internal frame window functions. */
 tODResult ODFrameStart(HANDLE hInstance, tODThreadHandle *phFrameThread);
+BOOL ODFrameRequestShutdown(tODThreadHandle hFrameThread);
+void ODFrameShutdown(tODThreadHandle *phFrameThread);
 INT ODFrameGetUsedClientAtTop(HWND hwndFrame);
 INT ODFrameGetUsedClientAtBottom(HWND hwndFrame);
 BOOL ODFrameTranslateAccelerator(HWND hwndFrame, LPMSG pMsg);
 void ODFrameUpdateCmdUI(void);
 void ODFrameUpdateTimeDisplay(void);
 void ODFrameUpdateWantChat(void);
+void ODFrameControlStateChanged(void);
 void ODFrameCenterWindowInParent(HWND hwndChild);
 
 /* User defined messages that are handled by the frame window. */

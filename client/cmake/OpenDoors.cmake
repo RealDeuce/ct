@@ -1,4 +1,8 @@
+include(CheckSymbolExists)
+
 function(ct_add_opendoors target source_root)
+  check_symbol_exists(vsnprintf "stdio.h" CT_OPENDOORS_HAVE_VSNPRINTF)
+
   set(
     opendoors_sources
     ODAuto.c
@@ -11,6 +15,8 @@ function(ct_add_opendoors target source_root)
     ODEdit.c
     ODEdStr.c
     ODEmu.c
+    ODFormat.c
+    ODFmtFB.c
     ODGetIn.c
     ODGraph.c
     ODInEx1.c
@@ -25,18 +31,24 @@ function(ct_add_opendoors target source_root)
     ODPopup.c
     ODPrntf.c
     ODRA.c
+    ODSafe.c
     ODScrn.c
     ODSpawn.c
     ODStand.c
     ODStat.c
     ODStr.c
+    ODSync.c
     ODUtil.c
     ODWCat.c
     ODWin.c
   )
   list(TRANSFORM opendoors_sources PREPEND "${source_root}/")
   if(WIN32)
-    list(APPEND opendoors_sources "${source_root}/ODFrame.c")
+    list(
+      APPEND opendoors_sources
+      "${source_root}/ODConsole.c"
+      "${source_root}/ODFrame.c"
+    )
   endif()
 
   add_library(${target} STATIC ${opendoors_sources})
@@ -51,12 +63,19 @@ function(ct_add_opendoors target source_root)
     ${target}
     PRIVATE
       HAS_INTTYPES_H
+      $<$<BOOL:${CT_OPENDOORS_HAVE_VSNPRINTF}>:OPENDOORS_HAVE_VSNPRINTF=1>
     PUBLIC
       $<$<PLATFORM_ID:Windows>:OD_WIN32_STATIC>
   )
+  if(APPLE)
+    target_compile_definitions(${target} PRIVATE __unix__)
+  endif()
   target_include_directories(${target} PUBLIC "${source_root}")
   if(WIN32)
-    target_link_libraries(${target} PRIVATE wsock32 gdi32 comctl32)
+    target_link_libraries(
+      ${target}
+      PRIVATE ws2_32 user32 gdi32 advapi32 shell32 uuid comctl32
+    )
   else()
     target_link_libraries(${target} PUBLIC Threads::Threads)
   endif()

@@ -5,9 +5,9 @@ if(WIN32)
   enable_language(RC)
 endif()
 
-# The client core is shared on every platform and privately embeds static
-# fallback dependencies. Ensure in-tree Botan and Cap'n Proto builds are
-# suitable for that link even when this is an ordinary non-portable build.
+# The TLS/cryptography transport is shared on every platform and privately
+# embeds static Botan. Ensure in-tree dependencies are suitable for that link
+# even when this is an ordinary non-portable build.
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 include(CTest)
@@ -420,8 +420,51 @@ target_compile_options(
 )
 
 add_library(
-  ct-client-core
+  ct-client-transport
   SHARED
+  src/client_transport.cpp
+)
+target_compile_features(ct-client-transport PUBLIC cxx_std_20)
+target_include_directories(
+  ct-client-transport
+  PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
+)
+target_compile_definitions(
+  ct-client-transport
+  PRIVATE CT_CLIENT_TRANSPORT_BUILD
+)
+target_link_libraries(ct-client-transport PRIVATE ${CT_BOTAN_TARGET})
+if(WIN32)
+  target_link_directories(ct-client-transport PRIVATE ${BOTAN_LIBRARY_DIRS})
+  target_link_libraries(ct-client-transport PRIVATE advapi32 ws2_32)
+endif()
+target_compile_options(
+  ct-client-transport
+  PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Werror
+)
+set_target_properties(
+  ct-client-transport
+  PROPERTIES
+    OUTPUT_NAME cepheus-trader-client-core
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN YES
+)
+if(WIN32)
+  set_target_properties(ct-client-transport PROPERTIES PREFIX "")
+endif()
+if(MINGW)
+  # Botan and the DLL's GNU runtime are implementation details. The only
+  # exported boundary is the explicitly annotated ct_client_* C API.
+  target_link_options(ct-client-transport PRIVATE "-Wl,--exclude-libs,ALL")
+endif()
+
+add_library(
+  ct-client-core
+  STATIC
   src/admin_protocol.cpp
   src/bbs_config.cpp
   src/bbs_credential.cpp
@@ -444,12 +487,8 @@ target_link_libraries(
   PRIVATE
     CapnProto::capnp
     ct-display-format
-    ${CT_BOTAN_TARGET}
+    ct-client-transport
 )
-if(WIN32)
-  target_link_directories(ct-client-core PRIVATE ${BOTAN_LIBRARY_DIRS})
-  target_link_libraries(ct-client-core PRIVATE advapi32 ws2_32)
-endif()
 target_compile_options(
   ct-client-core
   PRIVATE
@@ -458,21 +497,6 @@ target_compile_options(
     -Wpedantic
     -Werror
 )
-set_target_properties(
-  ct-client-core
-  PROPERTIES
-    OUTPUT_NAME cepheus-trader-client-core
-    WINDOWS_EXPORT_ALL_SYMBOLS ON
-)
-if(WIN32)
-  set_target_properties(ct-client-core PROPERTIES PREFIX "")
-endif()
-if(MINGW)
-  # MinGW auto-exports symbols pulled from static archives unless told not to.
-  # Keep Botan, Cap'n Proto/KJ, and the static GNU runtime private to the DLL;
-  # otherwise their import symbols collide with the executables' runtimes.
-  target_link_options(ct-client-core PRIVATE "-Wl,--exclude-libs,ALL")
-endif()
 
 add_library(
   ct-door-presentation
@@ -558,7 +582,7 @@ if(BUILD_TESTING)
   )
   target_link_libraries(
     ct-player-identity-registry-test
-    PRIVATE ct-client-core ${CT_BOTAN_TARGET}
+    PRIVATE ct-client-core
   )
   target_compile_options(
     ct-player-identity-registry-test
@@ -613,6 +637,24 @@ if(BUILD_TESTING)
   add_test(
     NAME ct-door-presentation
     COMMAND ct-door-presentation-test
+  )
+
+  add_executable(
+    ct-transport-boundary-test
+    tests/transport_boundary_test.cpp
+  )
+  target_link_libraries(ct-transport-boundary-test PRIVATE ct-client-core)
+  target_compile_options(
+    ct-transport-boundary-test
+    PRIVATE
+      -Wall
+      -Wextra
+      -Wpedantic
+      -Werror
+  )
+  add_test(
+    NAME ct-transport-boundary
+    COMMAND ct-transport-boundary-test
   )
 endif()
 
@@ -675,7 +717,7 @@ if(CT_PORTABLE_CLIENT AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   foreach(
     CT_PORTABLE_TARGET
     IN ITEMS
-      ct-client-core
+      ct-client-transport
       cepheus-trader-door
       cepheus-trader-sysop
   )
@@ -687,6 +729,15 @@ if(CT_PORTABLE_CLIENT AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       target_link_options(${CT_PORTABLE_TARGET} PRIVATE -static)
     endif()
   endforeach()
+  if(TARGET ct-transport-boundary-test)
+    target_link_options(
+      ct-transport-boundary-test
+      PRIVATE -static-libgcc -static-libstdc++
+    )
+    if(WIN32)
+      target_link_options(ct-transport-boundary-test PRIVATE -static)
+    endif()
+  endif()
 endif()
 
 if(APPLE)
@@ -723,7 +774,7 @@ configure_file(
 
 install(
   TARGETS
-    ct-client-core
+    ct-client-transport
     cepheus-trader-door
     cepheus-trader-sysop
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"

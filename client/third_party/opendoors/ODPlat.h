@@ -51,13 +51,6 @@
 
 #ifdef ODPLAT_NIX
 #include <sys/time.h>
-#ifdef OD_MULTITHREADED
-#include <semaphore.h>
-#include <pthread.h>
-#ifdef __FreeBSD__
-#include <pthread_np.h>
-#endif
-#endif
 #endif
 
 #ifdef ODPLAT_WIN32
@@ -66,6 +59,17 @@
 
 /* odplat.c initialization function prototype */
 void ODPlatInit(void);
+
+#ifdef ODPLAT_WIN32
+typedef enum
+{
+   kODWindowsSubsystemUnknown,
+   kODWindowsSubsystemGUI,
+   kODWindowsSubsystemConsole
+} tODWindowsSubsystem;
+
+tODWindowsSubsystem ODPlatGetWindowsSubsystem(void);
+#endif
 
 
 /* ========================================================================= */
@@ -78,9 +82,6 @@ typedef struct
 #ifdef ODPLAT_DOS
    clock_t Start;
    clock_t Duration;
-#elif defined(ODPLAT_NIX)
-   time_t Start;
-   tODMilliSec Duration;
 #else /* !ODPLAT_DOS */
    tODMilliSec Start;
    tODMilliSec Duration;
@@ -93,62 +94,33 @@ BOOL ODTimerElapsed(tODTimer *pTimer);
 void ODTimerWaitForElapse(tODTimer *pTimer);
 tODMilliSec ODTimerLeft(tODTimer *pTimer);
 
+/* Session-relative wall-clock functions. */
+void ODSessionTimeInitialize(void);
+void ODSessionTimeGet(DWORD *pdwSeconds, WORD *pwMilliseconds);
+
 
 /* ========================================================================= */
 /* Multithreading and synchronization support.                               */
 /* ========================================================================= */
 
-#ifdef OD_MULTITHREADED
+#ifdef OD_THREAD_SUPPORT
 
 /* Thread handle data type. */
-#ifdef ODPLAT_WIN32
 typedef HANDLE tODThreadHandle;
-#endif /* ODPLAT_WIN32 */
-#ifdef ODPLAT_NIX
-typedef pthread_t tODThreadHandle;
-#endif
-
-/* Thread priority enumeration. */
-typedef enum
-{
-   OD_PRIORITY_LOWEST,
-   OD_PRIORITY_BELOW_NORMAL,
-   OD_PRIORITY_NORMAL,
-   OD_PRIORITY_ABOVE_NORMAL,
-   OD_PRIORITY_HIGHEST
-} tODThreadPriority;
 
 /* Thread start proceedure type. */
-#ifdef ODPLAT_WIN32
 #define OD_THREAD_FUNC WINAPI
-#else
-#define OD_THREAD_FUNC
-#endif
-// This was in ODPLAT_WIN32, but let's not do that garbage...
 typedef DWORD (OD_THREAD_FUNC ptODThreadProc)(void *);
 
-/* Thread creation, temination and suspension. */
+/* Cooperative thread creation and joining. */
 tODResult ODThreadCreate(tODThreadHandle *phThread,
    ptODThreadProc *pfThreadProc, void *pThreadParam);
-void ODThreadExit();
-tODResult ODThreadTerminate(tODThreadHandle hThread);
-tODResult ODThreadSuspend(tODThreadHandle hThread);
-tODResult ODThreadResume(tODThreadHandle hThread);
-tODResult ODThreadSetPriority(tODThreadHandle hThread,
-   tODThreadPriority ThreadPriority);
 void ODThreadWaitForExit(tODThreadHandle hThread);
-tODThreadHandle ODThreadGetCurrent(void);
+void ODThreadSleep(tODMilliSec Milliseconds);
 
 
 /* Semaphore handle data type. */
-#ifdef ODPLAT_WIN32
 typedef HANDLE tODSemaphoreHandle;
-#endif /* ODPLAT_WIN32 */
-
-#ifdef ODPLAT_NIX
-// Ugh.
-typedef sem_t * tODSemaphoreHandle;
-#endif /* ODPLAT_WIN32 */
 
 /* Semaphore manipulation functions. */
 tODResult ODSemaphoreAlloc(tODSemaphoreHandle *phSemaphore, INT nInitialCount,
@@ -157,9 +129,10 @@ void ODSemaphoreFree(tODSemaphoreHandle hSemaphore);
 void ODSemaphoreUp(tODSemaphoreHandle hSemaphore, INT nIncrementBy);
 tODResult ODSemaphoreDown(tODSemaphoreHandle hSemaphore, tODMilliSec Timeout);
 
-#endif /* OD_MULTITHREADED */
+#endif /* OD_THREAD_SUPPORT */
 
 void ODProcessExit(INT nExitCode);
+void ODPlatRingBell(void);
 
 
 /* ========================================================================= */
@@ -196,8 +169,14 @@ typedef tODHandle tODDirHandle;
 #define DIR_ATTRIB_DIREC    0x10
 #define DIR_ATTRIB_ARCH     0x20
 
+/* Directory searches follow DOS find-first attribute rules. Normal files are
+ * always included; HIDDEN, SYSTEM, LABEL, and DIREC opt those entry types into
+ * a search; RDONLY and ARCH do not affect whether an entry matches. */
+
 typedef struct
 {
+   /* Entry basename without a directory prefix. A name too long for this
+    * array is truncated and remains null-terminated. */
    char szFileName[DIR_FILENAME_SIZE];
    WORD wAttributes;
    time_t LastWriteTime;
@@ -208,6 +187,7 @@ typedef struct
 tODResult ODDirOpen(CONST char *pszPath, WORD wAttributes, tODDirHandle *phDir);
 tODResult ODDirRead(tODDirHandle hDir, tODDirEntry *pDirEntry);
 void ODDirClose(tODDirHandle hDir);
+BOOL ODDirAttributesMatch(WORD wEntryAttributes, WORD wSearchAttributes);
 void ODDirChangeCurrent(char *pszPath);
 void ODDirGetCurrent(char *pszPath, INT nMaxPathChars);
 
@@ -216,6 +196,6 @@ void ODDirGetCurrent(char *pszPath, INT nMaxPathChars);
 /* Miscellaneous Functions.                                                  */
 /* ========================================================================= */
 tODResult ODFileDelete(CONST char *pszPath);
-BOOL ODFileAccessMode(char *pszFilename, int nAccessMode);
+BOOL ODFileAccessMode(const char *pszFilename, int nAccessMode);
 
 #endif /* !_INC_ODPLAT */

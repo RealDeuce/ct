@@ -42,18 +42,26 @@
 #define _INC_ODINEX
 
 #include "ODPlat.h"
+#ifdef ODPLAT_NIX
+#include <pwd.h>
+#include <termios.h>
+#endif
 
 /* Drop file structures. */
 
-/* Force byte alignment, if possible */
+/* EXITINFO.BBS records use the byte-packed DOS layout. */
 #ifdef __TURBOC__
 #if(__TURBOC__ >= 0x295)
 #pragma option -a-
 #endif /* __TURBOC__ >= 0x295 */
 #endif /* __TURBOC__ */
-#ifdef _MSC_VER
-#pragma pack(1)
-#endif /* _MSC_VER */
+#if defined(__WATCOMC__)
+#pragma pack( __push, 1 )
+#elif defined(_MSC_VER)
+#pragma pack(push, 1)
+#elif defined(__GNUC__) || defined(__clang__)
+#pragma pack(push, 1)
+#endif
 
 typedef struct
 {
@@ -272,6 +280,18 @@ typedef struct
    char extr_space[100];
 } tExtendedExitInfo;
 
+/* Only the three EXITINFO.BBS records above are byte packed. */
+#ifdef __TURBOC__
+#if(__TURBOC__ >= 0x295)
+#pragma option -a
+#endif /* __TURBOC__ >= 0x295 */
+#endif /* __TURBOC__ */
+#if defined(__WATCOMC__)
+#pragma pack( __pop )
+#elif defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma pack(pop)
+#endif
+
 struct _pcbsys
 {
    char display[2];       /* "-1" = On, " 0" = Off */
@@ -381,21 +401,27 @@ struct _userssysrec
    DWORD    MsgsLeft;          /* Number of messages the user has left in PCB */
 };
 
-/* Restore original structure alignment, if possible. */
-#ifdef _MSC_VER
-#pragma pack()
-#endif /* _MSC_VER */
-
-
 /* od_init() and od_exit() global helper functons. */
 #ifndef ODPLAT_WIN32
 void ODAtExitCallback(void);
 #endif /* !ODPLAT_WIN32 */
 INT ODWriteExitInfoPrimitive(FILE *pfDropFile, INT nCount);
 BOOL ODReadExitInfoPrimitive(FILE *pfDropFile, INT nCount);
+void ODExitInfoPrimitiveEndian(tExitInfoRecord *pRecord,
+   BOOL bFromLittleEndian);
+void ODExitInfoExtendedEndian(tExtendedExitInfo *pRecord,
+   BOOL bFromLittleEndian);
+void ODExitInfoRA2Endian(tRA2ExitInfoRecord *pRecord,
+   BOOL bFromLittleEndian);
+BOOL ODCALL ODGetElapsedMinutes(DWORD *pdwMinutes, time_t nStartTime,
+   time_t nEndTime);
 INT ODSearchForDropFile(char **papszFileNames, INT nNumFileNames,
    char *pszFound, char *pszDirectory);
 void ODInitError(char *pszErrorText);
+#ifdef ODPLAT_NIX
+DWORD ODInitSelectTerminalBaud(speed_t nInputSpeed, speed_t nOutputSpeed);
+void ODInitApplyUserInfo(const struct passwd *pUserInfo);
+#endif
 #ifdef ODPLAT_WIN32
 INT_PTR CALLBACK ODInitLoginDlgProc(HWND hwndDlg, UINT uMsg, WPARAM wParam,
    LPARAM lParam);

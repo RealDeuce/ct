@@ -50,6 +50,7 @@
 #include "ODCom.h"
 #include "ODPlat.h"
 #include "ODKrnl.h"
+#include "ODInQue.h"
 #include "ODUtil.h"
 
 
@@ -62,12 +63,15 @@
 
 
 /* Local private helper function prototypes. */
-static void ODListFilenameMerge(char *pszEntirePath, const char *pszDrive,
-   const char *pszDir, const char *pszName, const char *pszExtension);
-static char *ODListGetFirstWord(char *pszInStr, char *pszOutStr);
+static BOOL ODListFilenameMerge(char *pszEntirePath, size_t nEntirePathSize,
+   const char *pszDrive, const char *pszDir, const char *pszName,
+   const char *pszExtension);
+static BOOL ODListGetFirstWord(char *pszInStr, char *pszOutStr,
+   size_t nOutSize);
 static char *ODListGetRemainingWords(char *pszInStr);
 static INT ODListFilenameSplit(const char *pszEntirePath, char *pszDrive,
-   char *pszDir, char *pszName, char *pszExtension);
+   size_t nDriveSize, char *pszDir, size_t nDirSize, char *pszName,
+   size_t nNameSize, char *pszExtension, size_t nExtensionSize);
 
 
 /* ----------------------------------------------------------------------------
@@ -78,9 +82,13 @@ static INT ODListFilenameSplit(const char *pszEntirePath, char *pszDrive,
  *
  * Parameters: pszFileSpec - Directory name where the FILES.BBS file can be
  *                           found, or full path and filename of a FILES.BBS
- *                           format index file.
+ *                           format index file. This string may contain no more
+ *                           than 99 characters.
  *
- *     Return: TRUE on success or FALSE on failure.
+ *     Return: TRUE on success. Returns FALSE with od_control.od_error set to
+ *             ERR_LIMIT if pszFileSpec, an index filename token, or a resolved
+ *             entry path is too long, or ERR_FILEOPEN if the directory or
+ *             index file cannot be opened.
  */
 ODAPIDEF BOOL ODCALL od_list_files(char *pszFileSpec)
 {
@@ -95,6 +103,7 @@ ODAPIDEF BOOL ODCALL od_list_files(char *pszFileSpec)
    static char szBaseName[9];
    static char szExtension[5];
    static char szDirectory[100];
+   static char szResolvedPath[100];
    INT nFilenameInfo;
    FILE *pfFilesBBS;
    static char *pszCurrent;
@@ -102,12 +111,16 @@ ODAPIDEF BOOL ODCALL od_list_files(char *pszFileSpec)
    BOOL bUseNextLine = TRUE;
    tODDirHandle hDir;
    tODDirEntry DirEntry;
+   size_t nLineLength;
+   BOOL bLineComplete;
+   char chControlKey;
 
    /* Log function entry if running in trace mode. */
    TRACE(TRACE_API, "od_list_files()");
 
    /* Initialize OpenDoors if it hasn't already been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(FALSE);
 
    OD_API_ENTRY();
 
@@ -129,8 +142,14 @@ ODAPIDEF BOOL ODCALL od_list_files(char *pszFileSpec)
    }
    else
    {
-      strcpy(szODWorkString, pszFileSpec);
-      strcpy(szDirectory, pszFileSpec);
+      if(strlen(pszFileSpec) >= sizeof(szDirectory))
+      {
+         od_control.od_error = ERR_LIMIT;
+         OD_API_EXIT();
+         return(FALSE);
+      }
+      ODStringCopy(szODWorkString, pszFileSpec, sizeof(szODWorkString));
+      ODStringCopy(szDirectory, pszFileSpec, sizeof(szDirectory));
       if(szODWorkString[strlen(szODWorkString) - 1] == DIRSEP)
       {
          szODWorkString[strlen(szODWorkString) - 1] = '\0';
@@ -161,8 +180,13 @@ ODAPIDEF BOOL ODCALL od_list_files(char *pszFileSpec)
    {
       /* Append FILES.BBS to directory name & open. */
       bIsDir = TRUE;
-      ODMakeFilename(szODWorkString, szODWorkString, "FILES.BBS",
-         sizeof(szODWorkString));
+      if(ODMakeFilename(szODWorkString, szODWorkString, "FILES.BBS",
+         sizeof(szODWorkString)) != kODRCSuccess)
+      {
+         od_control.od_error = ERR_LIMIT;
+         OD_API_EXIT();
+         return(FALSE);
+      }
       if((pfFilesBBS = fopen(szODWorkString, "r")) == NULL)
       {
          od_control.od_error = ERR_FILEOPEN;
@@ -185,47 +209,37 @@ ODAPIDEF BOOL ODCALL od_list_files(char *pszFileSpec)
 
 
    /* Ignore previously pressed control keys. */
-   chLastControlKey = 0;
+   (void)ODInQueueExchangeLastControlKey(hODInputQueue, 0);
 
 
    /* Loop until the end of the FILES.BBS file has been reached. */
    for(;;)
    {
       if(fgets(szLine, 512, pfFilesBBS) == NULL) break;
+      nLineLength = ODStringNormalizeLine(szLine, &bLineComplete);
 
       if(!bUseNextLine)
       {
-         if(szLine[strlen(szLine) - 1] == '\n')
+         if(bLineComplete)
          {
             bUseNextLine = TRUE;
          }
          continue;
       }
 
-      if(szLine[strlen(szLine) - 1] == '\n')
-      {
-         szLine[strlen(szLine) - 1] = '\0';
-      }
-      else
+      if(!bLineComplete)
       {
          bUseNextLine = FALSE;
       }
-      if(szLine[strlen(szLine) - 1] == '\r')
-      {
-         szLine[strlen(szLine) - 1] = '\0';
-      }
 
-      if(chLastControlKey != 0)
+      chControlKey = ODInQueueExchangeLastControlKey(hODInputQueue, 0);
+      if(chControlKey != 0)
       {
-         switch(chLastControlKey)
+         switch(chControlKey)
          {
             case 's':
                if(od_control.od_list_stop)
                {
-                  if(od_control.baud)
-                  {
-                     ODComClearOutbound(hSerialPort);
-                  }
                   od_clear_keybuffer();
                   fclose(pfFilesBBS);
                   OD_API_EXIT();
@@ -238,13 +252,24 @@ ODAPIDEF BOOL ODCALL od_list_files(char *pszFileSpec)
                {
                   od_clear_keybuffer();
                   od_get_key(TRUE);
+                  if(!bODInitialized)
+                  {
+                     fclose(pfFilesBBS);
+                     OD_API_EXIT();
+                     return(TRUE);
+                  }
                }
          }
-         chLastControlKey = 0;
+      }
+
+      /* The first fragment of an overlong line is incomplete too. */
+      if(!bLineComplete)
+      {
+         continue;
       }
 
       /* Determine whether or not this is a comment line. */
-      if(szLine[0] == ' ' || strlen(szLine) == 0)
+      if(szLine[0] == ' ' || nLineLength == 0)
 
       {
          /* If so, display the line in comment color. */
@@ -258,31 +283,69 @@ ODAPIDEF BOOL ODCALL od_list_files(char *pszFileSpec)
       else                             
       {
          /* Extract the first word of the line, */
-         ODListGetFirstWord(szLine, szFilename);
+         if(!ODListGetFirstWord(szLine, szFilename, sizeof(szFilename)))
+         {
+            fclose(pfFilesBBS);
+            od_control.od_error = ERR_LIMIT;
+            OD_API_EXIT();
+            return(FALSE);
+         }
 
          /* And extract the filename. */
-         nFilenameInfo = ODListFilenameSplit(szFilename, szDrive, szDir,
-            szBaseName, szExtension);
+         nFilenameInfo = ODListFilenameSplit(szFilename, szDrive,
+            sizeof(szDrive), szDir, sizeof(szDir), szBaseName,
+            sizeof(szBaseName), szExtension, sizeof(szExtension));
+         if(nFilenameInfo < 0)
+         {
+            fclose(pfFilesBBS);
+            od_control.od_error = ERR_LIMIT;
+            OD_API_EXIT();
+            return(FALSE);
+         }
          if(!((nFilenameInfo & DRIVE) || (nFilenameInfo & DIRECTORY)))
          {
             if(bIsDir)
             {
-               ODMakeFilename(szDirectory, szDirectory, szFilename,
-                  sizeof(szDirectory));
-               strcpy(szFilename, szDirectory);
+               if(ODMakeFilename(szResolvedPath, szDirectory, szFilename,
+                  sizeof(szResolvedPath)) != kODRCSuccess)
+               {
+                  fclose(pfFilesBBS);
+                  od_control.od_error = ERR_LIMIT;
+                  OD_API_EXIT();
+                  return(FALSE);
+               }
             }
             else
             {
-               ODListFilenameSplit(szDirectory, szDrive, szDir, szTemp1,
-                  szTemp2);
-               ODListFilenameMerge(szFilename, szDrive, szDir, szBaseName,
-                  szExtension);
+               if(ODListFilenameSplit(szDirectory, szDrive, sizeof(szDrive),
+                  szDir, sizeof(szDir), szTemp1, sizeof(szTemp1), szTemp2,
+                  sizeof(szTemp2)) < 0)
+               {
+                  fclose(pfFilesBBS);
+                  od_control.od_error = ERR_LIMIT;
+                  OD_API_EXIT();
+                  return(FALSE);
+               }
+               if(!ODListFilenameMerge(szResolvedPath,
+                  sizeof(szResolvedPath), szDrive, szDir, szBaseName,
+                  szExtension))
+               {
+                  fclose(pfFilesBBS);
+                  od_control.od_error = ERR_LIMIT;
+                  OD_API_EXIT();
+                  return(FALSE);
+               }
             }
+         }
+         else
+         {
+            ODStringCopy(szResolvedPath, szFilename,
+               sizeof(szResolvedPath));
          }
 
          /* Search for the filespec in directory. */
-         if(ODDirOpen(szFilename, DIR_ATTRIB_ARCH | DIR_ATTRIB_RDONLY, &hDir)
-            == kODRCSuccess)
+         if(ODDirOpen(szResolvedPath, DIR_ATTRIB_ARCH | DIR_ATTRIB_RDONLY,
+            &hDir) == kODRCSuccess)
          {
             /* Display information on every file that matches. */
             while(ODDirRead(hDir, &DirEntry) == kODRCSuccess)
@@ -311,7 +374,14 @@ ODAPIDEF BOOL ODCALL od_list_files(char *pszFileSpec)
          /* Otherwise, indicate that the file is "Offline". */
          else
          {
-            ODListFilenameMerge(szFilename, "", "", szBaseName, szExtension);
+            if(!ODListFilenameMerge(szFilename, sizeof(szFilename), "", "",
+               szBaseName, szExtension))
+            {
+               fclose(pfFilesBBS);
+               od_control.od_error = ERR_LIMIT;
+               OD_API_EXIT();
+               return(FALSE);
+            }
             od_set_attrib(od_control.od_list_name_col);
             od_printf("%-12.12s ", szFilename);
             od_set_attrib(od_control.od_list_offline_col);
@@ -354,8 +424,10 @@ ODAPIDEF BOOL ODCALL od_list_files(char *pszFileSpec)
  * Builds a fully-qualified path name from the provided path component
  * strings.
  *
- * Parameters: pszEntirePath - Pointer to the destination string where the
- *                             generated path should be stored.
+ * Parameters: pszEntirePath  - Pointer to the destination string where the
+ *                              generated path should be stored.
+ *
+ *             nEntirePathSize - Size of the destination string in bytes.
  *
  *             pszDrive      - Pointer to the drive string.
  *
@@ -365,31 +437,41 @@ ODAPIDEF BOOL ODCALL od_list_files(char *pszFileSpec)
  *
  *             pszExtension  - Pointer to the extension name string.
  *
- *     Return: void
+ *     Return: TRUE if the complete path fits, or FALSE otherwise.
  */
-static void ODListFilenameMerge(char *pszEntirePath, const char *pszDrive,
-   const char *pszDir, const char *pszName, const char *pszExtension)
+static BOOL ODListFilenameMerge(char *pszEntirePath, size_t nEntirePathSize,
+   const char *pszDrive, const char *pszDir, const char *pszName,
+   const char *pszExtension)
 {
-   if(pszEntirePath == NULL) return;
+   const char *apszComponents[4];
+   size_t nPathLength = 0;
+   size_t nComponentLength;
+   INT nComponent;
+
+   if(pszEntirePath == NULL || nEntirePathSize == 0) return(FALSE);
 
    pszEntirePath[0] = '\0';
 
-   if(pszDrive != NULL)
+   apszComponents[0] = pszDrive;
+   apszComponents[1] = pszDir;
+   apszComponents[2] = pszName;
+   apszComponents[3] = pszExtension;
+   for(nComponent = 0; nComponent < 4; ++nComponent)
    {
-      strcpy(pszEntirePath, pszDrive);
+      if(apszComponents[nComponent] == NULL) continue;
+      nComponentLength = strlen(apszComponents[nComponent]);
+      if(nComponentLength > nEntirePathSize - nPathLength - 1)
+      {
+         pszEntirePath[0] = '\0';
+         return(FALSE);
+      }
+      memcpy(pszEntirePath + nPathLength, apszComponents[nComponent],
+         nComponentLength);
+      nPathLength += nComponentLength;
+      pszEntirePath[nPathLength] = '\0';
    }
-   if(pszDir != NULL)
-   {
-      strcat(pszEntirePath, pszDir);
-   }
-   if(pszName != NULL)
-   {
-      strcat(pszEntirePath,pszName);
-   }
-   if(pszExtension != NULL)
-   {
-      strcat(pszEntirePath,pszExtension);
-   }
+
+   return(TRUE);
 }
 
 
@@ -397,30 +479,43 @@ static void ODListFilenameMerge(char *pszEntirePath, const char *pszDrive,
  * ODListFilenameSplit()                               *** PRIVATE FUNCTION ***
  *
  * Splits the provided path string into drive, directory name, file base name
- * and file extension components.
+ * and file extension components. Drive prefixes are recognized on DOS and
+ * Windows. On UNIX, the drive component is empty and a colon is part of the
+ * filename.
  *
  * Parameters: pszEntirePath - A string containing the path to split.
  *
- *             pszDrive      - A string where the drive letter should be stored.
+ *             pszDrive      - A string where the drive prefix should be
+ *                             stored, or an empty string on UNIX.
+ *
+ *             nDriveSize    - Size of the drive string in bytes.
  *
  *             pszDir        - A string where the directory name should be
  *                             stored.
  *
+ *             nDirSize      - Size of the directory string in bytes.
+ *
  *             pszName       - A string where the base filename should be
  *                             stored.
+ *
+ *             nNameSize     - Size of the base filename string in bytes.
  *
  *             pszExtension  - A string where the filename extension should be
  *                             stored.
  *
- *     Return: One or more flags indicating which components where found in the
- *             provided path name.
+ *             nExtensionSize - Size of the extension string in bytes.
+ *
+ *     Return: One or more flags indicating which components were found in the
+ *             provided path name, or -1 if an output component does not fit.
  */
 static INT ODListFilenameSplit(const char *pszEntirePath, char *pszDrive,
-   char *pszDir, char *pszName, char *pszExtension)
+   size_t nDriveSize, char *pszDir, size_t nDirSize, char *pszName,
+   size_t nNameSize, char *pszExtension, size_t nExtensionSize)
 {
    char *pchCurrentPos;
    char *pchStart;
-   BYTE btSize;
+   size_t nComponentLength;
+   size_t nCopyLength;
    INT nToReturn;
 
    ASSERT(pszEntirePath != NULL);
@@ -428,23 +523,32 @@ static INT ODListFilenameSplit(const char *pszEntirePath, char *pszDrive,
    ASSERT(pszDir != NULL);
    ASSERT(pszName != NULL);
    ASSERT(pszExtension != NULL);
+   ASSERT(nDriveSize > 0);
+   ASSERT(nDirSize > 0);
+   ASSERT(nNameSize > 0);
+   ASSERT(nExtensionSize > 0);
 
    pchStart = (char *)pszEntirePath;
    nToReturn = 0;
 
+#ifdef ODPLAT_NIX
+   pszDrive[0] = '\0';
+#else
    if((pchCurrentPos = strrchr(pchStart,':')) == NULL)
    {
       pszDrive[0] = '\0';
    }
    else
    {
-      btSize = (int)(pchCurrentPos - pchStart) + 1;
-      if(btSize > 2) btSize = 2;
-      strncpy(pszDrive, pchStart, btSize);
-      pszDrive[btSize] = '\0';
+      nCopyLength = (size_t)(pchCurrentPos - pchStart) + 1;
+      if(nCopyLength > 2) nCopyLength = 2;
+      if(nCopyLength >= nDriveSize) return(-1);
+      memcpy(pszDrive, pchStart, nCopyLength);
+      pszDrive[nCopyLength] = '\0';
       pchStart = pchCurrentPos + 1;
       nToReturn |= DRIVE;
    }
+#endif
 
    if((pchCurrentPos = strrchr(pchStart, DIRSEP))==NULL)
    {
@@ -452,9 +556,10 @@ static INT ODListFilenameSplit(const char *pszEntirePath, char *pszDrive,
    }
    else
    {
-      btSize = (int)(pchCurrentPos - pchStart) + 1;
-      strncpy(pszDir,pchStart,btSize);
-      pszDir[btSize] = '\0';
+      nComponentLength = (size_t)(pchCurrentPos - pchStart) + 1;
+      if(nComponentLength >= nDirSize) return(-1);
+      memcpy(pszDir, pchStart, nComponentLength);
+      pszDir[nComponentLength] = '\0';
       pchStart = pchCurrentPos + 1;
       nToReturn |= DIRECTORY;
    }
@@ -474,10 +579,11 @@ static INT ODListFilenameSplit(const char *pszEntirePath, char *pszDrive,
       else
       {
          pszExtension[0] = '\0';
-         btSize = strlen(pchStart);
-         if (btSize > 8) btSize = 0;
-         strncpy(pszName, pchStart, btSize);
-         pszName[btSize] = '\0';
+         nCopyLength = strlen(pchStart);
+         if(nCopyLength > 8) nCopyLength = 8;
+         if(nCopyLength >= nNameSize) return(-1);
+         memcpy(pszName, pchStart, nCopyLength);
+         pszName[nCopyLength] = '\0';
          nToReturn |= FILENAME;
       }
    }
@@ -486,15 +592,17 @@ static INT ODListFilenameSplit(const char *pszEntirePath, char *pszDrive,
       nToReturn |= FILENAME;
       nToReturn |= EXTENSION;
 
-      btSize = (int)(pchCurrentPos - pchStart);
+      nCopyLength = (size_t)(pchCurrentPos - pchStart);
+      if(nCopyLength > 8) nCopyLength = 8;
+      if(nCopyLength >= nNameSize) return(-1);
+      memcpy(pszName, pchStart, nCopyLength);
+      pszName[nCopyLength] = '\0';
 
-      if(btSize > 8) btSize = 8;
-
-      strncpy(pszName, pchStart, btSize);
-      pszName[btSize] = '\0';
-
-      strncpy(pszExtension, pchCurrentPos, 4);
-      pszExtension[btSize]='\0';
+      nCopyLength = strlen(pchCurrentPos);
+      if(nCopyLength > 4) nCopyLength = 4;
+      if(nCopyLength >= nExtensionSize) return(-1);
+      memcpy(pszExtension, pchCurrentPos, nCopyLength);
+      pszExtension[nCopyLength] = '\0';
    }
 
    return(nToReturn);
@@ -509,25 +617,35 @@ static INT ODListFilenameSplit(const char *pszEntirePath, char *pszDrive,
  *
  * Parameters: pszInStr  - String to look in.
  *
- *             pszOutStr - Buffer to store result in. This buffer should be at
- *                         least as long as the pszInStr string.
+ *             pszOutStr - Buffer to store the first word.
  *
- *     Return: Pointer to the pszOutStr that was passed in.
+ *             nOutSize  - Size of the output buffer in bytes.
+ *
+ *     Return: TRUE if the complete word fits, or FALSE if it is too long.
  */
-static char *ODListGetFirstWord(char *pszInStr, char *pszOutStr)
+static BOOL ODListGetFirstWord(char *pszInStr, char *pszOutStr,
+   size_t nOutSize)
 {
    char *pchOut = (char *)pszOutStr;
+   size_t nRemaining = nOutSize;
 
    ASSERT(pszInStr != NULL);
    ASSERT(pszOutStr != NULL);
+   ASSERT(nOutSize > 0);
 
    while(*pszInStr && *pszInStr != ' ')
    {
+      if(nRemaining <= 1)
+      {
+         pszOutStr[0] = '\0';
+         return(FALSE);
+      }
       *pchOut++ = *pszInStr++;
+      --nRemaining;
    }
    *pchOut = '\0';
 
-   return(pszOutStr);
+   return(TRUE);
 }
 
 

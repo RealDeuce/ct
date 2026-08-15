@@ -62,8 +62,14 @@
 #include <ctype.h>
 #include <time.h>
 #include <limits.h>
-
 #include "OpenDoor.h"
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
+#include <conio.h>
+#include <dos.h>
+#ifdef __WATCOMC__
+#include <i86.h>
+#endif
+#endif
 #ifdef ODPLAT_NIX
 #include <sys/ioctl.h>
 #include <signal.h>
@@ -74,14 +80,19 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #endif
-#ifndef ODPLAT_WIN32
+#ifdef ODPLAT_NIX
 #include <poll.h>
 #endif
 #include "ODCore.h"
 #include "ODGen.h"
 #include "ODPlat.h"
+#include "ODSafe.h"
 #include "ODCom.h"
+#include "ODSync.h"
 #include "ODUtil.h"
+#ifdef ODPLAT_DOS32
+#include "OD32Foss.h"
+#endif
 
 
 /* The following define determines whether serial port function should */
@@ -107,6 +118,10 @@
 #define INCLUDE_FOSSIL_COM                      /* INT 14h FOSSIL-based I/O. */
 #define INCLUDE_UART_COM                   /* Internal interrupt driven I/O. */
 #endif /* ODPLAT_DOS */
+#ifdef ODPLAT_DOS32
+#define INCLUDE_FOSSIL_COM                      /* Real-mode INT 14h via DPMI. */
+#define INCLUDE_UART_COM              /* Protected-mode interrupt driven I/O. */
+#endif /* ODPLAT_DOS32 */
 
 /* Serial I/O mechanisms supported under Win32 version. */
 #ifdef ODPLAT_WIN32
@@ -175,7 +190,7 @@ typedef struct
    int nTransmitBufferSize;
    BYTE btFIFOSetting;
    tComMethod Method;
-   void (*pfIdleCallback)(void);
+   void (ODCALL *pfIdleCallback)(void);
 #ifdef INCLUDE_WIN32_COM
    HANDLE hCommDev;
    tReadTimeoutState ReadTimeoutState;
@@ -192,17 +207,33 @@ typedef struct
 #ifdef INCLUDE_SOCKET_COM
 	SOCKET	socket;
 	int	old_delay;
-#ifdef OD_MULTITHREADED
-   tODSemaphoreHandle hCarrierLostSemaphore;
 #endif
+#ifdef ODPLAT_DOS32
+   tOD32FossilBuffer FossilBuffer;
 #endif
 } tPortInfo;
+
+static void ODComCallIdleFunction(tPortInfo *pPortInfo);
 
 /* ========================================================================= */
 /* Internal interrupt-driven serial I/O specific defintions & functions.     */
 /* ========================================================================= */
 
 #ifdef INCLUDE_UART_COM
+
+#ifdef __WATCOMC__
+#pragma intrinsic(inp, outp)
+#endif
+#define OD_COM_PORT_READ(address) ((BYTE)inp(address))
+#define OD_COM_PORT_WRITE(address, value) \
+   ((void)outp((address), (BYTE)(value)))
+#ifdef ODPLAT_DOS32
+#define OD_COM_INTERRUPTS_DISABLE() _disable()
+#define OD_COM_INTERRUPTS_ENABLE() _enable()
+#else
+#define OD_COM_INTERRUPTS_DISABLE() ASM cli
+#define OD_COM_INTERRUPTS_ENABLE() ASM sti
+#endif
 
 /* Private function prototypes, used by internal UART async serial I/O. */
 static void ODComSetVect(BYTE btVector, void (INTERRUPT far *pfISR)(void));
@@ -275,6 +306,7 @@ static void ODComInternalResetTX(void);
 #define RDR     0x01                    /* Receive data ready. */
 #define ERRS    0x1E                    /* All the error bits. */
 #define TXR     0x20                    /* Transmitter ready. */
+#define TEMT    0x40                    /* Transmitter completely empty. */
 
 /* Interrupt enable register (IER) bits. */
 #define DR      0x01                    /* Data ready. */
@@ -358,14 +390,17 @@ static BOOL bStopTrans;                 /* Flag set to stop transmitting. */
  */
 static void ODComSetVect(BYTE btVector, void (INTERRUPT far *pfISR)(void))
 {
+#ifdef __WATCOMC__
+   _dos_setvect(btVector, pfISR);
+#else
    ASM   push ds
    ASM   mov ah, 0x25
    ASM   mov al, btVector
    ASM   lds dx, pfISR
    ASM   int 0x21
    ASM   pop ds
+#endif
 }
-
 
 /* ----------------------------------------------------------------------------
  * ODComGetVect()                                      *** PRIVATE FUNCTION ***
@@ -380,6 +415,9 @@ static void ODComSetVect(BYTE btVector, void (INTERRUPT far *pfISR)(void))
  */
 static void (INTERRUPT far *ODComGetVect(BYTE btVector))(void)
 {
+#ifdef __WATCOMC__
+   return(_dos_getvect(btVector));
+#else
    void (INTERRUPT far *pfISR)(void);
 
    ASM   push es
@@ -387,10 +425,11 @@ static void (INTERRUPT far *ODComGetVect(BYTE btVector))(void)
    ASM   mov al, btVector
    ASM   int 0x21
    ASM   mov word ptr pfISR, bx
-   ASM   mov word ptr [pfISR+2], bx
+   ASM   mov word ptr [pfISR+2], es
    ASM   pop es
 
    return(pfISR);
+#endif
 }
 
 
@@ -422,16 +461,13 @@ static BOOL ODComInternalTXReady(void)
 static void ODComInternalResetTX(void)
 {
    /* Disable interrupts. */
-   ASM cli
+   OD_COM_INTERRUPTS_DISABLE();
 
    /* If we are using 16550A FIFO buffers, then clear the FIFO transmit */
    /* buffer.                                                           */
    if(bUsingFIFO)
    {
-      ASM mov al, btBaseFIFOCtrl
-      ASM or al, TR
-      ASM mov dx, nIntIDRegAddr
-      ASM out dx, al
+      OD_COM_PORT_WRITE(nIntIDRegAddr, btBaseFIFOCtrl | TR);
    }
 
    /* Reset start, end and total count of characters in buffer      */
@@ -440,7 +476,7 @@ static void ODComInternalResetTX(void)
    nTXChars = nTXInIndex = nTXOutIndex = 0;
 
    /* Re-enable interrupts. */
-   ASM sti
+   OD_COM_INTERRUPTS_ENABLE();
 }
 
 
@@ -456,16 +492,13 @@ static void ODComInternalResetTX(void)
 static void ODComInternalResetRX(void)
 {
    /* Disable interrupts. */
-   ASM cli
+   OD_COM_INTERRUPTS_DISABLE();
 
    /* If we are using 16550A FIFO buffers, then clear the FIFO receive */
    /* buffer.                                                          */
    if(bUsingFIFO)
    {
-      ASM mov al, btBaseFIFOCtrl
-      ASM or al, RR
-      ASM mov dx, nIntIDRegAddr
-      ASM out dx, al
+      OD_COM_PORT_WRITE(nIntIDRegAddr, btBaseFIFOCtrl | RR);
    }
 
    /* Reset start, end and total count of characters in buffer           */
@@ -474,7 +507,7 @@ static void ODComInternalResetRX(void)
    nRXChars = nRXInIndex = nRXOutIndex = 0;
 
    /* Re-enable interrupts. */
-   ASM sti
+   OD_COM_INTERRUPTS_ENABLE();
 }
 
 
@@ -489,8 +522,9 @@ static void ODComInternalResetRX(void)
  */
 static void INTERRUPT ODComInternalISR()
 {
-   char btIIR;
+   char btIIR = 0;
    BYTE btTemp;
+   BYTE btReceived;
 
    /* Loop until there are no more pending operations to perform with the */
    /* UART. */
@@ -498,9 +532,7 @@ static void INTERRUPT ODComInternalISR()
    {
       /* While bit 0 of the UART IIR is 0, there remains pending operations. */
       /* Read IIR. */
-      ASM mov dx, nIntIDRegAddr
-      ASM in al, dx
-      ASM mov btIIR, al
+      btIIR = OD_COM_PORT_READ(nIntIDRegAddr);
 
       /* If IIR bit 0 is set, then UART processing is finished.             */
       if(btIIR & 0x01) break;
@@ -508,16 +540,13 @@ static void INTERRUPT ODComInternalISR()
       /* Bits 1 and 2 of the IIR register identify the type of operation */
       /* to be performed with the UART.                                  */
 
-      /* Switch on bits 1 and 2 of IIR register. */
-      switch(btIIR & 0x06)
+      /* Dispatch on bits 1 and 2 of IIR register. */
+      if((btIIR & 0x06) == 0x00)
       {
-         case 0x00:
             /* Operation: modem status has changed. */
 
             /* Read modem status register. */
-            ASM mov dx, nModemStatusRegAddr
-            ASM in al, dx
-            ASM mov btTemp, al
+            btTemp = OD_COM_PORT_READ(nModemStatusRegAddr);
 
             /* We only care about the modem status register if we are */
             /* using RTS/CTS flow control, and the CTS register has  */
@@ -534,10 +563,8 @@ static void INTERRUPT ODComInternalISR()
                   if(nTXChars > 0)
                   {
                      /* Enable transmit interrupt. */
-                     ASM mov dx, nIntEnableRegAddr
-                     ASM in al, dx
-                     ASM or al, THRE
-                     ASM out dx, al
+                     btTemp = OD_COM_PORT_READ(nIntEnableRegAddr);
+                     OD_COM_PORT_WRITE(nIntEnableRegAddr, btTemp | THRE);
                   }
                }
                else
@@ -546,20 +573,17 @@ static void INTERRUPT ODComInternalISR()
                   bStopTrans = TRUE;
                }
             }
-
-            break;
-
-         case 0x02:
+      }
+      else if((btIIR & 0x06) == 0x02)
+      {
             /* Operation: room in transmit register/FIFO. */
             /* Check whether we can send further characters to transmit. */
             if(nTXChars <= 0 || bStopTrans)
             {
                /* If we cannot send more characters, then turn off */
                /* transmit interrupts.                             */
-               ASM mov dx, nIntEnableRegAddr
-               ASM in al, dx
-               ASM and al, 0xfd
-               ASM out dx, al
+               btTemp = OD_COM_PORT_READ(nIntEnableRegAddr);
+               OD_COM_PORT_WRITE(nIntEnableRegAddr, btTemp & 0xfd);
             }
             else
             {
@@ -569,9 +593,7 @@ static void INTERRUPT ODComInternalISR()
                /* register/FIFO truly has room. Some UARTs trigger transmit */
                /* interrupts before the character has been tranmistted,     */
                /* causing transmitted characters to be lost.                */
-               ASM mov dx, nLineStatusRegAddr
-               ASM in al, dx
-               ASM mov btTemp, al
+               btTemp = OD_COM_PORT_READ(nLineStatusRegAddr);
 
                if(btTemp & TXR)
                {
@@ -581,9 +603,7 @@ static void INTERRUPT ODComInternalISR()
                   btTemp = pbtTXQueue[nTXOutIndex++];
 
                   /* Write character to UART data register. */
-                  ASM mov dx, nDataRegAddr
-                  ASM mov al, btTemp
-                  ASM out dx, al
+                  OD_COM_PORT_WRITE(nDataRegAddr, btTemp);
 
                   /* Wrap-around transmit buffer pointer, if needed. */
                   if (nTXOutIndex == nTXQueueSize)
@@ -595,15 +615,13 @@ static void INTERRUPT ODComInternalISR()
                   nTXChars--;
                }
             }
-            break;
-
-         case 0x04:
+      }
+      else if((btIIR & 0x06) == 0x04)
+      {
             /* Operation: Receive Data. */
 
             /* Get character from receive buffer ASAP. */
-            ASM mov dx, nDataRegAddr
-            ASM in al, dx
-            ASM mov btTemp, al
+            btReceived = OD_COM_PORT_READ(nDataRegAddr);
 
             /* If receive buffer is above high water mark. */
             if(nRXChars >= nRXHighWaterMark)
@@ -613,10 +631,8 @@ static void INTERRUPT ODComInternalISR()
                if(btFlowControl & FLOW_RTSCTS)
                {
                   /* If using RTS/CTS flow control, then lower RTS line. */
-                  ASM mov dx, nModemCtrlRegAddr
-                  ASM in al, dx
-                  ASM and al, NOT_RTS
-                  ASM out dx, al
+                  btTemp = OD_COM_PORT_READ(nModemCtrlRegAddr);
+                  OD_COM_PORT_WRITE(nModemCtrlRegAddr, btTemp & NOT_RTS);
                }
             }
 
@@ -624,7 +640,7 @@ static void INTERRUPT ODComInternalISR()
             if(nRXChars < nRXQueueSize)
             {
                /* Store the new character in the receive buffer. */
-               pbtRXQueue[nRXInIndex++] = btTemp;
+               pbtRXQueue[nRXInIndex++] = btReceived;
 
                /* Wrap-around buffer index, if needed. */
                if (nRXInIndex == nRXQueueSize)
@@ -633,28 +649,22 @@ static void INTERRUPT ODComInternalISR()
                /* Increment count of characters in the buffer. */
                nRXChars++;
             }
-            break;
-
-         case 0x06:
+      }
+      else
+      {
             /* Operation: Change in line status register. */
 
             /* We just read the register to move on to further operations. */
-            ASM mov dx, nLineStatusRegAddr
-            ASM in al, dx
-            break;
+            btTemp = OD_COM_PORT_READ(nLineStatusRegAddr);
       }
    }
 
    /* Send end of interrupt to interrupt controller(s). */
-   ASM mov dx, nI8259EndOfIntRegAddr
-   ASM mov al, 0x20
-   ASM out dx, al
+   OD_COM_PORT_WRITE(nI8259EndOfIntRegAddr, 0x20);
 
    if(nI8259MasterEndOfIntRegAddr != 0)
    {
-      ASM mov dx, nI8259MasterEndOfIntRegAddr
-      ASM mov al, 0x20
-      ASM out dx, al
+      OD_COM_PORT_WRITE(nI8259MasterEndOfIntRegAddr, 0x20);
    }
 }
 #endif /* INCLUDE_UART_COM */
@@ -739,6 +749,25 @@ static tODResult ODComWin32SetReadTimeouts(tPortInfo *pPortInfo,
 /* ========================================================================= */
 
 /* ----------------------------------------------------------------------------
+ * ODComCallIdleFunction()                            *** PRIVATE FUNCTION ***
+ *
+ * Calls the serial port's optional idle callback, if one is installed.
+ *
+ * Parameters: pPortInfo - Serial port object whose callback should be called.
+ *
+ *     Return: void
+ */
+static void ODComCallIdleFunction(tPortInfo *pPortInfo)
+{
+   ASSERT(pPortInfo != NULL);
+
+   if(pPortInfo->pfIdleCallback != NULL)
+   {
+      (*pPortInfo->pfIdleCallback)();
+   }
+}
+
+/* ----------------------------------------------------------------------------
  * ODComAlloc()
  *
  * Allocates a serial port handle, which can be passed to other ODCom...()
@@ -775,6 +804,9 @@ tODResult ODComAlloc(tPortHandle *phPort)
    pPortInfo->btFIFOSetting = FIFO_ENABLE | FIFO_TRIGGER_8;
    pPortInfo->Method = kComMethodUnspecified;
    pPortInfo->pfIdleCallback = NULL;
+#ifdef ODPLAT_DOS32
+   memset(&pPortInfo->FossilBuffer, 0, sizeof(pPortInfo->FossilBuffer));
+#endif
 
    /* Convert serial port information structure pointer to a handle. */
    *phPort = ODPTR2HANDLE(pPortInfo, tPortInfo);
@@ -815,6 +847,19 @@ tODResult ODComFree(tPortHandle hPort)
    return(kODRCSuccess);
 }
 
+#ifdef ODPLAT_DOS32
+tODResult ODComDOS32DisableFossilBlockIO(tPortHandle hPort)
+{
+   tPortInfo *pPortInfo = ODHANDLE2PTR(hPort, tPortInfo);
+
+   if(pPortInfo == NULL || !pPortInfo->bIsOpen
+      || pPortInfo->Method != kComMethodFOSSIL)
+      return(kODRCInvalidCall);
+   OD32FossilBufferFree(&pPortInfo->FossilBuffer);
+   return(kODRCSuccess);
+}
+#endif
+
 
 /* ----------------------------------------------------------------------------
  * ODComSetIdleFunction()
@@ -828,7 +873,7 @@ tODResult ODComFree(tPortHandle hPort)
  *     Return: kODRCSuccess on success, or an error code on failure.
  */
 tODResult ODComSetIdleFunction(tPortHandle hPort,
-   void (*pfCallback)(void))
+   void (ODCALL *pfCallback)(void))
 {
    tPortInfo *pPortInfo = ODHANDLE2PTR(hPort, tPortInfo);
 
@@ -1220,9 +1265,11 @@ tODResult ODComGetMethod(tPortHandle hPort, tComMethod *pMethod)
  */
 tODResult ODComOpen(tPortHandle hPort)
 {
-#if defined(INCLUDE_FOSSIL_COM) || defined(INCLUDE_UART_COM)
+#ifdef INCLUDE_UART_COM
    unsigned int uDivisor;
-   unsigned long ulQuotient, ulRemainder;
+   DWORD dwQuotient, dwRemainder;
+#endif /* INCLUDE_UART_COM */
+#if defined(INCLUDE_FOSSIL_COM) || defined(INCLUDE_UART_COM)
    BYTE btTemp;
 #endif /* INCLUDE_FOSSIL_COM || INCLUDE_UART_COM */
 #ifdef INCLUDE_STDIO_COM
@@ -1230,6 +1277,7 @@ tODResult ODComOpen(tPortHandle hPort)
 #endif
    tPortInfo *pPortInfo = ODHANDLE2PTR(hPort, tPortInfo);
 
+   ASSERT(!ODSyncAPILevelActive());
    VERIFY_CALL(pPortInfo != NULL);
 
    /* Ensure that port is not already open. */
@@ -1244,10 +1292,25 @@ tODResult ODComOpen(tPortHandle hPort)
       pPortInfo->Method == kComMethodUnspecified)
    {
       int nPort;
+#if defined(__WATCOMC__) && !defined(ODPLAT_DOS32)
+      union REGS Registers;
+#endif
 
       nPort = (int)pPortInfo->btPort;
       
       /* Attempt to open port with FOSSIL DRIVER. */
+#ifdef ODPLAT_DOS32
+      if(!OD32FossilDetect((BYTE)nPort))
+         goto no_fossil;
+#else
+# ifdef __WATCOMC__
+      Registers.h.ah = 4;
+      Registers.x.dx = nPort;
+      Registers.x.bx = 0;
+      int86(0x14, &Registers, &Registers);
+      if(Registers.x.ax != 6484)
+         goto no_fossil;
+#else
       ASM    push si
       ASM    push di
       ASM    mov ah, 4
@@ -1261,7 +1324,13 @@ tODResult ODComOpen(tPortHandle hPort)
       goto no_fossil;
 
 fossil:
+# endif
+#endif
       pPortInfo->Method = kComMethodFOSSIL;
+
+#ifdef ODPLAT_DOS32
+      OD32FossilBufferAllocate(&pPortInfo->FossilBuffer, 4096);
+#endif
 
       /* Enable flow control, if applicable. */
 
@@ -1277,6 +1346,9 @@ fossil:
          btTemp = pPortInfo->btFlowControlSetting | 0xf0;
       }
 
+#ifdef ODPLAT_DOS32
+      OD32FossilSetFlow((BYTE)nPort, btTemp);
+#else
       ASM    push si
       ASM    push di
       ASM    mov ah, 0x0f
@@ -1285,6 +1357,7 @@ fossil:
       ASM    int 20
       ASM    pop di
       ASM    pop si
+#endif
 
       /* If serial port speed is not to be set, then return now. */
       if(pPortInfo->lSpeed == SPEED_UNSPECIFIED)
@@ -1297,45 +1370,39 @@ fossil:
       }
 
       /* Set to current baud rate. */
-      switch(pPortInfo->lSpeed)
+      if(pPortInfo->lSpeed == 300L)
+         btTemp = 0x40;
+      else if(pPortInfo->lSpeed == 600L)
+         btTemp = 0x60;
+      else if(pPortInfo->lSpeed == 1200L)
+         btTemp = 0x80;
+      else if(pPortInfo->lSpeed == 2400L)
+         btTemp = 0xa0;
+      else if(pPortInfo->lSpeed == 4800L)
+         btTemp = 0xc0;
+      else if(pPortInfo->lSpeed == 9600L)
+         btTemp = 0xe0;
+      else if(pPortInfo->lSpeed == 19200L)
+         btTemp = 0x00;
+      else if(pPortInfo->lSpeed == 38400L)
+         btTemp = 0x20;
+      else
       {
-         case 300L:
-            btTemp = 0x40;
-            break;
-         case 600L:
-            btTemp = 0x60;
-            break;
-         case 1200L:
-            btTemp = 0x80;
-            break;
-         case 2400L:
-            btTemp = 0xa0;
-            break;
-         case 4800L:
-            btTemp = 0xc0;
-            break;
-         case 9600L:
-            btTemp = 0xe0;
-            break;
-         case 19200L:
-            btTemp = 0x00;
-            break;
-         case 38400L:
-            btTemp = 0x20;
-            break;
-         default:
-            /* If invalid bps rate, don't change current bps setting. */
-            /* Set port state to open. */
-            pPortInfo->bIsOpen = TRUE;
+         /* If invalid bps rate, don't change current bps setting. */
+         /* Set port state to open. */
+         pPortInfo->bIsOpen = TRUE;
 
-            /* Return with success. */
-            return(kODRCSuccess);
+         /* Return with success. */
+         return(kODRCSuccess);
       }
 
       /* Add desired word format parameters to data to be passed to fossil. */
       btTemp |= pPortInfo->btWordFormat;
 
       /* Initialize fossil driver. */
+#ifdef ODPLAT_DOS32
+      OD32FossilInitialize((BYTE)nPort, btTemp);
+#else
       ASM    push si
       ASM    push di
       ASM    mov al, btTemp
@@ -1344,6 +1411,7 @@ fossil:
       ASM    int 20
       ASM    pop di
       ASM    pop si
+#endif
 
       /* Set port state to open. */
       pPortInfo->bIsOpen = TRUE;
@@ -1427,18 +1495,12 @@ no_fossil:
       }
 
       /* Save original state of UART IER register. */
-      ASM mov dx, nIntEnableRegAddr
-      ASM in al, dx
-      ASM mov btOldIntEnableReg, al
+      btOldIntEnableReg = OD_COM_PORT_READ(nIntEnableRegAddr);
 
       /* Test that a UART is indeed installed at this port address. */
-      ASM mov dx, nIntEnableRegAddr
-      ASM mov al, 0
-      ASM out dx, al
+      OD_COM_PORT_WRITE(nIntEnableRegAddr, 0);
 
-      ASM mov dx, nIntEnableRegAddr
-      ASM in al, dx
-      ASM mov btTemp, al
+      btTemp = OD_COM_PORT_READ(nIntEnableRegAddr);
 
       if (btTemp != 0)
       {
@@ -1449,9 +1511,7 @@ no_fossil:
       if(btFlowControl & FLOW_RTSCTS)
       {
          /* Read modem status register. */
-         ASM mov dx, nModemStatusRegAddr
-         ASM in al, dx
-         ASM mov btTemp, al
+         btTemp = OD_COM_PORT_READ(nModemStatusRegAddr);
 
          /* Enable transmission only if CTS is high. */
          bStopTrans = !(btTemp & CTS);
@@ -1459,20 +1519,17 @@ no_fossil:
 
       /* Save original PIC interrupt settings, and temporarily disable */
       /* interrupts on this IRQ line while we perform initialization.  */
-      ASM cli
+      OD_COM_INTERRUPTS_DISABLE();
 
-      ASM mov dx, nI8259MaskRegAddr
-      ASM in al, dx
-      ASM mov btI8259Mask, al
-      ASM or  al, btI8259Bit
-      ASM out dx, al
+      btI8259Mask = OD_COM_PORT_READ(nI8259MaskRegAddr);
+      OD_COM_PORT_WRITE(nI8259MaskRegAddr, btI8259Mask | btI8259Bit);
 
       /* Initialize transmit and recieve buffers. */
       ODComInternalResetTX();
       ODComInternalResetRX();
 
       /* Re-enable interrupts. */
-      ASM sti
+      OD_COM_INTERRUPTS_ENABLE();
 
       /* Save original interrupt vector. */
       pfOldISR = ODComGetVect(btIntVector);
@@ -1487,22 +1544,16 @@ no_fossil:
       /* Set line control register to 8 data bits, no parity bits, 1 stop */
       /* bit. */
       btTemp = pPortInfo->btWordFormat;
-      ASM mov dx, nLineCtrlRegAddr
-      ASM mov al, btTemp
-      ASM out dx, al
+      OD_COM_PORT_WRITE(nLineCtrlRegAddr, btTemp);
 
       /* Save original modem control register. */
-      ASM cli
+      OD_COM_INTERRUPTS_DISABLE();
 
-      ASM mov dx, nModemCtrlRegAddr
-      ASM in al, dx
-      ASM mov btOldModemCtrlReg, al
+      btOldModemCtrlReg = OD_COM_PORT_READ(nModemCtrlRegAddr);
 
       /* Keep current DTR setting, and activate RTS. */
       btTemp = (btOldModemCtrlReg & DTR) | (OUT2 + RTS);
-      ASM mov dx, nModemCtrlRegAddr
-      ASM mov al, btTemp
-      ASM out dx, al
+      OD_COM_PORT_WRITE(nModemCtrlRegAddr, btTemp);
 
       /* Enable use of 16550A FIFOs, if available. */
       if(pPortInfo->btFIFOSetting & FIFO_ENABLE)
@@ -1511,82 +1562,65 @@ no_fossil:
          btBaseFIFOCtrl = pPortInfo->btFIFOSetting;
 
          /* Attempt to enable use of FIFO buffers. */
-         ASM mov al, btBaseFIFOCtrl
-         ASM mov dx, nIntIDRegAddr
-         ASM out dx, al
+         OD_COM_PORT_WRITE(nIntIDRegAddr, btBaseFIFOCtrl);
 
          /* Check whether a 16550A UART is actually present by reading */
          /* state of FIFO buffer. */
-         ASM mov dx, nIntIDRegAddr
-         ASM in al, dx
-         ASM mov btTemp, al
+         btTemp = OD_COM_PORT_READ(nIntIDRegAddr);
 
          bUsingFIFO = btTemp & 0xc0;
       }
 
-      ASM sti
+      OD_COM_INTERRUPTS_ENABLE();
 
       /* Enable receive and modem status interrupts on the UART. */
-      ASM mov dx, nIntEnableRegAddr
-      ASM mov al, DR + MS
-      ASM out dx, al
+      OD_COM_PORT_WRITE(nIntEnableRegAddr, DR | MS);
 
-      ASM cli
+      OD_COM_INTERRUPTS_DISABLE();
 
-      ASM mov dx, nI8259MaskRegAddr
-      ASM in al, dx
-      ASM mov ah, btI8259Bit
-      ASM not ah
-      ASM and al, ah
-      ASM out dx, al
+      btTemp = OD_COM_PORT_READ(nI8259MaskRegAddr);
+      OD_COM_PORT_WRITE(nI8259MaskRegAddr, btTemp & ~btI8259Bit);
 
-      ASM sti
+      OD_COM_INTERRUPTS_ENABLE();
 
       /* Set baud rate, if possible. */
 
       /* Calculate baud rate divisor. */
       if(pPortInfo->lSpeed != SPEED_UNSPECIFIED)
       {
-         ODDWordDivide(&ulQuotient, &ulRemainder, 115200UL, pPortInfo->lSpeed);
+         ODDWordDivide(&dwQuotient, &dwRemainder, 115200UL,
+            pPortInfo->lSpeed);
 
          /* If division results in a remainder, then this is an invalid     */
          /* baud rate. We only change the UART baud rate if we have a valid */
          /* rate to set it to. Otherwise, we cross our fingers and proceed  */
          /* with the currently set UART baud rate.                          */
-         if(ulRemainder == 0L)
+         if(dwRemainder == 0L)
          {
-            uDivisor = (unsigned int)ulQuotient;
+            uDivisor = (unsigned int)dwQuotient;
 
             /* Disable interrupts. */
-            ASM cli
+            OD_COM_INTERRUPTS_DISABLE();
 
             /* Set baud rate divisor latch. */
             /* The data register now becomes the lower byte of the baud rate */
             /* divisor, and the interrupt enable register becomes the upper  */
             /* byte of the divisor.                                          */
-            ASM mov dx, nLineCtrlRegAddr
-            ASM in al, dx
-            ASM or al, DLATCH
-            ASM out dx, al
+            btTemp = OD_COM_PORT_READ(nLineCtrlRegAddr);
+            OD_COM_PORT_WRITE(nLineCtrlRegAddr, btTemp | DLATCH);
 
             /* Write lower byte of baud rate divisor. */
-            ASM mov dx, nDataRegAddr
-            ASM mov ax, uDivisor
-            ASM out dx, al
+            OD_COM_PORT_WRITE(nDataRegAddr, uDivisor & 0xff);
 
             /* Write upper byte of baud rate divisor. */
-            ASM mov dx, nIntEnableRegAddr
-            ASM mov al, ah
-            ASM out dx, al
+            OD_COM_PORT_WRITE(nIntEnableRegAddr, uDivisor >> 8);
 
             /* Reset baud rate divisor latch. */
-            ASM mov dx, nLineCtrlRegAddr
-            ASM in al, dx
-            ASM and al, NOT_DL
-            ASM out dx, al
+            btTemp = OD_COM_PORT_READ(nLineCtrlRegAddr);
+            OD_COM_PORT_WRITE(nLineCtrlRegAddr, btTemp & NOT_DL);
 
             /* Re-enable interrupts. */
-            ASM sti
+            OD_COM_INTERRUPTS_ENABLE();
          }
       }
 
@@ -1734,7 +1768,7 @@ no_fossil:
       {
          dcb.ByteSize = 7;
       }
-      else if((pPortInfo->btWordFormat & DATABITS_MASK) == DATABITS_EIGHT)
+      else
       {
          dcb.ByteSize = 8;
       }
@@ -1761,13 +1795,9 @@ no_fossil:
       {
          dcb.StopBits = ONESTOPBIT;
       }
-      else if((pPortInfo->btWordFormat & STOP_MASK) == STOP_ONE_POINT_FIVE)
+      else
       {
          dcb.StopBits = ONE5STOPBITS;
-      }
-      else if((pPortInfo->btWordFormat & STOP_MASK) == STOP_TWO)
-      {
-         dcb.StopBits = TWOSTOPBITS;
       }
 
       /* Set comm state from device control block. */
@@ -1795,7 +1825,14 @@ no_fossil:
 		if (isatty(STDIN_FILENO))  {
 			tcgetattr(STDIN_FILENO,&sio_tio_default);
 			tio_raw = sio_tio_default;
-			cfmakeraw(&tio_raw);
+			tio_raw.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP |
+			   INLCR | IGNCR | ICRNL | IXON);
+			tio_raw.c_oflag &= ~OPOST;
+			tio_raw.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+			tio_raw.c_cflag &= ~(CSIZE | PARENB);
+			tio_raw.c_cflag |= CS8;
+			tio_raw.c_cc[VMIN] = 1;
+			tio_raw.c_cc[VTIME] = 0;
 			tcsetattr(STDIN_FILENO,TCSANOW,&tio_raw);
 			setvbuf(stdout, NULL, _IONBF, 0);
 		}
@@ -1836,6 +1873,7 @@ tODResult ODComOpenFromExistingHandle(tPortHandle hPort,
 {
    tPortInfo *pPortInfo = ODHANDLE2PTR(hPort, tPortInfo);
 
+   ASSERT(!ODSyncAPILevelActive());
    VERIFY_CALL(pPortInfo != NULL);
 
    VERIFY_CALL(!pPortInfo->bIsOpen);
@@ -1843,13 +1881,6 @@ tODResult ODComOpenFromExistingHandle(tPortHandle hPort,
 #ifdef INCLUDE_SOCKET_COM
    if(pPortInfo->Method == kComMethodSocket) {
       socklen_t delay=FALSE;
-#ifdef OD_MULTITHREADED
-      tODResult res = kODRCSuccess;
-
-      res = ODSemaphoreAlloc(&pPortInfo->hCarrierLostSemaphore, 0, 1);
-      if (res != kODRCSuccess)
-         return res;
-#endif
       pPortInfo->socket = dwExistingHandle;
 
       delay = sizeof(pPortInfo->old_delay);
@@ -1909,6 +1940,7 @@ tODResult ODComClose(tPortHandle hPort)
 #endif /* INCLUDE_UART_COM */
    tPortInfo *pPortInfo = ODHANDLE2PTR(hPort, tPortInfo);
 
+   ASSERT(!ODSyncAPILevelActive());
    VERIFY_CALL(pPortInfo != NULL);
 
    VERIFY_CALL(pPortInfo->bIsOpen);
@@ -1928,10 +1960,15 @@ tODResult ODComClose(tPortHandle hPort)
          int nPort;
 
          nPort = (int)pPortInfo->btPort;
-         
+
+#ifdef ODPLAT_DOS32
+         OD32FossilClose((BYTE)nPort);
+         OD32FossilBufferFree(&pPortInfo->FossilBuffer);
+#else
          ASM    mov ah, 5
          ASM    mov dx, nPort
          ASM    int 20
+#endif
          break;
       }
 #endif /* INCLUDE_FOSSIL_COM */
@@ -1939,30 +1976,22 @@ tODResult ODComClose(tPortHandle hPort)
 #ifdef INCLUDE_UART_COM
       case kComMethodUART:
          /* Reset UART registers to their original values. */
-         ASM mov dx, nModemCtrlRegAddr
-         ASM mov al, btOldModemCtrlReg
-         ASM out dx, al
-         ASM mov dx, nIntEnableRegAddr
-         ASM mov al, btOldIntEnableReg
-         ASM out dx, al
+         OD_COM_PORT_WRITE(nModemCtrlRegAddr, btOldModemCtrlReg);
+         OD_COM_PORT_WRITE(nIntEnableRegAddr, btOldIntEnableReg);
 
          /* Disable interrupts. */
-         ASM cli
+         OD_COM_INTERRUPTS_DISABLE();
 
          /* Reset this line's interrupt enable status on the PIC to its */
          /* original state.                                             */
-         ASM mov dx, nI8259MaskRegAddr
-         ASM in al, dx
-         ASM mov btTemp, al
+         btTemp = OD_COM_PORT_READ(nI8259MaskRegAddr);
 
          btTemp = (btTemp  & ~btI8259Bit) | (btI8259Mask &  btI8259Bit);
 
-         ASM mov dx, nI8259MaskRegAddr
-         ASM mov al, btTemp
-         ASM out dx, al
+         OD_COM_PORT_WRITE(nI8259MaskRegAddr, btTemp);
 
          /* Re-enable interrupts. */
-         ASM sti
+         OD_COM_INTERRUPTS_ENABLE();
 
          /* Reset vector to original interrupt handler. */
 #ifdef _MSC_VER
@@ -2046,16 +2075,20 @@ tODResult ODComCarrier(tPortHandle hPort, BOOL *pbIsCarrier)
 #ifdef INCLUDE_FOSSIL_COM
       case kComMethodFOSSIL:
       {
-         int to_return;
+         int to_return = 0;
          int nPort;
 
          nPort = pPortInfo->btPort;
 
+#ifdef ODPLAT_DOS32
+         to_return = OD32FossilStatus((BYTE)nPort) & 0x0080;
+#else
          ASM    mov ah, 3
          ASM    mov dx, nPort
          ASM    int 20
          ASM    and ax, 128
          ASM    mov to_return, ax
+#endif
 
          *pbIsCarrier = to_return;
 
@@ -2066,11 +2099,7 @@ tODResult ODComCarrier(tPortHandle hPort, BOOL *pbIsCarrier)
 #ifdef INCLUDE_UART_COM
       case kComMethodUART:
       {
-         BYTE btMSR;
-
-         ASM mov dx, nModemStatusRegAddr
-         ASM in al, dx
-         ASM mov btMSR, al
+         BYTE btMSR = OD_COM_PORT_READ(nModemStatusRegAddr);
 
          *pbIsCarrier = btMSR & RLSD;
          break;
@@ -2191,9 +2220,21 @@ tODResult ODComSetDTR(tPortHandle hPort, BOOL bHigh)
       case kComMethodFOSSIL:
       {
          int nPort;
+#if defined(__WATCOMC__) && !defined(ODPLAT_DOS32)
+         union REGS Registers;
+#endif
 
          nPort = pPortInfo->btPort;
-         
+
+#ifdef ODPLAT_DOS32
+         OD32FossilSetDTR((BYTE)nPort, bHigh);
+#else
+# ifdef __WATCOMC__
+         Registers.h.al = bHigh ? 1 : 0;
+         Registers.h.ah = 6;
+         Registers.x.dx = nPort;
+         int86(0x14, &Registers, &Registers);
+#else
          ASM    cmp byte ptr bHigh, 0
          ASM    je lower
          ASM    mov al, 1
@@ -2206,6 +2247,8 @@ set_dtr:
          ASM    mov ah, 6
          ASM    mov dx, nPort
          ASM    int 20
+# endif
+#endif
       }
 #endif /* INCLUDE_FOSSIL_COM */
 
@@ -2213,25 +2256,17 @@ set_dtr:
       case kComMethodUART:
          if(bHigh)
          {
-            ASM cli
-
-            ASM mov dx, nModemCtrlRegAddr
-            ASM in al, dx
-            ASM or al, DTR
-            ASM out dx, al
-
-            ASM sti
+            OD_COM_INTERRUPTS_DISABLE();
+            OD_COM_PORT_WRITE(nModemCtrlRegAddr,
+               OD_COM_PORT_READ(nModemCtrlRegAddr) | DTR);
+            OD_COM_INTERRUPTS_ENABLE();
          }
          else
          {
-            ASM cli
-
-            ASM mov dx, nModemCtrlRegAddr
-            ASM in al, dx
-            ASM and al, NOT_DTR
-            ASM out dx, al
-
-            ASM sti
+            OD_COM_INTERRUPTS_DISABLE();
+            OD_COM_PORT_WRITE(nModemCtrlRegAddr,
+               OD_COM_PORT_READ(nModemCtrlRegAddr) & NOT_DTR);
+            OD_COM_INTERRUPTS_ENABLE();
          }
          break;
 #endif /* INCLUDE_UART_COM */
@@ -2306,9 +2341,25 @@ tODResult ODComOutbound(tPortHandle hPort, int *pnOutboundWaiting)
       case kComMethodFOSSIL:
       {
          int nPort;
+#if defined(__WATCOMC__) && !defined(ODPLAT_DOS32)
+         union REGS Registers;
+#endif
 
          nPort = pPortInfo->btPort;
 
+#ifdef ODPLAT_DOS32
+         *pnOutboundWaiting = (OD32FossilStatus((BYTE)nPort) & 0x4000)
+            ? 0 : SIZE_NON_ZERO;
+         break;
+#else
+# ifdef __WATCOMC__
+         Registers.h.ah = 3;
+         Registers.x.dx = nPort;
+         int86(0x14, &Registers, &Registers);
+         *pnOutboundWaiting = (Registers.h.ah & 0x40)
+            ? 0 : SIZE_NON_ZERO;
+         break;
+#else
          ASM    mov ah, 0x03
          ASM    mov dx, nPort
          ASM    int 20
@@ -2320,12 +2371,23 @@ tODResult ODComOutbound(tPortHandle hPort, int *pnOutboundWaiting)
 still_sending:
          *pnOutboundWaiting = SIZE_NON_ZERO;
          break;
+# endif
+#endif
       }
 #endif /* INCLUDE_FOSSIL_COM */
 
 #ifdef INCLUDE_UART_COM
       case kComMethodUART:
-         *pnOutboundWaiting = (int)nTXChars;
+         if(nTXChars > 0)
+         {
+            *pnOutboundWaiting = (int)nTXChars;
+         }
+         else
+         {
+            *pnOutboundWaiting =
+               (OD_COM_PORT_READ(nLineStatusRegAddr) & TEMT)
+                  ? 0 : SIZE_NON_ZERO;
+         }
          break;
 #endif /* INCLUDE_UART_COM */
 
@@ -2382,6 +2444,9 @@ still_sending:
  * ODComClearOutbound()
  *
  * Removes the current contents of the serial port outbound buffer.
+ * This discards an arbitrary byte boundary and must not be used while a
+ * terminal stream will continue unless the caller knows that boundary is
+ * safe; otherwise an ANSI, AVATAR, or RIP command may be truncated.
  *
  * Parameters: hPort - Handle to a serial port object.
  *
@@ -2404,9 +2469,14 @@ tODResult ODComClearOutbound(tPortHandle hPort)
 
          nPort = pPortInfo->btPort;
 
+#ifdef ODPLAT_DOS32
+         OD32FossilClearOutbound((BYTE)nPort);
+#else
          ASM    mov ah, 9
          ASM    mov dx, nPort
          ASM    int 20
+#endif
+         break;
       }
 #endif /* INCLUDE_FOSSIL_COM */
 
@@ -2477,9 +2547,14 @@ tODResult ODComClearInbound(tPortHandle hPort)
 
          nPort = pPortInfo->btPort;
 
+#ifdef ODPLAT_DOS32
+         OD32FossilClearInbound((BYTE)nPort);
+#else
          ASM    mov ah, 10
          ASM    mov dx, nPort
          ASM    int 20
+#endif
+         break;
       }
 #endif /* INCLUDE_FOSSIL_COM */
 
@@ -2559,6 +2634,9 @@ tODResult ODComInbound(tPortHandle hPort, int *pnInboundWaiting)
 
          nPort = pPortInfo->btPort;
 
+#ifdef ODPLAT_DOS32
+         bDataInBuffer = (OD32FossilStatus((BYTE)nPort) & 0x0100) != 0;
+#else
          ASM    mov ah, 3
          ASM    mov dx, nPort
          ASM    push si
@@ -2568,6 +2646,7 @@ tODResult ODComInbound(tPortHandle hPort, int *pnInboundWaiting)
          ASM    pop si
          ASM    and ah, 1
          ASM    mov bDataInBuffer, ah
+#endif
 
          *pnInboundWaiting = bDataInBuffer ? SIZE_NON_ZERO : 0;
 
@@ -2672,6 +2751,7 @@ tODResult ODComGetByte(tPortHandle hPort, char *pbtNext, BOOL bWait)
 {
    tPortInfo *pPortInfo = ODHANDLE2PTR(hPort, tPortInfo);
 
+   ASSERT(!bWait || !ODSyncAPILevelActive());
    VERIFY_CALL(pPortInfo != NULL);
    VERIFY_CALL(pbtNext != NULL);
 
@@ -2682,7 +2762,7 @@ tODResult ODComGetByte(tPortHandle hPort, char *pbtNext, BOOL bWait)
 #ifdef INCLUDE_FOSSIL_COM
       case kComMethodFOSSIL:
       {
-         BYTE btToReturn;
+         BYTE btToReturn = 0;
          int nInboundSize;
          int nPort;
 
@@ -2699,6 +2779,9 @@ tODResult ODComGetByte(tPortHandle hPort, char *pbtNext, BOOL bWait)
             if(nInboundSize == 0) return(kODRCNothingWaiting);
          }
 
+#ifdef ODPLAT_DOS32
+         btToReturn = OD32FossilGetByte((BYTE)nPort);
+#else
          ASM     mov ah, 2
          ASM     mov dx, nPort
          ASM     push si
@@ -2707,6 +2790,7 @@ tODResult ODComGetByte(tPortHandle hPort, char *pbtNext, BOOL bWait)
          ASM     pop di
          ASM     pop si
          ASM     mov btToReturn, al
+#endif
 
          *pbtNext = btToReturn;
 
@@ -2727,14 +2811,11 @@ tODResult ODComGetByte(tPortHandle hPort, char *pbtNext, BOOL bWait)
          /* Loop, calling idle function, until next character arrives. */
          while(!nRXChars)
          {
-            if(pPortInfo->pfIdleCallback != NULL)
-            {
-               (*pPortInfo->pfIdleCallback)();
-            }
+            ODComCallIdleFunction(pPortInfo);
          }
 
          /* Disable interrupts. */
-         ASM cli
+         OD_COM_INTERRUPTS_DISABLE();
 
          /* Get next character from receive queue. */
          *pbtNext = pbtRXQueue[nRXOutIndex++];
@@ -2749,7 +2830,7 @@ tODResult ODComGetByte(tPortHandle hPort, char *pbtNext, BOOL bWait)
          nRXChars--;
 
          /* Re-enable interrupts. */
-         ASM sti
+         OD_COM_INTERRUPTS_ENABLE();
 
          /* If receive buffer is below low water mark. */
          if(nRXChars <= nRXLowWaterMark)
@@ -2759,10 +2840,8 @@ tODResult ODComGetByte(tPortHandle hPort, char *pbtNext, BOOL bWait)
             if(btFlowControl & FLOW_RTSCTS)
             {
                /* If using RTS/CTS flow control, then raise RTS line. */
-               ASM mov dx, nModemCtrlRegAddr
-               ASM in al, dx
-               ASM or al, RTS
-               ASM out dx, al
+               OD_COM_PORT_WRITE(nModemCtrlRegAddr,
+                  OD_COM_PORT_READ(nModemCtrlRegAddr) | RTS);
             }
          }
 
@@ -2836,9 +2915,6 @@ tODResult ODComGetByte(tPortHandle hPort, char *pbtNext, BOOL bWait)
 
          select_ret = select(pPortInfo->socket+1, &socket_set, NULL, NULL, bWait ? NULL : &tv);
          if (select_ret == SOCKET_ERROR) {
-#ifdef OD_MULTITHREADED
-            ODSemaphoreUp(pPortInfo->hCarrierLostSemaphore, 1);
-#endif
             return (kODRCGeneralFailure);
          }
          if (select_ret == 0)
@@ -2855,26 +2931,25 @@ tODResult ODComGetByte(tPortHandle hPort, char *pbtNext, BOOL bWait)
          if (i == 0)
             return (kODRCNothingWaiting);
          else if (i == -1 || !(pfd.revents & POLLIN)) {
-#ifdef OD_MULTITHREADED
-            if (i == -1 || pfd.revents & (POLLERR | POLLHUP | POLLRDHUP | POLLINVAL))
-               ODSemaphoreUp(pPortInfo->hCarrierLostSemaphore, 1);
-#endif
             return (kODRCGeneralFailure);
          }
 #endif
 
-         do {
+         for(;;) {
             recv_ret = recv(pPortInfo->socket, pbtNext, 1, 0);
             if(recv_ret != SOCKET_ERROR)
                break;
             if (WSAGetLastError() != WSAEWOULDBLOCK) {
-#ifdef OD_MULTITHREADED
-               ODSemaphoreUp(pPortInfo->hCarrierLostSemaphore, 1);
-#endif
                return (kODRCGeneralFailure);
             }
+            if(!bWait)
+               return(kODRCNothingWaiting);
+#ifdef OD_THREAD_SUPPORT
+            ODThreadSleep(50);
+#else
             od_sleep(50);
-         } while (bWait);
+#endif
+         }
 
          if (recv_ret == 0)
              return (kODRCNothingWaiting);
@@ -2929,7 +3004,7 @@ tODResult ODComGetByte(tPortHandle hPort, char *pbtNext, BOOL bWait)
    return(0);
 }
 
-const static DWORD cp437_unicode_table[128] = {
+static const WORD cp437_unicode_table[128] = {
 	0x00C7, 0x00FC, 0x00E9, 0x00E2, 0x00E4, 0x00E0, 0x00E5, 0x00E7,
 	0x00EA, 0x00EB, 0x00E8, 0x00EF, 0x00EE, 0x00EC, 0x00C4, 0x00C5,
 	0x00C9, 0x00E6, 0x00C6, 0x00F4, 0x00F6, 0x00F2, 0x00FB, 0x00F9,
@@ -2948,65 +3023,68 @@ const static DWORD cp437_unicode_table[128] = {
 	0x00B0, 0x2219, 0x00B7, 0x221A, 0x207F, 0x00B2, 0x25A0, 0x00A0
 };
 
-size_t ODComCP437ToUnicodeLen(void *buf, int sz)
+BOOL ODComCP437ToUnicodeLen(const BYTE *buf, int sz, size_t *length)
 {
-   BYTE *bb = buf;
    size_t pos;
    size_t ret = 0;
+   size_t increment;
 
-   for (pos = 0; pos < sz; pos++) {
-      if (bb[pos] < 128)
-         ret++;
+   if(buf == NULL || length == NULL || sz < 0)
+      return(FALSE);
+
+   for(pos = 0; pos < (size_t)sz; pos++) {
+      if(buf[pos] < 128)
+         increment = 1;
       else {
-         DWORD val = cp437_unicode_table[bb[pos] - 128];
-         if (val < 0x800)
-            ret += 2;
-         else if (val < 0x10000)
-            ret += 3;
+         WORD val = cp437_unicode_table[buf[pos] - 128];
+         if (val < 0x0800U)
+            increment = 2;
          else
-            ret += 4;
+            increment = 3;
       }
+      if(!ODSizeAdd(ret, increment, &ret))
+         return(FALSE);
    }
-   return ret;
+   *length = ret;
+   return(TRUE);
 }
 
 BYTE *ODComCP437ToUnicode(BYTE *buf, int *sz)
 {
-   size_t need = ODComCP437ToUnicodeLen(buf, *sz);
-   if (need > INT_MAX) {
+   size_t need;
+   BYTE *ret;
+   size_t outpos = 0;
+   size_t pos;
+   WORD ch;
+
+   if(buf == NULL || sz == NULL || *sz < 0
+      || !ODComCP437ToUnicodeLen(buf, *sz, &need) || need > INT_MAX) {
       od_control.od_error = ERR_LIMIT;
       return NULL;
    }
-   BYTE *ret = malloc(need);
-   size_t outpos = 0;
+   ret = malloc(need == 0 ? 1 : need);
 
    if (ret == NULL) {
       od_control.od_error = ERR_MEMORY;
       return NULL;
    }
-   for (size_t pos = 0; pos < *sz; pos++) {
-      DWORD ch = buf[pos];
+   for(pos = 0; pos < (size_t)*sz; pos++) {
+      ch = buf[pos];
       if (ch >= 128)
          ch = cp437_unicode_table[ch - 128];
-      if (ch < 128)
+      if (ch < 128U)
          ret[outpos++] = buf[pos];
-      else if (ch < 0x800) {
-         ret[outpos++] = (ch >> 6 & 0x1f) | 0xc0;
-         ret[outpos++] = (ch & 0x3f) | 0x80;
-      }
-      else if (ch < 0x10000) {
-         ret[outpos++] = (ch >> 12 & 0x0f) | 0xe0;
-         ret[outpos++] = (ch >> 6 & 0x3f) | 0x80;
+      else if (ch < 0x0800U) {
+         ret[outpos++] = ((ch >> 6) & 0x1f) | 0xc0;
          ret[outpos++] = (ch & 0x3f) | 0x80;
       }
       else {
-         ret[outpos++] = (ch >> 18 & 0x07) | 0xf0;
-         ret[outpos++] = (ch >> 12 & 0x3f) | 0x80;
-         ret[outpos++] = (ch >> 6 & 0x3f) | 0x80;
+         ret[outpos++] = ((ch >> 12) & 0x0f) | 0xe0;
+         ret[outpos++] = ((ch >> 6) & 0x3f) | 0x80;
          ret[outpos++] = (ch & 0x3f) | 0x80;
       }
    }
-   *sz = need;
+   *sz = (int)need;
    return ret;
 }
 
@@ -3025,20 +3103,13 @@ tODResult ODComSendByte(tPortHandle hPort, BYTE btToSend)
 {
    tPortInfo *pPortInfo = ODHANDLE2PTR(hPort, tPortInfo);
 
+   ASSERT(!ODSyncAPILevelActive());
    VERIFY_CALL(pPortInfo != NULL);
 
    VERIFY_CALL(pPortInfo->bIsOpen);
 
    if (od_control.od_cp437_to_utf8_out) {
-      int len = 1;
-      BYTE *uc = ODComCP437ToUnicode(&btToSend, &len);
-      if (uc == NULL)
-         return kODRCGeneralFailure;
-      else {
-         tODResult res = ODComSendBuffer(hPort, uc, len);
-         free(uc);
-         return res;
-      }
+      return ODComSendBuffer(hPort, &btToSend, 1);
    }
 
    switch(pPortInfo->Method)
@@ -3047,8 +3118,31 @@ tODResult ODComSendByte(tPortHandle hPort, BYTE btToSend)
       case kComMethodFOSSIL:
       {
          int nPort;
+#if defined(__WATCOMC__) && !defined(ODPLAT_DOS32)
+         union REGS Registers;
+#endif
          nPort = pPortInfo->btPort;
 
+#ifdef ODPLAT_DOS32
+         while(!OD32FossilSendByte((BYTE)nPort, btToSend))
+         {
+            ODComCallIdleFunction(pPortInfo);
+         }
+#else
+# ifdef __WATCOMC__
+         for(;;)
+         {
+            Registers.h.ah = 0x0b;
+            Registers.h.al = btToSend;
+            Registers.x.dx = nPort;
+            int86(0x14, &Registers, &Registers);
+            if(Registers.x.ax != 0)
+               break;
+
+            /* Call idle function, if any. */
+            ODComCallIdleFunction(pPortInfo);
+         }
+#else
 try_again:
          ASM    mov ah, 0x0b
          ASM    mov dx, nPort
@@ -3058,13 +3152,12 @@ try_again:
          ASM    jne keep_going
 
          /* Call idle function, if any. */
-         if(pPortInfo->pfIdleCallback != NULL)
-         {
-            (*pPortInfo->pfIdleCallback)();
-         }
+         ODComCallIdleFunction(pPortInfo);
 
          goto try_again;
 keep_going:
+# endif
+#endif
          break;
       }
 #endif /* INCLUDE_FOSSIL_COM */
@@ -3076,14 +3169,11 @@ keep_going:
          while(!ODComInternalTXReady())
          {
             /* Call idle function, if any. */
-            if(pPortInfo->pfIdleCallback != NULL)
-            {
-               (*pPortInfo->pfIdleCallback)();
-            }
+            ODComCallIdleFunction(pPortInfo);
          }
 
          /* Disable interrupts. */
-         ASM cli
+         OD_COM_INTERRUPTS_DISABLE();
 
          /* Place the character in the queue. */
          pbtTXQueue[nTXInIndex++] = btToSend;
@@ -3098,12 +3188,10 @@ keep_going:
          nTXChars++;
 
          /* Enable transmit interrupt on the UART. */
-         ASM mov dx, nIntEnableRegAddr
-         ASM in al, dx
-         ASM or al, THRE
-         ASM out dx, al
+         OD_COM_PORT_WRITE(nIntEnableRegAddr,
+            OD_COM_PORT_READ(nIntEnableRegAddr) | THRE);
 
-         ASM sti
+         OD_COM_INTERRUPTS_ENABLE();
 
          break;
 #endif /* INCLUDE_UART_COM */
@@ -3166,7 +3254,11 @@ keep_going:
 			do {
 				send_ret = send(pPortInfo->socket, (char*)&btToSend, 1, 0);
 				if (send_ret != 1)
+#ifdef OD_THREAD_SUPPORT
+					ODThreadSleep(50);
+#else
 					od_sleep(50);
+#endif
 			} while ((send_ret == SOCKET_ERROR) && (WSAGetLastError() == WSAEWOULDBLOCK));
 
 			if (send_ret == SOCKET_ERROR)
@@ -3203,6 +3295,9 @@ keep_going:
 				return(kODRCGeneralFailure);
 			}
 		}
+
+	    if(retval != 1)
+		   return(kODRCGeneralFailure);
 
 	    if(fwrite(&btToSend,1,1,stdout)!=1)
 		   return(kODRCGeneralFailure);
@@ -3256,11 +3351,25 @@ tODResult ODComGetBuffer(tPortHandle hPort, BYTE *pbtBuffer, int nSize,
 #ifdef INCLUDE_FOSSIL_COM
       case kComMethodFOSSIL:
       {
-         int nReceived;
+         int nReceived = 0;
          int nPort;
 
          nPort = pPortInfo->btPort;
 
+#ifdef ODPLAT_DOS32
+         nReceived = OD32FossilReceiveBlock((BYTE)nPort,
+            &pPortInfo->FossilBuffer, pbtBuffer, nSize);
+         if(nReceived < 0 || (nReceived == 0
+            && (OD32FossilStatus((BYTE)nPort) & 0x0100) != 0))
+         {
+            nReceived = 0;
+            while(nReceived < nSize
+               && (OD32FossilStatus((BYTE)nPort) & 0x0100) != 0)
+            {
+               pbtBuffer[nReceived++] = OD32FossilGetByte((BYTE)nPort);
+            }
+         }
+#else
          ASM    push di
          ASM    mov cx, nSize
          ASM    mov dx, nPort
@@ -3278,6 +3387,7 @@ tODResult ODComGetBuffer(tPortHandle hPort, BYTE *pbtBuffer, int nSize,
          ASM    int 20
          ASM    pop di
          ASM    mov nReceived, ax
+#endif
 
          *pnBytesRead = nReceived;
 
@@ -3294,7 +3404,7 @@ tODResult ODComGetBuffer(tPortHandle hPort, BYTE *pbtBuffer, int nSize,
          char *pbtSource;
 
          /* Disable interrupts. */
-         ASM cli
+         OD_COM_INTERRUPTS_DISABLE();
 
          /* Number of bytes to transfer is minimum of buffer size, and */
          /* number of bytes in receive queue.                          */
@@ -3349,7 +3459,7 @@ tODResult ODComGetBuffer(tPortHandle hPort, BYTE *pbtBuffer, int nSize,
          *pnBytesRead = nTransferSize;
 
          /* Re-enable interrupts. */
-         ASM sti
+         OD_COM_INTERRUPTS_ENABLE();
 
          break;
       }
@@ -3459,6 +3569,7 @@ tODResult ODComSendBuffer(tPortHandle hPort, BYTE *pbtBuffer, int nSize)
    tPortInfo *pPortInfo = ODHANDLE2PTR(hPort, tPortInfo);
    BYTE *buf = pbtBuffer;
 
+   ASSERT(!ODSyncAPILevelActive());
    VERIFY_CALL(pPortInfo != NULL);
    VERIFY_CALL(pbtBuffer != NULL);
    VERIFY_CALL(nSize >= 0);
@@ -3483,11 +3594,42 @@ tODResult ODComSendBuffer(tPortHandle hPort, BYTE *pbtBuffer, int nSize)
 #ifdef INCLUDE_FOSSIL_COM
       case kComMethodFOSSIL:
       {
-         int nCount;
+         int nCount = 0;
          int nPort;
 
          nPort = pPortInfo->btPort;
 
+#ifdef ODPLAT_DOS32
+         {
+            BYTE *pCurrent = buf;
+            int nRemaining = nSize;
+
+            while(nRemaining > 0)
+            {
+               nCount = OD32FossilSendBlock((BYTE)nPort,
+                  &pPortInfo->FossilBuffer, pCurrent, nRemaining);
+               if(nCount < 0)
+               {
+                  while(nRemaining-- > 0)
+                  {
+                     while(!OD32FossilSendByte((BYTE)nPort, *pCurrent))
+                     {
+                        ODComCallIdleFunction(pPortInfo);
+                     }
+                     ++pCurrent;
+                  }
+                  break;
+               }
+               if(nCount == 0)
+               {
+                  ODComCallIdleFunction(pPortInfo);
+                  continue;
+               }
+               pCurrent += nCount;
+               nRemaining -= nCount;
+            }
+         }
+#else
 try_again:
          ASM    push di
          ASM    mov cx, nSize
@@ -3510,15 +3652,13 @@ try_again:
          if(nCount<nSize)
          {
             /* Call idle function, if any. */
-            if(pPortInfo->pfIdleCallback != NULL)
-            {
-               (*pPortInfo->pfIdleCallback)();
-            }
+            ODComCallIdleFunction(pPortInfo);
 
             nSize-=nCount;
             buf+=nCount;
             goto try_again;
          }
+#endif
          break;
       }
 #endif /* INCLUDE_FOSSIL_COM */
@@ -3538,7 +3678,7 @@ try_again:
          for(;;)
          {
             /* Disable interrupts. */
-            ASM cli
+            OD_COM_INTERRUPTS_DISABLE();
 
             /* Try to transfer all of buffer if possible. */
             nTransferSize = nSize;
@@ -3602,13 +3742,11 @@ try_again:
             nTXChars += nTransferSize;
 
             /* Enable transmit interrupt on the UART. */
-            ASM mov dx, nIntEnableRegAddr
-            ASM in al, dx
-            ASM or al, THRE
-            ASM out dx, al
+            OD_COM_PORT_WRITE(nIntEnableRegAddr,
+               OD_COM_PORT_READ(nIntEnableRegAddr) | THRE);
 
             /* Re-enable interrupts. */
-            ASM sti
+            OD_COM_INTERRUPTS_ENABLE();
 
             /* Adjust count of characters left to transfer down by number of */
             /* characters transferred.                                       */
@@ -3619,10 +3757,7 @@ try_again:
             if(nSize == 0) break;
 
             /* Call idle function, if any. */
-            if(pPortInfo->pfIdleCallback != NULL)
-            {
-               (*pPortInfo->pfIdleCallback)();
-            }
+            ODComCallIdleFunction(pPortInfo);
          }
          break;
       }
@@ -3655,8 +3790,6 @@ try_again:
             return(kODRCGeneralFailure);
          }
          break;
-         if (od_control.od_cp437_to_utf8_out) free(buf);
-         return(kODRCUnsupported);
 #endif /* INCLUDE_DOOR32_COM */
 
 #ifdef INCLUDE_SOCKET_COM
@@ -3693,7 +3826,11 @@ try_again:
 				send_ret = send(pPortInfo->socket, (char*)buf, nSize, 0);
 				if (send_ret != SOCKET_ERROR)
 					break;
+#ifdef OD_THREAD_SUPPORT
+				ODThreadSleep(25);
+#else
 				od_sleep(25);
+#endif
 			} while (WSAGetLastError() == WSAEWOULDBLOCK);
 
 			if (send_ret != nSize) {
@@ -3737,7 +3874,11 @@ try_again:
 
 				retval=fwrite(buf+pos,1,nSize-pos,stdout);
 				if(retval!=nSize-pos) {
+#ifdef OD_THREAD_SUPPORT
+					ODThreadSleep(1);
+#else
 					od_sleep(1);
+#endif
 				}
 
 				pos+=retval;
@@ -3754,171 +3895,5 @@ try_again:
 
    /* Return with success. */
    if (od_control.od_cp437_to_utf8_out) free(buf);
-   return(kODRCSuccess);
-}
-
-
-/* ----------------------------------------------------------------------------
- * ODComWaitEvent()
- *
- * Blocks until the specified serial I/O event occurs, or an error condition
- * is encountered.
- *
- * Parameters: hPort - Handle to an open port.
- *
- *             Event - Event type to wait for.
- *
- *     Return: kODRCSuccess on success, or an error code on failure.
- */
-tODResult ODComWaitEvent(tPortHandle hPort, tComEvent Event)
-{
-   tPortInfo *pPortInfo = ODHANDLE2PTR(hPort, tPortInfo);
-
-   VERIFY_CALL(pPortInfo != NULL);
-
-   VERIFY_CALL(pPortInfo->bIsOpen);
-
-   switch(pPortInfo->Method)
-   {
-#if defined(INCLUDE_UART_COM) || defined(INCLUDE_FOSSIL_COM) || defined(INCLUDE_STDIO_COM)
-      case kComMethodFOSSIL:
-      case kComMethodUART:
-	  case kComMethodStdIO:
-         switch(Event)
-         {
-            case kNoCarrier:
-            {
-               BOOL bCarrier;
-               for(;;)
-               {
-                  ODComCarrier(hPort, &bCarrier);
-                  if(!bCarrier) break;
-
-                  if(pPortInfo->pfIdleCallback != NULL)
-                  {
-                     (*pPortInfo->pfIdleCallback)();
-                  }
-               }
-               break;
-            }
-            default:
-               VERIFY_CALL(FALSE);
-         }
-         break;
-#endif /* INCLUDE_UART_COM || INCLUDE_FOSSIL_COM */
-
-#ifdef INCLUDE_WIN32_COM
-      case kComMethodWin32:
-      {
-         DWORD dwEvtMask;
-
-         /* Obtain current event mask. */
-         if(!GetCommMask(pPortInfo->hCommDev, &dwEvtMask))
-         {
-            return(kODRCGeneralFailure);
-         }
-
-         /* Turn on event to be waited for. */
-         switch(Event)
-         {
-            case kNoCarrier:
-               dwEvtMask |= EV_RLSD;
-               break;
-            default:
-               VERIFY_CALL(FALSE);
-         }
-
-         /* Write new event mask. */
-         if(!SetCommMask(pPortInfo->hCommDev, dwEvtMask))
-         {
-            return(kODRCGeneralFailure);
-         }
-
-         /* Wait until event occurs. */
-         for(;;)
-         {
-            /* Block until some event occurs. */
-            if(!WaitCommEvent(pPortInfo->hCommDev, &dwEvtMask, NULL))
-            {
-               return(kODRCGeneralFailure);
-            }
-
-            /* Determine whether this is what we are waiting for. */
-            switch(Event)
-            {
-               case kNoCarrier:
-                  if(dwEvtMask | EV_RLSD)
-                  {
-                     BOOL bCarrier;
-                     ODComCarrier(hPort, &bCarrier);
-                     if(!bCarrier)
-                     {
-                        return(kODRCSuccess);
-                     }
-                  }
-                  break;
-            }
-
-            /* If we get here, the event we are waiting for hasn't occurred */
-            /* yet, so loop and block waiting for next event.               */
-         }
-
-         break;
-      }
-#endif /* INCLUDE_WIN32_COM */
-
-#ifdef INCLUDE_DOOR32_COM
-      case kComMethodDoor32:
-         switch(Event)
-         {
-            case kNoCarrier:
-               ASSERT(pPortInfo->pfDoorGetOfflineEventHandle != NULL);
-               WaitForSingleObject(
-                  (*pPortInfo->pfDoorGetOfflineEventHandle)(), INFINITE);
-               break;
-            default:
-               VERIFY_CALL(FALSE);
-         }
-         break;
-#endif /* INCLUDE_DOOR32_COM */
-
-#ifdef INCLUDE_SOCKET_COM
-      case kComMethodSocket:
-		{
-			if(Event == kNoCarrier)
-			{
-#ifdef OD_MULTITHREADED
-            while (ODSemaphoreDown(pPortInfo->hCarrierLostSemaphore, OD_NO_TIMEOUT) != kODRCSuccess)
-               ;
-            // Re-post the semaphore in case someone else waits...
-            ODSemaphoreUp(pPortInfo->hCarrierLostSemaphore, 1);
-#else
-            while(1) 
-            {
-               char ch;
-               int recv_ret = recv(pPortInfo->socket, &ch, 1, MSG_PEEK);
-               if(recv_ret == SOCKET_ERROR && WSAGetLastError() == WSAEWOULDBLOCK)
-                  continue;
-               if (recv_ret != 1)
-                  break;
-            }
-#endif
-			}
-			else
-			{
-				VERIFY_CALL(FALSE);
-			}
-			break;
-		}
-#endif /* INCLUDE_SOCKET_COM */
-
-
-      default:
-         /* If we get here, then the current serial I/O method is not */
-         /* handled by this function.                                 */
-         ASSERT(FALSE);
-   }
-
-   /* Return with success. */
    return(kODRCSuccess);
 }

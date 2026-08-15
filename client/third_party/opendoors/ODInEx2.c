@@ -65,7 +65,14 @@
 
 #define BUILDING_OPENDOORS
 
+#include <errno.h>
+#ifdef HAS_INTTYPES_H
 #include <inttypes.h>
+typedef uint32_t tODPrintUInt32;
+#else
+#define PRIu32 "lu"
+typedef unsigned long tODPrintUInt32;
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -81,10 +88,14 @@
 #include "ODPlat.h"
 #include "ODTypes.h"
 #include "ODScrn.h"
+#include "ODVScrn.h"
 #include "ODInQue.h"
 #include "ODKrnl.h"
 #include "ODInEx.h"
 #include "ODUtil.h"
+#ifdef ODPLAT_WIN32
+#include "ODFrame.h"
+#endif
 
 
 /* Time difference leeway for door information files to be considered to */
@@ -116,11 +127,146 @@ static char *apszEnvVarNames[] =
 static INT ODSearchInDir(char **papszFileNames, INT nNumFileNames,
    char *pszFound, char *pszDirectory);
 
+typedef struct tODDropFileWriter
+{
+   FILE *pFile;
+   INT nErrorCode;
+   int nRuntimeError;
+} tODDropFileWriter;
+
+BOOL ODCALL ODDropFileOpen(tODDropFileWriter *pWriter,
+   const char *pszPath, const char *pszMode);
+BOOL ODCALL ODDropFileWrite(tODDropFileWriter *pWriter,
+   const void *pData, size_t nSize);
+void ODVCALL ODTextDropFileWrite(tODDropFileWriter *pWriter,
+   const char *pszFormat, ...);
+BOOL ODCALL ODDropFileClose(tODDropFileWriter *pWriter);
+
+static void ODDropFileRecordWriteFailure(tODDropFileWriter *pWriter);
+
+
+/* Converts a valid, nondecreasing pair of timestamps to elapsed minutes. */
+BOOL ODCALL ODGetElapsedMinutes(DWORD *pdwMinutes, time_t nStartTime,
+   time_t nEndTime)
+{
+   if(pdwMinutes == NULL || nStartTime == (time_t)-1
+      || nEndTime == (time_t)-1 || nEndTime < nStartTime)
+   {
+      return(FALSE);
+   }
+
+   return(ODDWordDivide(pdwMinutes, NULL, nEndTime - nStartTime, 60L));
+}
+
+
+/* Opens a drop file and records a caller-visible failure without using any
+ * additional output buffer. */
+BOOL ODCALL ODDropFileOpen(tODDropFileWriter *pWriter,
+   const char *pszPath, const char *pszMode)
+{
+   pWriter->pFile = fopen(pszPath, pszMode);
+   pWriter->nErrorCode = ERR_NONE;
+   pWriter->nRuntimeError = 0;
+   if(pWriter->pFile == NULL)
+   {
+      pWriter->nErrorCode = ERR_FILEOPEN;
+      pWriter->nRuntimeError = errno;
+      od_control.od_error = ERR_FILEOPEN;
+      return(FALSE);
+   }
+   return(TRUE);
+}
+
+
+/* Retains the first output failure for a drop-file stream. */
+static void ODDropFileRecordWriteFailure(tODDropFileWriter *pWriter)
+{
+   if(pWriter->nErrorCode == ERR_NONE)
+   {
+      pWriter->nErrorCode = ERR_GENERALFAILURE;
+      pWriter->nRuntimeError = errno;
+   }
+}
+
+
+/* Writes one binary block, suppressing output after the first failure. */
+BOOL ODCALL ODDropFileWrite(tODDropFileWriter *pWriter,
+   const void *pData, size_t nSize)
+{
+   if(pWriter->nErrorCode != ERR_NONE)
+   {
+      return(FALSE);
+   }
+
+   if(fwrite(pData, 1, nSize, pWriter->pFile) != nSize)
+   {
+      ODDropFileRecordWriteFailure(pWriter);
+      return(FALSE);
+   }
+   return(TRUE);
+}
+
+
+/* Writes one field or line, retaining the first failure and suppressing all
+ * later output for the same file. */
+void ODVCALL ODTextDropFileWrite(tODDropFileWriter *pWriter,
+   const char *pszFormat, ...)
+{
+   va_list ArgumentList;
+
+   if(pWriter->nErrorCode != ERR_NONE)
+   {
+      return;
+   }
+
+   va_start(ArgumentList, pszFormat);
+   if(vfprintf(pWriter->pFile, pszFormat, ArgumentList) < 0)
+   {
+      ODDropFileRecordWriteFailure(pWriter);
+   }
+   va_end(ArgumentList);
+}
+
+
+/* Commits and closes a drop file, reporting the first write or close
+ * failure after ensuring that the stream is no longer owned. */
+BOOL ODCALL ODDropFileClose(tODDropFileWriter *pWriter)
+{
+   if(pWriter->pFile == NULL)
+   {
+      if(pWriter->nErrorCode != ERR_NONE)
+      {
+         od_control.od_error = pWriter->nErrorCode;
+         errno = pWriter->nRuntimeError;
+      }
+      return(FALSE);
+   }
+
+   if(fclose(pWriter->pFile) != 0 && pWriter->nErrorCode == ERR_NONE)
+   {
+      pWriter->nErrorCode = ERR_GENERALFAILURE;
+      pWriter->nRuntimeError = errno;
+   }
+   pWriter->pFile = NULL;
+
+   if(pWriter->nErrorCode != ERR_NONE)
+   {
+      od_control.od_error = pWriter->nErrorCode;
+      errno = pWriter->nRuntimeError;
+      return(FALSE);
+   }
+   return(TRUE);
+}
+
 /* Currently, the following functions are only used in the Win32 version. */
 #ifdef ODPLAT_WIN32
 static BOOL ODSendModemCommand(char *pszCommand, int nRetries);
 static BOOL ODSendModemCommandOnce(char *pszCommand);
 static BOOL ODWaitForString(char *pszResponse, tODMilliSec ResponseTimeout);
+static void ODAPISleep(tODMilliSec Milliseconds);
+#if defined(OD_DIAGNOSTICS) && defined(ODPLAT_WIN32)
+static void ODDiagnosticMessage(const char *pszText, const char *pszTitle);
+#endif
 #endif /* ODPLAT_WIN32 */
 
 #ifdef OD_DIAGNOSTICS
@@ -145,12 +291,18 @@ static char szDebugWorkString[500] = "";
 ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
 {
    BYTE btCount;
-   FILE *pfDropFile;
+   tODDropFileWriter TextDropFile;
+   tODDropFileWriter BinaryDropFile;
    time_t nMaxTime;
    time_t nDoorEndTime;
    void *pWindow = NULL;
    DWORD dwActiveMinutes;
    static BOOL bExiting = FALSE;
+   BOOL bNestedAPI;
+   BOOL bReturnToCaller;
+#ifdef OD_THREAD_SUPPORT
+   unsigned nSavedAPILevel;
+#endif
 
    /* Log function entry if running in trace mode */
    TRACE(TRACE_API, "od_exit()");
@@ -158,10 +310,27 @@ ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
 #if defined(OD_DIAGNOSTICS) && defined(ODPLAT_WIN32)
    if(od_control.od_internal_debug)
    {
-      MessageBox(NULL, "Starting up od_exit()", "OpenDoors Diagnostics",
-         MB_OK);
+      ODDiagnosticMessage("Starting up od_exit()", "OpenDoors Diagnostics");
    }
 #endif
+
+   /* The first exit request wins. */
+   if(eODLifecycleState == kODLifecycleInitializing)
+   {
+      if(!bODExitRequestedDuringInitialization)
+      {
+         nODPendingExitErrorLevel = nErrorLevel;
+         bODPendingExitTermCall = bTermCall;
+         bODExitRequestedDuringInitialization = TRUE;
+      }
+      return;
+   }
+   if(eODLifecycleState == kODLifecycleExitPending
+      || eODLifecycleState == kODLifecycleTerminal)
+   {
+      od_control.od_error = ERR_GENERALFAILURE;
+      return;
+   }
 
    /* If this is a recursive od_exit() call, then ignore it. */
    if(bExiting)
@@ -172,26 +341,66 @@ ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
 
    /* If user called od_exit() before doing anything else, then we first */
    /* initialize OpenDoors in order to shutdown and exit.                */
-   if(!bODInitialized) od_init();
+   if(!bODInitialized)
+   {
+      nODPendingExitErrorLevel = nErrorLevel;
+      bODPendingExitTermCall = bTermCall;
+      bODExitRequestedDuringInitialization = TRUE;
+      od_init();
+   }
+   if(!bODInitialized || eODLifecycleState == kODLifecycleTerminal)
+   {
+      bExiting = FALSE;
+      return;
+   }
+   bNestedAPI = ODSyncAPIIsNested();
+   OD_API_ENTRY();
 
-   /* Update remaining time. */
-   od_control.user_timelimit += od_control.od_maxtime_deduction;
+   if(!bODExitPrologueComplete)
+   {
+      /* Update remaining time. */
+      od_control.user_timelimit += od_control.od_maxtime_deduction;
 
    /* Calculate deducted time */
-   time(&nDoorEndTime);
-   ODDWordDivide(&dwActiveMinutes, NULL, nDoorEndTime - nStartupUnixTime, 60L);
-   od_control.user_time_used += ((nInitialRemaining
-      - od_control.user_timelimit) - (int)dwActiveMinutes);
+   nDoorEndTime = time(NULL);
+   if(ODGetElapsedMinutes(&dwActiveMinutes, nStartupUnixTime, nDoorEndTime))
+   {
+      od_control.user_time_used += ((nInitialRemaining
+         - od_control.user_timelimit) - (int)dwActiveMinutes);
+   }
 
    /* Reset to original bps rate that was stored in drop file */
-   od_control.baud = dwFileBPS;
+      od_control.baud = dwFileBPS;
 
    /* If function hook is defined. */
-   if(od_control.od_before_exit != NULL)
-   {
-      /* Then call it. */
-      (*od_control.od_before_exit)();
+      if(od_control.od_before_exit != NULL)
+      {
+         /* Then call it. */
+         (*od_control.od_before_exit)();
+      }
+
+      nODPendingExitErrorLevel = nErrorLevel;
+      bODPendingExitTermCall = bTermCall;
+      bODPendingExitNoExit = od_control.od_noexit;
+      bODExitPrologueComplete = TRUE;
+
+      /* In no-exit mode an exit raised inside another public call is
+       * finalized by that call's outermost API-exit boundary. */
+      if(od_control.od_noexit && bNestedAPI)
+      {
+         eODLifecycleState = kODLifecycleExitPending;
+#ifdef ODPLAT_WIN32
+         if(ODPlatGetWindowsSubsystem() == kODWindowsSubsystemGUI)
+            ODFrameRequestShutdown(hFrameThread);
+#endif
+         bExiting = FALSE;
+         OD_API_EXIT();
+         return;
+      }
    }
+
+   bReturnToCaller = bODPendingExitNoExit;
+   eODLifecycleState = kODLifecycleFinalizing;
 
    if(bTermCall && od_control.od_hanging_up != NULL)
    {
@@ -213,7 +422,7 @@ ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
    {
       ODMakeFilename(szExitinfoBBSPath, szExitinfoBBSPath, "EXITINFO.BBS",
          sizeof(szExitinfoBBSPath));
-      if((pfDropFile = fopen(szExitinfoBBSPath, "r+b")) != NULL)
+      if(ODDropFileOpen(&BinaryDropFile, szExitinfoBBSPath, "r+b"))
       {
          switch(od_control.od_info_type)
          {
@@ -223,7 +432,12 @@ ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
                ODStringCToPascal(pRA2ExitInfoRecord->last_caller,35,od_control.system_last_caller);
                ODStringCToPascal(pRA2ExitInfoRecord->sLastHandle,35,od_control.system_last_handle);
                ODStringCToPascal(pRA2ExitInfoRecord->start_date,8,od_control.timelog_start_date);
-               memcpy(&pRA2ExitInfoRecord->busyperhour,&od_control.timelog_busyperhour,62);
+               memcpy(pRA2ExitInfoRecord->busyperhour,
+                  od_control.timelog_busyperhour,
+                  sizeof(pRA2ExitInfoRecord->busyperhour));
+               memcpy(pRA2ExitInfoRecord->busyperday,
+                  od_control.timelog_busyperday,
+                  sizeof(pRA2ExitInfoRecord->busyperday));
                ODStringCToPascal(pRA2ExitInfoRecord->name,35,od_control.user_name);
                ODStringCToPascal(pRA2ExitInfoRecord->location,25,od_control.user_location);
                ODStringCToPascal(pRA2ExitInfoRecord->organisation,50,od_control.user_org);
@@ -289,8 +503,9 @@ ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
                pRA2ExitInfoRecord->has_rip=od_control.user_rip;
                pRA2ExitInfoRecord->btRIPVersion=od_control.user_rip_ver;
 
-               fwrite(pRA2ExitInfoRecord,1,sizeof(tRA2ExitInfoRecord),pfDropFile);
-               free(pRA2ExitInfoRecord);
+               ODExitInfoRA2Endian(pRA2ExitInfoRecord, FALSE);
+               (void)ODDropFileWrite(&BinaryDropFile, pRA2ExitInfoRecord,
+                  sizeof(tRA2ExitInfoRecord));
                break;
 
             case EXITINFO:
@@ -298,7 +513,10 @@ ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
                ODStringCToPascal(pExitInfoRecord->bbs.ra.logonpassword,15,od_control.user_logonpassword);
                pExitInfoRecord->bbs.ra.wantchat=od_control.user_wantchat;
 
-               ODWriteExitInfoPrimitive(pfDropFile,476);
+               if(!ODWriteExitInfoPrimitive(BinaryDropFile.pFile,476))
+               {
+                  ODDropFileRecordWriteFailure(&BinaryDropFile);
+               }
                break;
 
 
@@ -335,9 +553,12 @@ ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
                ODStringCToPascal(pExitInfoRecord->bbs.ra.logonpassword,15,od_control.user_logonpassword);
                pExitInfoRecord->bbs.ra.wantchat=od_control.user_wantchat;
 
-               ODWriteExitInfoPrimitive(pfDropFile,476);
-               fwrite(pExtendedExitInfo,1,1017,pfDropFile);
-               free(pExtendedExitInfo);
+               if(!ODWriteExitInfoPrimitive(BinaryDropFile.pFile,476))
+               {
+                  ODDropFileRecordWriteFailure(&BinaryDropFile);
+               }
+               ODExitInfoExtendedEndian(pExtendedExitInfo, FALSE);
+               (void)ODDropFileWrite(&BinaryDropFile, pExtendedExitInfo, 1017);
                break;
 
 
@@ -353,11 +574,21 @@ ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
                pExitInfoRecord->bbs.qbbs.externlogoff = bTermCall ? 1 : 0;
                pExitInfoRecord->bbs.qbbs.ripactive = od_control.user_rip ? 1 : 0;
 
-               ODWriteExitInfoPrimitive(pfDropFile,644);
+               if(!ODWriteExitInfoPrimitive(BinaryDropFile.pFile,644))
+               {
+                  ODDropFileRecordWriteFailure(&BinaryDropFile);
+               }
          }
 
-         fclose(pfDropFile);
+         (void)ODDropFileClose(&BinaryDropFile);
       }
+
+      free(pRA2ExitInfoRecord);
+      pRA2ExitInfoRecord = NULL;
+      free(pExitInfoRecord);
+      pExitInfoRecord = NULL;
+      free(pExtendedExitInfo);
+      pExtendedExitInfo = NULL;
    }
 
 
@@ -365,280 +596,296 @@ ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
    {
       case DOORSYS_GAP:
       case DOORSYS_WILDCAT:
-         pfDropFile=fopen(szDropFilePath,"w");
+         if(!ODDropFileOpen(&TextDropFile, szDropFilePath, "w"))
+         {
+            break;
+         }
          if(od_control.baud==0L)
          {
-            fprintf(pfDropFile,"COM0:\n");
+            ODTextDropFileWrite(&TextDropFile,"COM0:\n");
          }
          else
          {
-            fprintf(pfDropFile,"COM%d:\n",od_control.port+1);
+            ODTextDropFileWrite(&TextDropFile,"COM%d:\n",od_control.port+1);
          }
-         fprintf(pfDropFile,"%s",apszDropFileInfo[0]);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[1]);
-         fprintf(pfDropFile,"%u\n",od_control.od_node);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[0]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[1]);
+         ODTextDropFileWrite(&TextDropFile,"%u\n",od_control.od_node);
          switch(btDoorSYSLock)
          {
             case 0:
-               fprintf(pfDropFile,"%" PRIu32 "\n",(uint32_t)od_control.baud);
+               ODTextDropFileWrite(&TextDropFile,"%" PRIu32 "\n",(tODPrintUInt32)od_control.baud);
                break;
             case 1:
-               fprintf(pfDropFile,"N\n");
+               ODTextDropFileWrite(&TextDropFile,"N\n");
                break;
             case 2:
-               fprintf(pfDropFile,"Y\n");
+               ODTextDropFileWrite(&TextDropFile,"Y\n");
          }
-         fprintf(pfDropFile,"%s",apszDropFileInfo[3]);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[4]);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[5]);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[22]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[3]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[4]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[5]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[22]);
          strupr(od_control.user_name);
-         fprintf(pfDropFile,"%s\n",od_control.user_name);
-         fprintf(pfDropFile,"%s\n",od_control.user_location);
-         fprintf(pfDropFile,"%s\n",od_control.user_homephone);
-         fprintf(pfDropFile,"%s\n",od_control.user_dataphone);
-         fprintf(pfDropFile,"%s\n",od_control.user_password);
-         fprintf(pfDropFile,"%u\n",od_control.user_security);
-         fprintf(pfDropFile,"%" PRIu32 "\n",(uint32_t)od_control.user_numcalls);
-         fprintf(pfDropFile,"%s\n",od_control.user_lastdate);
-         fprintf(pfDropFile,"%u\n",(signed int)od_control.user_timelimit*60);
-         fprintf(pfDropFile,"%d\n",od_control.user_timelimit);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_name);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_location);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_homephone);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_dataphone);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_password);
+         ODTextDropFileWrite(&TextDropFile,"%u\n",od_control.user_security);
+         ODTextDropFileWrite(&TextDropFile,"%" PRIu32 "\n",(tODPrintUInt32)od_control.user_numcalls);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_lastdate);
+         ODTextDropFileWrite(&TextDropFile,"%u\n",(signed int)od_control.user_timelimit*60);
+         ODTextDropFileWrite(&TextDropFile,"%d\n",od_control.user_timelimit);
          if(od_control.user_rip)
          {
-            fprintf(pfDropFile,"RIP\n");
+            ODTextDropFileWrite(&TextDropFile,"RIP\n");
          }
          else if(od_control.user_ansi)
          {
-            fprintf(pfDropFile,"GR\n");
+            ODTextDropFileWrite(&TextDropFile,"GR\n");
          }
          else
          {
-            fprintf(pfDropFile,"NG\n");
+            ODTextDropFileWrite(&TextDropFile,"NG\n");
          }
-         fprintf(pfDropFile,"%d\n",od_control.user_screen_length);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[8]);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[9]);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[10]);
-         fprintf(pfDropFile,"%s\n",od_control.user_subdate);
-         fprintf(pfDropFile,"%u\n",od_control.user_num);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[6]);
-         fprintf(pfDropFile,"%" PRIu32 "\n",(uint32_t)od_control.user_uploads);
-         fprintf(pfDropFile,"%" PRIu32 "\n",(uint32_t)od_control.user_downloads);
-         fprintf(pfDropFile,"%" PRIu32 "\n",(uint32_t)od_control.user_todayk);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[21]);
+         ODTextDropFileWrite(&TextDropFile,"%d\n",od_control.user_screen_length);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[8]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[9]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[10]);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_subdate);
+         ODTextDropFileWrite(&TextDropFile,"%u\n",od_control.user_num);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[6]);
+         ODTextDropFileWrite(&TextDropFile,"%" PRIu32 "\n",(tODPrintUInt32)od_control.user_uploads);
+         ODTextDropFileWrite(&TextDropFile,"%" PRIu32 "\n",(tODPrintUInt32)od_control.user_downloads);
+         ODTextDropFileWrite(&TextDropFile,"%" PRIu32 "\n",(tODPrintUInt32)od_control.user_todayk);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[21]);
 
 
          if(od_control.od_info_type==DOORSYS_WILDCAT)
          {
-            fprintf(pfDropFile,"%s\n",od_control.user_birthday);
-            fprintf(pfDropFile,"%s",apszDropFileInfo[11]);
-            fprintf(pfDropFile,"%s",apszDropFileInfo[12]);
-            fprintf(pfDropFile,"%s\n",od_control.sysop_name);
+            ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_birthday);
+            ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[11]);
+            ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[12]);
+            ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.sysop_name);
             strupr(od_control.user_handle);
-            fprintf(pfDropFile,"%s\n",od_control.user_handle);
-            fprintf(pfDropFile,"%s\n",od_control.event_starttime);
+            ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_handle);
+            ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.event_starttime);
             if(od_control.user_error_free)
-               fprintf(pfDropFile,"Y\n");
+               ODTextDropFileWrite(&TextDropFile,"Y\n");
             else
-               fprintf(pfDropFile,"N\n");
-            fprintf(pfDropFile,"%s",apszDropFileInfo[7]);
-            fprintf(pfDropFile,"%s",apszDropFileInfo[13]);
-            fprintf(pfDropFile,"%s",apszDropFileInfo[14]);
-            fprintf(pfDropFile,"%s",apszDropFileInfo[15]);
-            fprintf(pfDropFile,"%s",apszDropFileInfo[16]);
-            fprintf(pfDropFile,"%s\n",od_control.user_logintime);
-            fprintf(pfDropFile,"%s\n",od_control.user_lasttime);
-            fprintf(pfDropFile,"%s",apszDropFileInfo[18]);
-            fprintf(pfDropFile,"%s",apszDropFileInfo[19]);
-            fprintf(pfDropFile,"%" PRIu32 "\n",(uint32_t)od_control.user_upk);
-            fprintf(pfDropFile,"%" PRIu32 "\n",(uint32_t)od_control.user_downk);
-            fprintf(pfDropFile,"%s\n",od_control.user_comment);
-            fprintf(pfDropFile,"%s",apszDropFileInfo[20]);
-            fprintf(pfDropFile,"%u\n",od_control.user_messages);
+               ODTextDropFileWrite(&TextDropFile,"N\n");
+            ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[7]);
+            ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[13]);
+            ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[14]);
+            ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[15]);
+            ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[16]);
+            ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_logintime);
+            ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_lasttime);
+            ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[18]);
+            ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[19]);
+            ODTextDropFileWrite(&TextDropFile,"%" PRIu32 "\n",(tODPrintUInt32)od_control.user_upk);
+            ODTextDropFileWrite(&TextDropFile,"%" PRIu32 "\n",(tODPrintUInt32)od_control.user_downk);
+            ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_comment);
+            ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[20]);
+            ODTextDropFileWrite(&TextDropFile,"%u\n",od_control.user_messages);
          }
 
-         fclose(pfDropFile);
+         (void)ODDropFileClose(&TextDropFile);
          break;
 
 
       case DOORSYS_DRWY:
-         pfDropFile=fopen(szDropFilePath,"w");
-         fprintf(pfDropFile,"%s\n",od_control.user_name);
+         if(!ODDropFileOpen(&TextDropFile, szDropFilePath, "w"))
+         {
+            break;
+         }
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_name);
 
          if(od_control.baud==0L)
          {
-            fprintf(pfDropFile,"-1\n");
+            ODTextDropFileWrite(&TextDropFile,"-1\n");
          }
          else
          {
-            fprintf(pfDropFile,"%d\n",od_control.port+1);
+            ODTextDropFileWrite(&TextDropFile,"%d\n",od_control.port+1);
          }
 
-         fprintf(pfDropFile,"%" PRIu32 "\n",(uint32_t)od_control.baud);
+         ODTextDropFileWrite(&TextDropFile,"%" PRIu32 "\n",(tODPrintUInt32)od_control.baud);
 
-         fprintf(pfDropFile,"%d\n",od_control.user_timelimit);
+         ODTextDropFileWrite(&TextDropFile,"%d\n",od_control.user_timelimit);
 
          if(od_control.user_ansi)
          {
-            fprintf(pfDropFile,"G\n");
+            ODTextDropFileWrite(&TextDropFile,"G\n");
          }
          else
          {
-            fprintf(pfDropFile,"M\n");
+            ODTextDropFileWrite(&TextDropFile,"M\n");
          }
 
-         fclose(pfDropFile);
+         (void)ODDropFileClose(&TextDropFile);
          break;
 
 
       case SFDOORSDAT:
-         pfDropFile=fopen(szDropFilePath,"w");
+         if(!ODDropFileOpen(&TextDropFile, szDropFilePath, "w"))
+         {
+            break;
+         }
 
-         fprintf(pfDropFile,"%u\n",od_control.user_num);
-         fprintf(pfDropFile,"%s\n",od_control.user_name);
-         fprintf(pfDropFile,"%s\n",od_control.user_password);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[0]);
-         fprintf(pfDropFile,"%" PRIu32 "\n",(uint32_t)od_control.baud);
-         fprintf(pfDropFile,"%d\n",od_control.port+1);
-         fprintf(pfDropFile,"%d\n",od_control.user_timelimit);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[13]);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[14]);
+         ODTextDropFileWrite(&TextDropFile,"%u\n",od_control.user_num);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_name);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_password);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[0]);
+         ODTextDropFileWrite(&TextDropFile,"%" PRIu32 "\n",(tODPrintUInt32)od_control.baud);
+         ODTextDropFileWrite(&TextDropFile,"%d\n",od_control.port+1);
+         ODTextDropFileWrite(&TextDropFile,"%d\n",od_control.user_timelimit);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[13]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[14]);
          if(od_control.user_ansi)
          {
-            fprintf(pfDropFile,"TRUE\n");
+            ODTextDropFileWrite(&TextDropFile,"TRUE\n");
          }
          else
          {
-            fprintf(pfDropFile,"FALSE\n");
+            ODTextDropFileWrite(&TextDropFile,"FALSE\n");
          }
-         fprintf(pfDropFile,"%u\n",od_control.user_security);
-         fprintf(pfDropFile,"%" PRIu32 "\n",(uint32_t)od_control.user_uploads);
-         fprintf(pfDropFile,"%" PRIu32 "\n",(uint32_t)od_control.user_downloads);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[1]);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[2]);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[3]);
+         ODTextDropFileWrite(&TextDropFile,"%u\n",od_control.user_security);
+         ODTextDropFileWrite(&TextDropFile,"%" PRIu32 "\n",(tODPrintUInt32)od_control.user_uploads);
+         ODTextDropFileWrite(&TextDropFile,"%" PRIu32 "\n",(tODPrintUInt32)od_control.user_downloads);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[1]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[2]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[3]);
          if(od_control.sysop_next)
          {
-            fprintf(pfDropFile,"TRUE\n");
+            ODTextDropFileWrite(&TextDropFile,"TRUE\n");
          }
          else
          {
-            fprintf(pfDropFile,"FALSE\n");
+            ODTextDropFileWrite(&TextDropFile,"FALSE\n");
          }
-         fprintf(pfDropFile,"%s",apszDropFileInfo[4]);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[5]);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[6]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[4]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[5]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[6]);
          if(od_control.user_error_free)
          {
-            fprintf(pfDropFile,"TRUE\n");
+            ODTextDropFileWrite(&TextDropFile,"TRUE\n");
          }
          else
          {
-            fprintf(pfDropFile,"FALSE\n");
+            ODTextDropFileWrite(&TextDropFile,"FALSE\n");
          }
 
-         fprintf(pfDropFile,"%u\n",od_control.user_msg_area);
-         fprintf(pfDropFile,"%u\n",od_control.user_file_area);
-         fprintf(pfDropFile,"%u\n",od_control.od_node);
+         ODTextDropFileWrite(&TextDropFile,"%u\n",od_control.user_msg_area);
+         ODTextDropFileWrite(&TextDropFile,"%u\n",od_control.user_file_area);
+         ODTextDropFileWrite(&TextDropFile,"%u\n",od_control.od_node);
 
-         fprintf(pfDropFile,"%s",apszDropFileInfo[10]);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[11]);
-         fprintf(pfDropFile,"%s",apszDropFileInfo[12]);
-         fprintf(pfDropFile,"%" PRIu32 "\n",(uint32_t)od_control.user_todayk);
-         fprintf(pfDropFile,"%" PRIu32 "\n",(uint32_t)od_control.user_upk);
-         fprintf(pfDropFile,"%" PRIu32 "\n",(uint32_t)od_control.user_downk);
-         fprintf(pfDropFile,"%s\n",od_control.user_homephone);
-         fprintf(pfDropFile,"%s\n",od_control.user_location);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[10]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[11]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[12]);
+         ODTextDropFileWrite(&TextDropFile,"%" PRIu32 "\n",(tODPrintUInt32)od_control.user_todayk);
+         ODTextDropFileWrite(&TextDropFile,"%" PRIu32 "\n",(tODPrintUInt32)od_control.user_upk);
+         ODTextDropFileWrite(&TextDropFile,"%" PRIu32 "\n",(tODPrintUInt32)od_control.user_downk);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_homephone);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_location);
          if(apszDropFileInfo[15][0]!='\0')
          {
-            fprintf(pfDropFile, "%s", apszDropFileInfo[15]);
-            fprintf(pfDropFile, od_control.user_rip ? "TRUE\n" : "FALSE\n");
-            fprintf(pfDropFile, od_control.user_wantchat ? "TRUE\n"
+            ODTextDropFileWrite(&TextDropFile, "%s", apszDropFileInfo[15]);
+            ODTextDropFileWrite(&TextDropFile, od_control.user_rip ? "TRUE\n" : "FALSE\n");
+            ODTextDropFileWrite(&TextDropFile, od_control.user_wantchat ? "TRUE\n"
                : "FALSE\n");
-            fprintf(pfDropFile, "%s", apszDropFileInfo[17]);
-            fprintf(pfDropFile, "%d\n", od_control.od_com_irq);
-            fprintf(pfDropFile, "%d\n", od_control.od_com_address);
-            fprintf(pfDropFile, "%s", apszDropFileInfo[18]);
+            ODTextDropFileWrite(&TextDropFile, "%s", apszDropFileInfo[17]);
+            ODTextDropFileWrite(&TextDropFile, "%d\n", od_control.od_com_irq);
+            ODTextDropFileWrite(&TextDropFile, "%d\n", od_control.od_com_address);
+            ODTextDropFileWrite(&TextDropFile, "%s", apszDropFileInfo[18]);
          }
-         fclose(pfDropFile);
+         (void)ODDropFileClose(&TextDropFile);
          break;
 
 
-        case CHAINTXT:
-           pfDropFile=fopen(szDropFilePath,"w");
-           fprintf(pfDropFile,"%d\n",od_control.user_num);
-           fprintf(pfDropFile,"%s\n",od_control.user_handle);
-           fprintf(pfDropFile,"%s\n",od_control.user_name);
-           fprintf(pfDropFile,"%s\n",od_control.user_callsign);
-           fprintf(pfDropFile,"%s",apszDropFileInfo[0]);
-           fprintf(pfDropFile,"%c\n",od_control.user_sex);
-           fprintf(pfDropFile,"%s",apszDropFileInfo[1]);
-           fprintf(pfDropFile,"%s\n",od_control.user_lastdate);
-           fprintf(pfDropFile,"%d\n",od_control.user_screenwidth);
-           fprintf(pfDropFile,"%d\n",od_control.user_screen_length);
-           fprintf(pfDropFile,"%d\n",od_control.user_security);
-           fprintf(pfDropFile,"%d\n",bIsSysop);
-           fprintf(pfDropFile,"%d\n",bIsCoSysop);
-           fprintf(pfDropFile,"%d\n",od_control.user_ansi);
-           if(od_control.baud==0L)
-           {
-              fprintf(pfDropFile,"0\n");
-           }
-           else
-           {
-              fprintf(pfDropFile,"1\n");
-           }
-           fprintf(pfDropFile,"    %d.00\n",od_control.user_timelimit*60);
-           fprintf(pfDropFile,"%s",apszDropFileInfo[3]);
-           fprintf(pfDropFile,"%s",apszDropFileInfo[4]);
-           fprintf(pfDropFile,"%s",apszDropFileInfo[5]);
-           if(od_control.baud==0L)
-           {
-              fprintf(pfDropFile,"KB\n");
-           }
-           else
-           {
-              fprintf(pfDropFile,"%" PRIu32 "\n",(uint32_t)od_control.baud);
-           }
-           fprintf(pfDropFile,"%d\n",od_control.port+1);
-           fprintf(pfDropFile,"%s",apszDropFileInfo[6]);
-           fprintf(pfDropFile,"%s\n",od_control.user_password);
-           fprintf(pfDropFile,"%s",apszDropFileInfo[2]);
-           fprintf(pfDropFile,"%s",apszDropFileInfo[7]);
-           fprintf(pfDropFile,"%s",apszDropFileInfo[8]);
-           fprintf(pfDropFile,"%s",apszDropFileInfo[9]);
-           fprintf(pfDropFile,"%s",apszDropFileInfo[10]);
-           fprintf(pfDropFile,"%s",apszDropFileInfo[11]);
-           fprintf(pfDropFile,"%s",apszDropFileInfo[12]);
-           fclose(pfDropFile);
-           break;
-        case TRIBBSSYS:
-           pfDropFile = fopen(szDropFilePath, "w");
-           fprintf(pfDropFile, "%u\n", od_control.user_num);
-           fprintf(pfDropFile, "%s\n", od_control.user_name);
-           fprintf(pfDropFile, "%s\n", od_control.user_password);
-           fprintf(pfDropFile, "%u\n", od_control.user_security);
-           fprintf(pfDropFile, "%c\n", od_control.user_expert ? 'Y' : 'N');
-           fprintf(pfDropFile, "%c\n", od_control.user_ansi ? 'Y' : 'N');
-           fprintf(pfDropFile, "%d\n", od_control.user_timelimit);
-           fprintf(pfDropFile, "%s\n", od_control.user_homephone);
-           fprintf(pfDropFile, "%s\n", od_control.user_location);
-          od_control.user_birthday[2] = '/';
-          od_control.user_birthday[5] = '/';
-           fprintf(pfDropFile, "%s\n", od_control.user_birthday);
-           fprintf(pfDropFile, "%d\n", od_control.od_node);
-           fprintf(pfDropFile, "%d\n", od_control.port + 1);
-           fprintf(pfDropFile, "%" PRIu32 "\n", (uint32_t)od_control.od_connect_speed);
-           fprintf(pfDropFile, "%" PRIu32 "\n", (uint32_t)od_control.baud);
-           fprintf(pfDropFile, "%c\n", (od_control.od_com_flow_control
-              == COM_RTSCTS_FLOW) ? 'Y' : 'N');
-           fprintf(pfDropFile, "%c\n", od_control.user_error_free ? 'Y' : 'N');
-           fprintf(pfDropFile, "%s\n", od_control.system_name);
-           fprintf(pfDropFile, "%s\n", od_control.sysop_name);
-           fprintf(pfDropFile, "%s\n", od_control.user_handle);
-           fprintf(pfDropFile, "%c\n", od_control.user_rip ? 'Y' : 'N');
-           fclose(pfDropFile);
-           break;
+      case CHAINTXT:
+         if(!ODDropFileOpen(&TextDropFile, szDropFilePath, "w"))
+         {
+            break;
+         }
+         ODTextDropFileWrite(&TextDropFile,"%d\n",od_control.user_num);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_handle);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_name);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_callsign);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[0]);
+         ODTextDropFileWrite(&TextDropFile,"%c\n",od_control.user_sex);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[1]);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_lastdate);
+         ODTextDropFileWrite(&TextDropFile,"%d\n",od_control.user_screenwidth);
+         ODTextDropFileWrite(&TextDropFile,"%d\n",od_control.user_screen_length);
+         ODTextDropFileWrite(&TextDropFile,"%d\n",od_control.user_security);
+         ODTextDropFileWrite(&TextDropFile,"%d\n",bIsSysop);
+         ODTextDropFileWrite(&TextDropFile,"%d\n",bIsCoSysop);
+         ODTextDropFileWrite(&TextDropFile,"%d\n",od_control.user_ansi);
+         if(od_control.baud==0L)
+         {
+            ODTextDropFileWrite(&TextDropFile,"0\n");
+         }
+         else
+         {
+            ODTextDropFileWrite(&TextDropFile,"1\n");
+         }
+         ODTextDropFileWrite(&TextDropFile,"    %d.00\n",od_control.user_timelimit*60);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[3]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[4]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[5]);
+         if(od_control.baud==0L)
+         {
+            ODTextDropFileWrite(&TextDropFile,"KB\n");
+         }
+         else
+         {
+            ODTextDropFileWrite(&TextDropFile,"%" PRIu32 "\n",(tODPrintUInt32)od_control.baud);
+         }
+         ODTextDropFileWrite(&TextDropFile,"%d\n",od_control.port+1);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[6]);
+         ODTextDropFileWrite(&TextDropFile,"%s\n",od_control.user_password);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[2]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[7]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[8]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[9]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[10]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[11]);
+         ODTextDropFileWrite(&TextDropFile,"%s",apszDropFileInfo[12]);
+         (void)ODDropFileClose(&TextDropFile);
+         break;
+
+      case TRIBBSSYS:
+         if(!ODDropFileOpen(&TextDropFile, szDropFilePath, "w"))
+         {
+            break;
+         }
+         ODTextDropFileWrite(&TextDropFile, "%u\n", od_control.user_num);
+         ODTextDropFileWrite(&TextDropFile, "%s\n", od_control.user_name);
+         ODTextDropFileWrite(&TextDropFile, "%s\n", od_control.user_password);
+         ODTextDropFileWrite(&TextDropFile, "%u\n", od_control.user_security);
+         ODTextDropFileWrite(&TextDropFile, "%c\n", od_control.user_expert ? 'Y' : 'N');
+         ODTextDropFileWrite(&TextDropFile, "%c\n", od_control.user_ansi ? 'Y' : 'N');
+         ODTextDropFileWrite(&TextDropFile, "%d\n", od_control.user_timelimit);
+         ODTextDropFileWrite(&TextDropFile, "%s\n", od_control.user_homephone);
+         ODTextDropFileWrite(&TextDropFile, "%s\n", od_control.user_location);
+         od_control.user_birthday[2] = '/';
+         od_control.user_birthday[5] = '/';
+         ODTextDropFileWrite(&TextDropFile, "%s\n", od_control.user_birthday);
+         ODTextDropFileWrite(&TextDropFile, "%d\n", od_control.od_node);
+         ODTextDropFileWrite(&TextDropFile, "%d\n", od_control.port + 1);
+         ODTextDropFileWrite(&TextDropFile, "%" PRIu32 "\n", (tODPrintUInt32)od_control.od_connect_speed);
+         ODTextDropFileWrite(&TextDropFile, "%" PRIu32 "\n", (tODPrintUInt32)od_control.baud);
+         ODTextDropFileWrite(&TextDropFile, "%c\n", (od_control.od_com_flow_control
+            == COM_RTSCTS_FLOW) ? 'Y' : 'N');
+         ODTextDropFileWrite(&TextDropFile, "%c\n", od_control.user_error_free ? 'Y' : 'N');
+         ODTextDropFileWrite(&TextDropFile, "%s\n", od_control.system_name);
+         ODTextDropFileWrite(&TextDropFile, "%s\n", od_control.sysop_name);
+         ODTextDropFileWrite(&TextDropFile, "%s\n", od_control.user_handle);
+         ODTextDropFileWrite(&TextDropFile, "%c\n", od_control.user_rip ? 'Y' : 'N');
+         (void)ODDropFileClose(&TextDropFile);
+         break;
    }
 
    /* Deallocate temorary strings. */
@@ -651,7 +898,7 @@ ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
    if(pfLogClose != NULL)
    {
       /* Then close the logfile. */
-      (*pfLogClose)(nErrorLevel);
+      (void)(*pfLogClose)(nErrorLevel);
    }
 
    /* Disconnect the remote user if required. */
@@ -663,16 +910,25 @@ ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
       ODWaitDrain(10000);
 
       /* Wait up to five seconds for no carrier */
+#ifdef OD_THREAD_SUPPORT
+      nSavedAPILevel = ODSyncAPIRelease();
+#endif
       ODComSetDTR(hSerialPort, FALSE);
       nMaxTime = time(NULL) + 5L;
 
       do
       {
          ODComCarrier(hSerialPort, &bCarrier);
+#ifdef OD_THREAD_SUPPORT
+         if(bCarrier) ODThreadSleep(10);
+#endif
       } while(bCarrier && time(NULL) <= nMaxTime);
 
       /* Raise DTR signal again. */
       ODComSetDTR(hSerialPort, TRUE);
+#ifdef OD_THREAD_SUPPORT
+      ODSyncAPIReacquire(nSavedAPILevel);
+#endif
    }
 
    /* In Win32 version, disable DTR before closing serial port, if */
@@ -690,7 +946,7 @@ ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
    /* or hanging up.                                                     */
    ODScrnRemoveMessage(pWindow);
 
-#ifndef ODPLAT_WIN32
+#if !defined(ODPLAT_WIN32)
    /* Reset output area boundary to the entire screen. */
    ODScrnSetBoundary(1,1,80,25);
 
@@ -707,32 +963,58 @@ ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
       ODScrnSetCursorPos(1, 1);
    }
 #endif /* !ODPLAT_WIN32 */
+#ifdef ODPLAT_WIN32
+   if(ODPlatGetWindowsSubsystem() == kODWindowsSubsystemConsole)
+   {
+      ODScrnSetBoundary(1, 1, 80, 25);
+      ODScrnSetAttribute(0x07);
+      if(od_control.od_clear_on_exit)
+         ODScrnClear();
+      else
+         ODScrnSetCursorPos(1, 1);
+      ODScrnPublish();
+   }
+#endif
+
+   /* Drop the API nesting level while stopping and joining the Windows UI. */
+#ifdef OD_THREAD_SUPPORT
+   nSavedAPILevel = ODSyncAPIRelease();
+#endif
 
 #if defined(OD_DIAGNOSTICS) && defined(ODPLAT_WIN32)
    if(od_control.od_internal_debug)
    {
-      MessageBox(NULL, "Terminating kernel threads", "OpenDoors Diagnostics",
-         MB_OK);
+      ODDiagnosticMessage("Terminating user-interface threads",
+         "OpenDoors Diagnostics");
    }
 #endif
+
+#ifdef ODPLAT_WIN32
+   /* Stop the only producer of deferred UI changes before destroying the
+    * queue and its mutex. */
+   if(ODPlatGetWindowsSubsystem() == kODWindowsSubsystemGUI)
+      ODFrameShutdown(&hFrameThread);
+#endif /* ODPLAT_WIN32 */
+
    /* Shutdown the OpenDoors kernel. */
    ODKrnlShutdown();
 
 #if defined(OD_DIAGNOSTICS) && defined(ODPLAT_WIN32)
    if(od_control.od_internal_debug)
    {
-      MessageBox(NULL, "Shutting down local screen", "OpenDoors Diagnostics",
-         MB_OK);
+      ODDiagnosticMessage("Shutting down local screen",
+         "OpenDoors Diagnostics");
    }
 #endif
    /* Shutdown OpenDoors local screen module. */
+   ODSessionScreenShutdown();
    ODScrnShutdown();
 
 #if defined(OD_DIAGNOSTICS) && defined(ODPLAT_WIN32)
    if(od_control.od_internal_debug)
    {
-      MessageBox(NULL, "Performing any final serial port deallocation",
-         "OpenDoors Diagnostics", MB_OK);
+      ODDiagnosticMessage("Performing any final serial port deallocation",
+         "OpenDoors Diagnostics");
    }
 #endif
    /* If not operating in local mode, then deallocate serial port resources. */
@@ -748,8 +1030,8 @@ ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
 #if defined(OD_DIAGNOSTICS) && defined(ODPLAT_WIN32)
    if(od_control.od_internal_debug)
    {
-      MessageBox(NULL, "Deallocating common queue", "OpenDoors Diagnostics",
-         MB_OK);
+      ODDiagnosticMessage("Deallocating common queue",
+         "OpenDoors Diagnostics");
    }
 #endif
    /* Deallocate input buffer. */
@@ -758,27 +1040,43 @@ ODAPIDEF void ODCALL od_exit(INT nErrorLevel, BOOL bTermCall)
 #if defined(OD_DIAGNOSTICS) && defined(ODPLAT_WIN32)
    if(od_control.od_internal_debug)
    {
-      MessageBox(NULL, "Going to inactive mode", "OpenDoors Diagnostics",
-         MB_OK);
+      ODDiagnosticMessage("Going to inactive mode", "OpenDoors Diagnostics");
    }
 #endif
+
+#ifdef OD_THREAD_SUPPORT
+   ODSyncAPIReacquire(nSavedAPILevel);
+#endif
+
    /* OpenDoors is no longer active. */
    bODInitialized = FALSE;
+   hSerialPort = NULL;
+   hODInputQueue = NULL;
+   eODLifecycleState = kODLifecycleTerminal;
+   bODExitPrologueComplete = FALSE;
 
    /* od_exit() is no longer active. */
    bExiting = FALSE;
 
    /* If the client does not want a call to od_exit() to shutdown the */
    /* application, but just to shutdown OpenDoors, then return now.   */
-   if(od_control.od_noexit) return;
+   if(bReturnToCaller)
+   {
+      OD_API_EXIT();
+      return;
+   }
 
    /* If exit() has already been called, then do not call it again. */
-   if(bPreOrExit) return;
+   if(bPreOrExit)
+   {
+      OD_API_EXIT();
+      return;
+   }
 
 #if defined(OD_DIAGNOSTICS) && defined(ODPLAT_WIN32)
    if(od_control.od_internal_debug)
    {
-      MessageBox(NULL, "Terminating process", "OpenDoors Diagnostics", MB_OK);
+      ODDiagnosticMessage("Terminating process", "OpenDoors Diagnostics");
    }
 #endif
    /* Exit with appropriate errorlevel. */
@@ -955,6 +1253,218 @@ static INT ODSearchInDir(char **papszFileNames, INT nNumFileNames,
 }
 
 
+#define OD_EXITINFO_FROM_LE16(field) do { \
+   const BYTE *pODBytes = (const BYTE *)&(field); \
+   (field) = (WORD)((WORD)pODBytes[0] | ((WORD)pODBytes[1] << 8)); \
+} while(0)
+
+#define OD_EXITINFO_FROM_LE32(field) do { \
+   const BYTE *pODBytes = (const BYTE *)&(field); \
+   (field) = (DWORD)((DWORD)pODBytes[0] | ((DWORD)pODBytes[1] << 8) \
+      | ((DWORD)pODBytes[2] << 16) | ((DWORD)pODBytes[3] << 24)); \
+} while(0)
+
+#define OD_EXITINFO_TO_LE16(field) do { \
+   WORD wODValue = (WORD)(field); \
+   BYTE *pODBytes = (BYTE *)&(field); \
+   pODBytes[0] = (BYTE)wODValue; \
+   pODBytes[1] = (BYTE)(wODValue >> 8); \
+} while(0)
+
+#define OD_EXITINFO_TO_LE32(field) do { \
+   DWORD dwODValue = (DWORD)(field); \
+   BYTE *pODBytes = (BYTE *)&(field); \
+   pODBytes[0] = (BYTE)dwODValue; \
+   pODBytes[1] = (BYTE)(dwODValue >> 8); \
+   pODBytes[2] = (BYTE)(dwODValue >> 16); \
+   pODBytes[3] = (BYTE)(dwODValue >> 24); \
+} while(0)
+
+
+/* ----------------------------------------------------------------------------
+ * ODExitInfoPrimitiveEndian()
+ *
+ * Converts every multi-byte field in a byte-packed pre-RA2 EXITINFO.BBS
+ * record between its little-endian disk representation and host values.
+ */
+void ODExitInfoPrimitiveEndian(tExitInfoRecord *pRecord,
+   BOOL bFromLittleEndian)
+{
+   unsigned nIndex;
+
+   if(bFromLittleEndian)
+   {
+      OD_EXITINFO_FROM_LE16(pRecord->baud);
+      OD_EXITINFO_FROM_LE32(pRecord->num_calls);
+      for(nIndex = 0; nIndex < 24; ++nIndex)
+         OD_EXITINFO_FROM_LE16(pRecord->busyperhour[nIndex]);
+      for(nIndex = 0; nIndex < 7; ++nIndex)
+         OD_EXITINFO_FROM_LE16(pRecord->busyperday[nIndex]);
+      OD_EXITINFO_FROM_LE16(pRecord->credit);
+      OD_EXITINFO_FROM_LE16(pRecord->pending);
+      OD_EXITINFO_FROM_LE16(pRecord->posted);
+      OD_EXITINFO_FROM_LE16(pRecord->lastread);
+      OD_EXITINFO_FROM_LE16(pRecord->sec);
+      OD_EXITINFO_FROM_LE16(pRecord->nocalls);
+      OD_EXITINFO_FROM_LE16(pRecord->ups);
+      OD_EXITINFO_FROM_LE16(pRecord->downs);
+      OD_EXITINFO_FROM_LE16(pRecord->upk);
+      OD_EXITINFO_FROM_LE16(pRecord->downk);
+      OD_EXITINFO_FROM_LE16(pRecord->todayk);
+      OD_EXITINFO_FROM_LE16(pRecord->elapsed);
+      OD_EXITINFO_FROM_LE16(pRecord->screenlen);
+      OD_EXITINFO_FROM_LE16(pRecord->xirecord);
+      OD_EXITINFO_FROM_LE16(pRecord->timelimit);
+      OD_EXITINFO_FROM_LE32(pRecord->loginsec);
+      OD_EXITINFO_FROM_LE32(pRecord->net_credit);
+      OD_EXITINFO_FROM_LE16(pRecord->userrecord);
+      OD_EXITINFO_FROM_LE16(pRecord->readthru);
+      OD_EXITINFO_FROM_LE16(pRecord->numberpages);
+      OD_EXITINFO_FROM_LE16(pRecord->downloadlimint);
+      OD_EXITINFO_FROM_LE16(pRecord->bbs.qbbs.screenlength);
+   }
+   else
+   {
+      OD_EXITINFO_TO_LE16(pRecord->baud);
+      OD_EXITINFO_TO_LE32(pRecord->num_calls);
+      for(nIndex = 0; nIndex < 24; ++nIndex)
+         OD_EXITINFO_TO_LE16(pRecord->busyperhour[nIndex]);
+      for(nIndex = 0; nIndex < 7; ++nIndex)
+         OD_EXITINFO_TO_LE16(pRecord->busyperday[nIndex]);
+      OD_EXITINFO_TO_LE16(pRecord->credit);
+      OD_EXITINFO_TO_LE16(pRecord->pending);
+      OD_EXITINFO_TO_LE16(pRecord->posted);
+      OD_EXITINFO_TO_LE16(pRecord->lastread);
+      OD_EXITINFO_TO_LE16(pRecord->sec);
+      OD_EXITINFO_TO_LE16(pRecord->nocalls);
+      OD_EXITINFO_TO_LE16(pRecord->ups);
+      OD_EXITINFO_TO_LE16(pRecord->downs);
+      OD_EXITINFO_TO_LE16(pRecord->upk);
+      OD_EXITINFO_TO_LE16(pRecord->downk);
+      OD_EXITINFO_TO_LE16(pRecord->todayk);
+      OD_EXITINFO_TO_LE16(pRecord->elapsed);
+      OD_EXITINFO_TO_LE16(pRecord->screenlen);
+      OD_EXITINFO_TO_LE16(pRecord->xirecord);
+      OD_EXITINFO_TO_LE16(pRecord->timelimit);
+      OD_EXITINFO_TO_LE32(pRecord->loginsec);
+      OD_EXITINFO_TO_LE32(pRecord->net_credit);
+      OD_EXITINFO_TO_LE16(pRecord->userrecord);
+      OD_EXITINFO_TO_LE16(pRecord->readthru);
+      OD_EXITINFO_TO_LE16(pRecord->numberpages);
+      OD_EXITINFO_TO_LE16(pRecord->downloadlimint);
+      OD_EXITINFO_TO_LE16(pRecord->bbs.qbbs.screenlength);
+   }
+}
+
+
+/* ----------------------------------------------------------------------------
+ * ODExitInfoExtendedEndian()
+ *
+ * Converts the multi-byte field in a byte-packed RemoteAccess 1.x extension.
+ */
+void ODExitInfoExtendedEndian(tExtendedExitInfo *pRecord,
+   BOOL bFromLittleEndian)
+{
+   if(bFromLittleEndian)
+      OD_EXITINFO_FROM_LE16(pRecord->deducted_time);
+   else
+      OD_EXITINFO_TO_LE16(pRecord->deducted_time);
+}
+
+
+/* ----------------------------------------------------------------------------
+ * ODExitInfoRA2Endian()
+ *
+ * Converts every multi-byte field in a byte-packed RemoteAccess 2.x record.
+ */
+void ODExitInfoRA2Endian(tRA2ExitInfoRecord *pRecord,
+   BOOL bFromLittleEndian)
+{
+   unsigned nIndex;
+
+   if(bFromLittleEndian)
+   {
+      OD_EXITINFO_FROM_LE16(pRecord->baud);
+      OD_EXITINFO_FROM_LE32(pRecord->num_calls);
+      for(nIndex = 0; nIndex < 24; ++nIndex)
+         OD_EXITINFO_FROM_LE16(pRecord->busyperhour[nIndex]);
+      for(nIndex = 0; nIndex < 7; ++nIndex)
+         OD_EXITINFO_FROM_LE16(pRecord->busyperday[nIndex]);
+      OD_EXITINFO_FROM_LE32(pRecord->password_crc);
+      OD_EXITINFO_FROM_LE32(pRecord->credit);
+      OD_EXITINFO_FROM_LE32(pRecord->pending);
+      OD_EXITINFO_FROM_LE16(pRecord->posted);
+      OD_EXITINFO_FROM_LE16(pRecord->sec);
+      OD_EXITINFO_FROM_LE32(pRecord->lastread);
+      OD_EXITINFO_FROM_LE32(pRecord->nocalls);
+      OD_EXITINFO_FROM_LE32(pRecord->ups);
+      OD_EXITINFO_FROM_LE32(pRecord->downs);
+      OD_EXITINFO_FROM_LE32(pRecord->upk);
+      OD_EXITINFO_FROM_LE32(pRecord->downk);
+      OD_EXITINFO_FROM_LE32(pRecord->todayk);
+      OD_EXITINFO_FROM_LE16(pRecord->elapsed);
+      OD_EXITINFO_FROM_LE16(pRecord->screenlen);
+      OD_EXITINFO_FROM_LE16(pRecord->group);
+      for(nIndex = 0; nIndex < 200; ++nIndex)
+         OD_EXITINFO_FROM_LE16(pRecord->combinedrecord[nIndex]);
+      OD_EXITINFO_FROM_LE16(pRecord->msgarea);
+      OD_EXITINFO_FROM_LE16(pRecord->filearea);
+      OD_EXITINFO_FROM_LE16(pRecord->file_group);
+      OD_EXITINFO_FROM_LE32(pRecord->xirecord);
+      OD_EXITINFO_FROM_LE16(pRecord->msg_group);
+      OD_EXITINFO_FROM_LE16(pRecord->timelimit);
+      OD_EXITINFO_FROM_LE32(pRecord->loginsec);
+      OD_EXITINFO_FROM_LE16(pRecord->userrecord);
+      OD_EXITINFO_FROM_LE16(pRecord->readthru);
+      OD_EXITINFO_FROM_LE16(pRecord->numberpages);
+      OD_EXITINFO_FROM_LE16(pRecord->downloadlimit);
+      OD_EXITINFO_FROM_LE32(pRecord->logonpasswordcrc);
+      OD_EXITINFO_FROM_LE16(pRecord->deducted_time);
+      OD_EXITINFO_FROM_LE16(pRecord->menu_cost_per_min);
+   }
+   else
+   {
+      OD_EXITINFO_TO_LE16(pRecord->baud);
+      OD_EXITINFO_TO_LE32(pRecord->num_calls);
+      for(nIndex = 0; nIndex < 24; ++nIndex)
+         OD_EXITINFO_TO_LE16(pRecord->busyperhour[nIndex]);
+      for(nIndex = 0; nIndex < 7; ++nIndex)
+         OD_EXITINFO_TO_LE16(pRecord->busyperday[nIndex]);
+      OD_EXITINFO_TO_LE32(pRecord->password_crc);
+      OD_EXITINFO_TO_LE32(pRecord->credit);
+      OD_EXITINFO_TO_LE32(pRecord->pending);
+      OD_EXITINFO_TO_LE16(pRecord->posted);
+      OD_EXITINFO_TO_LE16(pRecord->sec);
+      OD_EXITINFO_TO_LE32(pRecord->lastread);
+      OD_EXITINFO_TO_LE32(pRecord->nocalls);
+      OD_EXITINFO_TO_LE32(pRecord->ups);
+      OD_EXITINFO_TO_LE32(pRecord->downs);
+      OD_EXITINFO_TO_LE32(pRecord->upk);
+      OD_EXITINFO_TO_LE32(pRecord->downk);
+      OD_EXITINFO_TO_LE32(pRecord->todayk);
+      OD_EXITINFO_TO_LE16(pRecord->elapsed);
+      OD_EXITINFO_TO_LE16(pRecord->screenlen);
+      OD_EXITINFO_TO_LE16(pRecord->group);
+      for(nIndex = 0; nIndex < 200; ++nIndex)
+         OD_EXITINFO_TO_LE16(pRecord->combinedrecord[nIndex]);
+      OD_EXITINFO_TO_LE16(pRecord->msgarea);
+      OD_EXITINFO_TO_LE16(pRecord->filearea);
+      OD_EXITINFO_TO_LE16(pRecord->file_group);
+      OD_EXITINFO_TO_LE32(pRecord->xirecord);
+      OD_EXITINFO_TO_LE16(pRecord->msg_group);
+      OD_EXITINFO_TO_LE16(pRecord->timelimit);
+      OD_EXITINFO_TO_LE32(pRecord->loginsec);
+      OD_EXITINFO_TO_LE16(pRecord->userrecord);
+      OD_EXITINFO_TO_LE16(pRecord->readthru);
+      OD_EXITINFO_TO_LE16(pRecord->numberpages);
+      OD_EXITINFO_TO_LE16(pRecord->downloadlimit);
+      OD_EXITINFO_TO_LE32(pRecord->logonpasswordcrc);
+      OD_EXITINFO_TO_LE16(pRecord->deducted_time);
+      OD_EXITINFO_TO_LE16(pRecord->menu_cost_per_min);
+   }
+}
+
+
 /* ----------------------------------------------------------------------------
  * ODReadExitInfoPrimitive()
  *
@@ -968,12 +1478,16 @@ static INT ODSearchInDir(char **papszFileNames, INT nNumFileNames,
  */
 BOOL ODReadExitInfoPrimitive(FILE *pfDropFile, INT nCount)
 {
-   if((pExitInfoRecord=malloc(sizeof(tExitInfoRecord)))==NULL) return(FALSE);
+   if((pExitInfoRecord=calloc(1, sizeof(tExitInfoRecord)))==NULL) return(FALSE);
 
    if(fread(pExitInfoRecord,1,nCount,pfDropFile)!=(size_t)nCount)
    {
+      free(pExitInfoRecord);
+      pExitInfoRecord = NULL;
       return(FALSE);
    }
+
+   ODExitInfoPrimitiveEndian(pExitInfoRecord, TRUE);
 
                                           /* now we read all the data from the */
                                           /* EXITINFO structure to the OpenDoors */
@@ -986,7 +1500,10 @@ BOOL ODReadExitInfoPrimitive(FILE *pfDropFile, INT nCount)
    od_control.system_calls=pExitInfoRecord->num_calls;
    ODStringPascalToC(od_control.system_last_caller,pExitInfoRecord->last_caller,35);
    ODStringPascalToC(od_control.timelog_start_date,pExitInfoRecord->start_date,8);
-   memcpy(&od_control.timelog_busyperhour,&pExitInfoRecord->busyperhour,62);
+   memcpy(od_control.timelog_busyperhour, pExitInfoRecord->busyperhour,
+      sizeof(od_control.timelog_busyperhour));
+   memcpy(od_control.timelog_busyperday, pExitInfoRecord->busyperday,
+      sizeof(od_control.timelog_busyperday));
    ODStringPascalToC(od_control.user_name,pExitInfoRecord->uname,35);
    ODStringPascalToC(od_control.user_location,pExitInfoRecord->uloc,25);
    ODStringPascalToC(od_control.user_password,pExitInfoRecord->password,15);
@@ -1038,7 +1555,7 @@ BOOL ODReadExitInfoPrimitive(FILE *pfDropFile, INT nCount)
  *
  *             nCount     - Number of bytes to be written.
  *
- *     Return: Number of bytes actually written.
+ *     Return: TRUE on success, or FALSE on failure.
  */
 INT ODWriteExitInfoPrimitive(FILE *pfDropFile, INT nCount)
 {
@@ -1051,7 +1568,10 @@ INT ODWriteExitInfoPrimitive(FILE *pfDropFile, INT nCount)
    pExitInfoRecord->num_calls=od_control.system_calls;
    ODStringCToPascal(pExitInfoRecord->last_caller,35,od_control.system_last_caller);
    ODStringCToPascal(pExitInfoRecord->start_date,8,od_control.timelog_start_date);
-   memcpy(&pExitInfoRecord->busyperhour,&od_control.timelog_busyperhour,31);
+   memcpy(pExitInfoRecord->busyperhour, od_control.timelog_busyperhour,
+      sizeof(pExitInfoRecord->busyperhour));
+   memcpy(pExitInfoRecord->busyperday, od_control.timelog_busyperday,
+      sizeof(pExitInfoRecord->busyperday));
    ODStringCToPascal(pExitInfoRecord->uname,35,od_control.user_name);
    ODStringCToPascal(pExitInfoRecord->uloc,25,od_control.user_location);
    ODStringCToPascal(pExitInfoRecord->password,15,od_control.user_password);
@@ -1085,16 +1605,20 @@ INT ODWriteExitInfoPrimitive(FILE *pfDropFile, INT nCount)
 
    /* Calculate new time limit based on how time was adjusted during door's */
    /* execution.                                                            */
-   time(&nCurrentUnixTime);
-   ODDWordDivide(&dwActiveMinutes, NULL, nCurrentUnixTime-nStartupUnixTime, 60L);
-   nUserTimeLost = (nInitialRemaining - od_control.user_timelimit);
-   nTimeSubtractedBySysop = nUserTimeLost - (int)dwActiveMinutes;
-   pExitInfoRecord->timelimit -= nTimeSubtractedBySysop;
+   nCurrentUnixTime = time(NULL);
+   if(ODGetElapsedMinutes(&dwActiveMinutes, nStartupUnixTime,
+      nCurrentUnixTime))
+   {
+      nUserTimeLost = (nInitialRemaining - od_control.user_timelimit);
+      nTimeSubtractedBySysop = nUserTimeLost - (int)dwActiveMinutes;
+      pExitInfoRecord->timelimit -= nTimeSubtractedBySysop;
+   }
 
    memcpy(&pExitInfoRecord->loginsec,&od_control.user_loginsec,16);
 
+   ODExitInfoPrimitiveEndian(pExitInfoRecord, FALSE);
    nToReturn=(fwrite(pExitInfoRecord,1,nCount,pfDropFile) == (size_t)nCount);
-   free(pExitInfoRecord);
+   ODExitInfoPrimitiveEndian(pExitInfoRecord, TRUE);
    return(nToReturn);
 }
 
@@ -1228,7 +1752,7 @@ static BOOL ODSendModemCommandOnce(char *pszCommand)
             case '|':
                /* A pipe character denotes that a carriage return should be */
                /* send to the modem.                                        */
-               ODComSendByte(hSerialPort, '\r');
+               ODCoreSendRemoteByte('\r');
 #ifdef OD_DIAGNOSTICS
                strcat(szDebugWorkString, "\n");
 #endif /* OD_DIAGNOSTICS */
@@ -1236,12 +1760,12 @@ static BOOL ODSendModemCommandOnce(char *pszCommand)
 
             case '~':
                /* A tilde character denotes a 1 second pause. */
-               od_sleep(1000);
+               ODAPISleep(1000);
                break;
 
             default:
                /* Otherwise, send this character as is. */
-               ODComSendByte(hSerialPort, *pchCurrent);
+               ODCoreSendRemoteByte((BYTE)*pchCurrent);
 #ifdef OD_DIAGNOSTICS
                {
                   char szAppend[2];
@@ -1252,7 +1776,7 @@ static BOOL ODSendModemCommandOnce(char *pszCommand)
 #endif /* OD_DIAGNOSTICS */
          }
 
-         od_sleep(200);
+         ODAPISleep(200);
       }
       else
       {
@@ -1313,6 +1837,11 @@ static BOOL ODWaitForString(char *pszResponse, tODMilliSec ResponseTimeout)
    tODTimer Timer;
    char szReceived[MAX_RESPONSE_LEN + 1] = "\0";
    tODInputEvent InputEvent;
+   tODResult Result;
+#ifdef OD_THREAD_SUPPORT
+   tODMilliSec Slice;
+   unsigned nSavedAPILevel;
+#endif
 
    ASSERT(pszResponse != NULL);
    ASSERT(ResponseTimeout > 0);
@@ -1330,8 +1859,18 @@ static BOOL ODWaitForString(char *pszResponse, tODMilliSec ResponseTimeout)
    ODTimerStart(&Timer, ResponseTimeout);
    while(!ODTimerElapsed(&Timer))
    {
-      if(ODInQueueGetNextEvent(hODInputQueue, &InputEvent,
-         ODTimerLeft(&Timer)) == kODRCSuccess)
+#ifdef OD_THREAD_SUPPORT
+      Slice = ODTimerLeft(&Timer);
+      if(Slice > 50) Slice = 50;
+      nSavedAPILevel = ODSyncAPIRelease();
+      Result = ODInQueueGetNextEvent(hODInputQueue, &InputEvent,
+         Slice);
+      ODSyncAPIReacquire(nSavedAPILevel);
+#else
+      Result = ODInQueueGetNextEvent(hODInputQueue, &InputEvent,
+         ODTimerLeft(&Timer));
+#endif
+      if(Result == kODRCSuccess)
       {
          if(InputEvent.bFromRemote && InputEvent.EventType == EVENT_CHARACTER)
          {
@@ -1364,18 +1903,61 @@ static BOOL ODWaitForString(char *pszResponse, tODMilliSec ResponseTimeout)
       }
       else
       {
-         /* When no characters are waiting, allow other processes to run. */
-         od_sleep(0);
+         /* Poll communications and timers between bounded waits. */
+#ifdef OD_THREAD_SUPPORT
+         if(!ODSyncAPICheckpoint()) return(FALSE);
+#else
+         ODAPISleep(0);
+#endif
       }
    }
 
 #ifdef OD_DIAGNOSTICS
    strcat(szDebugWorkString, "]");
-#endif // OD_DIAGNOSTICS
+#endif /* OD_DIAGNOSTICS */
 
    /* Indicate that string was not received in the time alotted. */
    return(FALSE);
 }
+
+
+/* ----------------------------------------------------------------------------
+ * ODAPISleep()                                       *** PRIVATE FUNCTION ***
+ *
+ * Sleeps from inside an API operation while allowing
+ * cooperative kernel work to progress.
+ */
+static void ODAPISleep(tODMilliSec Milliseconds)
+{
+#ifdef OD_THREAD_SUPPORT
+   unsigned nSavedAPILevel = ODSyncAPIRelease();
+   ODThreadSleep(Milliseconds);
+   ODSyncAPIReacquire(nSavedAPILevel);
+   ODSyncAPICheckpoint();
+#else
+   od_sleep(Milliseconds);
+#endif
+}
+
+
+#if defined(OD_DIAGNOSTICS) && defined(ODPLAT_WIN32)
+static void ODDiagnosticMessage(const char *pszText, const char *pszTitle)
+{
+#ifdef OD_THREAD_SUPPORT
+   unsigned nSavedAPILevel = 0;
+
+   if(ODSyncAPILevelActive())
+      nSavedAPILevel = ODSyncAPIRelease();
+#endif
+
+   MessageBox(NULL, pszText, pszTitle, MB_OK);
+
+#ifdef OD_THREAD_SUPPORT
+   if(nSavedAPILevel != 0)
+      ODSyncAPIReacquire(nSavedAPILevel);
+#endif
+}
+#endif
 
 
 /* ----------------------------------------------------------------------------
@@ -1411,8 +1993,7 @@ void ODInExDisableDTR(void)
 #ifdef OD_DIAGNOSTICS
             if(od_control.od_internal_debug)
             {
-               MessageBox(NULL, szDebugWorkString, "DTR Disable FAILED!",
-                  MB_OK);
+               ODDiagnosticMessage(szDebugWorkString, "DTR Disable FAILED!");
                szDebugWorkString[0] = '\0';
             }
 #endif /* OD_DIAGNOSTICS */
@@ -1422,8 +2003,8 @@ void ODInExDisableDTR(void)
 #ifdef OD_DIAGNOSTICS
             if(od_control.od_internal_debug)
             {
-               MessageBox(NULL, szDebugWorkString, "DTR Disable Succeeded!",
-                  MB_OK);
+               ODDiagnosticMessage(szDebugWorkString,
+                  "DTR Disable Succeeded!");
                szDebugWorkString[0] = '\0';
             }
 #endif /* OD_DIAGNOSTICS */

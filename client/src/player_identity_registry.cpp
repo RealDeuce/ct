@@ -1,6 +1,5 @@
 #include "ct/player_identity_registry.hpp"
-
-#include <botan/hash.h>
+#include "ct/crypto.hpp"
 
 #include <algorithm>
 #include <array>
@@ -90,9 +89,7 @@ std::vector<uint8_t> encode(const Registry& registry) {
       put_u32(bytes, entry.record_index.value_or(0));
       bytes.insert(bytes.end(), entry.name.begin(), entry.name.end());
    }
-   auto hash = Botan::HashFunction::create_or_throw("SHA-256");
-   hash->update(bytes);
-   const auto digest = hash->final();
+   const auto digest = sha256(bytes);
    bytes.insert(bytes.end(), digest.begin(), digest.end());
    return bytes;
 }
@@ -101,9 +98,8 @@ Registry decode(const std::vector<uint8_t>& bytes, const uint32_t bbs_id) {
    if(bytes.size() < 24 + DIGEST_BYTES) {
       throw std::runtime_error("player identity registry is truncated");
    }
-   auto hash = Botan::HashFunction::create_or_throw("SHA-256");
-   hash->update(bytes.data(), bytes.size() - DIGEST_BYTES);
-   const auto digest = hash->final();
+   const auto digest = sha256(
+      std::span<const uint8_t>(bytes.data(), bytes.size() - DIGEST_BYTES));
    if(!std::equal(digest.begin(), digest.end(), bytes.end() - DIGEST_BYTES)) {
       throw std::runtime_error("player identity registry checksum is invalid");
    }

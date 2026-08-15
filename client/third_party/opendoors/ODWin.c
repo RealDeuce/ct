@@ -86,19 +86,20 @@ ODAPIDEF void * ODCALL od_window_create(INT nLeft, INT nTop, INT nRight,
    BYTE btBetweenSize;
    void *pBuffer;
    BYTE btTitleSize;
+   BYTE btMaximumTitleSize;
    BYTE btRemaining;
+   size_t nTitleLength;
 
    /* Log function entry if running in trace mode. */
    TRACE(TRACE_API, "od_window_create()");
 
    /* Ensure that OpenDoors has been initialized */
    if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(NULL);
 
    OD_API_ENTRY();
 
-   nReserved &= 0x00;
-
-   btBetweenSize = (nRight - nLeft) - 1;
+   (void)nReserved;
 
    /* Setup od_box_chars appropriately. */
    if(od_control.od_box_chars[BOX_BOTTOM]==0)
@@ -118,6 +119,8 @@ ODAPIDEF void * ODCALL od_window_create(INT nLeft, INT nTop, INT nRight,
       OD_API_EXIT();
       return(NULL);
    }
+
+   btBetweenSize = (BYTE)(nRight - nLeft - 1);
 
    /* Validate parameters. */
    if(nLeft < 1 || nTop < 1 || nRight > 80 || nBottom > 25 || nRight-nLeft < 2
@@ -155,16 +158,13 @@ ODAPIDEF void * ODCALL od_window_create(INT nLeft, INT nTop, INT nRight,
    ((char *)pBuffer)[3]=nBottom;
 
    /* Determine number of characters of title to display. */
-   if(pszTitle==NULL)
+   btTitleSize = 0;
+   if(pszTitle != NULL && btBetweenSize > 4)
    {
-      btTitleSize = 0;
-   }
-   else
-   {
-      if((btTitleSize = strlen(pszTitle)) > (btBetweenSize - 4))
-      {
-         btTitleSize = btBetweenSize - 4;
-      }
+      btMaximumTitleSize = (BYTE)(btBetweenSize - 4);
+      nTitleLength = strlen(pszTitle);
+      btTitleSize = nTitleLength > btMaximumTitleSize
+         ? btMaximumTitleSize : (BYTE)nTitleLength;
    }
 
    /* Move to position of window's top corner, prepare to begin drawing the */
@@ -287,6 +287,7 @@ ODAPIDEF BOOL ODCALL od_window_remove(void *pWinInfo)
 
    /* Ensure that OpenDoors has been initialized */
    if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(FALSE);
 
    OD_API_ENTRY();
 

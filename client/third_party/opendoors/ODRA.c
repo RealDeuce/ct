@@ -42,19 +42,18 @@
 #define BUILDING_OPENDOORS
 
 #include <string.h>
-#include <ctype.h>
-#include <stddef.h>
 #include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
 
 #include "OpenDoor.h"
-#include "ODCore.h"
-#include "ODGen.h"
-#include "ODScrn.h"
 #include "ODStat.h"
-#include "ODInEx.h"
+#include "ODSync.h"
+#ifdef ODPLAT_WIN32
+#include "ODPlat.h"
+#endif
 
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32) || defined(ODPLAT_WIN32)
 
 /* Private variables, local to this module. */
 static BOOL bRAPersHasBeenOn = FALSE;
@@ -65,6 +64,7 @@ static void ODRADisplayPageInfo(void);
 static void ODRADisplayDate(char *pszDateString);
 static void ODRADisplayFlags(BYTE btFlags);
 static void ODRADisplayTime(void);
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */
 
 
 /* ----------------------------------------------------------------------------
@@ -79,7 +79,14 @@ static void ODRADisplayTime(void);
  */
 ODAPIDEF void ODCALL pdef_ra(BYTE btOperation)
 {
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32) || defined(ODPLAT_WIN32)
+   static char abtGreyBlock[2] = {' ', 0x70};
    BYTE btInfoType = od_control.od_info_type;
+
+#ifdef ODPLAT_WIN32
+   if(ODPlatGetWindowsSubsystem() != kODWindowsSubsystemConsole) return;
+#endif
+   if(!ODSyncPublicCallAllowed()) return;
 
    switch(btOperation)
    {
@@ -252,7 +259,8 @@ ODAPIDEF void ODCALL pdef_ra(BYTE btOperation)
          {
             ODScrnSetCursorPos(1, 24);
             ODScrnPrintf("Last Caller: %s    Total System Calls: %lu",
-               od_control.system_last_caller, od_control.system_calls);
+               od_control.system_last_caller,
+               (unsigned long)od_control.system_calls);
          }
          ODRADisplayTime();
 
@@ -434,7 +442,6 @@ ODAPIDEF void ODCALL pdef_ra(BYTE btOperation)
          break;
 
       case PEROP_INITIALIZE:
-         bRAStatus = TRUE;
          od_control.key_hangup = 0x2300;
          od_control.key_drop2bbs = 0x2000;
          od_control.key_dosshell = 0x2400;
@@ -455,8 +462,13 @@ ODAPIDEF void ODCALL pdef_ra(BYTE btOperation)
          od_control.key_lesstime = 0x5000;
          od_control.od_page_statusline = 5;
    }
+#else /* !ODPLAT_DOS && !ODPLAT_DOS32 */
+   if(!ODSyncPublicCallAllowed()) return;
+   (void)btOperation;
+#endif /* !ODPLAT_DOS && !ODPLAT_DOS32 */
 }
 
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32) || defined(ODPLAT_WIN32)
 
 /* ----------------------------------------------------------------------------
  * ODRADisplayPageInfo()                               *** PRIVATE FUNCTION ***
@@ -563,7 +575,7 @@ static void ODRADisplayDate(char *pszDateString)
    INT nMonth;
    INT nTemp;
 
-   ASSERT(pszDateString != NULL);
+   if(pszDateString == NULL) return;
 
    if(strlen(pszDateString) != 8) return;
 
@@ -617,3 +629,4 @@ static void ODRADisplayFlags(BYTE btFlags)
       btMask <<= 1;
    }
 }
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */

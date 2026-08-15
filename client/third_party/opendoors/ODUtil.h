@@ -39,12 +39,15 @@
 #ifndef _INC_ODUTIL
 #define _INC_ODUTIL
 
+#include <stdio.h>
+
 #include "ODGen.h"
 #include "ODTypes.h"
 #include "OpenDoor.h"
 
 /* General string manipulation functions. */
 void ODStringCopy(char *pszDest, CONST char *pszSource, INT nSizeofDest);
+size_t ODStringNormalizeLine(char *pszLine, BOOL *pbLineComplete);
 char *ODStringCToPascal(char *psPascalString, BYTE btMaxPascalLength,
    char *pszCString);
 char *ODStringPascalToC(char *pszCString, char *psPascalString,

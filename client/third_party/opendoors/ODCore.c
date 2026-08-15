@@ -86,6 +86,7 @@
 #include "ODCom.h"
 #include "ODKrnl.h"
 #include "ODScrn.h"
+#include "ODVScrn.h"
 #include "ODCore.h"
 #include "ODInQue.h"
 #ifdef ODPLAT_WIN32
@@ -105,6 +106,14 @@ od_control;
 /* OpenDoors global initialized flag. */
 BOOL bODInitialized = FALSE;
 
+/* OpenDoors session lifecycle and the first saved exit request. */
+tODLifecycleState eODLifecycleState = kODLifecycleNeverStarted;
+INT nODPendingExitErrorLevel;
+BOOL bODPendingExitTermCall;
+BOOL bODPendingExitNoExit;
+BOOL bODExitPrologueComplete;
+BOOL bODExitRequestedDuringInitialization;
+
 /* Global serial port object handle. */
 tPortHandle hSerialPort;
 
@@ -122,8 +131,8 @@ char szODWorkString[OD_GLOBAL_WORK_STRING_SIZE];
 tODScrnTextInfo ODTextInfo;
 
 /* Logfile function hooks. */
-BOOL (*pfLogWrite)(INT) = NULL;
-void (*pfLogClose)(INT) = NULL;
+BOOL (ODCALL *pfLogWrite)(INT) = NULL;
+BOOL (ODCALL *pfLogClose)(INT) = NULL;
 
 /* od_color_config() support for od_printf(). */
 char chColorCheck = 0;
@@ -162,6 +171,45 @@ static void ODAddANSIParameter(char *szControlSequence, int nParameterValue);
 
 
 /* ----------------------------------------------------------------------------
+ * ODCoreSendRemoteByte() / ODCoreSendRemoteBuffer()
+ *
+ * Perform potentially blocking communications output without preventing
+ * the Windows screen presenter from reading stable session state. These
+ * helpers are called only from the serialized application API flow. Pending
+ * application work remains deferred until an established checkpoint.
+ */
+tODResult ODCoreSendRemoteByte(BYTE btToSend)
+{
+   tODResult Result;
+#ifdef OD_THREAD_SUPPORT
+   unsigned nSavedAPILevel = ODSyncAPIRelease();
+#endif
+
+   Result = ODComSendByte(hSerialPort, btToSend);
+
+#ifdef OD_THREAD_SUPPORT
+   ODSyncAPIReacquire(nSavedAPILevel);
+#endif
+   return(Result);
+}
+
+tODResult ODCoreSendRemoteBuffer(const void *pBuffer, INT nSize)
+{
+   tODResult Result;
+#ifdef OD_THREAD_SUPPORT
+   unsigned nSavedAPILevel = ODSyncAPIRelease();
+#endif
+
+   Result = ODComSendBuffer(hSerialPort, (BYTE *)pBuffer, nSize);
+
+#ifdef OD_THREAD_SUPPORT
+   ODSyncAPIReacquire(nSavedAPILevel);
+#endif
+   return(Result);
+}
+
+
+/* ----------------------------------------------------------------------------
  * ODWaitDrain()
  *
  * Waits for up to the specified number of milliseconds for the output serial
@@ -176,13 +224,14 @@ void ODWaitDrain(tODMilliSec MaxWait)
 {
    int nOutboundSize;
    tODTimer Timer;
+   BOOL bTimed = MaxWait != OD_NO_TIMEOUT;
 
    /* If we are operating in local mode, then don't do anything. */
    if(od_control.baud == 0) return;
 
    /* Otherwise, start a timer that is set to elapse after the maximum */
    /* wait period.                                                     */
-   ODTimerStart(&Timer, MaxWait);
+   if(bTimed) ODTimerStart(&Timer, MaxWait);
 
    /* Loop until either the outbound buffer is empty, or the */
    /* timer has elapsed.                                     */
@@ -193,13 +242,15 @@ void ODWaitDrain(tODMilliSec MaxWait)
 
       /* If the queue is empty or the timer has elapsed, then stop */
       /* waiting.                                                  */
-      if(nOutboundSize == 0 || ODTimerElapsed(&Timer)) break;
+      if(nOutboundSize == 0 || (bTimed && ODTimerElapsed(&Timer))) break;
 
       /* Otherwise, give other tasks a chance to run. */
       od_sleep(0);
+      if(!bODInitialized) return;
 
       /* Give od_kernel() activities a chance to run. */
-      CALL_KERNEL_IF_NEEDED();
+      if(eODLifecycleState == kODLifecycleActive)
+         CALL_KERNEL_IF_NEEDED();
    } 
 }
 
@@ -222,6 +273,7 @@ ODAPIDEF void ODCALL od_clr_scr(void)
    TRACE(TRACE_API, "od_clr_scr()");
 
    if(!bODInitialized) od_init();
+   OD_RETURN_VOID_IF_SESSION_ENDED();
 
    OD_API_ENTRY();
 
@@ -251,8 +303,16 @@ ODAPIDEF void ODCALL od_clr_scr(void)
 	   od_disp(szClearScreen, 1, FALSE);
    }
 
-   /* Clear local window. */
-   ODScrnClear();
+   /* Clear the authoritative screen and update its local presentation. */
+   if(ODSessionScreenAvailable())
+   {
+      ODSessionScreenClear();
+      ODSessionScreenPresent();
+   }
+   else
+   {
+      ODScrnClear();
+   }
 
    /* Get color set prior to screen clear. */
    nOriginalAttrib = od_control.od_cur_attrib;
@@ -281,10 +341,9 @@ ODAPIDEF void ODCALL od_clr_scr(void)
  *             nMaxLength - Maximum number of characters to permit the user
  *                          to input.
  *
- *             chMin      - The minimum character value to permit. This must
- *                          be at least ASCII 32.
+ *             chMin      - The minimum byte value to permit.
  *
- *             chMax      - The maximum character value to permit.
+ *             chMax      - The maximum byte value to permit.
  *
  *     Return: void
  */
@@ -293,7 +352,7 @@ ODAPIDEF void ODCALL od_input_str(char *pszInput,
    unsigned char chMin,
    unsigned char chMax)
 {
-   char chKeyPressed;
+   unsigned char chKeyPressed;
    INT nPosition;
 
    /* Log function entry if running in trace mode. */
@@ -301,6 +360,7 @@ ODAPIDEF void ODCALL od_input_str(char *pszInput,
 
    /* Initialize OpenDoors if it hasn't already been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_VOID_IF_SESSION_ENDED();
 
    OD_API_ENTRY();
 
@@ -317,7 +377,12 @@ ODAPIDEF void ODCALL od_input_str(char *pszInput,
 
    for(;;)
    {
-      chKeyPressed = od_get_key(TRUE);
+      chKeyPressed = (unsigned char)od_get_key(TRUE);
+      if(!bODInitialized)
+      {
+         OD_API_EXIT();
+         return;
+      }
 
       /* If user pressed enter. */
       if(chKeyPressed == '\r' || chKeyPressed == '\n')
@@ -353,11 +418,11 @@ ODAPIDEF void ODCALL od_input_str(char *pszInput,
          && nPosition < nMaxLength)
       {
          /* Display key that was pressed. */
-         od_putch(chKeyPressed);
+         od_putch((char)chKeyPressed);
 
          /* Add the entered character to the string and increment our */
          /* current position in the string.                           */
-         pszInput[nPosition++] = chKeyPressed;
+         pszInput[nPosition++] = (char)chKeyPressed;
       }
    }
 }
@@ -383,6 +448,7 @@ ODAPIDEF void ODCALL od_clear_keybuffer(void)
 
    /* Initialize OpenDoors if it hasn't already been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_VOID_IF_SESSION_ENDED();
 
    OD_API_ENTRY();
 
@@ -413,8 +479,10 @@ ODAPIDEF void ODCALL od_clear_keybuffer(void)
  */
 ODAPIDEF BOOL ODCALL od_key_pending(void)
 {
+   if(!ODSyncPublicCallAllowed()) return(FALSE);
    /* Initialize OpenDoors if it hasn't already been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(FALSE);
 
    /* Log function entry if running in trace mode. */
    TRACE(TRACE_API, "od_get_key()");
@@ -451,9 +519,14 @@ ODAPIDEF BOOL ODCALL od_key_pending(void)
 ODAPIDEF char ODCALL od_get_key(BOOL bWait)
 {
    tODInputEvent InputEvent;
+   tODResult Result;
+#ifdef OD_THREAD_SUPPORT
+   unsigned nSavedAPILevel;
+#endif
 
    /* Initialize OpenDoors if it hasn't already been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(0);
 
    /* Log function entry if running in trace mode. */
    TRACE(TRACE_API, "od_get_key()");
@@ -481,7 +554,30 @@ ODAPIDEF char ODCALL od_get_key(BOOL bWait)
 		/* point and there is no data waiting in the input queue, then the   */
 		/* ODInQueueGetNextEvent() function will block until a character     */
 		/* is available in the input queue.                                  */
-		ODInQueueGetNextEvent(hODInputQueue, &InputEvent, OD_NO_TIMEOUT);
+		if(bWait)
+		{
+		   do
+		   {
+#ifdef OD_THREAD_SUPPORT
+		      nSavedAPILevel = ODSyncAPIRelease();
+#endif
+		      Result = ODInQueueGetNextEvent(hODInputQueue, &InputEvent, 50);
+#ifdef OD_THREAD_SUPPORT
+		      ODSyncAPIReacquire(nSavedAPILevel);
+#endif
+		      if(Result != kODRCSuccess && !ODSyncAPICheckpoint())
+		      {
+		         OD_API_EXIT();
+		         return(0);
+		      }
+		   } while(Result != kODRCSuccess);
+		}
+		else if(ODInQueueGetNextEvent(hODInputQueue, &InputEvent, 0)
+		   != kODRCSuccess)
+		{
+		   OD_API_EXIT();
+		   return(0);
+		}
 
 		/* Only keyboard input events are currently supported by od_get_key(). */
 		ASSERT(InputEvent.EventType == EVENT_CHARACTER);
@@ -507,16 +603,18 @@ ODAPIDEF char ODCALL od_get_key(BOOL bWait)
  *
  * Parameters: none
  *
- *     Return: TRUE if the carrier detct signal is present, FALSE if it
+ *     Return: TRUE if the carrier detect signal is present, FALSE if it
  *             isn't. When operating in local mode, this function always
  *             returns FALSE.
  */
 ODAPIDEF BOOL ODCALL od_carrier(void)
 {
-   BOOL bIsCarrier;
+   BOOL bIsCarrier = FALSE;
+   tODResult Result;
 
    /* Initialize OpenDoors if it hasn't already been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(FALSE);
 
    OD_API_ENTRY();
 
@@ -532,10 +630,35 @@ ODAPIDEF BOOL ODCALL od_carrier(void)
    }
 
    /* In remote mode, obtain the current state of the carrier detect signal. */
-   ODComCarrier(hSerialPort, &bIsCarrier);
+   Result = ODComCarrier(hSerialPort, &bIsCarrier);
+   bIsCarrier = ODCoreCarrierResult(Result, bIsCarrier);
 
    /* Return the current state of the carrier detect signal. */
    OD_API_EXIT();
+   return(bIsCarrier);
+}
+
+
+/* ----------------------------------------------------------------------------
+ * ODCoreCarrierResult()                                *** PRIVATE FUNCTION ***
+ *
+ * Applies the public carrier-query result for a communications-method result.
+ *
+ * Parameters: Result     - Result returned by ODComCarrier().
+ *
+ *             bIsCarrier - Carrier state supplied by the communications
+ *                          method when Result is kODRCSuccess.
+ *
+ *     Return: bIsCarrier on success, or FALSE on failure.
+ */
+BOOL ODCoreCarrierResult(tODResult Result, BOOL bIsCarrier)
+{
+   if(Result != kODRCSuccess)
+   {
+      od_control.od_error = ERR_GENERALFAILURE;
+      return(FALSE);
+   }
+
    return(bIsCarrier);
 }
 
@@ -564,6 +687,7 @@ ODAPIDEF void ODCALL od_repeat(char chValue, BYTE btTimes)
 
    /* Ensure that OpenDoors has been initialized. */
    if(!bODInitialized) od_init();
+   OD_RETURN_VOID_IF_SESSION_ENDED();
 
    OD_API_ENTRY();
 
@@ -583,8 +707,16 @@ ODAPIDEF void ODCALL od_repeat(char chValue, BYTE btTimes)
    }
    *pchCurStringPos = '\0';
 
-   /* Display repeated string on local screen. */
-   ODScrnDisplayString(szODWorkString);
+   /* Display repeated string on the authoritative screen. */
+   if(ODSessionScreenAvailable())
+   {
+      ODSessionScreenDisplayString(szODWorkString);
+      ODSessionScreenPresent();
+   }
+   else
+   {
+      ODScrnDisplayString(szODWorkString);
+   }
 
    /* If we are operating in AVATAR mode. */
    if(od_control.user_avatar)
@@ -632,6 +764,7 @@ ODAPIDEF void ODCALL od_page(void)
 
    /* Initialize OpenDoors if it hasn't already been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_VOID_IF_SESSION_ENDED();
 
    OD_API_ENTRY();
 
@@ -665,34 +798,37 @@ ODAPIDEF void ODCALL od_page(void)
    {
       /* Indicate that the user wants to chat. */
       od_control.user_wantchat = TRUE;
-#ifdef ODPLAT_WIN32
-      ODFrameUpdateWantChat();
-#endif /* ODPLAT_WIN32 */
-
       /* Determine whether or not sysop paging should be permitted at */
       /* the current time.                                            */
       nUnixTime = time(NULL);
       TimeBlock = localtime(&nUnixTime);
-      nMinute = (60 * TimeBlock->tm_hour) + TimeBlock->tm_min;
-      if(od_control.od_pagestartmin < od_control.od_pageendmin)
+      if(TimeBlock == NULL)
       {
-         if(nMinute < od_control.od_pagestartmin
-            || nMinute >= od_control.od_pageendmin)
-         {
-            bFailed = TRUE;
-         }
-      }
-      else if(od_control.od_pagestartmin > od_control.od_pageendmin)
-      {
-         if(nMinute < od_control.od_pagestartmin
-            && nMinute >= od_control.od_pageendmin)
-         {
-            bFailed = TRUE;
-         }
+         bFailed = TRUE;
       }
       else
       {
-         bFailed = FALSE;
+         nMinute = (60 * TimeBlock->tm_hour) + TimeBlock->tm_min;
+         if(od_control.od_pagestartmin < od_control.od_pageendmin)
+         {
+            if(nMinute < od_control.od_pagestartmin
+               || nMinute >= od_control.od_pageendmin)
+            {
+               bFailed = TRUE;
+            }
+         }
+         else if(od_control.od_pagestartmin > od_control.od_pageendmin)
+         {
+            if(nMinute < od_control.od_pagestartmin
+               && nMinute >= od_control.od_pageendmin)
+            {
+               bFailed = TRUE;
+            }
+         }
+         else
+         {
+            bFailed = FALSE;
+         }
       }
 
       /* If paging is set to PAGE_ENABLE, meaning that sysop paging should */
@@ -731,14 +867,18 @@ ODAPIDEF void ODCALL od_page(void)
       od_set_attrib(od_control.od_chat_color1);
       od_disp_str(od_control.od_paging);
 
-#ifdef OD_TEXTMODE
+#ifdef OD_PERSONALITY_SUPPORT
       /* Display sysop page status line if it exists and the sysop status */
       /* line is currently active.                                        */
-      if(od_control.od_page_statusline != -1 && btCurrentStatusLine != 8)
+      if(od_control.od_page_statusline != -1 && btCurrentStatusLine != 8
+#ifdef ODPLAT_WIN32
+         && ODPlatGetWindowsSubsystem() == kODWindowsSubsystemConsole
+#endif
+         )
       {
          od_set_statusline(od_control.od_page_statusline);
       }
-#endif /* OD_TEXTMODE */
+#endif /* OD_PERSONALITY_SUPPORT */
 
       /* Increment the total number of times that the user has paged */
       /* the sysop.                                                  */
@@ -770,7 +910,16 @@ ODAPIDEF void ODCALL od_page(void)
          /* chat key.                                                 */
          while(!ODTimerElapsed(&Timer))
          {
+#ifdef OD_THREAD_SUPPORT
+            od_sleep(0);
+            if(!bODInitialized)
+            {
+               OD_API_EXIT();
+               return;
+            }
+#else
             CALL_KERNEL_IF_NEEDED();
+#endif
          }
       }
 
@@ -813,29 +962,36 @@ ODAPIDEF void ODCALL od_disp(const char *pachBuffer, INT nSize, BOOL bLocalEcho)
 
    /* Initialize OpenDoors if it hasn't already been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_VOID_IF_SESSION_ENDED();
 
    OD_API_ENTRY();
 
    /* Call the OpenDoors kernel, if needed. */
-#ifndef OD_MULTITHREADED
    if(ODTimerElapsed(&RunKernelTimer))
    {
       CALL_KERNEL_IF_NEEDED();
    }
-#endif /* !OD_MULTITHREADED */
 
    /* If we are operating in remote mode, then send the buffer to the */
    /* remote system.                                                  */
    if(od_control.baud != 0)
    {
-      ODComSendBuffer(hSerialPort, (BYTE *)pachBuffer, nSize);
+      ODCoreSendRemoteBuffer(pachBuffer, nSize);
    }
 
    /* If we are also to display the character on the local screen, then */
    /* display the buffer on the local screen.                           */
    if(bLocalEcho)
    {
-      ODScrnDisplayBuffer(pachBuffer, nSize);
+      if(ODSessionScreenAvailable())
+      {
+         ODSessionScreenDisplayBuffer(pachBuffer, nSize);
+         ODSessionScreenPresent();
+      }
+      else
+      {
+         ODScrnDisplayBuffer(pachBuffer, nSize);
+      }
    }
 
    OD_API_EXIT();
@@ -858,25 +1014,32 @@ ODAPIDEF void ODCALL od_disp_str(const char *pszToDisplay)
 
    /* Initialize OpenDoors if it hasn't already been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_VOID_IF_SESSION_ENDED();
 
    OD_API_ENTRY();
 
    /* Call the OpenDoors kernel, if needed. */
-#ifndef OD_MULTITHREADED
    if(ODTimerElapsed(&RunKernelTimer))
    {
       CALL_KERNEL_IF_NEEDED();
    }
-#endif /* !OD_MULTITHREADED */
 
    /* Send the string to the remote system, if we are running in remote mode. */
    if(od_control.baud != 0)
    {
-      ODComSendBuffer(hSerialPort, (BYTE *)pszToDisplay, strlen(pszToDisplay));
+      ODCoreSendRemoteBuffer(pszToDisplay, (INT)strlen(pszToDisplay));
    }
 
-   /* Display the screen on the local screen. */
-   ODScrnDisplayString(pszToDisplay);
+   /* Update the authoritative screen and its local presentation. */
+   if(ODSessionScreenAvailable())
+   {
+      ODSessionScreenDisplayString(pszToDisplay);
+      ODSessionScreenPresent();
+   }
+   else
+   {
+      ODScrnDisplayString(pszToDisplay);
+   }
 
    OD_API_EXIT();
 }
@@ -895,20 +1058,30 @@ ODAPIDEF void ODCALL od_disp_str(const char *pszToDisplay)
  */
 ODAPIDEF void ODCALL od_set_statusline(INT nSetting)
 {
-#ifdef OD_TEXTMODE
+#if defined(OD_TEXTMODE) || defined(ODPLAT_WIN32)
    INT nDistance;
    BYTE btCount
-#endif /* OD_TEXTMODE */
+#endif /* OD_TEXTMODE || ODPLAT_WIN32 */
 
    /* Log function entry if running in trace mode. */
    TRACE(TRACE_API, "od_set_statusline()");
 
    /* Initialize OpenDoors if it hasn't already been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_VOID_IF_SESSION_ENDED();
 
    OD_API_ENTRY()
 
-#ifdef OD_TEXTMODE
+#if defined(OD_TEXTMODE) || defined(ODPLAT_WIN32)
+
+#ifdef ODPLAT_WIN32
+   if(ODPlatGetWindowsSubsystem() != kODWindowsSubsystemConsole)
+   {
+      od_control.od_error = ERR_UNSUPPORTED;
+      OD_API_EXIT();
+      return;
+   }
+#endif
 
    /* If status line is disabled, then don't do anything. */
    if(!od_control.od_status_on)
@@ -998,11 +1171,11 @@ ODAPIDEF void ODCALL od_set_statusline(INT nSetting)
       ODScrnSetCursorPos(ODTextInfo.curx, ODTextInfo.cury);
    }
 
-#else /* !OD_TEXTMODE */
+#else /* !OD_TEXTMODE && !ODPLAT_WIN32 */
 
    od_control.od_error = ERR_UNSUPPORTED;
 
-#endif /* !OD_TEXTMODE */
+#endif /* OD_TEXTMODE || ODPLAT_WIN32 */
 
    OD_API_EXIT();
 }
@@ -1054,6 +1227,11 @@ void ODRestoreTextInfo(void)
  */
 void ODStringToName(char *pszToConvert)
 {
+   if(*pszToConvert == '\0')
+   {
+      return;
+   }
+
    /* Begin by changing the entire string to lower case. */
    strlwr(pszToConvert);
 
@@ -1069,7 +1247,7 @@ void ODStringToName(char *pszToConvert)
    }
 
    /* Change the first character to lower case. */
-   *pszToConvert = toupper(*pszToConvert);
+   *pszToConvert = (char)toupper((unsigned char)*pszToConvert);
 
    /* Loop through the rest of the string, capitalizing any other words */
    /* in the string.                                                    */
@@ -1082,7 +1260,7 @@ void ODStringToName(char *pszToConvert)
          case ',':
          case '.':
          case '-':
-            *pszToConvert = toupper(*pszToConvert);
+            *pszToConvert = (char)toupper((unsigned char)*pszToConvert);
             break;
       }
    }
@@ -1102,6 +1280,7 @@ void ODStringToName(char *pszToConvert)
  */
 ODAPIDEF void ODCALL od_set_color(INT nForeground, INT nBackground)
 {
+   if(!ODSyncPublicCallAllowed()) return;
    /* Use od_set_attrib() to perform the actual color setting.          */
    /* Here, we rely on od_set_attrib() to look after initialization,    */
    /* API_ENTRY() and API_EXIT() calls, etc. This allows od_set_color() */
@@ -1129,6 +1308,7 @@ ODAPIDEF void ODCALL od_set_attrib(INT nColor)
 
    /* Ensure that OpenDoors has been initialized. */
    if(!bODInitialized) od_init();
+   OD_RETURN_VOID_IF_SESSION_ENDED();
 
    OD_API_ENTRY();
 
@@ -1145,7 +1325,16 @@ ODAPIDEF void ODCALL od_set_attrib(INT nColor)
       if(od_control.od_cur_attrib != nColor || od_control.od_full_color)
       {
          /* Change local text color. */
-         ODScrnSetAttribute((BYTE)(od_control.od_cur_attrib = nColor));
+         od_control.od_cur_attrib = nColor;
+         if(ODSessionScreenAvailable())
+         {
+            ODSessionScreenSetAttribute((BYTE)nColor);
+            ODSessionScreenPresent();
+         }
+         else
+         {
+            ODScrnSetAttribute((BYTE)nColor);
+         }
 
          /* Generate AVATAR control sequence. */
          szControlSequence[0] = 22;
@@ -1204,8 +1393,7 @@ ansi_reset:
          }
 
          /* If bright has to be turned on. */
-         if((nColor & 0x08) != (od_control.od_cur_attrib & 0x08)
-            || od_control.od_cur_attrib == -1)
+         if((nColor & 0x08) != (od_control.od_cur_attrib & 0x08))
          {
             /* Add it to the ANSI color sequence. */
             ODAddANSIParameter(szControlSequence, 1);
@@ -1242,7 +1430,16 @@ ansi_reset:
       }
 
       /* Change local text color. */
-      ODScrnSetAttribute((BYTE)(od_control.od_cur_attrib = nColor));
+      od_control.od_cur_attrib = nColor;
+      if(ODSessionScreenAvailable())
+      {
+         ODSessionScreenSetAttribute((BYTE)nColor);
+         ODSessionScreenPresent();
+      }
+      else
+      {
+         ODScrnSetAttribute((BYTE)nColor);
+      }
    }
    else
    {
@@ -1299,17 +1496,26 @@ ODAPIDEF void ODCALL od_putch(char chToDisplay)
 
    /* Initialize OpenDoors if it hasn't been done already. */
    if(!bODInitialized) od_init();
+   OD_RETURN_VOID_IF_SESSION_ENDED();
 
    OD_API_ENTRY();
 
-   /* Display the character on the local screen. */
-   ODScrnDisplayChar(chToDisplay);
+   /* Display the character on the authoritative screen. */
+   if(ODSessionScreenAvailable())
+   {
+      ODSessionScreenDisplayChar((unsigned char)chToDisplay);
+      ODSessionScreenPresent();
+   }
+   else
+   {
+      ODScrnDisplayChar((unsigned char)chToDisplay);
+   }
 
    /* If not operating in local mode, then send the character to the */
    /* serial port.                                                   */
    if(od_control.baud)
    {
-      ODComSendByte(hSerialPort, chToDisplay);
+      ODCoreSendRemoteByte((BYTE)chToDisplay);
    }
 
    /* If it is time to call the kernel, then do so. */
@@ -1334,11 +1540,14 @@ ODAPIDEF void ODCALL od_putch(char chToDisplay)
  */
 ODAPIDEF void ODCALL od_set_dtr(BOOL bHigh)
 {
+   tODResult Result;
+
    /* Log function entry if running in trace mode. */
    TRACE(TRACE_API, "od_set_dtr()");
 
    /* Initialize OpenDoors if it hasn't already been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_VOID_IF_SESSION_ENDED();
 
    OD_API_ENTRY();
 
@@ -1351,9 +1560,26 @@ ODAPIDEF void ODCALL od_set_dtr(BOOL bHigh)
    }
 
    /* Otherwise, change the state of the DTR line. */
-   ODComSetDTR(hSerialPort, bHigh);
+   Result = ODComSetDTR(hSerialPort, bHigh);
+   ODCoreSetDTRResult(Result);
 
    OD_API_EXIT();
+}
+
+
+/* ----------------------------------------------------------------------------
+ * ODCoreSetDTRResult()                                 *** PRIVATE FUNCTION ***
+ *
+ * Applies the public error state for a communications-method DTR result.
+ *
+ * Parameters: Result - Result returned by ODComSetDTR().
+ *
+ *     Return: void
+ */
+void ODCoreSetDTRResult(tODResult Result)
+{
+   if(Result != kODRCSuccess)
+      od_control.od_error = ERR_GENERALFAILURE;
 }
 
 
@@ -1371,28 +1597,34 @@ ODAPIDEF void ODCALL od_set_dtr(BOOL bHigh)
 ODAPIDEF char ODCALL od_get_answer(const char *pszOptions)
 {
    char *pchPossibleOption;
-   char chPressed;
+   INT nPressed;
 
    /* Log function entry if running in trace mode. */
    TRACE(TRACE_API, "od_get_answer()");
 
    /* Initialize OpenDoors if it hasn't already been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(0);
 
    OD_API_ENTRY();
 
    for(;;)
    {
       /* Wait for the next key press by the user. */
-      chPressed = od_get_key(TRUE);
-      chPressed = tolower(chPressed);
+      nPressed = (unsigned char)od_get_key(TRUE);
+      if(!bODInitialized)
+      {
+         OD_API_EXIT();
+         return('\0');
+      }
+      nPressed = tolower((unsigned char)nPressed);
 
       /* Loop through list of possible options. */
       pchPossibleOption = (char *)pszOptions;
       while(*pchPossibleOption)
       {
          /* If the key pressed matches this possible option. */
-         if(tolower(*pchPossibleOption) == chPressed)
+         if(tolower((unsigned char)*pchPossibleOption) == nPressed)
          {
             /* Then return the character in the case originally specified */
             /* by the caller.                                             */
@@ -1437,6 +1669,7 @@ ODAPIDEF BYTE ODCALL od_color_config(char *pszColorDesc)
 
    /* Initialize OpenDoros if it hasn't already been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(0);
 
    OD_API_ENTRY();
 
@@ -1487,7 +1720,7 @@ ODAPIDEF BYTE ODCALL od_color_config(char *pszColorDesc)
                   btColor |= 0x08;
                }
 
-               else if(btIdentifier == 11)
+               else
                {
                   btColor |= 0x80;
                }
@@ -1523,7 +1756,7 @@ BOOL ODPagePrompt(BOOL *pbPausing)
    INT nPromptLength = strlen(od_control.od_continue);
    tODScrnTextInfo TextInfo;
    BOOL bToReturn = FALSE;
-   char chKeyPressed;
+   INT nKeyPressed;
    BYTE btCount;
 
    /* Return right away if page pausing is disabled. */
@@ -1545,51 +1778,48 @@ BOOL ODPagePrompt(BOOL *pbPausing)
    for(;;)
    {
       /* Obtain the next key from the user. */
-      chKeyPressed = od_get_key(TRUE);
+      nKeyPressed = (unsigned char)od_get_key(TRUE);
+      if(!bODInitialized) return(TRUE);
 
       /* If user chooses to continue. */
-      if(chKeyPressed == tolower(od_control.od_continue_yes) ||
-         chKeyPressed == toupper(od_control.od_continue_yes) ||
-         chKeyPressed == 13 ||
-         chKeyPressed == ' ')
+      if(nKeyPressed == tolower((unsigned char)od_control.od_continue_yes) ||
+         nKeyPressed == toupper((unsigned char)od_control.od_continue_yes) ||
+         nKeyPressed == 13 ||
+         nKeyPressed == ' ')
       {
-         /* Remove the prompt and return. */
-         goto finished_pausing;
+         break;
       }
 
       /* If user requested nonstop display. */
-      else if(chKeyPressed == tolower(od_control.od_continue_nonstop) ||
-              chKeyPressed == toupper(od_control.od_continue_nonstop))
+      else if(nKeyPressed ==
+              tolower((unsigned char)od_control.od_continue_nonstop) ||
+              nKeyPressed ==
+              toupper((unsigned char)od_control.od_continue_nonstop))
       {
          /* Disable page pausing. */
          *pbPausing = FALSE;
 
-         /* Remove the prompt and return. */
-         goto finished_pausing;
+         break;
       }
 
       /* If user chooses to stop display. */
-      else if(chKeyPressed == tolower(od_control.od_continue_no) ||
-              chKeyPressed == toupper(od_control.od_continue_no) ||
-              chKeyPressed == 's' || chKeyPressed == 'S' || chKeyPressed == 3
-              || chKeyPressed == 11 || chKeyPressed == 0x18)
+      else if(nKeyPressed ==
+              tolower((unsigned char)od_control.od_continue_no) ||
+              nKeyPressed ==
+              toupper((unsigned char)od_control.od_continue_no) ||
+              nKeyPressed == 's' || nKeyPressed == 'S' || nKeyPressed == 3
+              || nKeyPressed == 11)
       {
-         /* If we are operating in remote mode. */
-         if(od_control.baud)
-         {
-            /* Clear the output buffer. */
-            ODComClearOutbound(hSerialPort);
-         }
-
-         /* Tell the caller to stop displaying more text. */
          bToReturn = TRUE;
-
-         /* Remove the prompt and return. */
-         goto finished_pausing;
+         break;
+      }
+      else if(nKeyPressed == 0x18)
+      {
+         bToReturn = TRUE;
+         break;
       }
    }
 
-finished_pausing:
    /* Remove the pause prompt. */
    for(btCount = 0; btCount < nPromptLength; ++btCount)
    {
@@ -1615,6 +1845,8 @@ ODAPIDEF tODControl * ODCALL od_control_get(void)
 {
    /* Log function entry if running in trace mode */
    TRACE(TRACE_API, "od_disp_str()");
+
+   if(!ODSyncPublicCallAllowed()) return(NULL);
 
    return(&od_control);
 }

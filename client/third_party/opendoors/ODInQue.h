@@ -48,10 +48,18 @@ void ODInQueueFree(tODInQueueHandle hInQueue);
 BOOL ODInQueueWaiting(tODInQueueHandle hInQueue);
 tODResult ODInQueueAddEvent(tODInQueueHandle hInQueue,
    tODInputEvent *pEvent);
+tODResult ODInQueueAddEvents(tODInQueueHandle hInQueue,
+   const tODInputEvent *paEvents, INT nEvents);
+tODResult ODInQueueReserveEvent(tODInQueueHandle hInQueue);
+void ODInQueueCancelReservedEvent(tODInQueueHandle hInQueue);
+tODResult ODInQueueCommitReservedEvent(tODInQueueHandle hInQueue,
+   const tODInputEvent *pEvent);
 tODResult ODInQueueGetNextEvent(tODInQueueHandle hInQueue,
    tODInputEvent *pEvent, tODMilliSec Timeout);
 void ODInQueueEmpty(tODInQueueHandle hInQueue);
 time_t ODInQueueGetLastActivity(tODInQueueHandle hInQueue);
 void ODInQueueResetLastActivity(tODInQueueHandle hInQueue);
+char ODInQueueExchangeLastControlKey(tODInQueueHandle hInQueue,
+   char chNewValue);
 
 #endif /* _INC_ODINQUE */

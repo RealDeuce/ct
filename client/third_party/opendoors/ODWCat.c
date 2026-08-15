@@ -40,17 +40,14 @@
 #define BUILDING_OPENDOORS
 
 #include <string.h>
-#include <ctype.h>
-#include <stddef.h>
-#include <time.h>
 #include <stdio.h>
 
 #include "OpenDoor.h"
-#include "ODGen.h"
-#include "ODScrn.h"
-#include "ODCore.h"
 #include "ODStat.h"
-#include "ODKrnl.h"
+#include "ODSync.h"
+#ifdef ODPLAT_WIN32
+#include "ODPlat.h"
+#endif
 
 
 /* ----------------------------------------------------------------------------
@@ -65,7 +62,14 @@
  */
 ODAPIDEF void ODCALL pdef_wildcat(BYTE btOperation)
 {
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32) || defined(ODPLAT_WIN32)
+   static char abtGreyBlock[2] = {' ', 0x70};
    BYTE btInfoType = od_control.od_info_type;
+
+#ifdef ODPLAT_WIN32
+   if(ODPlatGetWindowsSubsystem() != kODWindowsSubsystemConsole) return;
+#endif
+   if(!ODSyncPublicCallAllowed()) return;
 
    switch(btOperation)
    {
@@ -120,6 +124,7 @@ ODAPIDEF void ODCALL pdef_wildcat(BYTE btOperation)
             }
          }
 
+         /* FALLTHROUGH */
       case PEROP_UPDATE1:
          ODScrnSetAttribute(0x71);
          ODScrnSetCursorPos(74,25);
@@ -206,15 +211,13 @@ ODAPIDEF void ODCALL pdef_wildcat(BYTE btOperation)
                if(od_control.user_timelimit <= 1435)
                {
                   od_control.user_timelimit += 5;
-                  bForceStatusUpdate = TRUE;
-                  CALL_KERNEL_IF_NEEDED();
+                  ODStatForceStatusUpdate();
                }
                break;
 
             case 0x5000:
                od_control.user_timelimit -= 5;
-               bForceStatusUpdate = TRUE;
-               CALL_KERNEL_IF_NEEDED();
+               ODStatForceStatusUpdate();
                break;
 
             case 0x7800:
@@ -239,8 +242,7 @@ ODAPIDEF void ODCALL pdef_wildcat(BYTE btOperation)
                {
                   od_control.od_okaytopage=FALSE;
                }
-               bForceStatusUpdate = TRUE;
-               CALL_KERNEL_IF_NEEDED();
+               ODStatForceStatusUpdate();
                break;
 
             default:
@@ -266,4 +268,8 @@ ODAPIDEF void ODCALL pdef_wildcat(BYTE btOperation)
          ODStatRemoveKey(0x3f00);
          break;
    }
+#else /* !ODPLAT_DOS && !ODPLAT_DOS32 */
+   if(!ODSyncPublicCallAllowed()) return;
+   (void)btOperation;
+#endif /* !ODPLAT_DOS && !ODPLAT_DOS32 */
 }

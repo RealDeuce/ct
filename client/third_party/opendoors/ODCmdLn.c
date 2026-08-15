@@ -53,6 +53,7 @@
 
 #ifdef ODPLAT_WIN32
 #include <processenv.h>
+#include <wchar.h>
 #endif
 
 #include "OpenDoor.h"
@@ -60,6 +61,7 @@
 #include "ODPlat.h"
 #include "ODCore.h"
 #include "ODInEx.h"
+#include "ODSync.h"
 
 
 /* Maximum number of command-line arguments. Any additional arguments will */
@@ -108,11 +110,162 @@ static void ODAdvanceToNextArg(INT *pnCurrentArg, INT nArgCount,
 static void ODGetNextArgName(INT *pnCurrentArg, INT nArgCount,
    char *papszArguments[], char *pszString, size_t nStringSize);
 static tCommandLineParameter ODGetCommandLineParameter(char *pszArgument);
+static void ODParseCommandLineArguments(INT nArgCount,
+   char *papszArguments[]);
+#if defined(ODPLAT_WIN32) || defined(ODPLAT_NIX)
+static BOOL ODParseOpenHandle(const char *pszValue, DWORD_PTR *pdwValue);
+#endif
+#ifdef ODPLAT_WIN32
+static void ODCommandLineInterfaceMismatch(const char *pszFunction,
+   tODWindowsSubsystem Expected, tODWindowsSubsystem Actual);
+typedef LPWSTR *(WINAPI *tODCommandLineToArgvW)(LPCWSTR, INT *);
+static LPWSTR *ODWindowsCommandLineToArgvFallback(LPCWSTR pszCommandLine,
+   INT *pnArgCount);
+static LPWSTR *ODWindowsCommandLineToArgv(LPCWSTR pszCommandLine,
+   INT *pnArgCount, HMODULE *phShell32);
+#endif
 
 
 /* Private variables. */
 #define CONFIG_FILENAME_SIZE 80
 static char szConfigFilename[CONFIG_FILENAME_SIZE];
+
+#ifdef ODPLAT_WIN32
+/* ----------------------------------------------------------------------------
+ * ODWindowsCommandLineToArgvFallback()
+ *
+ * Local implementation of the CommandLineToArgvW argument grammar for
+ * systems where Shell32 does not export that function.
+ */
+static LPWSTR *ODWindowsCommandLineToArgvFallback(LPCWSTR pszCommandLine,
+   INT *pnArgCount)
+{
+   size_t nLength = 0;
+   size_t nPointerCount;
+   size_t nAllocationSize;
+   LPWSTR *papszArguments;
+   LPWSTR pszOutput;
+   LPCWSTR pszCurrent;
+   BOOL bInQuotes;
+   size_t nSlashCount;
+   size_t nIndex;
+
+   while(pszCommandLine[nLength] != L'\0')
+      ++nLength;
+   nPointerCount = nLength + 2;
+   if(nPointerCount > 4097)
+      nPointerCount = 4097;
+   nAllocationSize = nPointerCount * sizeof(LPWSTR)
+      + (nLength + 1) * sizeof(WCHAR);
+   papszArguments = (LPWSTR *)LocalAlloc(LMEM_FIXED, nAllocationSize);
+   if(papszArguments == NULL)
+      return(NULL);
+
+   pszOutput = (LPWSTR)(papszArguments + nPointerCount);
+   pszCurrent = pszCommandLine;
+   *pnArgCount = 0;
+
+   /* CommandLineToArgvW represents leading whitespace as an empty argv[0]. */
+   if(*pszCurrent == L' ' || *pszCurrent == L'\t')
+   {
+      papszArguments[(*pnArgCount)++] = pszOutput;
+      *pszOutput++ = L'\0';
+   }
+
+   while(*pszCurrent != L'\0' && *pnArgCount < 4096)
+   {
+      while(*pszCurrent == L' ' || *pszCurrent == L'\t')
+         ++pszCurrent;
+      if(*pszCurrent == L'\0')
+         break;
+
+      papszArguments[(*pnArgCount)++] = pszOutput;
+      bInQuotes = FALSE;
+      nSlashCount = 0;
+      while(*pszCurrent != L'\0')
+      {
+         WCHAR chCurrent = *pszCurrent++;
+         if(chCurrent == L'\\')
+         {
+            ++nSlashCount;
+            continue;
+         }
+         if(chCurrent == L'\"')
+         {
+            for(nIndex = 0; nIndex < nSlashCount / 2; ++nIndex)
+               *pszOutput++ = L'\\';
+            if((nSlashCount & 1) != 0)
+            {
+               *pszOutput++ = L'\"';
+            }
+            else
+            {
+               if(bInQuotes && *pszCurrent == L'\"')
+               {
+                  *pszOutput++ = L'\"';
+                  ++pszCurrent;
+               }
+               bInQuotes = !bInQuotes;
+            }
+            nSlashCount = 0;
+            continue;
+         }
+         for(nIndex = 0; nIndex < nSlashCount; ++nIndex)
+            *pszOutput++ = L'\\';
+         nSlashCount = 0;
+         if(!bInQuotes && (chCurrent == L' ' || chCurrent == L'\t'))
+            break;
+         *pszOutput++ = chCurrent;
+      }
+      for(nIndex = 0; nIndex < nSlashCount; ++nIndex)
+         *pszOutput++ = L'\\';
+      *pszOutput++ = L'\0';
+   }
+   papszArguments[*pnArgCount] = NULL;
+   return(papszArguments);
+}
+
+/* ----------------------------------------------------------------------------
+ * ODWindowsCommandLineToArgv()
+ *
+ * Resolves CommandLineToArgvW at run time, falling back only when the API is
+ * unavailable. The returned array is always released with LocalFree().
+ */
+static LPWSTR *ODWindowsCommandLineToArgv(LPCWSTR pszCommandLine,
+   INT *pnArgCount, HMODULE *phShell32)
+{
+   HMODULE hShell32;
+   tODCommandLineToArgvW pfnCommandLineToArgvW;
+   union
+   {
+      FARPROC pfnGeneric;
+      tODCommandLineToArgvW pfnCommandLineToArgvW;
+   } Proc;
+   LPWSTR *papszArguments;
+
+   *phShell32 = NULL;
+   hShell32 = LoadLibraryA("shell32.dll");
+   if(hShell32 != NULL)
+   {
+      Proc.pfnGeneric = GetProcAddress(hShell32, "CommandLineToArgvW");
+      pfnCommandLineToArgvW = Proc.pfnCommandLineToArgvW;
+      if(pfnCommandLineToArgvW != NULL)
+      {
+         papszArguments = (*pfnCommandLineToArgvW)(pszCommandLine,
+            pnArgCount);
+         if(papszArguments != NULL)
+         {
+            *phShell32 = hShell32;
+            return(papszArguments);
+         }
+         FreeLibrary(hShell32);
+         return(NULL);
+      }
+      FreeLibrary(hShell32);
+   }
+   return(ODWindowsCommandLineToArgvFallback(pszCommandLine, pnArgCount));
+}
+#endif
 
 /* ----------------------------------------------------------------------------
  * od_split_cmd_line()
@@ -130,16 +283,37 @@ static char szConfigFilename[CONFIG_FILENAME_SIZE];
  */
 ODAPIDEF char ** ODCALL od_split_cmd_line(const char* pszCmdLine, INT *nArgCount)
 {
+#ifdef ODPLAT_WIN32
+   LPCSTR pszFullCmdLine;
+   LPWSTR pszFullWide = NULL;
+   LPWSTR pszTailWide = NULL;
+   LPWSTR *papszFullWide = NULL;
+   LPWSTR *papszTailWide = NULL;
+   HMODULE hFullShell32 = NULL;
+   HMODULE hTailShell32 = NULL;
+   INT nFullCount = 0;
+   INT nTailCount = 0;
+   INT nTailLimit;
+   INT nIndex;
+   int nWideLength;
+   int nAnsiLength;
+   size_t nArgumentBytes = 0;
+   char *pszArgumentBlock = NULL;
+   char *pszOutput;
+   char **papszArguments = NULL;
+   char **papszArgumentsRe;
+#else
    char *pszCmdLineCopy;
    char *pchCurrent;
-   char **papszArguments = calloc(4097, sizeof(char*)); // We'll shrink this before we return...
+   /* Shrink this initial allocation before returning it. */
+   char **papszArguments;
    char **papszArgumentsRe;
-#ifdef ODPLAT_WIN32
-   LPSTR pszFullCmdLine = GetCommandLine();
 #endif
 
    /* Log function entry if running in trace mode. */
    TRACE(TRACE_API, "od_split_cmd_line()");
+
+   if(!ODSyncPublicCallAllowed()) return(NULL);
 
    if (pszCmdLine == NULL || nArgCount == NULL) {
       od_control.od_error = ERR_PARAMETER;
@@ -149,48 +323,145 @@ ODAPIDEF char ** ODCALL od_split_cmd_line(const char* pszCmdLine, INT *nArgCount
    }
 
    *nArgCount = 0;
+#ifdef ODPLAT_WIN32
+   papszArguments = (char **)calloc(4097, sizeof(char *));
    if(papszArguments == NULL)
    {
       od_control.od_error = ERR_MEMORY;
       return NULL;
    }
 
-   // Try to get papszArguments[0]...
-#ifdef ODPLAT_WIN32
-   if (pszFullCmdLine == NULL) {
-      papszArguments[(*nArgCount)++] = strdup("");
-      if (papszArguments[0] == NULL) {
-         od_control.od_error = ERR_MEMORY;
-         *nArgCount = 0;
-         free(papszArguments);
-         return NULL;
+   pszFullCmdLine = GetCommandLineA();
+   if(pszFullCmdLine != NULL)
+   {
+      nWideLength = MultiByteToWideChar(CP_ACP, 0, pszFullCmdLine, -1,
+         NULL, 0);
+      if(nWideLength == 0)
+         goto windows_memory_error;
+      pszFullWide = (LPWSTR)malloc((size_t)nWideLength * sizeof(WCHAR));
+      if(pszFullWide == NULL)
+         goto windows_memory_error;
+      if(MultiByteToWideChar(CP_ACP, 0, pszFullCmdLine, -1, pszFullWide,
+         nWideLength) == 0)
+      {
+         goto windows_memory_error;
+      }
+      papszFullWide = ODWindowsCommandLineToArgv(pszFullWide, &nFullCount,
+         &hFullShell32);
+      if(papszFullWide == NULL)
+         goto windows_memory_error;
+   }
+
+   if(nFullCount > 0)
+      nAnsiLength = WideCharToMultiByte(CP_ACP, 0, papszFullWide[0], -1,
+         NULL, 0, NULL, NULL);
+   else
+      nAnsiLength = 1;
+   if(nAnsiLength == 0)
+      goto windows_memory_error;
+   papszArguments[0] = (char *)malloc((size_t)nAnsiLength);
+   if(papszArguments[0] == NULL)
+      goto windows_memory_error;
+   if(nFullCount > 0)
+   {
+      if(WideCharToMultiByte(CP_ACP, 0, papszFullWide[0], -1,
+         papszArguments[0], nAnsiLength, NULL, NULL) == 0)
+      {
+         goto windows_memory_error;
       }
    }
-   else {
-      pchCurrent = strstr(pszFullCmdLine, pszCmdLine);
-      if (pchCurrent == NULL || pchCurrent == pszFullCmdLine) {
-         papszArguments[(*nArgCount)++] = strdup("");
-         if (papszArguments[0] == NULL) {
-            od_control.od_error = ERR_MEMORY;
-            *nArgCount = 0;
-            free(papszArguments);
-            return NULL;
-         }
-      }
-      else {
-         size_t argStrLen = pchCurrent - pszFullCmdLine;
-         papszArguments[(*nArgCount)] = malloc(argStrLen);
-         if (papszArguments[(*nArgCount)++] == NULL) {
-            od_control.od_error = ERR_MEMORY;
-            *nArgCount = 0;
-            free(papszArguments);
-            return NULL;
-         }
-         memcpy(papszArguments[0], pszFullCmdLine, argStrLen - 1);
-         papszArguments[0][argStrLen - 1] = '\0';
-      }
+   else
+   {
+      papszArguments[0][0] = '\0';
    }
+
+   nWideLength = MultiByteToWideChar(CP_ACP, 0, pszCmdLine, -1, NULL, 0);
+   if(nWideLength == 0)
+      goto windows_memory_error;
+   pszTailWide = (LPWSTR)malloc(((size_t)nWideLength + 2) * sizeof(WCHAR));
+   if(pszTailWide == NULL)
+      goto windows_memory_error;
+   pszTailWide[0] = L'x';
+   pszTailWide[1] = L' ';
+   if(MultiByteToWideChar(CP_ACP, 0, pszCmdLine, -1, pszTailWide + 2,
+      nWideLength) == 0)
+   {
+      goto windows_memory_error;
+   }
+   papszTailWide = ODWindowsCommandLineToArgv(pszTailWide, &nTailCount,
+      &hTailShell32);
+   if(papszTailWide == NULL || nTailCount < 1)
+      goto windows_memory_error;
+
+   nTailLimit = nTailCount - 1;
+   if(nTailLimit > 4095)
+      nTailLimit = 4095;
+   if(nTailLimit != 0)
+   {
+      for(nIndex = 1; nIndex <= nTailLimit; ++nIndex)
+      {
+         nAnsiLength = WideCharToMultiByte(CP_ACP, 0, papszTailWide[nIndex],
+            -1, NULL, 0, NULL, NULL);
+         if(nAnsiLength == 0)
+            goto windows_memory_error;
+         nArgumentBytes += (size_t)nAnsiLength;
+      }
+      pszArgumentBlock = (char *)malloc(nArgumentBytes);
+      if(pszArgumentBlock == NULL)
+         goto windows_memory_error;
+   }
+   pszOutput = pszArgumentBlock;
+   *nArgCount = 1;
+   for(nIndex = 1; nIndex <= nTailLimit; ++nIndex)
+   {
+      nAnsiLength = WideCharToMultiByte(CP_ACP, 0, papszTailWide[nIndex], -1,
+         pszOutput, (int)(nArgumentBytes - (size_t)(pszOutput
+            - pszArgumentBlock)), NULL, NULL);
+      if(nAnsiLength == 0)
+         goto windows_memory_error;
+      papszArguments[*nArgCount] = pszOutput;
+      ++(*nArgCount);
+      pszOutput += nAnsiLength;
+   }
+
+   if(papszFullWide != NULL)
+      LocalFree((HLOCAL)papszFullWide);
+   if(hFullShell32 != NULL)
+      FreeLibrary(hFullShell32);
+   LocalFree((HLOCAL)papszTailWide);
+   if(hTailShell32 != NULL)
+      FreeLibrary(hTailShell32);
+   free(pszFullWide);
+   free(pszTailWide);
+   papszArgumentsRe = (char **)realloc(papszArguments,
+      ((size_t)*nArgCount + 1) * sizeof(*papszArguments));
+   return(papszArgumentsRe != NULL ? papszArgumentsRe : papszArguments);
+
+windows_memory_error:
+   od_control.od_error = ERR_MEMORY;
+   *nArgCount = 0;
+   if(papszFullWide != NULL)
+      LocalFree((HLOCAL)papszFullWide);
+   if(hFullShell32 != NULL)
+      FreeLibrary(hFullShell32);
+   if(papszTailWide != NULL)
+      LocalFree((HLOCAL)papszTailWide);
+   if(hTailShell32 != NULL)
+      FreeLibrary(hTailShell32);
+   free(pszFullWide);
+   free(pszTailWide);
+   free(pszArgumentBlock);
+   free(papszArguments[0]);
+   free(papszArguments);
+   return(NULL);
 #else
+   papszArguments = calloc(4097, sizeof(char*));
+   if(papszArguments == NULL)
+   {
+      od_control.od_error = ERR_MEMORY;
+      return NULL;
+   }
+
    papszArguments[(*nArgCount)++] = strdup("");
    if (papszArguments[0] == NULL) {
       od_control.od_error = ERR_MEMORY;
@@ -198,7 +469,6 @@ ODAPIDEF char ** ODCALL od_split_cmd_line(const char* pszCmdLine, INT *nArgCount
       free(papszArguments);
       return NULL;
    }
-#endif
 
    pszCmdLineCopy = strdup(pszCmdLine);
    if(pszCmdLineCopy == NULL)
@@ -218,14 +488,14 @@ ODAPIDEF char ** ODCALL od_split_cmd_line(const char* pszCmdLine, INT *nArgCount
       papszArguments[*nArgCount] = pchCurrent;
 
       /* Skip forward to the next white space. */
-      while(*pchCurrent != '\0' && !isspace(*pchCurrent))
+      while(*pchCurrent != '\0' && !isspace((unsigned char)*pchCurrent))
       {
          ++pchCurrent;
       }
 
       /* Replace white space characters with '\0' string terminators, until */
       /* we reach the next command line argument, or the end of the string. */
-      while(*pchCurrent != '\0' && isspace(*pchCurrent))
+      while(*pchCurrent != '\0' && isspace((unsigned char)*pchCurrent))
       {
          *pchCurrent = '\0';
          ++pchCurrent;
@@ -235,6 +505,7 @@ ODAPIDEF char ** ODCALL od_split_cmd_line(const char* pszCmdLine, INT *nArgCount
    if (papszArgumentsRe != NULL)
       return papszArgumentsRe;
    return papszArguments;
+#endif
 }
 
 /* ----------------------------------------------------------------------------
@@ -248,6 +519,7 @@ ODAPIDEF char ** ODCALL od_split_cmd_line(const char* pszCmdLine, INT *nArgCount
  */
 ODAPIDEF void ODCALL od_free_split_cmd_line(char **papszArguments)
 {
+   if(!ODSyncPublicCallAllowed()) return;
    if (papszArguments == NULL) {
       od_control.od_error = ERR_PARAMETER;
       return;
@@ -257,6 +529,49 @@ ODAPIDEF void ODCALL od_free_split_cmd_line(char **papszArguments)
    free(papszArguments[1]);
    free(papszArguments);
 }
+
+/* ----------------------------------------------------------------------------
+ * ODCommandLineInterfaceMismatch()
+ *
+ * Reports a Windows command-line interface mismatch without opening an
+ * interactive dialog, then terminates before either parser touches its input.
+ */
+#ifdef ODPLAT_WIN32
+static void ODCommandLineInterfaceMismatch(const char *pszFunction,
+   tODWindowsSubsystem Expected, tODWindowsSubsystem Actual)
+{
+   char szMessage[512];
+   const char *pszExpected;
+   const char *pszActual;
+   const char *pszCorrectFunction;
+   const char *pszTarget;
+
+   pszExpected = Expected == kODWindowsSubsystemGUI
+      ? "Windows GUI" : "Windows console";
+   if(Actual == kODWindowsSubsystemGUI)
+      pszActual = "Windows GUI";
+   else if(Actual == kODWindowsSubsystemConsole)
+      pszActual = "Windows console";
+   else
+      pszActual = "an unknown";
+   pszCorrectFunction = Expected == kODWindowsSubsystemGUI
+      ? "od_parse_cmd_line_cons(argc, argv)"
+      : "od_parse_cmd_line(command_line)";
+   pszTarget = Expected == kODWindowsSubsystemGUI
+      ? "OpenDoors::SharedConsole/OpenDoors::StaticConsole or define "
+        "OD_WINDOWS_CONSOLE"
+      : "a non-Console OpenDoors target";
+
+   sprintf(szMessage,
+      "OpenDoors: %s() requires a %s executable, but the host uses %s. "
+      "Use %s and %s.\n",
+      pszFunction, pszExpected, pszActual, pszCorrectFunction, pszTarget);
+   od_control.od_error = ERR_PARAMETER;
+   fputs(szMessage, stderr);
+   OutputDebugStringA(szMessage);
+   exit(EXIT_FAILURE);
+}
+#endif /* ODPLAT_WIN32 */
 
 /* ----------------------------------------------------------------------------
  * od_parse_cmd_line()
@@ -287,35 +602,62 @@ ODAPIDEF void ODCALL od_free_split_cmd_line(char **papszArguments)
  */
 #ifdef ODPLAT_WIN32
 ODAPIDEF void ODCALL od_parse_cmd_line(LPSTR pszCmdLine)
+{
+   INT nArgCount;
+   char **papszArguments;
+
+   if(ODPlatGetWindowsSubsystem() != kODWindowsSubsystemGUI)
+   {
+      ODCommandLineInterfaceMismatch("od_parse_cmd_line",
+         kODWindowsSubsystemGUI, ODPlatGetWindowsSubsystem());
+   }
+
+   papszArguments = od_split_cmd_line(pszCmdLine, &nArgCount);
+   if(papszArguments == NULL)
+      return;
+   ODParseCommandLineArguments(nArgCount, papszArguments);
+   od_free_split_cmd_line(papszArguments);
+}
+
+ODAPIDEF void ODCALL od_parse_cmd_line_cons(INT nArgCount,
+   char *papszArguments[])
+{
+   if(ODPlatGetWindowsSubsystem() != kODWindowsSubsystemConsole)
+   {
+      ODCommandLineInterfaceMismatch("od_parse_cmd_line_cons",
+         kODWindowsSubsystemConsole, ODPlatGetWindowsSubsystem());
+   }
+   ODParseCommandLineArguments(nArgCount, papszArguments);
+}
 #else /* !ODPLAT_WIN32 */
 ODAPIDEF void ODCALL od_parse_cmd_line(INT nArgCount, char *papszArguments[])
+{
+   ODParseCommandLineArguments(nArgCount, papszArguments);
+}
 #endif /* !ODPLAT_WIN32 */
+
+/* ----------------------------------------------------------------------------
+ * ODParseCommandLineArguments()
+ *
+ * Applies standard OpenDoors options from a caller-owned argument vector.
+ */
+static void ODParseCommandLineArguments(INT nArgCount,
+   char *papszArguments[])
 {
    char *pszCurrentArg;
    INT nCurrentArg;
    INT n;
-#ifdef ODPLAT_WIN32
-   INT nArgCount;
-   char **papszArguments;
-#endif /* ODPLAT_WIN32 */
 
-   /* Log function entry if running in trace mode. */
    TRACE(TRACE_API, "od_parse_cmd_line()");
 
-#ifdef ODPLAT_WIN32
-   papszArguments = od_split_cmd_line(pszCmdLine, &nArgCount);
-   if (papszArguments == NULL)
-      return;
-#endif /* ODPLAT_WIN32 */
+   if(!ODSyncPublicCallAllowed()) return;
 
-#ifndef ODPLAT_WIN32
    /* Check validity of parameters. */
    if(papszArguments == NULL)
    {
       od_control.od_error = ERR_PARAMETER;
       return;
    }
-#endif /* !ODPLAT_WIN32 */
 
    /* Record that od_parse_cmd_line() has been called. */
    bParsedCmdLine = TRUE;
@@ -359,6 +701,7 @@ ODAPIDEF void ODCALL od_parse_cmd_line(INT nArgCount, char *papszArguments[])
             {
                od_control.port = atoi(papszArguments[nCurrentArg]);
             }
+            nForcedPort = od_control.port;
             wPreSetInfo |= PRESET_PORT;
             break;
 
@@ -515,12 +858,34 @@ ODAPIDEF void ODCALL od_parse_cmd_line(INT nArgCount, char *papszArguments[])
             break;
 
          case kParamSocketDescriptor:
-				od_control.od_use_socket = TRUE;
-				/* fall through */
-
          case kParamPortHandle:
             ODAdvanceToNextArg(&nCurrentArg, nArgCount, pszCurrentArg);
+#if defined(ODPLAT_WIN32) || defined(ODPLAT_NIX)
+            {
+               DWORD_PTR dwOpenHandle;
+
+               if(!ODParseOpenHandle(papszArguments[nCurrentArg],
+                  &dwOpenHandle))
+               {
+                  od_control.od_error = ERR_PARAMETER;
+                  break;
+               }
+
+               od_control.od_open_handle = dwOpenHandle;
+               if(ODGetCommandLineParameter(pszCurrentArg)
+                  == kParamSocketDescriptor)
+               {
+                  od_control.od_use_socket = TRUE;
+               }
+            }
+#else
+            if(ODGetCommandLineParameter(pszCurrentArg)
+               == kParamSocketDescriptor)
+            {
+               od_control.od_use_socket = TRUE;
+            }
             od_control.od_open_handle = atoi(papszArguments[nCurrentArg]);
+#endif
             break;
 
          case kParamSilentMode:
@@ -549,7 +914,7 @@ ODAPIDEF void ODCALL od_parse_cmd_line(INT nArgCount, char *papszArguments[])
             break;
          case kParamPersonality:
          case kParamOption:
-            // Ignore by OpenDoors
+            /* Ignored by OpenDoors. */
             break;
          case kParamCP436UTF8:
             od_control.od_cp437_to_utf8_out = TRUE;
@@ -557,10 +922,55 @@ ODAPIDEF void ODCALL od_parse_cmd_line(INT nArgCount, char *papszArguments[])
       }
    }
 
-#ifdef ODPLAT_WIN32
-   od_free_split_cmd_line(papszArguments);
-#endif /* ODPLAT_WIN32 */
 }
+
+
+#if defined(ODPLAT_WIN32) || defined(ODPLAT_NIX)
+/* ----------------------------------------------------------------------------
+ * ODParseOpenHandle()                                 *** PRIVATE FUNCTION ***
+ *
+ * Converts the unsigned decimal representation of a native communications
+ * object without narrowing it through INT. This interface is meaningful only
+ * on platforms which can adopt such an object.
+ *
+ * Parameters: pszValue  - Pointer to the decimal representation.
+ *
+ *             pdwValue - Receives the converted value on success.
+ *
+ *     Return: TRUE on success or FALSE if the complete string is not a valid
+ *             DWORD_PTR value.
+ */
+static BOOL ODParseOpenHandle(const char *pszValue, DWORD_PTR *pdwValue)
+{
+   DWORD_PTR dwResult = 0;
+   DWORD_PTR dwMaximum = (DWORD_PTR)-1;
+   unsigned int nDigit;
+
+   ASSERT(pszValue != NULL);
+   ASSERT(pdwValue != NULL);
+
+   if(*pszValue == '+')
+      ++pszValue;
+
+   if(*pszValue == '\0')
+      return(FALSE);
+
+   do
+   {
+      if(*pszValue < '0' || *pszValue > '9')
+         return(FALSE);
+
+      nDigit = (unsigned int)(*pszValue - '0');
+      if(dwResult > (dwMaximum - nDigit) / 10)
+         return(FALSE);
+
+      dwResult = dwResult * 10 + nDigit;
+   } while(*++pszValue != '\0');
+
+   *pdwValue = dwResult;
+   return(TRUE);
+}
+#endif
 
 
 /* ----------------------------------------------------------------------------
@@ -593,18 +1003,18 @@ static void ODAdvanceToNextArg(INT *pnCurrentArg, INT nArgCount,
 /* ----------------------------------------------------------------------------
  * ODGetNextArgName()                                  *** PRIVATE FUNCTION ***
  *
- * Obtains a multi-word name from command-line.
+ * Obtains a multi-word value from the parser's argument array.
  *
  * Parameters: pnCurrentArg   - Pointer to integer storing current argument
  *                              number.
  *
- *             nArgCount      - The total number of command-line argument
+ *             nArgCount      - The total number of command-line arguments.
  *
- *             papszArguments - Pointer to array of pointers to string
- *                              arguments, as passed to main() in argv.
+ *             papszArguments - Pointer to array of pointers to the arguments
+ *                              produced for the current platform.
  *
- *             pszString      - Pointer to string in which name will string
- *                              be stored.
+ *             pszString      - Pointer to string in which the value will be
+ *                              stored.
  *
  *             nStringSize    - Size of the string.
  *
@@ -614,6 +1024,8 @@ static void ODGetNextArgName(INT *pnCurrentArg, INT nArgCount,
    char *papszArguments[], char *pszString, size_t nStringSize)
 {
    BOOL bFirst = TRUE;
+   size_t nStringLength = 0;
+   char *pszSource;
 
    ASSERT(pnCurrentArg != NULL);
    ASSERT(papszArguments != NULL);
@@ -638,19 +1050,17 @@ static void ODGetNextArgName(INT *pnCurrentArg, INT nArgCount,
          break;
       }
 
-      if(strlen(pszString) >= nStringSize - 1)
+      if(!bFirst && nStringLength < nStringSize - 1)
       {
-         break;
+         pszString[nStringLength++] = ' ';
       }
 
-      if(!bFirst)
+      pszSource = papszArguments[*pnCurrentArg];
+      while(*pszSource != '\0' && nStringLength < nStringSize - 1)
       {
-         strcat(pszString, " ");
+         pszString[nStringLength++] = *pszSource++;
       }
-
-      strncat(pszString, papszArguments[*pnCurrentArg],
-         strlen(pszString) - nStringSize - 1);
-      pszString[nStringSize - 1] = '\0';
+      pszString[nStringLength] = '\0';
 
       bFirst = FALSE;
    }

@@ -18,8 +18,8 @@
  *
  *        File: ODStat.h
  *
- * Description: Public functions provided by the odstat.c module, for status
- *              line functions shared among personalities.
+ * Description: Public interface for writing DOS status line / function key
+ *              personalities.
  *
  *   Revisions: Date          Ver   Who  Change
  *              ---------------------------------------------------------------
@@ -32,18 +32,44 @@
 #ifndef _INC_ODSTAT
 #define _INC_ODSTAT
 
+#include "OpenDoor.h"
+
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32) \
+   || (defined(ODPLAT_WIN32) \
+      && (defined(OD_WINDOWS_CONSOLE) || defined(BUILDING_OPENDOORS)))
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* Global working string available to all personalities for status line */
 /* generation.                                                          */
 extern char szStatusText[80];
 
 
-/* Public status line function prototypes. */
-void ODStatAddKey(WORD wKeyCode);
-void ODStatRemoveKey(WORD wKeyCode);
-void ODStatGetUserAge(char *pszAge);
-void ODStatStartArrowUse(void);
-void ODStatEndArrowUse(void);
+/* Personality helper functions. */
+void ODCALL ODStatAddKey(WORD wKeyCode);
+void ODCALL ODStatRemoveKey(WORD wKeyCode);
+void ODCALL ODStatGetUserAge(char *pszAge);
+void ODCALL ODStatForceStatusUpdate(void);
+
+/* Local-only personality screen output. */
+void ODCALL ODScrnDisplayChar(unsigned char chToOutput);
+void ODCALL ODScrnDisplayBuffer(const char *pBuffer, INT nCharsToDisplay);
+void ODCALL ODScrnDisplayString(const char *pszString);
+INT ODVCALL ODScrnPrintf(char *pszFormat, ...);
+BOOL ODCALL ODScrnGetText(BYTE btLeft, BYTE btTop, BYTE btRight, BYTE btBottom,
+   void *pbtBuffer);
+BOOL ODCALL ODScrnPutText(BYTE btLeft, BYTE btTop, BYTE btRight, BYTE btBottom,
+   void *pbtBuffer);
+void ODCALL ODScrnSetCursorPos(BYTE btColumn, BYTE btRow);
+void ODCALL ODScrnSetAttribute(BYTE btAttribute);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */
 
 
 #endif /* _INC_ODSTAT */

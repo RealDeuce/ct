@@ -28,10 +28,9 @@
  *              Nov 13, 1995  6.00  BP   32-bit portability.
  *              Nov 13, 1995  6.00  BP   Created odstat.h.
  *              Nov 16, 1995  6.00  BP   Removed oddoor.h, added odcore.h.
- *              Jan 12, 1996  6.00  BP   Added ODStatStartArrowUse(), etc.
+ *              Jan 12, 1996  6.00  BP   Added arrow-use helpers.
  *              Feb 19, 1996  6.00  BP   Changed version number to 6.00.
  *              Mar 03, 1996  6.10  BP   Begin version 6.10.
- *              Mar 13, 1996  6.10  BP   bOnlyShiftArrow -> nArrowUseCount.
  *              Mar 19, 1996  6.10  BP   MSVC15 source-level compatibility.
  *              Aug 10, 2003  6.23  SH   *nix support
  */
@@ -67,7 +66,7 @@ char szStatusText[80];
  *
  *     Return: void
  */
-void ODStatAddKey(WORD wKeyCode)
+void ODCALL ODStatAddKey(WORD wKeyCode)
 {
    if(od_control.od_num_keys < 16)
       od_control.od_hot_key[od_control.od_num_keys++] = wKeyCode;
@@ -84,18 +83,24 @@ void ODStatAddKey(WORD wKeyCode)
  *
  *     Return: void
  */
-void ODStatRemoveKey(WORD wKeyCode)
+void ODCALL ODStatRemoveKey(WORD wKeyCode)
 {
    INT nCount;
+   INT nLast;
 
    for(nCount = 0; nCount < od_control.od_num_keys; ++nCount)
       if((WORD)od_control.od_hot_key[nCount] == wKeyCode)
       {
-         if(nCount != od_control.od_num_keys - 1)
+         nLast = od_control.od_num_keys - 1;
+         if(nCount != nLast)
          {
             od_control.od_hot_key[nCount] =
-               od_control.od_hot_key[od_control.od_num_keys-1];
+               od_control.od_hot_key[nLast];
+            od_control.od_hot_function[nCount] =
+               od_control.od_hot_function[nLast];
          }
+         od_control.od_hot_key[nLast] = 0;
+         od_control.od_hot_function[nLast] = NULL;
          --od_control.od_num_keys;
          return;
       }
@@ -112,7 +117,7 @@ void ODStatRemoveKey(WORD wKeyCode)
  *
  *     Return: void
  */
-void ODStatGetUserAge(char *pszAge)
+void ODCALL ODStatGetUserAge(char *pszAge)
 {
    INT nAge;
    INT n;
@@ -165,33 +170,18 @@ void ODStatGetUserAge(char *pszAge)
 
 
 /* ----------------------------------------------------------------------------
- * ODStatStartArrowUse()
+ * ODStatForceStatusUpdate()
  *
- * Called by OpenDoors when it needs to use the arrow keys, and so they
- * shouldn't be used by the status line.
- *
- * Parameters: None
- *
- *     Return: void
- */
-void ODStatStartArrowUse(void)
-{
-   ++nArrowUseCount;
-}
-
-
-/* ----------------------------------------------------------------------------
- * ODStatEndArrowUse()
- *
- * Called by OpenDoors when it no longer needs to use the arrow keys, and so
- * they can again be used by the status line.
+ * Requests an immediate incremental update of the active personality display.
  *
  * Parameters: None
  *
  *     Return: void
  */
-void ODStatEndArrowUse(void)
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32) || defined(ODPLAT_WIN32)
+void ODCALL ODStatForceStatusUpdate(void)
 {
-   ASSERT(nArrowUseCount > 0);
-   --nArrowUseCount;
+   bForceStatusUpdate = TRUE;
+   od_kernel();
 }
+#endif /* DOS text or Windows console capability */

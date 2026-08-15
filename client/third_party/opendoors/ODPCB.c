@@ -38,18 +38,16 @@
 
 #define BUILDING_OPENDOORS
 
+#include <ctype.h>
 #include <string.h>
 #include <stdio.h>
-#include <time.h>
 
 #include "OpenDoor.h"
-#include "ODStr.h"
-#include "ODCore.h"
-#include "ODGen.h"
-#include "ODScrn.h"
-#include "ODKrnl.h"
-#include "ODUtil.h"
 #include "ODStat.h"
+#include "ODSync.h"
+#ifdef ODPLAT_WIN32
+#include "ODPlat.h"
+#endif
 
 
 /* ----------------------------------------------------------------------------
@@ -64,9 +62,15 @@
  */
 ODAPIDEF void ODCALL pdef_pcboard(BYTE btOperation)
 {
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32) || defined(ODPLAT_WIN32)
    static char szTemp[81];
+   char *pchTemp;
    BYTE btInfoType = od_control.od_info_type;
 
+#ifdef ODPLAT_WIN32
+   if(ODPlatGetWindowsSubsystem() != kODWindowsSubsystemConsole) return;
+#endif
+   if(!ODSyncPublicCallAllowed()) return;
 
    switch(btOperation)
    {
@@ -86,7 +90,8 @@ ODAPIDEF void ODCALL pdef_pcboard(BYTE btOperation)
          sprintf(szTemp, "%s - %s", od_control.user_name,
             od_control.user_location);
          szTemp[42] = '\0';
-         strupr(szTemp);
+         for(pchTemp = szTemp; *pchTemp != '\0'; ++pchTemp)
+            *pchTemp = (char)toupper((unsigned char)*pchTemp);
          ODScrnDisplayString(szTemp);
          ODScrnSetCursorPos(1,25);
          if(od_control.user_ansi || od_control.user_avatar
@@ -171,14 +176,12 @@ ODAPIDEF void ODCALL pdef_pcboard(BYTE btOperation)
                   od_control.user_timelimit >= 5)
                {
                   od_control.user_timelimit += 5;
-                  bForceStatusUpdate = TRUE;
-                  CALL_KERNEL_IF_NEEDED();
+                  ODStatForceStatusUpdate();
                }
                else if(od_control.user_timelimit < 5)
                {
                   od_control.user_timelimit++;
-                  bForceStatusUpdate = TRUE;
-                  CALL_KERNEL_IF_NEEDED();
+                  ODStatForceStatusUpdate();
                }
                break;
 
@@ -187,14 +190,12 @@ ODAPIDEF void ODCALL pdef_pcboard(BYTE btOperation)
                if(od_control.user_timelimit > 5)
                {
                   od_control.user_timelimit -= 5;
-                  bForceStatusUpdate = TRUE;
-                  CALL_KERNEL_IF_NEEDED();
+                  ODStatForceStatusUpdate();
                }
                else if(od_control.user_timelimit > 1)
                {
                   --od_control.user_timelimit;
-                  bForceStatusUpdate = TRUE;
-                  CALL_KERNEL_IF_NEEDED();
+                  ODStatForceStatusUpdate();
                }
                break;
 
@@ -204,4 +205,8 @@ ODAPIDEF void ODCALL pdef_pcboard(BYTE btOperation)
          od_control.od_last_hot = 0;
          break;
    }
+#else /* !ODPLAT_DOS && !ODPLAT_DOS32 */
+   if(!ODSyncPublicCallAllowed()) return;
+   (void)btOperation;
+#endif /* !ODPLAT_DOS && !ODPLAT_DOS32 */
 }

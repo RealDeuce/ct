@@ -57,6 +57,7 @@
 
 #include "OpenDoor.h"
 #ifdef ODPLAT_NIX
+#include <fcntl.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -73,8 +74,131 @@
 #include "ODKrnl.h"
 #include "ODSwap.h"
 
+static INT16 ODSpawnVPEInternal(INT16 nModeFlag, const char *pszPath,
+   const char *const papszArg[], const char *const papszEnv[]
+#ifdef ODPLAT_WIN32
+   , BOOL bQuoteWindowsArguments
+#endif
+   );
+
 #ifdef ODPLAT_WIN32
 #include "ODFrame.h"
+
+static size_t ODWindowsQuoteArgument(char *pszDestination,
+   const char *pszArgument);
+static char **ODWindowsQuoteArguments(const char *const papszArguments[]);
+#endif /* ODPLAT_WIN32 */
+
+#ifdef ODPLAT_WIN32
+/* ----------------------------------------------------------------------------
+ * ODWindowsQuoteArgument()
+ *
+ * Quotes one raw argument for the Microsoft C command-line grammar. The
+ * returned size excludes the terminating nul character.
+ */
+static size_t ODWindowsQuoteArgument(char *pszDestination,
+   const char *pszArgument)
+{
+   const char *pszCurrent;
+   size_t nOutput = 0;
+   size_t nSlashCount;
+   size_t nIndex;
+   BOOL bQuote;
+
+#define OD_WINDOWS_QUOTE_PUT(ch) \
+   do { char chToPut = (ch); \
+      if(pszDestination != NULL) pszDestination[nOutput] = chToPut; \
+      ++nOutput; } while(0)
+
+   bQuote = *pszArgument == '\0';
+   for(pszCurrent = pszArgument; *pszCurrent != '\0'; ++pszCurrent)
+   {
+      if(*pszCurrent == ' ' || *pszCurrent == '\t')
+         bQuote = TRUE;
+   }
+   if(bQuote)
+      OD_WINDOWS_QUOTE_PUT('\"');
+
+   pszCurrent = pszArgument;
+   while(*pszCurrent != '\0')
+   {
+      nSlashCount = 0;
+      while(*pszCurrent == '\\')
+      {
+         ++nSlashCount;
+         ++pszCurrent;
+      }
+      if(*pszCurrent == '\"')
+      {
+         for(nIndex = 0; nIndex < nSlashCount * 2 + 1; ++nIndex)
+            OD_WINDOWS_QUOTE_PUT('\\');
+         OD_WINDOWS_QUOTE_PUT('\"');
+         ++pszCurrent;
+      }
+      else if(*pszCurrent == '\0')
+      {
+         if(bQuote)
+            nSlashCount *= 2;
+         for(nIndex = 0; nIndex < nSlashCount; ++nIndex)
+            OD_WINDOWS_QUOTE_PUT('\\');
+      }
+      else
+      {
+         for(nIndex = 0; nIndex < nSlashCount; ++nIndex)
+            OD_WINDOWS_QUOTE_PUT('\\');
+         OD_WINDOWS_QUOTE_PUT(*pszCurrent++);
+      }
+   }
+   if(bQuote)
+      OD_WINDOWS_QUOTE_PUT('\"');
+   if(pszDestination != NULL)
+      pszDestination[nOutput] = '\0';
+#undef OD_WINDOWS_QUOTE_PUT
+   return(nOutput);
+}
+
+/* ----------------------------------------------------------------------------
+ * ODWindowsQuoteArguments()
+ *
+ * Builds the temporary, prequoted vector required by the Windows CRT spawn
+ * functions. The pointers and strings share one allocation.
+ */
+static char **ODWindowsQuoteArguments(const char *const papszArguments[])
+{
+   size_t nArgumentCount = 0;
+   size_t nPointerBytes;
+   size_t nStringBytes = 0;
+   size_t nQuotedLength;
+   size_t nIndex;
+   char **papszQuoted;
+   char *pszOutput;
+
+   while(papszArguments[nArgumentCount] != NULL)
+      ++nArgumentCount;
+   nPointerBytes = (nArgumentCount + 1) * sizeof(char *);
+   for(nIndex = 0; nIndex < nArgumentCount; ++nIndex)
+   {
+      nQuotedLength = ODWindowsQuoteArgument(NULL, papszArguments[nIndex]);
+      if(nQuotedLength == (size_t)-1
+         || nStringBytes > (size_t)-1 - (nQuotedLength + 1))
+         return(NULL);
+      nStringBytes += nQuotedLength + 1;
+   }
+   if(nPointerBytes > (size_t)-1 - nStringBytes)
+      return(NULL);
+   papszQuoted = (char **)malloc(nPointerBytes + nStringBytes);
+   if(papszQuoted == NULL)
+      return(NULL);
+   pszOutput = (char *)papszQuoted + nPointerBytes;
+   for(nIndex = 0; nIndex < nArgumentCount; ++nIndex)
+   {
+      papszQuoted[nIndex] = pszOutput;
+      pszOutput += ODWindowsQuoteArgument(pszOutput,
+         papszArguments[nIndex]) + 1;
+   }
+   papszQuoted[nArgumentCount] = NULL;
+   return(papszQuoted);
+}
 #endif /* ODPLAT_WIN32 */
 
 #ifdef ODPLAT_DOS
@@ -141,10 +265,10 @@ static VECTOR vectab1[]=
 static VECTOR vectab2[(sizeof vectab1)/(sizeof vectab1[0])];
 
 /* Location function prototypes. */
-int _spawnvpe(int nModeFlag, char *const pszPath, const char *const papszArgs[],
+int _spawnvpe(int nModeFlag, const char *pszPath, const char *const papszArgs[],
    const char *const papszEnviron[]);
-int _spawnve(int nModeFlag, char *pszPath, char *papszArgs[],
-   char * papszEnviron[]);
+int _spawnve(int nModeFlag, const char *pszPath,
+   const char *const papszArgs[], const char *const papszEnviron[]);
 static void savevect(void);
 
 
@@ -152,7 +276,7 @@ static void savevect(void);
 
 #ifdef ODPLAT_NIX
 /* Location function prototypes. */
-int _spawnvpe(int nModeFlag, char *const pszPath, const char *const papszArgs[],
+int _spawnvpe(int nModeFlag, const char *pszPath, const char *const papszArgs[],
    const char *const papszEnviron[]);
 #endif /* ODPLAT_NIX */
 
@@ -168,9 +292,11 @@ int _spawnvpe(int nModeFlag, char *const pszPath, const char *const papszArgs[],
  */
 ODAPIDEF BOOL ODCALL od_spawn(const char *pszCommandLine)
 {
-#ifdef ODPLAT_DOS
-   char *const apszArgs[4];
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
+   const char *apszArgs[4];
    INT16 nReturnCode;
+
+   if(!ODSyncPublicCallAllowed()) return(FALSE);
 
    /* Log function entry if running in trace mode. */
    TRACE(TRACE_API, "od_spawn()");
@@ -193,19 +319,30 @@ ODAPIDEF BOOL ODCALL od_spawn(const char *pszCommandLine)
    *apszArgs = "command.com";
 
    return(od_spawnvpe(P_WAIT, *apszArgs, apszArgs, NULL) != -1);
-#endif /* ODPLAT_DOS */
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */
 
 #ifdef ODPLAT_WIN32
+   BOOL bSpawned;
    char *pch;
    const char *apszArgs[3];
-   char szProgName[80];
+   char *pszProgName;
+   size_t nProgNameLength;
+
+   if(!ODSyncPublicCallAllowed()) return(FALSE);
 
    /* Build command and arguments list. */
    /* Build program name. */
-   ODStringCopy(szProgName, pszCommandLine, sizeof(szProgName));
-   pch = strchr(szProgName, ' ');
-   if(pch != NULL) *pch = '\0';
-   apszArgs[0] = szProgName;
+   pch = strchr(pszCommandLine, ' ');
+   nProgNameLength = pch == NULL
+      ? strlen(pszCommandLine) : (size_t)(pch - pszCommandLine);
+   pszProgName = malloc(nProgNameLength + 1);
+   if(pszProgName == NULL)
+   {
+      return(FALSE);
+   }
+   memcpy(pszProgName, pszCommandLine, nProgNameLength);
+   pszProgName[nProgNameLength] = '\0';
+   apszArgs[0] = pszProgName;
 
    /* Build arguments. */
    pch = strchr(pszCommandLine, ' ');
@@ -219,26 +356,49 @@ ODAPIDEF BOOL ODCALL od_spawn(const char *pszCommandLine)
       apszArgs[2] = NULL;
    }
 
-   /* Now, call od_spawnvpe(). */
-   return(od_spawnvpe(P_WAIT, szProgName, apszArgs, NULL) != -1);
+   /* Preserve od_spawn()'s preformatted command-line tail. */
+   bSpawned = ODSpawnVPEInternal(P_WAIT, pszProgName, apszArgs, NULL,
+      FALSE) != -1;
+   free(pszProgName);
+   return(bSpawned);
 #endif /* ODPLAT_WIN32 */
 
 #ifdef ODPLAT_NIX
-   sigset_t		block;
+   sigset_t block;
+   sigset_t OriginalMask;
    int retval;
+   int nSystemError;
+
+   if(!ODSyncPublicCallAllowed()) return(FALSE);
 
    /* Suspend kernel */
-   sigemptyset(&block);
-   sigaddset(&block,SIGALRM);
-   sigprocmask(SIG_BLOCK,&block,NULL);
-   retval=system(pszCommandLine);
+   if(sigemptyset(&block) == -1 || sigaddset(&block, SIGALRM) == -1)
+   {
+      return(FALSE);
+   }
+   if(sigprocmask(SIG_BLOCK, &block, &OriginalMask) == -1)
+   {
+      return(FALSE);
+   }
+   retval = system(pszCommandLine);
+   nSystemError = errno;
 
    /* Restore kernel */
-   sigemptyset(&block);
-   sigaddset(&block,SIGALRM);
-   sigprocmask(SIG_UNBLOCK,&block,NULL);
+   if(sigprocmask(SIG_SETMASK, &OriginalMask, NULL) == -1)
+   {
+      return(FALSE);
+   }
 
-   return(retval!=-1 && retval != 127);
+   if(retval == -1)
+   {
+      errno = nSystemError;
+      return(FALSE);
+   }
+   if(WIFEXITED(retval) && WEXITSTATUS(retval) == 127)
+   {
+      return(FALSE);
+   }
+   return(TRUE);
 #endif
 }
 
@@ -267,34 +427,88 @@ ODAPIDEF BOOL ODCALL od_spawn(const char *pszCommandLine)
  *     Return: -1 on failure or the spawned-to program's return value on
  *             success.
  */
-ODAPIDEF INT16 ODCALL od_spawnvpe(INT16 nModeFlag, char *const pszPath,
+ODAPIDEF INT16 ODCALL od_spawnvpe(INT16 nModeFlag, const char *pszPath,
    const char *const papszArg[], const char *const papszEnv[])
+{
+#ifdef ODPLAT_WIN32
+   return(ODSpawnVPEInternal(nModeFlag, pszPath, papszArg, papszEnv, TRUE));
+#else
+   return(ODSpawnVPEInternal(nModeFlag, pszPath, papszArg, papszEnv));
+#endif
+}
+
+/* ----------------------------------------------------------------------------
+ * ODSpawnVPEInternal()
+ *
+ * Implements od_spawnvpe(). Under Windows, bQuoteWindowsArguments selects
+ * normalized raw argv elements for od_spawnvpe() or the preformatted tail
+ * historically accepted by od_spawn().
+ */
+static INT16 ODSpawnVPEInternal(INT16 nModeFlag, const char *pszPath,
+   const char *const papszArg[], const char *const papszEnv[]
+#ifdef ODPLAT_WIN32
+   , BOOL bQuoteWindowsArguments
+#endif
+   )
 {
    INT16 nToReturn;
    time_t nStartUnixTime;
    DWORD dwQuotient;
+#ifdef OD_THREAD_SUPPORT
+   unsigned nSavedAPILevel = 0;
+#endif
 #ifdef ODPLAT_WIN32
    void *pWindow;
+   const char *const *papszWindowsArguments;
+   char **papszQuotedWindowsArguments = NULL;
 #endif /* ODPLAT_WIN32 */   
-#ifdef ODPLAT_DOS
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
    char *pszDir;
    BYTE *abtScreenBuffer;
+#ifdef ODPLAT_DOS
    INT nDrive;
+#endif
    tODScrnTextInfo TextInfo;
-#endif /* ODPLAT_DOS */
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */
 
    /* Log function entry if running in trace mode. */
    TRACE(TRACE_API, "od_spawnvpe()");
 
    /* Initialize OpenDoors if it hasn't already been done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(-1);
+   OD_API_ENTRY();
 
-#ifdef ODPLAT_DOS
+#ifdef ODPLAT_WIN32
+   if(papszArg == NULL || papszArg[0] == NULL)
+   {
+      od_control.od_error = ERR_PARAMETER;
+      OD_API_EXIT();
+      return(-1);
+   }
+   if(bQuoteWindowsArguments)
+   {
+      papszQuotedWindowsArguments = ODWindowsQuoteArguments(papszArg);
+      if(papszQuotedWindowsArguments == NULL)
+      {
+         od_control.od_error = ERR_MEMORY;
+         OD_API_EXIT();
+         return(-1);
+      }
+      papszWindowsArguments =
+         (const char *const *)papszQuotedWindowsArguments;
+   }
+   else
+      papszWindowsArguments = papszArg;
+#endif
+
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
    /* Ensure the nModeFlag is P_WAIT, which is the only valid value for */
    /* the MS-DOS version of OpenDoors.                                  */
    if(nModeFlag != P_WAIT)
    {
       od_control.od_error = ERR_PARAMETER;
+      OD_API_EXIT();
       return(-1);
    }
 
@@ -302,12 +516,14 @@ ODAPIDEF INT16 ODCALL od_spawnvpe(INT16 nModeFlag, char *const pszPath,
    if((abtScreenBuffer = malloc(4000)) == NULL)
    {
       od_control.od_error = ERR_MEMORY;
+      OD_API_EXIT();
       return(-1);
    }
    if((pszDir = malloc(256)) == NULL)
    {
       od_control.od_error = ERR_MEMORY;
       free(abtScreenBuffer);
+      OD_API_EXIT();
       return(-1);
    }
 
@@ -335,15 +551,21 @@ ODAPIDEF INT16 ODCALL od_spawnvpe(INT16 nModeFlag, char *const pszPath,
    }
 
    /* Store current directory. */
+#ifdef ODPLAT_DOS
    strcpy(pszDir, "X:\\");
    pszDir[0] = 'A' + (nDrive = _getdrv());
    _getcd(0, (char *)pszDir + 3);
-#endif /* ODPLAT_DOS */
+#else
+   ODDirGetCurrent(pszDir, 256);
+#endif
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */
 
    /* Remember when spawned to program was executed. */
    nStartUnixTime = time(NULL);
 
-   if(nModeFlag == P_WAIT)
+#if !defined(ODPLAT_DOS) && !defined(ODPLAT_DOS32)
+   if(nModeFlag != P_WAIT) goto after_wait_shutdown;
+#endif
    {
       /* Display the spawn message box under Win32. */
 #ifdef ODPLAT_WIN32
@@ -352,29 +574,68 @@ ODAPIDEF INT16 ODCALL od_spawnvpe(INT16 nModeFlag, char *const pszPath,
 
       /* Wait for up to ten seconds for outbound buffer to drain. */
       ODWaitDrain(10000);
+      if(!bODInitialized)
+      {
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
+         nToReturn = -1;
+         goto RestoreDOSState;
+#else
+#ifdef ODPLAT_WIN32
+         if(papszQuotedWindowsArguments != NULL)
+            free(papszQuotedWindowsArguments);
+#endif
+         OD_API_EXIT();
+         return(-1);
+#endif
+      }
 
-#ifdef OD_MULTITHREADED
-      /* Mutlithreaded versions of OpenDoors must shutdown the kernel */
-      /* before closing the serial port.                              */
-      ODKrnlShutdown();
-#endif /* OD_MULTITHREADED */
+#ifdef ODPLAT_WIN32
+      /* Send any configured modem command before closing communications. */
+      if(od_control.baud != 0)
+         ODInExDisableDTR();
+#endif /* ODPLAT_WIN32 */
+
+#ifdef OD_THREAD_SUPPORT
+      nSavedAPILevel = ODSyncAPIRelease();
+#endif /* OD_THREAD_SUPPORT */
 
       /* Close serial port. */
       if(od_control.baud != 0)
       {
-#ifdef ODPLAT_WIN32
-         /* Disable DTR response by the modem before closing the serial */
-         /* port, if this is required.                                  */
-         ODInExDisableDTR();
-#endif /* ODPLAT_WIN32 */         
          ODComClose(hSerialPort);
       }
    }
+#if !defined(ODPLAT_DOS) && !defined(ODPLAT_DOS32)
+after_wait_shutdown:
+#endif
+
+#ifdef OD_THREAD_SUPPORT
+   if(nModeFlag != P_WAIT)
+      nSavedAPILevel = ODSyncAPIRelease();
+#endif /* OD_THREAD_SUPPORT */
 
    /* Execute specified program with the specified arguments. */
+#ifdef ODPLAT_DOS32
+   nToReturn = spawnvpe(nModeFlag, pszPath, papszArg, papszEnv);
+#else
+#ifdef ODPLAT_WIN32
+   nToReturn = (INT16)_spawnvpe(nModeFlag, pszPath, papszWindowsArguments,
+      papszEnv);
+   if(papszQuotedWindowsArguments != NULL)
+      free(papszQuotedWindowsArguments);
+#else
    nToReturn = _spawnvpe(nModeFlag, pszPath, papszArg, papszEnv);
+#endif
+#endif
 
-   if(nModeFlag == P_WAIT)
+#ifdef OD_THREAD_SUPPORT
+   if(nModeFlag != P_WAIT)
+      ODSyncAPIReacquire(nSavedAPILevel);
+#endif /* OD_THREAD_SUPPORT */
+
+#if !defined(ODPLAT_DOS) && !defined(ODPLAT_DOS32)
+   if(nModeFlag != P_WAIT) goto after_wait_restart;
+#endif
    {
       /* Re-open serial port. */
       if(od_control.baud != 0)
@@ -382,11 +643,9 @@ ODAPIDEF INT16 ODCALL od_spawnvpe(INT16 nModeFlag, char *const pszPath,
          ODComOpen(hSerialPort);
       }
 
-#ifdef OD_MULTITHREADED
-      /* Mutlithreaded versions of OpenDoors must shutdown the kernel    */
-      /* before closing the serial port, so reinitialize the kernel now. */
-      ODKrnlInitialize();
-#endif /* OD_MULTITHREADED */
+#ifdef OD_THREAD_SUPPORT
+      ODSyncAPIReacquire(nSavedAPILevel);
+#endif /* OD_THREAD_SUPPORT */
 
       if(!(bIsShell || od_control.od_spawn_freeze_time))
       {
@@ -411,25 +670,37 @@ ODAPIDEF INT16 ODCALL od_spawnvpe(INT16 nModeFlag, char *const pszPath,
       ODScrnRemoveMessage(pWindow);
 #endif /* ODPLAT_WIN32 */
    }
+#if !defined(ODPLAT_DOS) && !defined(ODPLAT_DOS32)
+after_wait_restart:
+#endif
+
+#if defined(ODPLAT_DOS) || defined(ODPLAT_DOS32)
+RestoreDOSState:
+   /* Redisplay the door screen. */
+   if(bODInitialized || !od_control.od_silent_mode)
+   {
+      ODScrnPutText(1, 1, 80, 25, (char *)abtScreenBuffer);
+
+      /* Restore cursor to old position. */
+      ODScrnSetBoundary(TextInfo.winleft, TextInfo.wintop,
+         TextInfo.winright, TextInfo.winbottom);
+      ODScrnSetAttribute(TextInfo.attribute);
+      ODScrnSetCursorPos(TextInfo.curx, TextInfo.cury);
+   }
 
 #ifdef ODPLAT_DOS
-   /* Redisplay the door screen. */
-   ODScrnPutText(1, 1, 80, 25, (char *)abtScreenBuffer);
-
-   /* Restore cursor to old position. */
-   ODScrnSetBoundary(TextInfo.winleft, TextInfo.wintop,
-      TextInfo.winright, TextInfo.winbottom);
-   ODScrnSetAttribute(TextInfo.attribute);
-   ODScrnSetCursorPos(TextInfo.curx, TextInfo.cury);
-
    _setdrvcd(nDrive, pszDir);
+#else
+   ODDirChangeCurrent(pszDir);
+#endif
 
    /* Free allocated space. */
    free(abtScreenBuffer);
    free(pszDir);
-#endif /* ODPLAT_DOS */
+#endif /* ODPLAT_DOS || ODPLAT_DOS32 */
 
    /* Return appropriate value. */
+   OD_API_EXIT();
    return(nToReturn);
 }
 
@@ -453,7 +724,7 @@ ODAPIDEF INT16 ODCALL od_spawnvpe(INT16 nModeFlag, char *const pszPath,
  *     Return: -1 on failure or the spawned-to program's return value on
  *             success.
  */
-int _spawnvpe(int nModeFlag, char *const pszPath, const char *const papszArgs[],
+int _spawnvpe(int nModeFlag, const char *pszPath, const char *const papszArgs[],
    const char *const papszEnviron[])
 {
    char *e;
@@ -742,10 +1013,10 @@ static int tempfile(char *file, int *handle)
  *
  *     Return: Environment length.
  */
-static int cmdenv(char **papszArgs, char **papszEnviron, char *command,
-   char **env, char **memory)
+static int cmdenv(const char *const papszArgs[],
+   const char *const papszEnviron[], char *command, char **env, char **memory)
 {
-    char **vp;
+    const char *const *vp;
     unsigned int elen = 0;         /* environment length */
     char *p;
     int cnt;
@@ -755,7 +1026,7 @@ static int cmdenv(char **papszArgs, char **papszEnviron, char *command,
 
     if ( papszEnviron == NULL )
     {
-       char far *parent_env;
+       char far *parent_env = NULL;
        char far *env_ptr;
        int nul_count;
 
@@ -881,7 +1152,8 @@ static int cmdenv(char **papszArgs, char **papszEnviron, char *command,
  *
  *     Return: 0 on success, or -1 on failure.
  */
-static int doxspawn(char *pszPath, char *papszArgs[], char *papszEnviron[])
+static int doxspawn(const char *pszPath, const char *const papszArgs[],
+   const char *const papszEnviron[])
 {
     int nReturnCode = 0;        /* assume do xspawn */
     int doswap = 0;            /* assume do swap */
@@ -946,7 +1218,7 @@ static int doxspawn(char *pszPath, char *papszArgs[], char *papszEnviron[])
     if ( nReturnCode == 0 )
     {
     savevect();            /* save current vectors */
-    nReturnCode = _xspawn( pszPath, command, env, vectab1, doswap, elen, file,
+    nReturnCode = _xspawn( (char *)pszPath, command, env, vectab1, doswap, elen, file,
         handle );
     _setvect( vectab2 );           /* restore saved vectors */
         if ( nReturnCode == 0 )
@@ -989,11 +1261,11 @@ static int doxspawn(char *pszPath, char *papszArgs[], char *papszEnviron[])
  *
  *     Return: void
  */
-int _spawnve(int nModeFlag, char *pszPath, char *papszArgs[],
-   char * papszEnviron[])
+int _spawnve(int nModeFlag, const char *pszPath,
+   const char *const papszArgs[], const char *const papszEnviron[])
 {
-    char *p;
-    char *s;
+    const char *p;
+    const char *s;
     int nReturnCode = -1;
     char buf[ 80 ];
 
@@ -1037,6 +1309,149 @@ int _spawnve(int nModeFlag, char *pszPath, char *papszArgs[],
 #endif /* ODPLAT_DOS */
 
 #ifdef ODPLAT_NIX
+extern char **environ;
+
+/* Executes an explicit path directly. For a bare filename, checks the current
+ * directory first and then each directory in the caller's PATH. */
+static int ODUnixExecProgram(const char *pszPath,
+   const char *const papszArgs[], char *const papszEnviron[],
+   const char *pszSearchPath, char *pszPathBuffer)
+{
+   const char *pszComponent;
+   const char *pszEnd;
+   size_t nComponentLength;
+   size_t nPathLength;
+   int nAccessError = 0;
+   int nExecError;
+
+   execve(pszPath, (char *const *)papszArgs, papszEnviron);
+   nExecError = errno;
+
+   if(strchr(pszPath, '/') != NULL)
+   {
+      return(nExecError);
+   }
+   if(nExecError == EACCES)
+   {
+      nAccessError = EACCES;
+   }
+   else if(nExecError != ENOENT && nExecError != ENOTDIR)
+   {
+      return(nExecError);
+   }
+
+   pszComponent = pszSearchPath;
+   while(pszComponent != NULL)
+   {
+      pszEnd = strchr(pszComponent, ':');
+      nComponentLength = pszEnd == NULL ? strlen(pszComponent)
+         : (size_t)(pszEnd - pszComponent);
+
+      /* An empty PATH component denotes the current directory, which was
+       * already checked above. */
+      if(nComponentLength != 0)
+      {
+         memcpy(pszPathBuffer, pszComponent, nComponentLength);
+         nPathLength = nComponentLength;
+         if(pszPathBuffer[nPathLength - 1] != '/')
+         {
+            pszPathBuffer[nPathLength++] = '/';
+         }
+         strcpy(pszPathBuffer + nPathLength, pszPath);
+
+         execve(pszPathBuffer, (char *const *)papszArgs, papszEnviron);
+         nExecError = errno;
+         if(nExecError == EACCES)
+         {
+            nAccessError = EACCES;
+         }
+         else if(nExecError != ENOENT && nExecError != ENOTDIR)
+         {
+            return(nExecError);
+         }
+      }
+
+      pszComponent = pszEnd == NULL ? NULL : pszEnd + 1;
+   }
+
+   return(nAccessError != 0 ? nAccessError : ENOENT);
+}
+
+/* Reports an exec or fork error to the parent without invoking any child-side
+ * stdio or exit handlers. */
+static void ODUnixReportSpawnError(int nFile, int nError)
+{
+   const char *pchError = (const char *)&nError;
+   size_t nRemaining = sizeof(nError);
+
+   while(nRemaining > 0)
+   {
+      ssize_t nWritten = write(nFile, pchError, nRemaining);
+
+      if(nWritten > 0)
+      {
+         pchError += nWritten;
+         nRemaining -= (size_t)nWritten;
+      }
+      else if(nWritten == -1 && errno == EINTR)
+      {
+         continue;
+      }
+      else
+      {
+         break;
+      }
+   }
+
+   _exit(127);
+}
+
+/* Returns zero when exec closed the pipe, one when the child reported an
+ * error, or -1 when the pipe itself could not be read. */
+static int ODUnixReadSpawnError(int nFile, int *pnChildError)
+{
+   char *pchError = (char *)pnChildError;
+   size_t nRead = 0;
+
+   while(nRead < sizeof(*pnChildError))
+   {
+      ssize_t nResult = read(nFile, pchError + nRead,
+         sizeof(*pnChildError) - nRead);
+
+      if(nResult > 0)
+      {
+         nRead += (size_t)nResult;
+      }
+      else if(nResult == 0)
+      {
+         if(nRead == 0)
+         {
+            return(0);
+         }
+         errno = EIO;
+         return(-1);
+      }
+      else if(errno != EINTR)
+      {
+         return(-1);
+      }
+   }
+
+   return(1);
+}
+
+static int ODUnixWaitForChild(pid_t Child, int *pnStatus)
+{
+   pid_t Result;
+
+   do
+   {
+      Result = waitpid(Child, pnStatus, 0);
+   } while(Result == -1 && errno == EINTR);
+
+   return(Result == Child ? 0 : -1);
+}
+
 /* ----------------------------------------------------------------------------
  * _spawnvpe()                                         *** PRIVATE FUNCTION ***
  *
@@ -1053,43 +1468,164 @@ int _spawnve(int nModeFlag, char *pszPath, char *papszArgs[],
  *     Return: -1 on failure or the spawned-to program's return value on
  *             success.
  */
-int _spawnvpe(int nModeFlag, char *const pszPath, const char *const papszArgs[],
+int _spawnvpe(int nModeFlag, const char *pszPath, const char *const papszArgs[],
    const char *const papszEnviron[])
 {
-   pid_t	child;
-   int		status;
-   struct sigaction act;
+   int anErrorPipe[2];
+   int nChildError;
+   int nPipeResult;
+   int nSavedError;
+   int nStatus;
+   int nFlags;
+   size_t nDefaultPathSize;
+   size_t nPathBufferSize;
+   const char *pszSearchPath = NULL;
+   char *pszDefaultPath = NULL;
+   char *pszPathBuffer = NULL;
+   char *const *papszExecEnvironment;
+   pid_t Child;
 
+   papszExecEnvironment = papszEnviron == NULL ? environ
+      : (char *const *)papszEnviron;
 
-   child=fork();
+   if(strchr(pszPath, '/') == NULL)
+   {
+      pszSearchPath = getenv("PATH");
+      if(pszSearchPath == NULL)
+      {
+         nDefaultPathSize = confstr(_CS_PATH, NULL, 0);
+         if(nDefaultPathSize == 0
+            || (pszDefaultPath = malloc(nDefaultPathSize)) == NULL)
+         {
+            return(-1);
+         }
+         if(confstr(_CS_PATH, pszDefaultPath, nDefaultPathSize) == 0)
+         {
+            nSavedError = errno;
+            free(pszDefaultPath);
+            errno = nSavedError;
+            return(-1);
+         }
+         pszSearchPath = pszDefaultPath;
+      }
 
-   if(nModeFlag == P_WAIT)  {
-      /* require wait for child */
-      act.sa_handler=SIG_IGN;
-      sigemptyset(&(act.sa_mask));
-      act.sa_flags=SA_NOCLDSTOP;
-      sigaction(SIGCHLD,&act,NULL);
-   }
-   else  {
-      /* Ignore SIGCHLD for backgrounded spawned processes */
-      act.sa_handler=SIG_IGN;
-      sigemptyset(&(act.sa_mask));
-      act.sa_flags=SA_NOCLDSTOP|SA_NOCLDWAIT;
-      sigaction(SIGCHLD,&act,NULL);
+      if(strlen(pszSearchPath) > (size_t)-1 - strlen(pszPath) - 2)
+      {
+         free(pszDefaultPath);
+         errno = ENAMETOOLONG;
+         return(-1);
+      }
+      nPathBufferSize = strlen(pszSearchPath) + strlen(pszPath) + 2;
+      pszPathBuffer = malloc(nPathBufferSize);
+      if(pszPathBuffer == NULL)
+      {
+         nSavedError = errno;
+         free(pszDefaultPath);
+         errno = nSavedError;
+         return(-1);
+      }
    }
 
-   if(!child)  {
-      /* Do the exec stuff here */
-	  execve(pszPath,(char *const *)papszArgs,(char *const *)papszEnviron);
-	  exit(-1); /* this should never happen! */
+   if(pipe(anErrorPipe) == -1)
+   {
+      nSavedError = errno;
+      free(pszPathBuffer);
+      free(pszDefaultPath);
+      errno = nSavedError;
+      return(-1);
    }
-   if(nModeFlag == P_WAIT)  {
-      waitpid(child,&status,0);
-	  if(WIFEXITED(status))  {
-	     return(WEXITSTATUS(status));
-	  }
-	  return(-1);
+
+   nFlags = fcntl(anErrorPipe[1], F_GETFD);
+   if(nFlags == -1 || fcntl(anErrorPipe[1], F_SETFD,
+      nFlags | FD_CLOEXEC) == -1)
+   {
+      nSavedError = errno;
+      close(anErrorPipe[0]);
+      close(anErrorPipe[1]);
+      free(pszPathBuffer);
+      free(pszDefaultPath);
+      errno = nSavedError;
+      return(-1);
    }
-   return(0);
+
+   Child = fork();
+   if(Child == -1)
+   {
+      nSavedError = errno;
+      close(anErrorPipe[0]);
+      close(anErrorPipe[1]);
+      free(pszPathBuffer);
+      free(pszDefaultPath);
+      errno = nSavedError;
+      return(-1);
+   }
+
+   if(Child == 0)
+   {
+      close(anErrorPipe[0]);
+
+      if(nModeFlag != P_WAIT)
+      {
+         pid_t Grandchild = fork();
+
+         if(Grandchild == -1)
+         {
+            ODUnixReportSpawnError(anErrorPipe[1], errno);
+         }
+         if(Grandchild != 0)
+         {
+            _exit(0);
+         }
+      }
+
+      nChildError = ODUnixExecProgram(pszPath, papszArgs,
+         papszExecEnvironment, pszSearchPath, pszPathBuffer);
+      ODUnixReportSpawnError(anErrorPipe[1], nChildError);
+   }
+
+   free(pszPathBuffer);
+   free(pszDefaultPath);
+   close(anErrorPipe[1]);
+
+   if(ODUnixWaitForChild(Child, &nStatus) == -1)
+   {
+      nSavedError = errno;
+      close(anErrorPipe[0]);
+      errno = nSavedError;
+      return(-1);
+   }
+
+   nPipeResult = ODUnixReadSpawnError(anErrorPipe[0], &nChildError);
+   nSavedError = errno;
+   close(anErrorPipe[0]);
+
+   if(nPipeResult == 1)
+   {
+      errno = nChildError;
+      return(-1);
+   }
+   if(nPipeResult == -1)
+   {
+      errno = nSavedError;
+      return(-1);
+   }
+
+   if(!WIFEXITED(nStatus))
+   {
+      errno = ECHILD;
+      return(-1);
+   }
+
+   if(nModeFlag != P_WAIT)
+   {
+      if(WEXITSTATUS(nStatus) != 0)
+      {
+         errno = ECHILD;
+         return(-1);
+      }
+      return(0);
+   }
+
+   return(WEXITSTATUS(nStatus));
 }
 #endif /* ODPLAT_NIX */

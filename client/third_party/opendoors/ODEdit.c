@@ -56,9 +56,10 @@
 #include "ODGen.h"
 #include "ODCore.h"
 #include "ODKrnl.h"
-#include "ODStat.h"
 #include "ODCom.h"
 #include "ODScrn.h"
+#include "ODSafe.h"
+#include "ODVScrn.h"
 
 
 /* ========================================================================= */
@@ -88,6 +89,7 @@ static tODEditOptions ODEditOptionsDefault =
    NULL,
    NULL,
    EFLAG_NORMAL,
+   NULL
 };
 
 
@@ -127,6 +129,7 @@ typedef struct
 /* High level implementation. */
 static BOOL ODEditSetupInstance(tEditInstance *pEditInstance,
    char *pszBufferToEdit, UINT unBufferSize, tODEditOptions *pUserOptions);
+static void ODEditCleanupInstance(tEditInstance *pEditInstance);
 static void ODEditRedrawArea(tEditInstance *pEditInstance);
 static void ODEditDrawAreaLine(tEditInstance *pEditInstance,
    UINT unAreaLineToDraw);
@@ -165,6 +168,8 @@ static void ODEditRedrawSubArea(tEditInstance *pEditInstance,
 static void ODEditGetActualCurPos(tEditInstance *pEditInstance,
    UINT *punRow, UINT *punColumn);
 static BOOL ODEditIsEOLForMode(tEditInstance *pEditInstance, char chToTest);
+static BOOL ODEditCalculateLineArrayGrowth(UINT unCurrentSize,
+   UINT *punNewSize, size_t *pnNewBytes);
 
 /* Low level buffer manipulation functions. */
 static BOOL ODEditBufferFormatAndIndex(tEditInstance *pEditInstance);
@@ -211,6 +216,7 @@ ODAPIDEF INT ODCALL od_multiline_edit(char *pszBufferToEdit, UINT unBufferSize,
 
    /* Initialize OpenDoors if not already done. */
    if(!bODInitialized) od_init();
+   OD_RETURN_IF_SESSION_ENDED(0);
 
    OD_API_ENTRY();
 
@@ -234,6 +240,7 @@ ODAPIDEF INT ODCALL od_multiline_edit(char *pszBufferToEdit, UINT unBufferSize,
    if(!ODEditSetupInstance(&EditInstance, pszBufferToEdit, unBufferSize,
       pEditOptions))
    {
+      ODEditCleanupInstance(&EditInstance);
       OD_API_EXIT();
       return(OD_MULTIEDIT_ERROR);
    }
@@ -242,7 +249,7 @@ ODAPIDEF INT ODCALL od_multiline_edit(char *pszBufferToEdit, UINT unBufferSize,
    /* conforms to the format specified by the client application.       */
    if(!ODEditBufferFormatAndIndex(&EditInstance))
    {
-      od_control.od_error = ERR_MEMORY;
+      ODEditCleanupInstance(&EditInstance);
       OD_API_EXIT();
       return(OD_MULTIEDIT_ERROR);
    }
@@ -250,11 +257,16 @@ ODAPIDEF INT ODCALL od_multiline_edit(char *pszBufferToEdit, UINT unBufferSize,
    /* Claim exclusive use of arrow keys. */
    ODStatStartArrowUse();
 
-   /* Ensure that all information in the outbound communications buffer  */
-   /* has been sent before starting. This way, we can safely purge the   */
-   /* outbound buffer at any time without loosing anything that was sent */
-   /* before od_multiline_edit() was called.                             */
+   /* Ensure that output sent before od_multiline_edit() has reached the */
+   /* remote terminal before drawing the editor.                         */
    ODWaitDrain(PRE_DRAIN_TIME);
+   if(!bODInitialized)
+   {
+      ODStatEndArrowUse();
+      ODEditCleanupInstance(&EditInstance);
+      OD_API_EXIT();
+      return(OD_MULTIEDIT_SUCCESS);
+   }
 
    /* Draw the initial edit area. */
    ODEditRedrawArea(&EditInstance);
@@ -268,7 +280,10 @@ ODAPIDEF INT ODCALL od_multiline_edit(char *pszBufferToEdit, UINT unBufferSize,
    /* Set final information which will be available in the user options */
    /* structure for the client application to access.                   */
    EditInstance.pUserOptions->pszFinalBuffer = EditInstance.pszEditBuffer;
-   EditInstance.pUserOptions->unFinalBufferSize = unBufferSize;
+   EditInstance.pUserOptions->unFinalBufferSize = EditInstance.unBufferSize;
+
+   /* Release internal editor bookkeeping. */
+   ODEditCleanupInstance(&EditInstance);
 
    OD_API_EXIT();
    return(nToReturn);
@@ -295,8 +310,17 @@ ODAPIDEF INT ODCALL od_multiline_edit(char *pszBufferToEdit, UINT unBufferSize,
 static BOOL ODEditSetupInstance(tEditInstance *pEditInstance,
    char *pszBufferToEdit, UINT unBufferSize, tODEditOptions *pUserOptions)
 {
+   INT nWindowWidth;
+   INT nWindowHeight;
+   tODScrnTextInfo TextInfo;
+   tODVScreenInfo SessionInfo;
+
    ASSERT(pEditInstance != NULL);
    ASSERT(pszBufferToEdit != NULL);
+
+   /* Initialize allocated pointers before any setup operation can fail. */
+   pEditInstance->papchStartOfLine = NULL;
+   pEditInstance->pRememberBuffer = NULL;
 
    /* Setup editor instance structure. */
    pEditInstance->pszEditBuffer = pszBufferToEdit;
@@ -330,10 +354,46 @@ static BOOL ODEditSetupInstance(tEditInstance *pEditInstance,
          pUserOptions->nAreaBottom = ODEditOptionsDefault.nAreaBottom;
       }
    }
+
+   /* Obtain the dimensions of the authoritative output window. */
+   if(ODSessionScreenAvailable())
+   {
+      ODSessionScreenGetInfo(&SessionInfo);
+      nWindowWidth = SessionInfo.winright - SessionInfo.winleft + 1;
+      nWindowHeight = SessionInfo.winbottom - SessionInfo.wintop + 1;
+   }
+   else
+   {
+      ODScrnGetTextInfo(&TextInfo);
+      nWindowWidth = TextInfo.winright - TextInfo.winleft + 1;
+      nWindowHeight = TextInfo.winbottom - TextInfo.wintop + 1;
+   }
+
+   /* Validate signed coordinates before deriving unsigned dimensions. */
+   if(pEditInstance->pUserOptions->nAreaLeft < 1
+      || pEditInstance->pUserOptions->nAreaTop < 1
+      || pEditInstance->pUserOptions->nAreaRight
+         <= pEditInstance->pUserOptions->nAreaLeft
+      || pEditInstance->pUserOptions->nAreaBottom
+         <= pEditInstance->pUserOptions->nAreaTop
+      || pEditInstance->pUserOptions->nAreaRight > nWindowWidth
+      || pEditInstance->pUserOptions->nAreaBottom > nWindowHeight)
+   {
+      od_control.od_error = ERR_PARAMETER;
+      return(FALSE);
+   }
+
+   if(od_control.user_avatar
+      && (pEditInstance->pUserOptions->nAreaRight > 255
+         || pEditInstance->pUserOptions->nAreaBottom > 255))
+   {
+      od_control.od_error = ERR_PARAMETER;
+      return(FALSE);
+   }
+
    pEditInstance->unCurrentLine = 0;
    pEditInstance->unCurrentColumn = 0;
    pEditInstance->unLineScrolledToTop = 0;
-   pEditInstance->papchStartOfLine = NULL;
    pEditInstance->unLineArraySize = 0;
    pEditInstance->unLinesInBuffer = 0;
    pEditInstance->unAreaWidth = (UINT)pEditInstance->pUserOptions->
@@ -415,6 +475,30 @@ static BOOL ODEditSetupInstance(tEditInstance *pEditInstance,
 
 
 /* ----------------------------------------------------------------------------
+ * ODEditCleanupInstance()                             *** PRIVATE FUNCTION ***
+ *
+ * Releases memory used internally by an editor instance. The text buffer is
+ * owned by the client application and is not released here.
+ *
+ * Parameters: pEditInstance - Editor instance information structure.
+ *
+ *     Return: void
+ */
+static void ODEditCleanupInstance(tEditInstance *pEditInstance)
+{
+   ASSERT(pEditInstance != NULL);
+
+   free(pEditInstance->pRememberBuffer);
+   pEditInstance->pRememberBuffer = NULL;
+
+   free(pEditInstance->papchStartOfLine);
+   pEditInstance->papchStartOfLine = NULL;
+   pEditInstance->unLineArraySize = 0;
+   pEditInstance->unLinesInBuffer = 0;
+}
+
+
+/* ----------------------------------------------------------------------------
  * ODEditRedrawArea()                                  *** PRIVATE FUNCTION ***
  *
  * Redraws the area of the screen used by the editor.
@@ -430,11 +514,6 @@ static void ODEditRedrawArea(tEditInstance *pEditInstance)
    ASSERT(pEditInstance != NULL);
 
    ODScrnEnableCaret(FALSE);
-
-   /* First, remove anything that is still in the outbound communications */
-   /* buffer, since whatever it was, it will no longer be visible after   */
-   /* the screen redraw anyhow.                                           */
-   if(od_control.baud != 0) ODComClearOutbound(hSerialPort);
 
    /* Loop, drawing every line in the edit area. */
    for(unAreaLine = 0; unAreaLine < pEditInstance->unAreaHeight; ++unAreaLine)
@@ -526,7 +605,8 @@ static INT ODEditMainLoop(tEditInstance *pEditInstance)
    /* Loop, obtaining keystrokes until the user chooses to exit. */
    for(;;)
    {
-      od_get_input(&InputEvent, OD_NO_TIMEOUT, GETIN_NORMAL);
+      if(!od_get_input(&InputEvent, OD_NO_TIMEOUT, GETIN_NORMAL))
+         return(OD_MULTIEDIT_SUCCESS);
       if(InputEvent.EventType == EVENT_EXTENDED_KEY)
       {
          switch(InputEvent.chKeyPress)
@@ -1081,7 +1161,7 @@ static BOOL ODEditScrollArea(tEditInstance *pEditInstance, INT nDistance)
          pEditInstance->unLineScrolledToTop -= unPositiveDistance;
       }
 
-      /* Perform redraw, first purging outbound buffer. */
+      /* Perform a full redraw. */
       ODEditRedrawArea(pEditInstance);
    }
 
@@ -1093,9 +1173,9 @@ static BOOL ODEditScrollArea(tEditInstance *pEditInstance, INT nDistance)
  * ODEditRecommendFullRedraw()                         *** PRIVATE FUNCTION ***
  *
  * Determines whether it would be more efficient to add the specified number
- * of bytes to the outbound buffer as part of an incremental redraw, or if
- * it would be more efficient to just purge the outbound buffer and do a
- * complete redraw of the edit area.
+ * of bytes to the outbound buffer as part of an incremental redraw, or to
+ * append a complete redraw of the edit area. Any bytes already queued are
+ * retained in either case and therefore do not affect the comparison.
  *
  * Parameters: pEditInstance           - Editor instance information structure.
  *
@@ -1103,18 +1183,16 @@ static BOOL ODEditScrollArea(tEditInstance *pEditInstance, INT nDistance)
  *                                       would be transmitted if an incremental
  *                                       redraw is performed.
  *
- *             bDefault                - The default action (TRUE for full
- *                                       redraw, FALSE for incremental) if the
- *                                       number of bytes in the outbound buffer
- *                                       cannot be determined.
+ *             bDefault                - The action to use in local mode (TRUE
+ *                                       for full redraw, FALSE for
+ *                                       incremental).
  *
- *     Return: TRUE if a full redraw is recommended, FALSE if an the
+ *     Return: TRUE if a full redraw is recommended, FALSE if an
  *             incremental redraw is recommended.
  */
 static BOOL ODEditRecommendFullRedraw(tEditInstance *pEditInstance,
    UINT unEstPartialRedrawBytes, BOOL bDefault)
 {
-   int nOutboundBufferBytes;
    UINT unEstFullRedrawBytes;
 
    /* In local mode, just return the default action. */
@@ -1123,34 +1201,13 @@ static BOOL ODEditRecommendFullRedraw(tEditInstance *pEditInstance,
       return(bDefault);
    }
 
-   /* Attempt to obtain the number of bytes in the communications outbound */
-   /* buffer. Unfortunately, this information may not be available. For    */
-   /* example, FOSSIL drivers will only report whether or not there is     */
-   /* still data in the outbound buffer, but not a count of the number of  */
-   /* bytes in the buffer. Under such a situation, ODComOutbound() returns */
-   /* SIZE_NON_ZERO if there is data in the buffer, and 0 if there is no   */
-   /* data in the buffer. This is not a problem under OpenDoor's internal  */
-   /* serial I/O code, nor is it a problem under Win32's communications    */
-   /* facilities.                                                          */
-   ODComOutbound(hSerialPort, &nOutboundBufferBytes);
-
-   if(nOutboundBufferBytes == SIZE_NON_ZERO)
-   {
-      /* We know that there is data in the outbound buffer, but we don't */
-      /* know how much, and so we cannot make a recommendation. Instead, */
-      /* the default course of action will be taken.                     */
-      return(bDefault);
-   }
-
    /* Estimate the # of bytes required for a full redraw of the edit area. */
    unEstFullRedrawBytes = ODEditEstDrawBytes(pEditInstance, 0,
       0, pEditInstance->unAreaHeight - 1, pEditInstance->unAreaWidth);
 
-   /* Recommend a full redraw if the number of bytes for an incremental */
-   /* redraw plus the number of bytes already in the outbound buffer    */
-   /* exceed the number of bytes required for a full redraw.            */
-   if(unEstPartialRedrawBytes + (UINT)nOutboundBufferBytes
-      > unEstFullRedrawBytes)
+   /* Recommend a full redraw if it adds fewer bytes than an incremental */
+   /* redraw. Existing queued bytes precede either choice.               */
+   if(unEstPartialRedrawBytes > unEstFullRedrawBytes)
    {
       return(TRUE);
    }
@@ -1355,7 +1412,7 @@ static tODResult ODEditEnterText(tEditInstance *pEditInstance,
    /* past the end of the edit area or past the end of the buffer.      */
    for(pch = pszEntered; *pch != '\0'; ++pch)
    {
-      if(IS_EOL_CHAR(*pch))
+      if(*pch == '\n' || *pch == '\r')
       {
          /* A carriage return character advances the cursor to the */
          /* leftmost column on the next line.                      */
@@ -1364,7 +1421,7 @@ static tODResult ODEditEnterText(tEditInstance *pEditInstance,
 
          /* If the next character is a different EOL character, and is */
          /* not the end of the string, then skip that character.       */
-         if(IS_EOL_CHAR(pch[1]) && pch[1] != '\0' && pch[1] != *pch)
+         if((pch[1] == '\n' || pch[1] == '\r') && pch[1] != *pch)
          {
             ++pch;
          }
@@ -1788,7 +1845,7 @@ static void ODEditRedrawChanged(tEditInstance *pEditInstance,
    if(ODEditRecommendFullRedraw(pEditInstance, unEstPartialRedrawBytes,
       FALSE))
    {
-      /* Purge the outbound buffer and do a full redraw. */
+      /* Do a full redraw. */
       ODEditRedrawArea(pEditInstance);
 
       /* Move the cursor back to its appropriate position. */
@@ -1971,14 +2028,6 @@ static BOOL ODEditDetermineChanged(tEditInstance *pEditInstance,
    {
       /* Then return indicating no change. */
       return(FALSE);
-   }
-
-   /* If we haven't found an end to the portion of the area that has */
-   /* changed, then we must redraw up to the end of the edit area.   */
-   if(!bFoundFinish)
-   {
-      *punFinishRedrawLine = unLowerBoundary;
-      *punFinishRedrawColumn = unColumn;
    }
 
    /* Return indicating that ther has been some change. */
@@ -2175,6 +2224,44 @@ static BOOL ODEditIsEOLForMode(tEditInstance *pEditInstance, char chToTest)
 /* ========================================================================= */
 
 /* ----------------------------------------------------------------------------
+ * ODEditCalculateLineArrayGrowth()                    *** PRIVATE FUNCTION ***
+ *
+ * Calculates the element count and allocation size for the next line-array
+ * growth operation without performing the allocation.
+ *
+ * Parameters: unCurrentSize - Current line-array element count.
+ *
+ *             punNewSize    - Location to store the new element count.
+ *
+ *             pnNewBytes    - Location to store the corresponding allocation
+ *                             size in bytes.
+ *
+ *     Return: TRUE on success, or FALSE if either calculation overflows.
+ */
+static BOOL ODEditCalculateLineArrayGrowth(UINT unCurrentSize,
+   UINT *punNewSize, size_t *pnNewBytes)
+{
+   UINT unNewSize;
+
+   ASSERT(punNewSize != NULL);
+   ASSERT(pnNewBytes != NULL);
+
+   if(unCurrentSize > (UINT)-1 - LINE_ARRAY_GROW_SIZE)
+   {
+      return(FALSE);
+   }
+
+   unNewSize = unCurrentSize + LINE_ARRAY_GROW_SIZE;
+   if(!ODSizeMultiply((size_t)unNewSize, sizeof(char *), pnNewBytes))
+   {
+      return(FALSE);
+   }
+
+   *punNewSize = unNewSize;
+   return(TRUE);
+}
+
+/* ----------------------------------------------------------------------------
  * ODEditBufferFormatAndIndex()                        *** PRIVATE FUNCTION ***
  *
  * Regenerates the count of lines in the buffer, and the array of pointers to
@@ -2193,6 +2280,9 @@ static BOOL ODEditBufferFormatAndIndex(tEditInstance *pEditInstance)
    UINT unProcessingLine;
    BOOL bAtEndOfBuffer = FALSE;
    BOOL bLineEndedByBreak;
+   UINT unNewArraySize;
+   char **papchNewLineArray;
+   size_t nLineArrayBytes;
    BOOL bFTSCMode =
       (pEditInstance->pUserOptions->TextFormat == FORMAT_FTSC_MESSAGE);
 
@@ -2231,7 +2321,6 @@ static BOOL ODEditBufferFormatAndIndex(tEditInstance *pEditInstance)
             }
          }
 
-         continue;
       }
 
       /* Add the address of the start of this line to the line array. */
@@ -2241,16 +2330,22 @@ static BOOL ODEditBufferFormatAndIndex(tEditInstance *pEditInstance)
       if(unProcessingLine == pEditInstance->unLineArraySize)
       {
          /* Determine the size to grow the array to. */
-         UINT unNewArraySize = pEditInstance->unLineArraySize
-            + LINE_ARRAY_GROW_SIZE;
+         if(!ODEditCalculateLineArrayGrowth(
+            pEditInstance->unLineArraySize, &unNewArraySize,
+            &nLineArrayBytes))
+         {
+            od_control.od_error = ERR_LIMIT;
+            return(FALSE);
+         }
 
          /* Attempt to reallocate this memory block. */
-         char **papchNewLineArray = (char **)realloc(
-            pEditInstance->papchStartOfLine, unNewArraySize * sizeof(char *));
+         papchNewLineArray = (char **)realloc(
+            pEditInstance->papchStartOfLine, nLineArrayBytes);
 
          /* If reallocation failed, then return with failure. */
          if(papchNewLineArray == NULL)
          {
+            od_control.od_error = ERR_MEMORY;
             return(FALSE);
          }
 
@@ -2341,9 +2436,9 @@ static BOOL ODEditBufferFormatAndIndex(tEditInstance *pEditInstance)
          bAtEndOfBuffer = TRUE;
       }
 
-      /* If the line was not terminated by a '\0', then find the first */
-      /* character of the next line.                                   */
-      else
+      /* Consume an explicit line ending or a space selected for word */
+      /* wrapping. A hard-wrap boundary character starts the next line. */
+      else if(bLineEndedByBreak || *pch == ' ')
       {
          char chFirstEOLChar = *pch;
          char chSecondEOLChar = '\0';
@@ -2516,6 +2611,7 @@ static tODResult ODEditBufferMakeSpace(tEditInstance *pEditInstance,
    UINT unBufferUnused;
    UINT unRemainingBufferBytes;
    UINT unCount;
+   size_t nSizeNeeded;
    char *pchBufferPos;
    tODResult Result;
 
@@ -2533,7 +2629,17 @@ static tODResult ODEditBufferMakeSpace(tEditInstance *pEditInstance,
    {
       UINT unExtendLineBy = unColumn - unLineLength;
       unColumn -= unExtendLineBy;
-      unNumChars += unExtendLineBy;
+      if(!ODSizeAdd((size_t)unNumChars, (size_t)unExtendLineBy,
+         &nSizeNeeded)
+#if defined(ODPLAT_NIX) || defined(_WIN64)
+         || nSizeNeeded > (UINT)-1
+#endif
+         )
+      {
+         od_control.od_error = ERR_LIMIT;
+         return(kODRCSafeFailure);
+      }
+      unNumChars = (UINT)nSizeNeeded;
    }
 
    /* Now, determine whether the buffer is large enough for the additional */
@@ -2544,7 +2650,17 @@ static tODResult ODEditBufferMakeSpace(tEditInstance *pEditInstance,
    {
       /* There is not currently sufficient room in the buffer for the new */
       /* characters, then attempt to grow the buffer to make more room.   */
-      Result = ODEditTryToGrow(pEditInstance, unBufferUsed + unNumChars);
+      if(!ODSizeAdd((size_t)unBufferUsed, (size_t)unNumChars,
+         &nSizeNeeded)
+#if defined(ODPLAT_NIX) || defined(_WIN64)
+         || nSizeNeeded > (UINT)-1
+#endif
+         )
+      {
+         od_control.od_error = ERR_LIMIT;
+         return(kODRCSafeFailure);
+      }
+      Result = ODEditTryToGrow(pEditInstance, (UINT)nSizeNeeded);
       if(Result != kODRCSuccess)
       {
          /* On failure, return the result code that indicates the nature */
@@ -2593,6 +2709,9 @@ static tODResult ODEditTryToGrow(tEditInstance *pEditInstance,
    UINT unSizeNeeded)
 {
    BOOL bFullReIndexRequired = FALSE;
+   size_t nGrownSize;
+   UINT unNewBufferSize;
+   char *pszNewBuffer;
 
    ASSERT(pEditInstance != NULL);
    ASSERT(unSizeNeeded > pEditInstance->unBufferSize);
@@ -2601,9 +2720,15 @@ static tODResult ODEditTryToGrow(tEditInstance *pEditInstance,
    {
       /* If the buffer is growable, then attempt to grow it using the */
       /* realloc function provided by the client application.         */
-      UINT unNewBufferSize = MAX(pEditInstance->unBufferSize
-         + BUFFER_GROW_SIZE, unSizeNeeded);
-      char *pszNewBuffer = (char *)((*pEditInstance->pUserOptions->
+      if(!ODSizeAdd((size_t)pEditInstance->unBufferSize, BUFFER_GROW_SIZE,
+         &nGrownSize)
+#if defined(ODPLAT_NIX) || defined(_WIN64)
+         || nGrownSize > (UINT)-1
+#endif
+         )
+         nGrownSize = unSizeNeeded;
+      unNewBufferSize = MAX((UINT)nGrownSize, unSizeNeeded);
+      pszNewBuffer = (char *)((*pEditInstance->pUserOptions->
          pfBufferRealloc)(pEditInstance->pszEditBuffer, unNewBufferSize));
 
       /* If we were unable to grow the buffer, then fail now. At this */
