@@ -1,12 +1,13 @@
 //! Development TCP adapter and engine actor.
 
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::io;
 use std::net::{Shutdown, SocketAddr, TcpStream as StdTcpStream};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use fluent_bundle::FluentArgs;
 use socket2::{Domain, Protocol, Socket, Type};
@@ -49,6 +50,48 @@ const LIVE_CLOCK_EVENT_SLICE: u64 = 1_024;
 const MAX_PENDING_GAME_AUTHENTICATIONS: usize = 64;
 const MAX_ACTIVE_GAME_SESSIONS: usize = 256;
 const MAX_ACTIVE_GAME_SESSIONS_PER_BBS: usize = 64;
+
+fn utc_timestamp(seconds: u64, milliseconds: u32) -> String {
+    let days = i64::try_from(seconds / 86_400).unwrap_or(i64::MAX);
+    let day_seconds = seconds % 86_400;
+    // Convert days since the Unix epoch to a proleptic Gregorian date. This is
+    // Howard Hinnant's civil-from-days algorithm with the Unix epoch offset.
+    let shifted = days.saturating_add(719_468);
+    let era = if shifted >= 0 {
+        shifted
+    } else {
+        shifted - 146_096
+    } / 146_097;
+    let day_of_era = shifted - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let mut year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    year += i64::from(month <= 2);
+    let hour = day_seconds / 3_600;
+    let minute = day_seconds % 3_600 / 60;
+    let second = day_seconds % 60;
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{milliseconds:03}Z")
+}
+
+pub fn log(arguments: fmt::Arguments<'_>) {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    eprintln!(
+        "{} {arguments}",
+        utc_timestamp(elapsed.as_secs(), elapsed.subsec_millis())
+    );
+}
+
+macro_rules! server_log {
+    ($($argument:tt)*) => {
+        log(format_args!($($argument)*))
+    };
+}
 
 fn localized_version_rejection(
     protocol: &str,
@@ -722,7 +765,7 @@ fn spawn_engine(
                             if advance.ending_second < target
                                 && last_lag_report.elapsed() >= Duration::from_secs(60)
                             {
-                                eprintln!(
+                                server_log!(
                                     "live clock lag: target={} committed={} lag={}m events={} wall={}ns cpu={}ns",
                                     target,
                                     advance.ending_second,
@@ -1450,7 +1493,7 @@ pub async fn run_on_addresses(
         .map_err(|_| ServerError::EngineStopped)?
         .map_err(|_| ServerError::EngineStopped)?
         .map_err(ServerError::Engine)?;
-    eprintln!(
+    server_log!(
         "Cepheus Trader game listeners on {game_listener_text}; administrator listeners on \
          {admin_listener_text}; sysop listeners on {sysop_listener_text}"
     );
@@ -1594,6 +1637,7 @@ pub async fn run_on_addresses(
                 let connection = result.ok_or(ServerError::ListenerStopped)??;
                 match connection {
                     AcceptedConnection::Game(socket, peer) => {
+                        server_log!("game connection peer={peer} event=accepted");
                         let connection_engine = engine.clone();
                         let connection_sessions = Arc::clone(&sessions);
                         let connection_registry = bbs_registry.clone();
@@ -1602,6 +1646,9 @@ pub async fn run_on_addresses(
                         )
                         .try_acquire_owned()
                         else {
+                            server_log!(
+                                "game connection peer={peer} event=rejected reason=authentication-limit"
+                            );
                             let _ = socket
                                 .into_std()
                                 .and_then(|socket| socket.shutdown(Shutdown::Both));
@@ -1610,6 +1657,7 @@ pub async fn run_on_addresses(
                         tokio::spawn(async move {
                             if let Err(error) = handle_connection(
                                 socket,
+                                peer,
                                 connection_engine,
                                 connection_sessions,
                                 connection_registry,
@@ -1617,7 +1665,9 @@ pub async fn run_on_addresses(
                             )
                             .await
                             {
-                                eprintln!("connection {peer} closed: {error}");
+                                server_log!(
+                                    "game connection peer={peer} event=failed error={error}"
+                                );
                             }
                         });
                     }
@@ -1634,7 +1684,9 @@ pub async fn run_on_addresses(
                             )
                             .await
                             {
-                                eprintln!("administrator connection {peer} closed: {error}");
+                                server_log!(
+                                    "administrator connection peer={peer} event=failed error={error}"
+                                );
                             }
                         });
                     }
@@ -1649,7 +1701,9 @@ pub async fn run_on_addresses(
                             )
                             .await
                             {
-                                eprintln!("sysop connection {peer} closed: {error}");
+                                server_log!(
+                                    "sysop connection peer={peer} event=failed error={error}"
+                                );
                             }
                         });
                     }
@@ -1663,7 +1717,7 @@ pub async fn run_on_addresses(
             }
             result = &mut shutdown => {
                 result?;
-                eprintln!("shutdown requested");
+                server_log!("shutdown requested");
                 sessions.close_all_for_shutdown().await;
                 engine.shutdown().await;
                 drop(engine);
@@ -1679,6 +1733,7 @@ pub async fn run_on_addresses(
 
 async fn handle_connection(
     socket: TcpStream,
+    peer: SocketAddr,
     engine: EngineHandle,
     sessions: Arc<Sessions>,
     bbs_registry: BbsRegistry,
@@ -1705,6 +1760,7 @@ async fn handle_connection(
     .await
     .map_err(|_| ServerError::TlsWorkerStopped)?
     .map_err(|error| ServerError::Tls(error.to_string()))?;
+    server_log!("game connection peer={peer} event=tls-authenticated");
     drop(authentication_permit);
     socket.set_read_timeout(None)?;
     socket.set_write_timeout(None)?;
@@ -1724,6 +1780,9 @@ async fn handle_connection(
     let hello_frame = read_tls_frame_async(Arc::clone(&tls)).await?;
     let client_version = decode_protocol_version(&hello_frame)?;
     if client_version != PROTOCOL_VERSION {
+        server_log!(
+            "game connection peer={peer} event=rejected reason=protocol-version client={client_version} server={PROTOCOL_VERSION}"
+        );
         let reason = localized_version_rejection("CT-RPC", client_version, PROTOCOL_VERSION)?;
         let _ = outbound
             .send(encode_legacy_close_for_version(client_version, 0, &reason)?)
@@ -1736,6 +1795,9 @@ async fn handle_connection(
     let (_, hello) = match decode_client_hello_with_version(&hello_frame) {
         Ok(hello) => hello,
         Err(error) => {
+            server_log!(
+                "game connection peer={peer} event=rejected reason=malformed-hello error={error}"
+            );
             let reason = localized_error(
                 &default_language(),
                 "malformed-hello",
@@ -1772,6 +1834,10 @@ async fn handle_connection(
             } else {
                 ("languageTag", hello.language_tag.as_str())
             };
+            server_log!(
+                "game connection peer={peer} event=rejected reason=language tag={:?} error={error}",
+                hello.language_tag
+            );
             let reason = localized_error(&default_language(), key, argument_name, argument)?;
             let _ = outbound
                 .send(encode_close_with_code(
@@ -1792,6 +1858,11 @@ async fn handle_connection(
         .map_err(|error| ServerError::Tls(error.to_string()))?
         != hello.identity.bbs_id.to_string().as_bytes()
     {
+        server_log!(
+            "game connection peer={peer} event=rejected reason=bbs-identity-mismatch requested-bbs={} player={}",
+            hello.identity.bbs_id,
+            hello.identity.player_id
+        );
         return Err(ServerError::BbsIdentityMismatch);
     }
     let opening = match engine.issue_session(hello.identity.clone()).await {
@@ -1801,6 +1872,11 @@ async fn handle_connection(
                 .strip_prefix("player access denied: ")
                 .unwrap_or(&message);
             let reason = localized_error(&language, "access-denied", "reason", reason)?;
+            server_log!(
+                "game connection peer={peer} event=rejected reason=access-denied bbs={} player={}",
+                hello.identity.bbs_id,
+                hello.identity.player_id
+            );
             let _ = outbound
                 .send(encode_close_with_code(
                     0,
@@ -1853,6 +1929,13 @@ async fn handle_connection(
                 "connection writer stopped",
             ))
         })?;
+    server_log!(
+        "game connection peer={peer} event=session-opened bbs={} player={} epoch={} phase={:?}",
+        hello.identity.bbs_id,
+        hello.identity.player_id,
+        epoch,
+        opening.phase
+    );
     if let Some(snapshot) = opening.traffic_snapshot {
         outbound
             .send(encode_traffic_snapshot(
@@ -1915,24 +1998,26 @@ async fn handle_connection(
             })?;
     }
 
-    let result = loop {
+    let result: Result<&'static str, ServerError> = loop {
         let frame = tokio::select! {
             changed = replaced_receiver.changed() => {
                 if changed.is_ok() && *replaced_receiver.borrow() {
-                    break Ok(());
+                    break Ok("session-replaced");
                 }
                 continue;
             }
             result = read_tls_frame_async(Arc::clone(&tls)) => {
                 match result {
                     Ok(frame) => frame,
-                    Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => break Ok(()),
+                    Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => {
+                        break Ok("client-eof");
+                    }
                     Err(error) => break Err(ServerError::Io(error)),
                 }
             }
         };
         if decode_close(&frame)?.is_some() {
-            break Ok(());
+            break Ok("client-close");
         }
         match decode_request(&frame) {
             Ok(request) if request.session_epoch == epoch => {
@@ -1957,7 +2042,7 @@ async fn handle_connection(
                         &[],
                     )?)
                     .await;
-                break Ok(());
+                break Ok("stale-session-epoch");
             }
             Err(error) => {
                 let _ = outbound
@@ -1973,16 +2058,27 @@ async fn handle_connection(
                         &[],
                     )?)
                     .await;
-                break Ok(());
+                break Ok("invalid-request");
             }
         }
     };
     sessions.remove_if_current(&hello.identity, epoch).await;
-    engine.close_session(hello.identity, epoch).await;
+    engine.close_session(hello.identity.clone(), epoch).await;
     let _ = socket.shutdown(Shutdown::Both);
     drop(outbound);
     let _ = writer_task.await;
-    result
+    match result {
+        Ok(reason) => {
+            server_log!(
+                "game connection peer={peer} event=session-closed bbs={} player={} epoch={} reason={reason}",
+                hello.identity.bbs_id,
+                hello.identity.player_id,
+                epoch
+            );
+            Ok(())
+        }
+        Err(error) => Err(error),
+    }
 }
 
 async fn handle_admin_connection(
@@ -2394,6 +2490,12 @@ mod tests {
     use tokio::io::{duplex, split};
 
     use super::*;
+
+    #[test]
+    fn server_log_timestamp_is_utc_rfc3339() {
+        assert_eq!(utc_timestamp(0, 0), "1970-01-01T00:00:00.000Z");
+        assert_eq!(utc_timestamp(946_684_800, 123), "2000-01-01T00:00:00.123Z");
+    }
 
     #[test]
     fn engine_startup_preserves_the_authoritative_error() {

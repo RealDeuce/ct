@@ -93,7 +93,7 @@ async fn main() {
     if let Err(error) =
         server::run_on_addresses(addresses, admin_addresses, sysop_addresses, data, admin_tls).await
     {
-        eprintln!("fatal server error: {error}");
+        server::log(format_args!("fatal server error: {error}"));
         std::process::exit(1);
     }
 }

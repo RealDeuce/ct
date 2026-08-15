@@ -2054,6 +2054,17 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         .output()
         .unwrap();
     let server_log = server.stop();
+    for lifecycle_event in [
+        "event=accepted",
+        "event=tls-authenticated",
+        "event=session-opened",
+        "event=session-closed",
+    ] {
+        assert!(
+            server_log.contains(lifecycle_event),
+            "server log is missing {lifecycle_event}: {server_log}"
+        );
+    }
     assert!(
         reconnect.status.success(),
         "reconnect failed\nstdout: {}\nstderr: {}\nserver: {server_log}",
