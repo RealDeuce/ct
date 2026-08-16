@@ -62,7 +62,7 @@ dependencies = [
 
 [[package]]
 name = "cepheus-trader-server"
-version = "0.7.6"
+version = "0.7.7"
 dependencies = [
  "capnp",
  "capnpc",
