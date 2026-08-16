@@ -367,7 +367,10 @@ if(CT_OPENDOORS_ROOT)
       INTERFACE_INCLUDE_DIRECTORIES "${CT_PREBUILT_OPENDOORS_INCLUDE_DIR}"
   )
   if(WIN32)
-    target_compile_definitions(ct-opendoors INTERFACE OD_WIN32_STATIC)
+    target_compile_definitions(
+      ct-opendoors
+      INTERFACE OD_WIN32_STATIC OD_WINDOWS_CONSOLE
+    )
     target_link_libraries(ct-opendoors INTERFACE wsock32 gdi32 comctl32)
   else()
     target_link_libraries(ct-opendoors INTERFACE Threads::Threads)

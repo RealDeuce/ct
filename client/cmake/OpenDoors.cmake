@@ -66,6 +66,7 @@ function(ct_add_opendoors target source_root)
       $<$<BOOL:${CT_OPENDOORS_HAVE_VSNPRINTF}>:OPENDOORS_HAVE_VSNPRINTF=1>
     PUBLIC
       $<$<PLATFORM_ID:Windows>:OD_WIN32_STATIC>
+      $<$<PLATFORM_ID:Windows>:OD_WINDOWS_CONSOLE>
   )
   if(APPLE)
     target_compile_definitions(${target} PRIVATE __unix__)

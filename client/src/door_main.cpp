@@ -894,13 +894,7 @@ void initialize_opendoors(const int argc, char** argv)
       sizeof(od_control.od_prog_version),
       "%s",
       CT_PRODUCT_VERSION);
-#ifdef _WIN32
-   (void)argc;
-   (void)argv;
-   od_parse_cmd_line(GetCommandLineA());
-#else
    od_parse_cmd_line(argc, argv);
-#endif
    od_init();
    if(!opendoors_configuration_error.empty()) {
       throw std::runtime_error(opendoors_configuration_error);
