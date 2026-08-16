@@ -59,6 +59,7 @@ enum class DoorHelpTopic : size_t {
    ConceptPersistentWorld,
    ConceptTaskChecks,
    ConceptShipsCrew,
+   ConceptTechLevels,
    ConceptTravelFuel,
    ConceptTradeContracts,
    ConceptMailInformation,

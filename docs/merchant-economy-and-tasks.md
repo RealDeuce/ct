@@ -163,7 +163,9 @@ Trader starts use 20% equity and 80% secured debt. The monthly principal
 payment is purchase price divided by 240 and the full schedule spans 480
 months; mandatory insurance is separately escrowed. Privateer ships are
 sponsor-owned and navy ships institution-owned. Institutional funds are
-restricted rather than interchangeable with personal credits.
+restricted rather than interchangeable with personal credits. Restricted
+operating credit pays mandatory insurance and other authorized vessel costs
+before liquid cash, but never pays secured principal.
 
 All 27 polity/career starting cells carry nonzero construction value and a
 role-correct title/finance package. Refit choices are versioned and unique to
@@ -171,11 +173,15 @@ the offer. A cargo-to-fuel alternative is shown only when the selected hull
 actually has the ten tons it consumes; every presented alternative is
 server-validated as part of the one player-creation transaction.
 
-A missed secured payment has one standard accounting month of grace. Default
-creates a private impound order at the captain's origin. The order is an
-ordinary mail object: a remote authority cannot know or enforce it until that
-message physically arrives. The finance display distinguishes the captain's
-knowledge of default from locally received enforcement authority.
+A missed secured payment or mandatory insurance installment has one standard
+accounting month of grace. Default creates a private impound order at the
+captain's origin. The order is an ordinary mail object: a remote authority
+cannot know or enforce it until that message physically arrives. The finance
+display distinguishes the captain's knowledge of default from locally received
+enforcement authority. Posting one overdue installment clears default,
+withdraws the order, and schedules the next installment one accounting month
+later; this transaction is available in flight through the impound message's
+Finance action.
 
 Ship and crew exchanges are finite, seed/day-derived port markets. Ship offers
 draw from all 134 active Jump-capable starships in the validated catalog, not

@@ -136,6 +136,31 @@ restricted ship credit, debt, berth account, fuel, and cargo use. Its services
 are local: another port may have different stock, facilities, law, or
 institutional offices.
 
+### Technology levels and local capability
+
+Tech Level, abbreviated **TL**, measures a world's scientific and production
+capability and the complexity it can manufacture locally. It is separate from
+population, wealth, law, starport class, and the capability of a particular
+facility. Imported equipment may exceed local TL; conversely, a poor port,
+closed yard, or missing parts can prevent work that the world's TL could
+otherwise support.
+
+| TL | Broad capability |
+| --- | --- |
+| 0 | No technological base; uninhabited worlds also have TL0. |
+| 1–3 | Primitive technology through early mass production and steam power. |
+| 4–6 | Industrial technology through radio, electrification, combustion, fission power, and increasingly capable computers. |
+| 7–8 | Reliable orbital flight followed by practical travel within the star system. |
+| 9 | Gravity technology and the first steps toward Jump. This is the lowest TL represented in the current Cepheus Trader vessel catalog. |
+| 10–11 | Early interstellar technology and increasingly autonomous computers. |
+| 12–14 | Mature interstellar technology, including advanced planetary engineering, armor, computers, and weapons. |
+| 15+ | High stellar technology. |
+
+The examples explain the scale rather than promising that every named
+technology is implemented as a game system. For an actual purchase, repair,
+or refit, compare the world's TL with its port and the displayed facility. A
+world below TL9 can have a working port but no locally eligible ships for sale.
+
 - `C` — **Cargo Exchange:** inspect the hold, buy finite local stock, sell
   cargo carried from another system, and research suppliers or buyers.
 - `J` — **Jobs and Passage:** inspect and accept freight, passenger, mail,
@@ -147,7 +172,8 @@ institutional offices.
 - `P` — **Personnel:** hire available crew and open roster actions such as
   assignment, leave, recall, treatment, or discharge.
 - `B` — **Banking and Accounts:** inspect debt, insurance, assistance, and
-  other available financial actions.
+  other available financial actions. The screen also identifies the vessel's
+  title and lets a captain post an overdue installment.
 - `A` — **Authorities:** handle local career, warrant, prize, traffic, and
   official business.
 - `D` — **Depart:** construct, preview, and file a flight plan.
@@ -176,6 +202,18 @@ can therefore hide more easily among substantial legitimate operating costs.
 A detected forgery produces a naval warrant at the auditing office. That
 finding reaches the captain and other authorities by mail; it is not
 instantaneously known across systems.
+
+### Sponsor-owned ships and arrears
+
+A privateer may command a sponsor-owned ship without owing secured purchase
+principal. The sponsor can still require monthly insurance. Restricted
+operating credit pays that insurance before the captain's liquid balance, but
+it cannot pay secured principal or private expenses.
+
+If an installment defaults, Banking shows the amount past due. `P` posts that
+installment and withdraws its impound order. An impound message links back to
+Banking, so the payment can be posted while the ship is in Jump as well as at
+port.
 
 ### Cargo and local markets
 

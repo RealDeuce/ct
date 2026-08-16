@@ -2056,6 +2056,11 @@ FinanceSnapshot misappropriate_restricted_credits(
    uint64_t amount,
    const std::array<uint8_t, 16>& command_id,
    uint64_t request_id);
+FinanceSnapshot cure_finance_default(
+   TlsConnection&,
+   uint64_t session_epoch,
+   const std::array<uint8_t, 16>& command_id,
+   uint64_t request_id);
 FinanceSnapshot get_finance(TlsConnection&, uint64_t, const std::array<uint8_t, 16>&, uint64_t);
 MarketKnowledge get_market_knowledge(TlsConnection&, uint64_t, const std::array<uint8_t, 16>&,
                                      uint64_t);

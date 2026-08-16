@@ -12,7 +12,7 @@ use crate::ct_rpc_capnp::{
 };
 use crate::i18n::DisplayFormatting;
 
-pub const PROTOCOL_VERSION: u16 = 5;
+pub const PROTOCOL_VERSION: u16 = 6;
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 pub const COMMAND_ID_BYTES: usize = 16;
 pub const MAX_NAME_BYTES: usize = 128;
@@ -2159,6 +2159,7 @@ pub enum Command {
     },
     SetCarriageDeclaration(CarriageDeclaration),
     GetFinance,
+    CureFinanceDefault,
     GetMarketKnowledge,
     GetShipMarket,
     PurchaseShip {
@@ -2319,7 +2320,8 @@ impl Command {
             | Self::ApplyTaskAction { .. }
             | Self::SendPrivateMessage(_)
             | Self::PurchaseInsurance { .. }
-            | Self::MisappropriateRestrictedCredits { .. } => CommandPersistence::Transaction,
+            | Self::MisappropriateRestrictedCredits { .. }
+            | Self::CureFinanceDefault => CommandPersistence::Transaction,
             Self::SetActiveShip { .. }
             | Self::AssignShipCaptain { .. }
             | Self::TransferShipStores { .. }
@@ -2846,6 +2848,7 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
             })
         }
         request::GetFinance(()) => Command::GetFinance,
+        request::CureFinanceDefault(()) => Command::CureFinanceDefault,
         request::GetMarketKnowledge(()) => Command::GetMarketKnowledge,
         request::GetShipMarket(()) => Command::GetShipMarket,
         request::PurchaseShip(purchase) => {
@@ -3826,6 +3829,7 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
             value.set_accept_electronic_mail(declaration.accept_electronic_mail);
         }
         Command::GetFinance => builder.set_get_finance(()),
+        Command::CureFinanceDefault => builder.set_cure_finance_default(()),
         Command::GetMarketKnowledge => builder.set_get_market_knowledge(()),
         Command::GetShipMarket => builder.set_get_ship_market(()),
         Command::PurchaseShip {
@@ -6985,6 +6989,12 @@ mod tests {
                 session_epoch: 23,
                 command_id: [0xb8; COMMAND_ID_BYTES],
                 command: Command::MisappropriateRestrictedCredits { amount: 12_345 },
+            },
+            CommandRequest {
+                request_id: 204,
+                session_epoch: 23,
+                command_id: [0xbb; COMMAND_ID_BYTES],
+                command: Command::CureFinanceDefault,
             },
             CommandRequest {
                 request_id: 202,

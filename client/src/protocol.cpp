@@ -21,7 +21,7 @@ namespace ct
 namespace
 {
 
-constexpr uint16_t PROTOCOL_VERSION = 5;
+constexpr uint16_t PROTOCOL_VERSION = 6;
 constexpr size_t MAX_FRAME_BYTES = 1024 * 1024;
 
 void send_frame(TlsConnection& connection, const kj::ArrayPtr<const kj::byte> message)
@@ -2568,6 +2568,24 @@ FinanceSnapshot misappropriate_restricted_credits(
    auto request = envelope.initRequest();
    initialize_request(envelope, epoch, request_id, id, request);
    request.initMisappropriateRestrictedCredits().setAmount(amount);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_finance_snapshot(
+             checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+
+FinanceSnapshot cure_finance_default(
+   TlsConnection& connection,
+   const uint64_t epoch,
+   const std::array<uint8_t, 16>& id,
+   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   request.setCureFinanceDefault();
    send_frame(connection, capnp::messageToFlatArray(message).asBytes());
    const auto words = receive_response(connection, epoch, request_id);
    capnp::FlatArrayMessageReader reader(words);

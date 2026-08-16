@@ -2289,7 +2289,7 @@ fn generated_message_text(
             MessageImportance::Routine,
             format!("Traffic advisory from {}", origin.name),
             format!(
-                "{} traffic control filed movement advisory {} for operational day {}. The report is historical by the time it reaches another system and must not be treated as a live sensor contact.",
+                "{} traffic control filed movement advisory {} for operational day {}. Confirm the vessel's present position before taking action.",
                 origin.name, bulletin, day,
             ),
         ),

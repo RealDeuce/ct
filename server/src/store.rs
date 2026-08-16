@@ -1229,6 +1229,36 @@ fn ship_finance_key(ship_id: u64) -> [u8; 8] {
     ship_id.to_be_bytes()
 }
 
+fn finance_installment_due(finance: &FinanceRecord) -> (u64, u64, u64) {
+    let principal = finance
+        .principal_credits
+        .min(finance.monthly_payment_credits);
+    let insurance = finance.monthly_insurance_escrow_credits;
+    (principal, insurance, principal.saturating_add(insurance))
+}
+
+/// Applies one installment atomically. Mandatory insurance is an authorized
+/// operating expense and therefore consumes restricted credit before liquid
+/// cash; secured principal is always a personal cash obligation.
+fn pay_finance_installment(player: &mut PlayerRecord, finance: &mut FinanceRecord) -> bool {
+    let (principal, insurance, _) = finance_installment_due(finance);
+    let restricted_payment = finance.restricted_credits.min(insurance);
+    let liquid_payment = principal.saturating_add(insurance - restricted_payment);
+    if player.credits < liquid_payment {
+        return false;
+    }
+    finance.restricted_credits -= restricted_payment;
+    player.credits -= liquid_payment;
+    finance.principal_credits -= principal;
+    player.debt_credits = player.debt_credits.saturating_sub(principal);
+    if finance.principal_credits == 0
+        && finance.title == crate::wire::ShipTitleKind::OwnedWithLien
+    {
+        finance.title = crate::wire::ShipTitleKind::OwnedClear;
+    }
+    true
+}
+
 fn forged_receipt_detection_percent(
     amount: u64,
     authorized_expenses: u64,
@@ -4744,6 +4774,15 @@ impl Store {
             }
             Command::GetFinance => {
                 OutcomeKind::Finance(self.finance_snapshot_in(txn, &queued.identity)?)
+            }
+            Command::CureFinanceDefault => {
+                match self.cure_finance_default_in(txn, &queued.identity)? {
+                    RuleResult::Applied(v) => OutcomeKind::Finance(v),
+                    RuleResult::Rejected(message) => OutcomeKind::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message,
+                    },
+                }
             }
             Command::GetMarketKnowledge => {
                 OutcomeKind::MarketKnowledge(self.market_knowledge_in(txn, &queued.identity)?)
@@ -9673,7 +9712,7 @@ impl Store {
                     contact.transponder
                 ),
                 &format!(
-                    "The local authority alleges that this command initiated {} against {}. Warrant {} was filed in {} on day {}. Other authorities must wait for this instrument to reach them through the mail before acting on it.",
+                    "The local authority alleges that this command initiated {} against {}. Warrant {} was filed in {} on day {}.",
                     if boarding_inspection {
                         "an unauthorized boarding demand"
                     } else {
@@ -10866,7 +10905,7 @@ impl Store {
                         crate::simulation::MessageImportance::Headline,
                         &format!("Naval warrant {warrant_id}: mutiny aboard {}", ship.name),
                         &format!(
-                            "The Admiralty reports the unlawful seizure of {} and files warrant {warrant_id} against its former command. Authorities may act only after this instrument reaches them through the mail.",
+                            "The Admiralty reports the unlawful seizure of {} and has issued warrant {warrant_id} against its former command.",
                             ship.name,
                         ),
                         &destinations,
@@ -12421,7 +12460,7 @@ impl Store {
                         crate::simulation::MessageImportance::Important,
                         &format!("Customs warrant {warrant_id}"),
                         &format!(
-                            "Customs records Cr{unpaid} unpaid after confiscating prohibited cargo from this command. Warrant {warrant_id} may be enforced by authorities only after the signed instrument reaches them through the mail."
+                            "Customs records Cr{unpaid} unpaid after confiscating prohibited cargo from this command. Warrant {warrant_id} has been issued for the outstanding assessment."
                         ),
                         &destinations,
                     )?;
@@ -14830,7 +14869,7 @@ impl Store {
                     crate::simulation::MessageImportance::Routine,
                     &format!("Public mapping notice: {}", system.name),
                     &format!(
-                        "Captain {}/{} reports a mapped system at coreward/spinward/north coordinates {:.6}/{:.6}/{:.6} parsecs. This public-service filing carries the observation into every reachable known-universe repository.",
+                        "Captain {}/{} reports a mapped system at coreward/spinward/north coordinates {:.6}/{:.6}/{:.6} parsecs and submits the observation for publication.",
                         identity.bbs_id,
                         identity.player_id,
                         system.position_parsecs[0],
@@ -17880,6 +17919,52 @@ impl Store {
         ))
     }
 
+    fn cure_finance_default_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+    ) -> Result<RuleResult<crate::wire::FinanceSnapshot>, StoreError> {
+        let (mut player, ship) = self.player_and_ship_in(txn, identity)?;
+        let finance_key = ship_finance_key(ship.ship_id);
+        let mut finance = self
+            .finances
+            .get(txn, &finance_key)?
+            .map(decode_finance_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("ship finance record is missing"))?;
+        if !finance.in_default {
+            return Ok(RuleResult::Rejected("this account is not in default".into()));
+        }
+        let (_, _, amount_due) = finance_installment_due(&finance);
+        let insurance_from_restricted = finance
+            .restricted_credits
+            .min(finance.monthly_insurance_escrow_credits);
+        let liquid_due = amount_due.saturating_sub(insurance_from_restricted);
+        if !pay_finance_installment(&mut player, &mut finance) {
+            return Ok(RuleResult::Rejected(format!(
+                "posting Cr{} requires Cr{} liquid after available restricted operating credit; only Cr{} is liquid",
+                amount_due, liquid_due, player.credits
+            )));
+        }
+        let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        finance.in_default = false;
+        finance.impound_order_known_locally = false;
+        finance.impound_message_id = 0;
+        finance.paid_through_second = current;
+        finance.next_payment_due_second =
+            current.saturating_add(crate::ship_condition::ACCOUNTING_MONTH_SECONDS);
+        self.players.put(
+            txn,
+            &encode_identity(identity),
+            &encode_player_record(&player),
+        )?;
+        self.finances
+            .put(txn, &finance_key, &encode_finance_record(&finance))?;
+        Ok(RuleResult::Applied(
+            self.finance_snapshot_in(txn, identity)?,
+        ))
+    }
+
     fn accept_task_offer_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
@@ -18857,9 +18942,22 @@ impl Store {
             in_default: finance.in_default,
             impound_order_known_locally: finance.impound_order_known_locally,
             credit_status: if finance.impound_order_known_locally {
-                "An impound order has reached local authorities".into()
+                if finance.principal_credits == 0
+                    && finance.monthly_insurance_escrow_credits != 0
+                {
+                    "A sponsor-insurance impound order has reached local authorities".into()
+                } else {
+                    "A secured-credit impound order has reached local authorities".into()
+                }
             } else if finance.in_default {
-                "Payment is in default; any enforcement order remains subject to mail delay".into()
+                if finance.principal_credits == 0
+                    && finance.monthly_insurance_escrow_credits != 0
+                {
+                    "Mandatory sponsor insurance is in default; an impound order has been filed"
+                        .into()
+                } else {
+                    "Payment is in default; an impound order has been filed".into()
+                }
             } else if finance.principal_credits == 0 {
                 "Clear title or institutional account".into()
             } else {
@@ -18966,11 +19064,6 @@ impl Store {
             .filter(|entry| entry.tech_level <= world.tech_level)
             .collect::<Vec<_>>();
         catalog.sort_by_key(|entry| entry.catalog_id);
-        if catalog.is_empty() {
-            return Err(StoreError::Corrupt(
-                "local ship market has no eligible catalog designs",
-            ));
-        }
         let count = catalog.len().min(7);
         let start =
             (crate::ship_condition::mix64(ship.system_id ^ day) as usize) % catalog.len().max(1);
@@ -25662,7 +25755,7 @@ impl Store {
                     crate::simulation::MessageImportance::Important,
                     &format!("Naval accounts warrant {warrant_id}"),
                     &format!(
-                        "The Admiralty audit at {} identifies {} false receipt(s) totaling Cr{} against the service account of {}. Warrant {} may be enforced only after this signed finding reaches local authorities through the mail.",
+                        "The Admiralty audit at {} identifies {} false receipt(s) totaling Cr{} against the service account of {}. Warrant {} has been issued for forgery and misappropriation.",
                         origin.name, receipt_count, amount, ship.name, warrant_id,
                     ),
                     &destinations,
@@ -25813,14 +25906,7 @@ impl Store {
         }
 
         if finance.next_payment_due_second <= due_second && !finance.in_default {
-            let charge = finance
-                .monthly_payment_credits
-                .saturating_add(finance.monthly_insurance_escrow_credits);
-            if player.credits >= charge {
-                player.credits -= charge;
-                finance.principal_credits = finance
-                    .principal_credits
-                    .saturating_sub(finance.monthly_payment_credits);
+            if pay_finance_installment(&mut player, &mut finance) {
                 finance.paid_through_second = due_second;
                 finance.next_payment_due_second = finance
                     .next_payment_due_second
@@ -25851,12 +25937,28 @@ impl Store {
                     captain.origin_system_id,
                     crate::simulation::MessageClass::Private,
                     crate::simulation::MessageImportance::Important,
-                    &format!("Secured-credit impound order: vessel {}", ship.name),
-                    &format!(
-                        "The secured creditor reports unresolved arrears on {} and requests local authorities to hold the vessel if this order is recognized when received. The order was filed on day {} and does not create instantaneous knowledge outside its origin.",
-                        ship.name,
-                        due_second / crate::simulation::SECONDS_PER_DAY,
-                    ),
+                    &if finance.principal_credits == 0
+                        && finance.monthly_insurance_escrow_credits != 0
+                    {
+                        format!("Sponsor-insurance impound order: vessel {}", ship.name)
+                    } else {
+                        format!("Secured-credit impound order: vessel {}", ship.name)
+                    },
+                    &if finance.principal_credits == 0
+                        && finance.monthly_insurance_escrow_credits != 0
+                    {
+                        format!(
+                            "The vessel sponsor reports unpaid mandatory insurance on {} and requests that authorities hold the vessel. Posting the overdue installment satisfies the arrears and withdraws this order. Filed on day {}.",
+                            ship.name,
+                            due_second / crate::simulation::SECONDS_PER_DAY,
+                        )
+                    } else {
+                        format!(
+                            "The secured creditor reports unresolved arrears on {} and requests that authorities hold the vessel. Posting the overdue installment satisfies the arrears and withdraws this order. Filed on day {}.",
+                            ship.name,
+                            due_second / crate::simulation::SECONDS_PER_DAY,
+                        )
+                    },
                     &destinations,
                 )?;
                 finance.impound_message_id = message_id;
@@ -31897,6 +31999,7 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
             bytes.push(u8::from(value.accept_electronic_mail));
         }
         Command::GetFinance => bytes.push(39),
+        Command::CureFinanceDefault => bytes.push(81),
         Command::GetMarketKnowledge => bytes.push(40),
         Command::GetShipMarket => bytes.push(41),
         Command::PurchaseShip {
@@ -32690,6 +32793,7 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
         79 => Command::AbandonPlayer {
             confirmation: decoder.text()?,
         },
+        81 => Command::CureFinanceDefault,
         71 => Command::ApplyPersonnelAction {
             person_id: decoder.u64()?,
             expected_service_revision: decoder.u64()?,
@@ -40568,6 +40672,66 @@ mod tests {
         epoch
     }
 
+    #[test]
+    fn low_tech_ship_market_is_empty_without_poisoning_the_engine_queue() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let epoch = initialize_player_fixture(&store);
+        let ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap()
+            .1;
+        let mut txn = store.env.write_txn().unwrap();
+        let mut system = store
+            .systems
+            .get(&txn, &ship.system_id)
+            .unwrap()
+            .map(decode_stellar_system)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        let minimum_ship_tech_level = creation::ship_market_catalog()
+            .into_iter()
+            .map(|entry| entry.tech_level)
+            .min()
+            .unwrap();
+        system.generation_seed = (0..=u8::MAX)
+            .map(|value| [value; 32])
+            .find(|seed| {
+                let mut candidate = system.clone();
+                candidate.generation_seed = *seed;
+                derive_primary_world(&candidate)
+                    .is_ok_and(|world| world.tech_level < minimum_ship_tech_level)
+            })
+            .expect("a deterministic low-tech test world seed");
+        assert!(derive_primary_world(&system).unwrap().tech_level < minimum_ship_tech_level);
+        store
+            .systems
+            .put(
+                &mut txn,
+                &system.id,
+                &encode_stellar_system(&system).unwrap(),
+            )
+            .unwrap();
+        txn.commit().unwrap();
+
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(epoch, 201, Command::GetShipMarket),
+            })
+            .unwrap();
+        drop(store);
+
+        let store = Store::open(dir.path()).unwrap();
+        let delivery = store.process_next().unwrap().unwrap();
+        let OutcomeKind::ShipMarket(market) = delivery.outcome.kind else {
+            panic!("expected an empty ship market");
+        };
+        assert!(market.offers.is_empty());
+        assert!(store.process_next().unwrap().is_none());
+    }
+
     fn make_fixture_naval_command(store: &Store, restricted_credits: u64) -> ShipRecord {
         let mut txn = store.env.write_txn().unwrap();
         let (mut player, ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
@@ -45823,6 +45987,155 @@ mod tests {
     }
 
     #[test]
+    fn mandatory_insurance_uses_restricted_operating_credit_before_liquid_cash() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut player = store.player_record(&identity()).unwrap().unwrap();
+        let ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        let upkeep = crate::ship_condition::monthly_maintenance_credits(
+            ship.maintenance.purchase_price_credits,
+        );
+        let payroll = store
+            .crew_services(ship.ship_id)
+            .unwrap()
+            .into_iter()
+            .map(|service| service.monthly_salary_credits)
+            .sum::<u64>();
+        let insurance = 118_678;
+        player.credits = 10_000_000;
+        player.debt_credits = 0;
+        let mut txn = store.env.write_txn().unwrap();
+        let finance_key = ship_finance_key(ship.ship_id);
+        let mut finance = decode_finance_record(
+            store.finances.get(&txn, &finance_key).unwrap().unwrap(),
+        )
+        .unwrap();
+        finance.title = crate::wire::ShipTitleKind::SponsorOwned;
+        finance.principal_credits = 0;
+        finance.monthly_payment_credits = 0;
+        finance.monthly_insurance_escrow_credits = insurance;
+        finance.restricted_credits = insurance;
+        store
+            .players
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_player_record(&player),
+            )
+            .unwrap();
+        store
+            .finances
+            .put(&mut txn, &finance_key, &encode_finance_record(&finance))
+            .unwrap();
+        store
+            .process_ship_condition_in(
+                &mut txn,
+                ship.maintenance.next_accounting_second,
+                ship.ship_id,
+            )
+            .unwrap();
+        txn.commit().unwrap();
+
+        let after = store.player_record(&identity()).unwrap().unwrap();
+        assert_eq!(after.credits, 10_000_000 - upkeep - payroll);
+        let txn = store.env.read_txn().unwrap();
+        let finance = decode_finance_record(
+            store.finances.get(&txn, &finance_key).unwrap().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(finance.restricted_credits, 0);
+        assert!(!finance.in_default);
+    }
+
+    #[test]
+    fn overdue_sponsor_insurance_can_be_posted_during_jump() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let epoch = initialize_player_fixture(&store);
+        let mut player = store.player_record(&identity()).unwrap().unwrap();
+        let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        player.credits = 0;
+        player.debt_credits = 0;
+        ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: 91,
+            plan_revision: 1,
+            leg_index: 0,
+            origin: ShipLocusRecord::JumpLocus {
+                system_id: ship.system_id,
+            },
+            destination: ShipLocusRecord::JumpLocus {
+                system_id: ship.system_id + 1,
+            },
+            started_second: 1,
+            due_second: 100,
+            purpose: FlightLegPurpose::Jump {
+                inaccurate_extra_days: 0,
+                critical_transition: false,
+            },
+        });
+        let finance_key = ship_finance_key(ship.ship_id);
+        let mut txn = store.env.write_txn().unwrap();
+        let mut finance = decode_finance_record(
+            store.finances.get(&txn, &finance_key).unwrap().unwrap(),
+        )
+        .unwrap();
+        finance.title = crate::wire::ShipTitleKind::SponsorOwned;
+        finance.principal_credits = 0;
+        finance.monthly_payment_credits = 0;
+        finance.monthly_insurance_escrow_credits = 118_678;
+        finance.restricted_credits = 149_191;
+        finance.in_default = true;
+        finance.impound_order_known_locally = true;
+        finance.impound_message_id = 44;
+        store
+            .players
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_player_record(&player),
+            )
+            .unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        store
+            .finances
+            .put(&mut txn, &finance_key, &encode_finance_record(&finance))
+            .unwrap();
+        txn.commit().unwrap();
+        assert_eq!(
+            store
+                .player_phase_in(&store.env.read_txn().unwrap(), &identity())
+                .unwrap(),
+            PlayerPhase::Jump
+        );
+
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(epoch, 205, Command::CureFinanceDefault),
+            })
+            .unwrap();
+        let delivery = store.process_next().unwrap().unwrap();
+        assert_eq!(delivery.outcome.phase, PlayerPhase::Jump);
+        let OutcomeKind::Finance(snapshot) = delivery.outcome.kind else {
+            panic!("expected finance snapshot");
+        };
+        assert!(!snapshot.in_default);
+        assert!(!snapshot.impound_order_known_locally);
+        assert_eq!(snapshot.restricted_credits, 30_513);
+        assert_eq!(snapshot.liquid_credits, 0);
+        let txn = store.env.read_txn().unwrap();
+        let finance = decode_finance_record(
+            store.finances.get(&txn, &finance_key).unwrap().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(finance.impound_message_id, 0);
+    }
+
+    #[test]
     fn unpaid_payroll_creates_personal_arrears_and_reduces_morale() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
@@ -48613,6 +48926,14 @@ mod tests {
         assert_eq!(
             decode_queued(&encode_queued(&queued).unwrap()).unwrap(),
             queued
+        );
+        let cure = QueuedCommand {
+            identity: identity(),
+            request: request(22, 205, Command::CureFinanceDefault),
+        };
+        assert_eq!(
+            decode_queued(&encode_queued(&cure).unwrap()).unwrap(),
+            cure
         );
     }
 

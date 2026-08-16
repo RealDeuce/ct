@@ -166,6 +166,7 @@ struct Request {
     setInterceptionWatch @71 :InterceptionWatchRequest;
     abandonPlayer @72 :AbandonPlayerRequest;
     suggestTaskCourse @73 :Void;
+    cureFinanceDefault @74 :Void;
   }
 }
 

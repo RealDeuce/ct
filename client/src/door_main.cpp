@@ -4663,36 +4663,48 @@ void show_finance(
    const auto destination_assistance_premium = ct::format_number_text(
       "350000", output().display_formatting());
    while(true) {
+      const auto principal_due =
+         std::min(finance.principal_credits, finance.monthly_payment_credits);
+      const auto overdue_payment = finance.monthly_insurance_escrow_credits >
+         std::numeric_limits<uint64_t>::max() - principal_due
+            ? std::numeric_limits<uint64_t>::max()
+            : principal_due + finance.monthly_insurance_escrow_credits;
       od_clr_scr();
       door_heading("Banking and Accounts\n\r");
       door_heading("====================\n\r\n\r");
-      door_label("Liquid credits:       ");
+      door_label("%-22s", "Vessel title:");
+      door_value("%s\n\r", ship_title_name(finance.title));
+      door_label("%-22s", "Liquid credits:");
       door_number("Cr%llu\n\r", static_cast<unsigned long long>(finance.liquid_credits));
       if(finance.title == ct::ShipTitleKind::InstitutionOwned || finance.restricted_credits != 0) {
-         door_label(finance.title == ct::ShipTitleKind::InstitutionOwned
-                    ? "Naval service account: "
-                    : "Restricted operating:  ");
+         door_label("%-22s", finance.title == ct::ShipTitleKind::InstitutionOwned
+                    ? "Naval service account:"
+                    : "Restricted operating:");
          door_number("Cr%llu\n\r", static_cast<unsigned long long>(finance.restricted_credits));
       }
-      door_label("Reserved credits:     ");
+      door_label("%-22s", "Reserved credits:");
       door_number("Cr%llu\n\r", static_cast<unsigned long long>(finance.reserved_credits));
-      door_label("Secured principal:    ");
+      door_label("%-22s", "Secured principal:");
       door_number("Cr%llu\n\r", static_cast<unsigned long long>(finance.principal_credits));
-      door_label("Monthly payment:      ");
+      door_label("%-22s", "Monthly payment:");
       door_number("Cr%llu\n\r", static_cast<unsigned long long>(finance.monthly_payment_credits));
-      door_label("Insurance escrow:     ");
+      door_label("%-22s", "Insurance escrow:");
       door_number("Cr%llu\n\r", static_cast<unsigned long long>
                   (finance.monthly_insurance_escrow_credits));
-      door_label("Destination aid:      ");
+      if(finance.in_default) {
+         door_label("%-22s", "Past due:");
+         door_number("Cr%llu\n\r", static_cast<unsigned long long>(overdue_payment));
+      }
+      door_label("%-22s", "Destination aid:");
       if(finance.destination_assistance_active) {
          door_success("Covered through %s\n\r",
                       game_date(finance.destination_assistance_expires_second).c_str());
       } else {
          door_information("Not covered\n\r");
       }
-      door_label("Next payment:         ");
+      door_label("%-22s", "Next payment:");
       door_number("%s\n\r", game_date(finance.next_payment_due_second).c_str());
-      door_label("Standing:             ");
+      door_label("%-22s", "Standing:");
       if(finance.impound_order_known_locally) {
          door_error("%s\n\r", safe_field(finance.credit_status).c_str());
       } else if(finance.in_default) {
@@ -4711,6 +4723,13 @@ void show_finance(
       std::vector<std::string_view> options{
          assistance_option,
       };
+      std::string overdue_option;
+      if(finance.in_default) {
+         overdue_option = "[P] Post overdue payment (Cr" +
+            ct::format_number_text(std::to_string(overdue_payment),
+                                   output().display_formatting()) + ")";
+         options.emplace_back(overdue_option);
+      }
       if(finance.in_default && finance.principal_credits > 0) {
          options.emplace_back("[K] Petition for bankruptcy");
       }
@@ -4729,6 +4748,27 @@ void show_finance(
       }
       if(key == 'q' || key == 'Q') {
          return;
+      }
+      if((key == 'p' || key == 'P') && finance.in_default) {
+         door_prompt(
+            "\n\rPost Cr%llu now and withdraw the active impound order? [y/N]: ",
+            static_cast<unsigned long long>(overdue_payment));
+         const auto confirmation = od_get_key(TRUE);
+         od_printf("\n\r");
+         if(confirmation != 'y' && confirmation != 'Y') {
+            continue;
+         }
+         try {
+            finance = ct::cure_finance_default(
+                         connection, session_epoch,
+                         random_command_id(random), request_id++);
+            door_success("The overdue installment was posted and the order withdrawn.\n\r");
+            wait_for_enter("Banking and Accounts");
+         } catch(const ct::PlayerRequestRejected& error) {
+            door_error("%s\n\r", safe_field(error.what()).c_str());
+            wait_for_enter("Banking and Accounts");
+         }
+         continue;
       }
       if((key == 'f' || key == 'F')
             && finance.title == ct::ShipTitleKind::InstitutionOwned
@@ -4828,6 +4868,9 @@ void run_shipyard_market(ct::TlsConnection& connection, const uint64_t epoch,
       door_number("%llu", static_cast<unsigned long long>(market.current_ship_trade_in_credits));
       door_label("  Lien: Cr");
       door_number("%llu\n\r\n\r", static_cast<unsigned long long>(market.outstanding_lien_credits));
+      if(market.offers.empty()) {
+         door_information("No vessels are offered at this port.\n\r");
+      }
       for(size_t i = 0; i < market.offers.size(); ++i) {
          const auto&o = market.offers[i];
          door_number("%zu", i + 1);
