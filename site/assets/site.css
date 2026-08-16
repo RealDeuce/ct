@@ -312,7 +312,6 @@ main { position: relative; z-index: 1; }
 
 .resource-callout { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--line); align-items: stretch; }
 .resource-callout > * { background: var(--space); padding: 2rem; }
-.resource-callout > div { padding-left: 0; }
 .resource-callout > a { position: relative; display: flex; flex-direction: column; text-decoration: none; min-height: 210px; }
 .resource-callout strong { font: 800 1.4rem var(--display); text-transform: uppercase; }
 .resource-callout span { margin-top: 1rem; color: var(--ink-soft); }
@@ -420,7 +419,6 @@ main { position: relative; z-index: 1; }
   .principles-title { position: static; }
   .first-watch .text-link { grid-column: 1; }
   .resource-callout { grid-template-columns: 1fr; }
-  .resource-callout > div { padding-left: 2rem; }
   .document-layout, .help-layout { grid-template-columns: 1fr; }
   .document-toc, .help-index { position: static; max-height: none; padding-right: 0; }
   .document-toc nav { display: grid; grid-template-columns: repeat(2, 1fr); }
