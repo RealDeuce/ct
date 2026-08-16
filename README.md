@@ -15,6 +15,10 @@ through 6 are complete; Milestone 7 is validating multi-BBS play and field
 operations. See the [roadmap](ROADMAP.md) for the authoritative status and
 acceptance boundaries.
 
+New and returning captains can use the
+[player documentation site](https://realdeuce.github.io/ct/) for the game
+introduction, complete player reference, and searchable Beginner Help.
+
 Cepheus Trader is an Alternate Cepheus Engine Universe. It is not affiliated
 with Jason “Flynn” Kemp or Samardan Press.
 
@@ -95,6 +99,7 @@ by the [release process](docs/release-process.md).
 
 ## Documentation
 
+- [Player documentation site](https://realdeuce.github.io/ct/)
 - [Development roadmap](ROADMAP.md)
 - [Player guide](docs/player-guide.md)
 - [BBS sysop installation and operations](docs/sysop-guide.md)
