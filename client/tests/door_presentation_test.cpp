@@ -157,6 +157,29 @@ int main() {
       check_profile_and_width(profile, 80, 24);
    }
 
+   const std::string refit_quotation =
+      "Refit Quotation - Firefly II\r\n"
+      "Operating account charge: Cr149,191\r\n"
+      "Yard time: 6 weeks\r\n\r\n"
+      "The yard will repair all non-destroyed damage, remove temporary "
+      "battlefield patches, and correct minor faults found during the overhaul.\r\n"
+      "Destroyed installations are not replaced. Installation age and use are "
+      "retained. Routine upkeep continues while the ship is in the yard.\r\n"
+      "Destroyed installations not replaced:\r\n"
+      "  Maneuver drive\r\n"
+      "[Q/Enter] Cancel  [R] Authorize refit  [?] Help";
+   for(const auto columns : {size_t{40}, size_t{80}}) {
+      const auto quotation_output = render(
+         ct::DoorProfile::Iso646,
+         columns,
+         24,
+         refit_quotation,
+         ct::DoorTextRole::Information);
+      check(quotation_output.find("Operating account charge") != std::string::npos);
+      check(quotation_output.find("Authorize refit") != std::string::npos);
+      check(maximum_visible_width(quotation_output) < columns);
+   }
+
    const auto help_topics = ct::all_door_help();
    check(help_topics.size() ==
          static_cast<size_t>(ct::DoorHelpTopic::Count));
@@ -169,9 +192,18 @@ int main() {
          std::string_view::npos);
    check(ship_help.beginner_body.find("can damage a subsystem") !=
          std::string_view::npos);
+   check(ship_help.beginner_body.find("quotation shows its operating-account charge") !=
+         std::string_view::npos);
+   check(ship_help.beginner_body.find("does not replace destroyed installations") !=
+         std::string_view::npos);
    check(ship_help.expert_body.find("automatic every 30 game days") !=
          std::string_view::npos);
-   check(ship_help.expert_body.find("Proper repair and refit are separate") !=
+   check(ship_help.expert_body.find("requires authorization after quotation") !=
+         std::string_view::npos);
+   const auto& shipyard_help = ct::door_help(ct::DoorHelpTopic::Shipyard);
+   check(shipyard_help.beginner_body.find("Review a refit quotation") !=
+         std::string_view::npos);
+   check(shipyard_help.expert_body.find("does not replace destroyed installations") !=
          std::string_view::npos);
    for(const auto& help : help_topics) {
       check(!help.title.empty());

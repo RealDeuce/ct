@@ -33,6 +33,13 @@ pub fn refit_duration_seconds(entropy: u64) -> u64 {
     (4 + stable_roll(entropy, 3)) * SECONDS_PER_WEEK
 }
 
+/// Keep a yard quotation stable until the quoted ship revision changes.
+pub fn refit_duration_for_revision(ship_id: u64, ship_revision: u64) -> u64 {
+    refit_duration_seconds(mix64(
+        ship_id ^ mix64(ship_revision ^ 0x5245_4649_5451_554f),
+    ))
+}
+
 /// Ordinary starport berthing is Cr100 for the first six days, then Cr100
 /// for each additional day or part of a day.
 pub fn berth_fee_credits(arrived_second: u64, departure_second: u64) -> u64 {
@@ -155,6 +162,17 @@ mod tests {
         assert_eq!(berth_fee_credits(100, 100), 100);
         assert_eq!(berth_fee_credits(100, 100 + 6 * SECONDS_PER_DAY), 100);
         assert_eq!(berth_fee_credits(100, 101 + 6 * SECONDS_PER_DAY), 200);
+    }
+
+    #[test]
+    fn refit_duration_is_stable_for_a_quoted_ship_revision() {
+        let duration = refit_duration_for_revision(41, 9);
+        assert_eq!(duration, refit_duration_for_revision(41, 9));
+        assert!((4 * SECONDS_PER_WEEK..=6 * SECONDS_PER_WEEK).contains(&duration));
+        let durations = (0..64)
+            .map(|revision| refit_duration_for_revision(41, revision))
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(durations.len(), 3);
     }
 
     #[test]

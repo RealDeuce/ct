@@ -3943,6 +3943,75 @@ void show_fleet_manager(
    }
 }
 
+void print_refit_scope()
+{
+   print_wrapped(
+      "The yard will repair all non-destroyed damage, remove temporary battlefield patches, and correct minor faults found during the overhaul.",
+      "");
+   print_wrapped(
+      "Destroyed installations are not replaced. Installation age and use are retained. Routine upkeep continues while the ship is in the yard.",
+      "",
+      ct::DoorTextRole::Warning);
+}
+
+bool authorize_refit(
+   const ct::ShipStatusSnapshot& snapshot,
+   const ct::DockedServices& services)
+{
+   od_clr_scr();
+   door_heading("Refit Quotation - ");
+   door_value("%s\n\r", safe_field(snapshot.ship_name).c_str());
+   door_heading("==================\n\r\n\r");
+   door_label("Operating account charge: ");
+   door_number(
+      "Cr%llu\n\r",
+      static_cast<unsigned long long>(services.refit_cost_credits));
+   door_label("Yard time: ");
+   door_number("%s\n\r\n\r", course_duration(services.refit_service_seconds).c_str());
+   print_refit_scope();
+
+   door_label("\n\rDamage repaired:\n\r");
+   bool repairable = false;
+   for(const auto& subsystem : snapshot.subsystems) {
+      if(subsystem.sustained_hits > 0 &&
+         subsystem.sustained_hits < subsystem.maximum_hits) {
+         door_identifier("  %s\n\r", safe_field(subsystem.label).c_str());
+         repairable = true;
+      }
+   }
+   if(!repairable) {
+      door_value("  None\n\r");
+   }
+
+   door_label("Destroyed installations not replaced:\n\r");
+   bool destroyed = false;
+   for(const auto& subsystem : snapshot.subsystems) {
+      if(subsystem.maximum_hits > 0 &&
+         subsystem.sustained_hits >= subsystem.maximum_hits) {
+         door_warning("  %s\n\r", safe_field(subsystem.label).c_str());
+         destroyed = true;
+      }
+   }
+   if(!destroyed) {
+      door_value("  None\n\r");
+   }
+
+   door_option_prompt({
+      "[Q/Enter] Cancel",
+      "[R] Authorize refit",
+      "[?] Help",
+   });
+   while(true) {
+      const auto key = od_get_key(TRUE);
+      if(key == 'r' || key == 'R') {
+         return true;
+      }
+      if(key == 'q' || key == 'Q' || key == '\r' || key == '\n') {
+         return false;
+      }
+   }
+}
+
 void show_ship_manager(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
@@ -4066,6 +4135,19 @@ void show_ship_manager(
             "%s until %s\n\r",
             ship_activity_name(snapshot.active_activity->kind),
             game_date(snapshot.active_activity->due_second).c_str());
+         if(snapshot.active_activity->kind == ct::ShipActivityKind::Refit) {
+            door_label("Refit charge: ");
+            door_number(
+               "Cr%llu\n\r",
+               static_cast<unsigned long long>(snapshot.active_activity->cost_credits));
+            door_label("Yard time: ");
+            door_number(
+               "%s\n\r",
+               course_duration(
+                  snapshot.active_activity->due_second -
+                  snapshot.active_activity->started_second).c_str());
+            print_refit_scope();
+         }
       }
       if(!snapshot.recovery_status.empty()) {
          door_label("Recovery watch: ");
@@ -4151,6 +4233,15 @@ void show_ship_manager(
                request_id++);
             if(!services.refit_available) {
                throw std::runtime_error(services.refit_unavailable_reason);
+            }
+            snapshot = ct::get_ship_status(
+               connection, session_epoch, random_command_id(random), request_id++);
+            if(snapshot.ship_revision != services.ship_revision) {
+               throw std::runtime_error(
+                  "The ship record changed while the yard prepared its quotation; request another quotation.");
+            }
+            if(!authorize_refit(snapshot, services)) {
+               continue;
             }
             ct::DockedServiceOrder order{};
             order.expected_ship_revision = services.ship_revision;

@@ -20370,7 +20370,6 @@ impl Store {
         }
         let refit_cost =
             crate::ship_condition::refit_price_credits(ship.maintenance.purchase_price_credits);
-        let entropy = crate::ship_condition::mix64(ship.ship_id ^ current ^ 0x5245_4649_5400);
         Ok(DockedServices {
             ship_revision: ship.revision,
             current_game_second: current,
@@ -20405,7 +20404,10 @@ impl Store {
                 String::new()
             },
             refit_cost_credits: refit_cost,
-            refit_service_seconds: crate::ship_condition::refit_duration_seconds(entropy),
+            refit_service_seconds: crate::ship_condition::refit_duration_for_revision(
+                ship.ship_id,
+                ship.revision,
+            ),
         })
     }
 
@@ -20832,7 +20834,10 @@ impl Store {
         let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
         let activity_id = crate::ship_condition::mix64(ship.ship_id ^ current ^ 0x5245_4649_5400);
         let due = current
-            .checked_add(crate::ship_condition::refit_duration_seconds(activity_id))
+            .checked_add(crate::ship_condition::refit_duration_for_revision(
+                ship.ship_id,
+                ship.revision,
+            ))
             .ok_or(StoreError::Corrupt("refit due time overflow"))?;
         ship.activity = Some(ShipActivityRecord {
             activity_id,
@@ -45208,6 +45213,157 @@ mod tests {
                 .unwrap()
                 .activity
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn quoted_refit_duration_and_completion_scope_are_durable() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut player = store.player_record(&identity()).unwrap().unwrap();
+        let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        player.credits = u64::MAX / 4;
+
+        let repairable_index = ship
+            .subsystems
+            .iter()
+            .position(|subsystem| subsystem.maximum_hits > 1)
+            .unwrap();
+        let destroyed_index = ship
+            .subsystems
+            .iter()
+            .enumerate()
+            .find(|(index, subsystem)| *index != repairable_index && subsystem.maximum_hits > 0)
+            .map(|(index, _)| index)
+            .unwrap();
+        ship.subsystems[repairable_index].sustained_hits = 1;
+        ship.subsystems[repairable_index].battlefield_repair_hits = 1;
+        ship.subsystems[repairable_index].neglect_damage_hits = 1;
+        ship.subsystems[repairable_index].installed_second = 7;
+        ship.subsystems[repairable_index].calendar_age_months = 17;
+        ship.subsystems[repairable_index].operating_seconds = 12_345;
+        ship.subsystems[repairable_index].duty_cycles = 9;
+        ship.subsystems[repairable_index].skimming_cycles = 3;
+        ship.subsystems[destroyed_index].sustained_hits =
+            ship.subsystems[destroyed_index].maximum_hits;
+        ship.subsystems[destroyed_index].battlefield_repair_hits = 1;
+        let repairable_id = ship.subsystems[repairable_index].subsystem_id;
+        let destroyed_id = ship.subsystems[destroyed_index].subsystem_id;
+        let retained_installation = ship.subsystems[repairable_index].clone();
+        let destroyed_installation = ship.subsystems[destroyed_index].clone();
+        ship.latent_quirks.push(ShipQuirkRecord {
+            quirk_id: 900,
+            subsystem_id: repairable_id,
+            kind: ShipQuirkKind::TemperatureFault,
+            attached_second: 0,
+            manifested: false,
+            warranty_claimed: false,
+        });
+        ship.latent_quirks.push(ShipQuirkRecord {
+            quirk_id: 901,
+            subsystem_id: destroyed_id,
+            kind: ShipQuirkKind::JumpDriveDefect,
+            attached_second: 0,
+            manifested: false,
+            warranty_claimed: false,
+        });
+        let completed_before = ship.maintenance.completed_refits;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .players
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_player_record(&player),
+            )
+            .unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        txn.commit().unwrap();
+
+        let quote = {
+            let txn = store.env.read_txn().unwrap();
+            store.docked_services_in(&txn, &identity()).unwrap()
+        };
+        assert!(quote.refit_available);
+        let order = crate::wire::DockedServiceOrder {
+            expected_ship_revision: quote.ship_revision,
+            kind: DockedServiceOrderKind::Refit,
+        };
+        let mut txn = store.env.write_txn().unwrap();
+        let RuleResult::Applied(scheduled) = store
+            .commit_docked_service_in(&mut txn, &identity(), &order)
+            .unwrap()
+        else {
+            panic!("refit rejected")
+        };
+        txn.commit().unwrap();
+        assert!(scheduled.active_activity.is_some());
+        let activity = store
+            .ship_record(ship.ship_id)
+            .unwrap()
+            .unwrap()
+            .activity
+            .unwrap();
+        assert_eq!(
+            activity.due_second - activity.started_second,
+            quote.refit_service_seconds
+        );
+
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .process_ship_activity_in(&mut txn, activity.due_second, ship.ship_id)
+            .unwrap();
+        txn.commit().unwrap();
+        let refitted = store.ship_record(ship.ship_id).unwrap().unwrap();
+        let repairable = &refitted.subsystems[repairable_index];
+        assert_eq!(repairable.sustained_hits, 0);
+        assert_eq!(repairable.battlefield_repair_hits, 0);
+        assert_eq!(repairable.neglect_damage_hits, 0);
+        assert_eq!(
+            repairable.installed_second,
+            retained_installation.installed_second
+        );
+        assert_eq!(
+            repairable.calendar_age_months,
+            retained_installation.calendar_age_months
+        );
+        assert_eq!(
+            repairable.operating_seconds,
+            retained_installation.operating_seconds
+        );
+        assert_eq!(repairable.duty_cycles, retained_installation.duty_cycles);
+        assert_eq!(
+            repairable.skimming_cycles,
+            retained_installation.skimming_cycles
+        );
+        let destroyed = &refitted.subsystems[destroyed_index];
+        assert_eq!(destroyed.sustained_hits, destroyed.maximum_hits);
+        assert_eq!(destroyed.battlefield_repair_hits, 0);
+        assert_eq!(
+            destroyed.installed_second,
+            destroyed_installation.installed_second
+        );
+        assert_eq!(
+            destroyed.installation_generation,
+            destroyed_installation.installation_generation
+        );
+        assert_eq!(refitted.maintenance.completed_refits, completed_before + 1);
+        assert!(refitted.activity.is_none());
+        assert!(
+            !refitted
+                .latent_quirks
+                .iter()
+                .any(|quirk| quirk.quirk_id == 900)
+        );
+        assert!(
+            refitted
+                .latent_quirks
+                .iter()
+                .any(|quirk| quirk.quirk_id == 901)
         );
     }
 

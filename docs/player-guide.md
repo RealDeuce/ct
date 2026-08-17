@@ -371,7 +371,16 @@ arrears and the missed cycle can damage a subsystem.
 
 Battlefield patches, proper repairs, routine upkeep, refits, and component
 replacement are different kinds of work. A temporary patch does not remove
-underlying damage, and a refit does not suspend routine upkeep.
+underlying damage.
+
+Choosing **Begin refit** opens a quotation before any money is spent. It shows
+the operating-account charge, expected yard time, damage the yard will repair,
+and any destroyed installations that will remain destroyed. Authorizing the
+quotation begins the yard stay. Completion repairs non-destroyed damage,
+removes temporary battlefield patches, and may correct minor faults found in
+the overhaul. It does not replace a destroyed installation or reset an
+installation's age or use. Routine upkeep and its automatic charges continue
+during the refit.
 
 ### Task Management
 

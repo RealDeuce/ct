@@ -8,8 +8,9 @@ use std::time::{Duration, Instant};
 
 use cepheus_trader_server::engine::{BbsRegistry, Engine, EngineError};
 use cepheus_trader_server::store::{
-    FlightLegPurpose, FlightLegRecord, ShipLocationRecord, Store, StoreError,
+    BbsSettings, FlightLegPurpose, FlightLegRecord, ShipLocationRecord, Store, StoreError,
 };
+use cepheus_trader_server::universe::INITIAL_SYSTEMS;
 use cepheus_trader_server::wire::{
     Command as WireCommand, CommandRequest, EncounterFallback, EncounterPosture, EncounterState,
     PlayerIdentity, ResolveEncounterRequest,
@@ -1603,11 +1604,146 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         );
     }
 
+    // Prove that a refit can be reviewed and cancelled without spending, then
+    // authorized with its promised scope visible on the active operation. A
+    // deterministic disposable universe supplies a capable starting yard and
+    // keeps the canonical merchant free to depart afterward.
+    server.stop();
+    let refit_root = tempfile::tempdir().unwrap();
+    let refit_psk = [0xa2; 32];
+    {
+        let store = Store::open(refit_root.path()).unwrap();
+        let system_seeds = (0..INITIAL_SYSTEMS.len())
+            .map(|index| [140_u8.wrapping_add(index as u8); 32])
+            .collect::<Vec<_>>();
+        store
+            .initialize_universe(&[0xa5; 16], [0xa6; 16], &system_seeds, &[])
+            .unwrap();
+        let credential = store.add_bbs(&[0xa1; 16], "Refit Test", refit_psk).unwrap();
+        assert_eq!(credential.bbs_id, 1);
+        store
+            .configure_bbs(
+                1,
+                &[0xa3; 16],
+                0,
+                &BbsSettings {
+                    bbs_name: "Refit Test".into(),
+                    polity_name: "Yard Trials".into(),
+                    trade_combat: 0,
+                    chaos_order: 100,
+                },
+                [0xa4; 32],
+            )
+            .unwrap();
+    }
+    let refit_credential = refit_root.path().join("cepheus-trader.credential");
+    let mut refit_installation = Command::new(build.path().join("cepheus-trader-sysop"))
+        .args([
+            "--config",
+            refit_root
+                .path()
+                .join("cepheus-trader.conf")
+                .to_str()
+                .unwrap(),
+            "--server",
+            "127.0.0.1",
+            "--game-port",
+            &game_address.port().to_string(),
+            "--sysop-port",
+            &sysop_address.port().to_string(),
+            "init-credential",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        let input = refit_installation.stdin.as_mut().unwrap();
+        writeln!(input, "1").unwrap();
+        writeln!(input, "{}", "a2".repeat(32)).unwrap();
+    }
+    let refit_installation = refit_installation.wait_with_output().unwrap();
+    assert!(
+        refit_installation.status.success(),
+        "refit fixture installation failed: {}",
+        String::from_utf8_lossy(&refit_installation.stderr)
+    );
+    let mut refit_server = spawn_server(
+        &server_executable,
+        &game_address_text,
+        &admin_address_text,
+        &sysop_address_text,
+        refit_root.path(),
+    );
+    let refit_player = Command::new(build.path().join("cepheus-trader-client"))
+        .args([
+            "127.0.0.1",
+            &game_address.port().to_string(),
+            refit_credential.to_str().unwrap(),
+            "1",
+            "create-player",
+            "acacacacacacacacacacacacacacacac",
+            "Yard Captain",
+            "Promise Kept",
+            "Chief Engineer",
+            "First Officer",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        refit_player.status.success(),
+        "refit fixture player failed: {}",
+        String::from_utf8_lossy(&refit_player.stderr)
+    );
+    let mut refit_door = DoorSession::spawn(&door, refit_root.path(), "iso646", "40");
+    refit_door.send(b"\r");
+    let (refit_entry, _) = refit_door.wait_for_any(&["Docked Operations", "Arrival Packet -"]);
+    if refit_entry == 1 {
+        refit_door.send(b"q");
+        refit_door.wait_for("Arrival Communications Receipt");
+        refit_door.send(b"\r");
+        refit_door.wait_for("Docked Operations");
+    }
+    refit_door.send_through_page_prompt(
+        b"u",
+        "Captain's Command Console",
+        "Captain's Command Console",
+    );
+    refit_door.send(b"s");
+    refit_door.wait_for("Ship Status -");
+    refit_door.send(b"r");
+    refit_door.wait_for("Refit Quotation -");
+    refit_door.wait_for("Operating account charge:");
+    refit_door.wait_for("Destroyed installations not replaced:");
+    refit_door.wait_for("Authorize refit");
+    refit_door.send(b"q");
+    refit_door.wait_for_occurrences("Ship Status -", 2);
+    refit_door.send(b"r");
+    refit_door.wait_for_occurrences("Refit Quotation -", 2);
+    refit_door.send(b"r");
+    refit_door.wait_for_occurrences("Ship Status -", 3);
+    refit_door.wait_for("Active operation: Refit");
+    refit_door.wait_for("Refit charge:");
+    refit_door.wait_for("Installation age and use are retained");
+    refit_door.wait_for("Routine upkeep continues");
+    let refit_screen = normalized_display_text(&refit_door.terminate());
+    refit_server.stop();
+    for expected in [
+        "Refit Quotation -",
+        "Operating account charge:",
+        "Authorize refit",
+        "Active operation: Refit",
+        "Destroyed installations are not replaced",
+        "Routine upkeep continues",
+    ] {
+        assert!(refit_screen.contains(expected), "{refit_screen:?}");
+    }
+
     // Prove the Milestone 6 player boundary through the real TLS/OpenDoors
     // client without leaving the canonical merchant voyage in combat. The
     // clone starts from the same authenticated, created captain and is thrown
     // away after the assertions.
-    server.stop();
     let combat_root = tempfile::tempdir().unwrap();
     copy_directory(data.path(), combat_root.path());
     let local_contact_available = {
