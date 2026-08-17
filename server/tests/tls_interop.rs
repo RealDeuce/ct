@@ -1724,6 +1724,8 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     refit_door.send(b"r");
     refit_door.wait_for_occurrences("Ship Status -", 3);
     refit_door.wait_for("Active operation: Refit");
+    refit_door.wait_for("Completes: Day");
+    refit_door.wait_for("Time remaining:");
     refit_door.wait_for("Refit charge:");
     refit_door.wait_for("Installation age and use are retained");
     refit_door.wait_for("Routine upkeep continues");
@@ -1734,6 +1736,8 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Operating account charge:",
         "Authorize refit",
         "Active operation: Refit",
+        "Completes: Day",
+        "Time remaining:",
         "Destroyed installations are not replaced",
         "Routine upkeep continues",
     ] {

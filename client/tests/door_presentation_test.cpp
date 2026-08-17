@@ -180,6 +180,29 @@ int main() {
       check(maximum_visible_width(quotation_output) < columns);
    }
 
+   const std::string active_operation_status =
+      "Active operation: Refit\r\n"
+      "Completes: Day 286, 21:16:53\r\n"
+      "Time remaining: 3 d 04:17:22\r\n"
+      "Refit charge: Cr149,191\r\n"
+      "Yard time: 42 d 00:00:00\r\n";
+   for(const auto columns : {size_t{40}, size_t{80}}) {
+      const auto status_output = render(
+         ct::DoorProfile::Iso646,
+         columns,
+         24,
+         active_operation_status,
+         ct::DoorTextRole::Information);
+      for(const auto expected : {
+            "Active operation: Refit",
+            "Completes: Day 286, 21:16:53",
+            "Time remaining: 3 d 04:17:22",
+         }) {
+         check(status_output.find(expected) != std::string::npos);
+      }
+      check(maximum_visible_width(status_output) < columns);
+   }
+
    const std::string fuel_receipt =
       "Fueling complete.\r\n"
       "Loaded: 66.0 t of unrefined fuel\r\n"

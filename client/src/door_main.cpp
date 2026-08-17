@@ -4130,22 +4130,27 @@ void show_ship_manager(
          door_warning("expired\n\r");
       }
       if(snapshot.active_activity.has_value()) {
+         const auto& activity = *snapshot.active_activity;
+         const auto remaining_seconds =
+            activity.due_second > snapshot.current_game_second
+            ? activity.due_second - snapshot.current_game_second
+            : uint64_t{0};
          door_label("Active operation: ");
-         door_warning(
-            "%s until %s\n\r",
-            ship_activity_name(snapshot.active_activity->kind),
-            game_date(snapshot.active_activity->due_second).c_str());
-         if(snapshot.active_activity->kind == ct::ShipActivityKind::Refit) {
+         door_warning("%s\n\r", ship_activity_name(activity.kind));
+         door_label("Completes: ");
+         door_number("%s\n\r", game_date(activity.due_second).c_str());
+         door_label("Time remaining: ");
+         door_number("%s\n\r", course_duration(remaining_seconds).c_str());
+         if(activity.kind == ct::ShipActivityKind::Refit) {
             door_label("Refit charge: ");
             door_number(
                "Cr%llu\n\r",
-               static_cast<unsigned long long>(snapshot.active_activity->cost_credits));
+               static_cast<unsigned long long>(activity.cost_credits));
             door_label("Yard time: ");
             door_number(
                "%s\n\r",
                course_duration(
-                  snapshot.active_activity->due_second -
-                  snapshot.active_activity->started_second).c_str());
+                  activity.due_second - activity.started_second).c_str());
             print_refit_scope();
          }
       }
