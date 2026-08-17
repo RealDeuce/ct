@@ -854,4 +854,57 @@ bool DoorPresentation::write_hanging(
    return completed;
 }
 
+size_t DoorPresentation::display_width(const std::string_view text) const {
+   return encode_text(text, profile_).size();
+}
+
+bool DoorPresentation::write_ship_subsystem_row(
+   const char selector,
+   const std::string_view label,
+   const size_t label_width,
+   const std::string_view status,
+   const DoorTextRole status_role)
+{
+   // The label column is measured after profile encoding: ISO 646 expands
+   // characters such as '#' and CP437 contracts multi-byte UTF-8, so raw
+   // byte counts would leave the status column ragged.
+   constexpr size_t selector_cols = 3;  // selector plus ". "
+   constexpr size_t gutter_cols = 2;
+   const auto label_cols = display_width(label);
+   const auto status_cols = display_width(status);
+   const size_t reserved = selector_cols + gutter_cols + status_cols;
+   const size_t usable = content_columns() > reserved
+                            ? content_columns() - reserved
+                            : 0;
+   const auto column_width = std::min(label_width, usable);
+   const size_t pad = column_width > label_cols ? column_width - label_cols : 0;
+   const size_t prefix_cols = selector_cols + label_cols + pad + gutter_cols;
+   if(!write(std::string(1, selector), DoorTextRole::Number)) {
+      return false;
+   }
+   if(!write(". ", DoorTextRole::Label)) {
+      return false;
+   }
+   if(!write(label, DoorTextRole::Identifier)) {
+      return false;
+   }
+   if(!write(std::string(pad + gutter_cols, ' '), DoorTextRole::Label)) {
+      return false;
+   }
+   if(prefix_cols + status_cols > content_columns()) {
+      const auto indent =
+         content_columns() > status_cols ? content_columns() - status_cols : 0;
+      if(!write("\n", DoorTextRole::Normal)) {
+         return false;
+      }
+      if(!write(std::string(indent, ' '), DoorTextRole::Normal)) {
+         return false;
+      }
+   }
+   if(!write(status, status_role)) {
+      return false;
+   }
+   return write("\n", DoorTextRole::Normal);
+}
+
 }  // namespace ct

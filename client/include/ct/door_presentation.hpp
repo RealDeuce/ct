@@ -97,6 +97,13 @@ public:
                       size_t continuation_indent,
                       DoorTextRole role = DoorTextRole::Normal);
 
+   size_t display_width(std::string_view text) const;
+   bool write_ship_subsystem_row(char selector,
+                                 std::string_view label,
+                                 size_t label_width,
+                                 std::string_view status,
+                                 DoorTextRole status_role);
+
 private:
    void emit(std::string_view bytes);
    void flush();

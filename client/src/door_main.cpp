@@ -1159,7 +1159,7 @@ void print_wrapped_field(
    const std::string_view text,
    const ct::DoorTextRole role = ct::DoorTextRole::Information)
 {
-   const auto label_width = std::strlen(label);
+   const auto label_width = output().display_width(label);
    door_label("%s", label);
    output().write_hanging(safe_field(text), label_width, role);
    door_write("\n\r", role);
@@ -3449,7 +3449,8 @@ void show_ship_subsystem(
       door_heading("%s\n\r", safe_field(subsystem.label).c_str());
       door_heading(
          "%s\n\r\n\r",
-         std::string(safe_field(subsystem.label).size(), '=').c_str());
+         std::string(
+            output().display_width(safe_field(subsystem.label)), '=').c_str());
       door_label("Underlying damage: ");
       door_number(
          "%u/%u hits\n\r", subsystem.sustained_hits, subsystem.maximum_hits);
@@ -3526,25 +3527,37 @@ void show_ship_subsystems(
       const size_t first = page * page_size;
       const size_t last =
          std::min(first + page_size, snapshot.subsystems.size());
+      // A floor keeps the status column from shifting between pages when one
+      // page happens to hold only short labels.
+      const size_t minimum_label_width = 22;
+      size_t label_width = minimum_label_width;
+      for(size_t index = first; index < last; ++index) {
+         const auto len =
+            output().display_width(safe_field(snapshot.subsystems[index].label));
+         if(len > label_width) {
+            label_width = len;
+         }
+      }
       for(size_t index = first; index < last; ++index) {
          const auto& subsystem = snapshot.subsystems[index];
-         door_number("%c", crew_menu_key(index - first));
-         door_label(". ");
-         door_identifier("%-22s", safe_field(subsystem.label).c_str());
-         if(subsystem.sustained_hits == 0) {
-            door_value("Ready");
-         } else if(subsystem.battlefield_repair_hits > 0) {
-            door_warning(
-               "Patched %u/%u",
-               subsystem.sustained_hits,
-               subsystem.maximum_hits);
-         } else if(subsystem.sustained_hits > 0) {
-            door_warning(
-               "Damage %u/%u",
-               subsystem.sustained_hits,
-               subsystem.maximum_hits);
+         std::string status = "Ready";
+         auto status_role = ct::DoorTextRole::Value;
+         if(subsystem.sustained_hits > 0) {
+            status =
+               std::string(
+                  subsystem.battlefield_repair_hits > 0 ? "Patched " : "Damage ") +
+               std::to_string(subsystem.sustained_hits) + "/" +
+               std::to_string(subsystem.maximum_hits);
+            status_role = ct::DoorTextRole::Warning;
          }
-         od_printf("\n\r");
+         if(!output().write_ship_subsystem_row(
+               crew_menu_key(index - first),
+               safe_field(subsystem.label),
+               label_width,
+               status,
+               status_role)) {
+            break;
+         }
       }
       if(page_count > 1) {
          door_option_prompt({

@@ -710,4 +710,99 @@ int main() {
          {"[Q] Quit", "[B] Beta", "[?] Help", "[2] Two", "[< >] Page", "[A] Alpha"},
          80) ==
       "\n\r[2] Two  [< >] Page  [A] Alpha  [B] Beta  [Q] Quit  [?] Help: ");
+
+   const auto subsystem_row =
+      [](const ct::DoorProfile profile, const size_t columns,
+         const std::string& label, const size_t label_width,
+         const std::string& status,
+         const ct::DoorTextRole status_role) -> std::string {
+      std::string row;
+      ct::DoorPresentation presentation(
+         profile,
+         columns,
+         24,
+         [&row](const std::string_view bytes) { row.append(bytes); });
+      presentation.write_ship_subsystem_row(
+         'A', label, label_width, status, status_role);
+      return row;
+   };
+
+   const std::string hull_gap(20, ' ');
+   const std::string long_label = "Powered Armor Maintenance Workshop";
+   const std::string long_prefix = "A. " + long_label + "  ";
+
+   const struct {
+      ct::DoorProfile profile;
+      size_t columns;
+      std::string label;
+      size_t label_width;
+      std::string status;
+      ct::DoorTextRole status_role;
+      std::string expected;
+   } row_cases[] = {
+      {ct::DoorProfile::Iso646, 40, "Hull", 22, "Ready",
+       ct::DoorTextRole::Value, "A. Hull" + hull_gap + "Ready\r\n"},
+      {ct::DoorProfile::Iso646, 80, "Hull", 22, "Ready",
+       ct::DoorTextRole::Value, "A. Hull" + hull_gap + "Ready\r\n"},
+      {ct::DoorProfile::Iso646, 40, "Hull", 22, "Damage 3/5",
+       ct::DoorTextRole::Warning, "A. Hull" + hull_gap + "Damage 3/5\r\n"},
+      {ct::DoorProfile::Iso646, 80, "Hull", 22, "Damage 3/5",
+       ct::DoorTextRole::Warning, "A. Hull" + hull_gap + "Damage 3/5\r\n"},
+      {ct::DoorProfile::Iso646, 40, "Hull", 22, "Patched 3/5",
+       ct::DoorTextRole::Warning, "A. Hull" + hull_gap + "Patched 3/5\r\n"},
+      {ct::DoorProfile::Iso646, 80, "Hull", 22, "Patched 3/5",
+       ct::DoorTextRole::Warning, "A. Hull" + hull_gap + "Patched 3/5\r\n"},
+      // A label filling the 40-column row wraps, with the status right-aligned
+      // on the following line; the same row fits on one line at 80.
+      {ct::DoorProfile::Iso646, 40, long_label, 34, "Ready",
+       ct::DoorTextRole::Value,
+       long_prefix + "\r\n" + std::string(34, ' ') + "Ready\r\n"},
+      {ct::DoorProfile::Iso646, 80, long_label, 34, "Ready",
+       ct::DoorTextRole::Value, long_prefix + "Ready\r\n"},
+      {ct::DoorProfile::Iso646, 40, long_label, 34, "Damage 3/5",
+       ct::DoorTextRole::Warning,
+       long_prefix + "\r\n" + std::string(29, ' ') + "Damage 3/5\r\n"},
+      {ct::DoorProfile::Iso646, 80, long_label, 34, "Damage 3/5",
+       ct::DoorTextRole::Warning, long_prefix + "Damage 3/5\r\n"},
+      {ct::DoorProfile::Iso646, 40, long_label, 34, "Patched 3/5",
+       ct::DoorTextRole::Warning,
+       long_prefix + "\r\n" + std::string(28, ' ') + "Patched 3/5\r\n"},
+      {ct::DoorProfile::Iso646, 80, long_label, 34, "Patched 3/5",
+       ct::DoorTextRole::Warning, long_prefix + "Patched 3/5\r\n"},
+      // ISO 646 expands '#' to "No.", so a raw byte count would push the
+      // status column three places right for catalog labels containing one.
+      {ct::DoorProfile::Iso646, 80, "Cargo Bay", 22, "Ready",
+       ct::DoorTextRole::Value, "A. Cargo Bay" + std::string(15, ' ') + "Ready\r\n"},
+      {ct::DoorProfile::Iso646, 80, "Reactor #1", 22, "Ready",
+       ct::DoorTextRole::Value,
+       "A. Reactor No.1" + std::string(12, ' ') + "Ready\r\n"},
+      // CP437 contracts multi-byte UTF-8 back to a single byte.
+      {ct::DoorProfile::Cp437, 80, "R\xc3\xa9""acteur", 22, "Ready",
+       ct::DoorTextRole::Value,
+       "A. R\x82""acteur" + std::string(16, ' ') + "Ready\r\n"},
+      // Selector, punctuation and name keep their established roles.
+      {ct::DoorProfile::Iso646Color, 80, "Reactor #1", 22, "Ready",
+       ct::DoorTextRole::Value,
+       "\x1b[1;33mA\x1b[0m"
+       "\x1b[36m. \x1b[0m"
+       "\x1b[1;35mReactor No.1\x1b[0m"
+       "\x1b[36m" + std::string(12, ' ') + "\x1b[0m"
+       "\x1b[1;37mReady\x1b[0m"
+       "\x1b[0m\r\n\x1b[0m"},
+      // A label column wider than the terminal must not wrap a short label.
+      {ct::DoorProfile::Iso646, 40, "Hull", 34, "Ready",
+       ct::DoorTextRole::Value, "A. Hull" + std::string(27, ' ') + "Ready\r\n"},
+   };
+
+   for(const auto& row_case : row_cases) {
+      const auto rendered = subsystem_row(
+         row_case.profile,
+         row_case.columns,
+         row_case.label,
+         row_case.label_width,
+         row_case.status,
+         row_case.status_role);
+      check(rendered == row_case.expected);
+      check(maximum_visible_width(rendered) < row_case.columns);
+   }
 }
