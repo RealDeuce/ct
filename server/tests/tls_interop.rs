@@ -678,7 +678,7 @@ fn complete_arrival_and_trade(
     if strip_ecma48(&supplies).contains("P) Provisions") {
         session.wait_for("Monthly packages (Q to");
         session.send(b"1\r");
-        session.wait_for("Ship's stores have been loaded");
+        session.wait_for("Provisioning complete");
     } else {
         session.wait_for("No bonded chandlery");
     }
@@ -2181,6 +2181,19 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
             }
         }
         if !completed_screen.contains("No bonded chandlery") {
+            for expected in [
+                "Provisioning complete",
+                "Monthly packages:",
+                "Person-days loaded:",
+                "Life-support stores:",
+                "Charge:",
+                "Paid from:",
+                "Restricted operating:",
+                "Liquid credits:",
+                "Balance after purchase:",
+            ] {
+                assert!(completed_screen.contains(expected), "{completed_screen:?}");
+            }
             // A monthly package may refill exactly to the pre-approach level
             // when the ship was already close to its stores capacity.
             assert!(ship.provisions.person_days_remaining >= arrival_provisions);

@@ -531,9 +531,21 @@ struct FuelPurchaseReceipt {
    uint64_t liquid_balance_credits;
 };
 
+struct ProvisionPurchaseReceipt {
+   uint16_t packages;
+   uint64_t person_days_loaded;
+   uint64_t person_days_remaining;
+   uint64_t capacity_person_days;
+   uint64_t cost_credits;
+   uint64_t restricted_payment_credits;
+   uint64_t liquid_payment_credits;
+   uint64_t restricted_balance_credits;
+   uint64_t liquid_balance_credits;
+};
+
 struct DockedServiceReceipt {
    ShipStatusSnapshot ship_status;
-   std::optional<FuelPurchaseReceipt> fuel_purchase;
+   std::variant<std::monostate, FuelPurchaseReceipt, ProvisionPurchaseReceipt> detail;
 };
 
 struct DockedSnapshot {

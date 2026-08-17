@@ -8147,35 +8147,60 @@ std::optional<ct::TravelStatus> run_fuel_service(
       if(receipt.ship_status.phase == ct::PlayerPhase::Interplanetary) {
          return ct::get_travel_status(connection, session_epoch, random_command_id(random), request_id++);
       }
-      if(receipt.fuel_purchase) {
-         const auto& fuel = *receipt.fuel_purchase;
-         const auto* fuel_name = fuel.kind == ct::DockedFuelServiceKind::Refined
+      if(const auto* fuel = std::get_if<ct::FuelPurchaseReceipt>(&receipt.detail)) {
+         const auto* fuel_name = fuel->kind == ct::DockedFuelServiceKind::Refined
                                  ? "refined"
                                  : "unrefined";
          door_success("\n\rFueling complete.\n\r");
          door_label("Loaded: ");
-         door_number("%.1f t", fuel.quantity_millitons / 1000.0);
+         door_number("%.1f t", fuel->quantity_millitons / 1000.0);
          door_label(" of ");
          door_identifier("%s fuel\n\r", fuel_name);
          door_label("Tanks: ");
-         door_number("%.1f/%.1f t\n\r", fuel.current_fuel_millitons / 1000.0,
-                     fuel.fuel_capacity_millitons / 1000.0);
+         door_number("%.1f/%.1f t\n\r", fuel->current_fuel_millitons / 1000.0,
+                     fuel->fuel_capacity_millitons / 1000.0);
          door_label("Unrefined aboard: ");
-         door_number("%.1f t\n\r", fuel.unrefined_fuel_millitons / 1000.0);
+         door_number("%.1f t\n\r", fuel->unrefined_fuel_millitons / 1000.0);
          door_label("Charge: ");
-         door_number("Cr%llu\n\r", static_cast<unsigned long long>(fuel.cost_credits));
+         door_number("Cr%llu\n\r", static_cast<unsigned long long>(fuel->cost_credits));
          door_label("Paid from:\n\r  Restricted operating: ");
          door_number("Cr%llu\n\r",
-                     static_cast<unsigned long long>(fuel.restricted_payment_credits));
+                     static_cast<unsigned long long>(fuel->restricted_payment_credits));
          door_label("  Liquid credits: ");
          door_number("Cr%llu\n\r",
-                     static_cast<unsigned long long>(fuel.liquid_payment_credits));
+                     static_cast<unsigned long long>(fuel->liquid_payment_credits));
          door_label("Balance after purchase:\n\r  Restricted operating: ");
          door_number("Cr%llu\n\r",
-                     static_cast<unsigned long long>(fuel.restricted_balance_credits));
+                     static_cast<unsigned long long>(fuel->restricted_balance_credits));
          door_label("  Liquid credits: ");
          door_number("Cr%llu\n\r",
-                     static_cast<unsigned long long>(fuel.liquid_balance_credits));
+                     static_cast<unsigned long long>(fuel->liquid_balance_credits));
+      } else if(const auto* provisions =
+                   std::get_if<ct::ProvisionPurchaseReceipt>(&receipt.detail)) {
+         door_success("\n\rProvisioning complete.\n\r");
+         door_label("Monthly packages: ");
+         door_number("%u\n\r", static_cast<unsigned>(provisions->packages));
+         door_label("Person-days loaded: ");
+         door_number("%llu\n\r",
+                     static_cast<unsigned long long>(provisions->person_days_loaded));
+         door_label("Life-support stores: ");
+         door_number("%llu/%llu person-days\n\r",
+                     static_cast<unsigned long long>(provisions->person_days_remaining),
+                     static_cast<unsigned long long>(provisions->capacity_person_days));
+         door_label("Charge: ");
+         door_number("Cr%llu\n\r", static_cast<unsigned long long>(provisions->cost_credits));
+         door_label("Paid from:\n\r  Restricted operating: ");
+         door_number("Cr%llu\n\r",
+                     static_cast<unsigned long long>(provisions->restricted_payment_credits));
+         door_label("  Liquid credits: ");
+         door_number("Cr%llu\n\r",
+                     static_cast<unsigned long long>(provisions->liquid_payment_credits));
+         door_label("Balance after purchase:\n\r  Restricted operating: ");
+         door_number("Cr%llu\n\r",
+                     static_cast<unsigned long long>(provisions->restricted_balance_credits));
+         door_label("  Liquid credits: ");
+         door_number("Cr%llu\n\r",
+                     static_cast<unsigned long long>(provisions->liquid_balance_credits));
       } else {
          door_success("\n\rShip's stores have been loaded and the account settled.\n\r");
       }

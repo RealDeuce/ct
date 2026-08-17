@@ -320,8 +320,9 @@ passengers; passengers travelling in low berths do not consume them while
 frozen. Berth charges and other immediate obligations may be settled when the
 ship departs. After a port fuel purchase, the fueling receipt lists the amount
 loaded, tank state, total charge, the restricted and liquid amounts used, and
-both remaining balances. Keep a reserve instead of committing every credit to
-cargo.
+both remaining balances. A chandlery receipt likewise lists the monthly packages
+and person-days loaded, resulting life-support stores, charge, payment split, and
+remaining balances. Keep a reserve instead of committing every credit to cargo.
 
 ## Universal command console
 

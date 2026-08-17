@@ -709,9 +709,29 @@ pub struct FuelPurchaseReceipt {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProvisionPurchaseReceipt {
+    pub packages: u16,
+    pub person_days_loaded: u64,
+    pub person_days_remaining: u64,
+    pub capacity_person_days: u64,
+    pub cost_credits: u64,
+    pub restricted_payment_credits: u64,
+    pub liquid_payment_credits: u64,
+    pub restricted_balance_credits: u64,
+    pub liquid_balance_credits: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DockedServiceReceiptDetail {
+    Generic,
+    FuelPurchase(FuelPurchaseReceipt),
+    ProvisionPurchase(ProvisionPurchaseReceipt),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DockedServiceReceipt {
     pub ship_status: ShipStatusSnapshot,
-    pub fuel_purchase: Option<FuelPurchaseReceipt>,
+    pub detail: DockedServiceReceiptDetail,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4880,19 +4900,34 @@ fn set_docked_service_receipt(
     receipt: &DockedServiceReceipt,
 ) -> Result<(), WireError> {
     set_ship_status(builder.reborrow().init_ship_status(), &receipt.ship_status)?;
-    builder.set_has_fuel_purchase(receipt.fuel_purchase.is_some());
-    if let Some(source) = &receipt.fuel_purchase {
-        let mut target = builder.init_fuel_purchase();
-        target.set_kind(schema_docked_fuel_kind(source.kind));
-        target.set_quantity_millitons(source.quantity_millitons);
-        target.set_current_fuel_millitons(source.current_fuel_millitons);
-        target.set_unrefined_fuel_millitons(source.unrefined_fuel_millitons);
-        target.set_fuel_capacity_millitons(source.fuel_capacity_millitons);
-        target.set_cost_credits(source.cost_credits);
-        target.set_restricted_payment_credits(source.restricted_payment_credits);
-        target.set_liquid_payment_credits(source.liquid_payment_credits);
-        target.set_restricted_balance_credits(source.restricted_balance_credits);
-        target.set_liquid_balance_credits(source.liquid_balance_credits);
+    let mut builder = builder.init_detail();
+    match &receipt.detail {
+        DockedServiceReceiptDetail::Generic => builder.set_generic(()),
+        DockedServiceReceiptDetail::FuelPurchase(source) => {
+            let mut target = builder.init_fuel_purchase();
+            target.set_kind(schema_docked_fuel_kind(source.kind));
+            target.set_quantity_millitons(source.quantity_millitons);
+            target.set_current_fuel_millitons(source.current_fuel_millitons);
+            target.set_unrefined_fuel_millitons(source.unrefined_fuel_millitons);
+            target.set_fuel_capacity_millitons(source.fuel_capacity_millitons);
+            target.set_cost_credits(source.cost_credits);
+            target.set_restricted_payment_credits(source.restricted_payment_credits);
+            target.set_liquid_payment_credits(source.liquid_payment_credits);
+            target.set_restricted_balance_credits(source.restricted_balance_credits);
+            target.set_liquid_balance_credits(source.liquid_balance_credits);
+        }
+        DockedServiceReceiptDetail::ProvisionPurchase(source) => {
+            let mut target = builder.init_provision_purchase();
+            target.set_packages(source.packages);
+            target.set_person_days_loaded(source.person_days_loaded);
+            target.set_person_days_remaining(source.person_days_remaining);
+            target.set_capacity_person_days(source.capacity_person_days);
+            target.set_cost_credits(source.cost_credits);
+            target.set_restricted_payment_credits(source.restricted_payment_credits);
+            target.set_liquid_payment_credits(source.liquid_payment_credits);
+            target.set_restricted_balance_credits(source.restricted_balance_credits);
+            target.set_liquid_balance_credits(source.liquid_balance_credits);
+        }
     }
     Ok(())
 }

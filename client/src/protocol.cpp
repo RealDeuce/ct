@@ -890,11 +890,12 @@ DockedServiceReceipt decode_docked_service_receipt(const rpc::Response::Reader r
          response.getCommittedSequence(),
          response.getRevision(),
          decode_response_phase(response.getPhase())),
-      .fuel_purchase = std::nullopt,
+      .detail = std::monostate{},
    };
-   if(source.getHasFuelPurchase()) {
-      const auto fuel = source.getFuelPurchase();
-      result.fuel_purchase = FuelPurchaseReceipt{
+   const auto detail = source.getDetail();
+   if(detail.isFuelPurchase()) {
+      const auto fuel = detail.getFuelPurchase();
+      result.detail = FuelPurchaseReceipt{
          .kind = decode_docked_fuel_kind(fuel.getKind()),
          .quantity_millitons = fuel.getQuantityMillitons(),
          .current_fuel_millitons = fuel.getCurrentFuelMillitons(),
@@ -906,6 +907,21 @@ DockedServiceReceipt decode_docked_service_receipt(const rpc::Response::Reader r
          .restricted_balance_credits = fuel.getRestrictedBalanceCredits(),
          .liquid_balance_credits = fuel.getLiquidBalanceCredits(),
       };
+   } else if(detail.isProvisionPurchase()) {
+      const auto provisions = detail.getProvisionPurchase();
+      result.detail = ProvisionPurchaseReceipt{
+         .packages = provisions.getPackages(),
+         .person_days_loaded = provisions.getPersonDaysLoaded(),
+         .person_days_remaining = provisions.getPersonDaysRemaining(),
+         .capacity_person_days = provisions.getCapacityPersonDays(),
+         .cost_credits = provisions.getCostCredits(),
+         .restricted_payment_credits = provisions.getRestrictedPaymentCredits(),
+         .liquid_payment_credits = provisions.getLiquidPaymentCredits(),
+         .restricted_balance_credits = provisions.getRestrictedBalanceCredits(),
+         .liquid_balance_credits = provisions.getLiquidBalanceCredits(),
+      };
+   } else if(!detail.isGeneric()) {
+      throw std::runtime_error("unknown docked-service receipt detail");
    }
    return result;
 }

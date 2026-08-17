@@ -211,6 +211,38 @@ int main() {
       check(maximum_visible_width(receipt_output) < columns);
    }
 
+   const std::string provision_receipt =
+      "Provisioning complete.\r\n"
+      "Monthly packages: 1\r\n"
+      "Person-days loaded: 90\r\n"
+      "Life-support stores: 570/1080 person-days\r\n"
+      "Charge: Cr6,000\r\n"
+      "Paid from:\r\n"
+      "  Restricted operating: Cr4,000\r\n"
+      "  Liquid credits: Cr2,000\r\n"
+      "Balance after purchase:\r\n"
+      "  Restricted operating: Cr145,191\r\n"
+      "  Liquid credits: Cr98,000\r\n";
+   for(const auto columns : {size_t{40}, size_t{80}}) {
+      const auto receipt_output = render(
+         ct::DoorProfile::Iso646,
+         columns,
+         24,
+         provision_receipt,
+         ct::DoorTextRole::Information);
+      for(const auto expected : {
+            "Monthly packages:",
+            "Person-days loaded:",
+            "Life-support stores:",
+            "Charge:",
+            "Paid from:",
+            "Balance after purchase:",
+         }) {
+         check(receipt_output.find(expected) != std::string::npos);
+      }
+      check(maximum_visible_width(receipt_output) < columns);
+   }
+
    const auto help_topics = ct::all_door_help();
    check(help_topics.size() ==
          static_cast<size_t>(ct::DoorHelpTopic::Count));

@@ -133,12 +133,14 @@ Docked-service quotations return the ship revision, exact named fuel sources,
 physical provision and ammunition state, repair/replacement choices, facility
 reasons, prices, and elapsed times. One commit presents that revision and a
 closed union selecting exactly one order. Its retained receipt contains the
-resulting ship status. A port-fuel receipt additionally records the fuel kind,
-quantity, tank state, price, exact restricted-versus-liquid payment allocation,
-and both resulting balances so a retry never reconstructs an accounting result
-from later observations. Ship status includes physical stores, component
-identity, replacement basis, installation generation, and manifested symptoms;
-it never exposes a latent quirk.
+resulting ship status and a closed detail union. A port-fuel receipt additionally
+records the fuel kind, quantity, tank state, price, exact restricted-versus-liquid
+payment allocation, and both resulting balances. A provision receipt records the
+monthly-package count, person-days loaded, resulting stores and capacity, price,
+the same exact payment allocation, and both resulting balances. A retry therefore
+never reconstructs an accounting result from later observations. Ship status
+includes physical stores, component identity, replacement basis, installation
+generation, and manifested symptoms; it never exposes a latent quirk.
 
 ## Authoritative flight state
 

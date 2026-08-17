@@ -54,17 +54,17 @@ use crate::wire::{
     CheckpointSnapshot, Command, CommandPersistence, CommandRequest, CommitFlightPlanRequest,
     CommodityLegality, CourseFuelSource, CoursePlan, CoursePlot, CourseWaypoint, DockedFuelService,
     DockedFuelServiceKind, DockedRepairService, DockedServiceOrderKind, DockedServiceReceipt,
-    DockedServices, DockedSnapshot, EncounterContact, EncounterFallback, EncounterKind,
-    EncounterPolicy, EncounterPosture, EncounterResult, EncounterSnapshot, EncounterState,
-    ErrorCode, FlightLocus, FlightPlanAction, FlightPlanPreview, FlightPlanProposal,
-    FlightPlanSnapshot, FlightPlanState, FlightPlanStep, FlightPlanWarning, FuelOperation,
-    FuelPurchaseReceipt, KnownDestinations, KnownSystemSummary, MarketOffer, MarketSnapshot,
-    MessageClassification, MessageItem, MessageManagement, OriginDossier, Outcome, OutcomeKind,
-    PlayerCreation, PlayerIdentity, PlayerPhase, PriceDistribution,
-    ShipActivityKind as WireShipActivityKind, ShipActivityStatus, ShipAmmunitionStatus,
-    ShipProvisionStatus, ShipStatusSnapshot, ShipSubsystemKind, ShipSubsystemStatus,
-    SystemMappingChoice, SystemMappingState, SystemMappingStatus, TaskRouteAssessment, TravelStage,
-    TravelStatus, WaypointAuthority,
+    DockedServiceReceiptDetail, DockedServices, DockedSnapshot, EncounterContact,
+    EncounterFallback, EncounterKind, EncounterPolicy, EncounterPosture, EncounterResult,
+    EncounterSnapshot, EncounterState, ErrorCode, FlightLocus, FlightPlanAction, FlightPlanPreview,
+    FlightPlanProposal, FlightPlanSnapshot, FlightPlanState, FlightPlanStep, FlightPlanWarning,
+    FuelOperation, FuelPurchaseReceipt, KnownDestinations, KnownSystemSummary, MarketOffer,
+    MarketSnapshot, MessageClassification, MessageItem, MessageManagement, OriginDossier, Outcome,
+    OutcomeKind, PlayerCreation, PlayerIdentity, PlayerPhase, PriceDistribution,
+    ProvisionPurchaseReceipt, ShipActivityKind as WireShipActivityKind, ShipActivityStatus,
+    ShipAmmunitionStatus, ShipProvisionStatus, ShipStatusSnapshot, ShipSubsystemKind,
+    ShipSubsystemStatus, SystemMappingChoice, SystemMappingState, SystemMappingStatus,
+    TaskRouteAssessment, TravelStage, TravelStatus, WaypointAuthority,
 };
 
 type SequenceDatabase = Database<U64<BE>, Bytes>;
@@ -20512,7 +20512,7 @@ impl Store {
         txn: &mut heed::RwTxn<'_>,
         identity: &PlayerIdentity,
         packages: u16,
-    ) -> Result<RuleResult<ShipStatusSnapshot>, StoreError> {
+    ) -> Result<RuleResult<ProvisionPurchaseReceipt>, StoreError> {
         if packages == 0 {
             return Ok(RuleResult::Rejected(
                 "at least one life-support package must be ordered".into(),
@@ -20553,11 +20553,13 @@ impl Store {
         let cost = spec
             .monthly_life_support_credits
             .saturating_mul(u64::from(packages));
-        if !self.charge_operating_account_in(txn, &mut player, ship.ship_id, cost)? {
+        let Some(payment) =
+            self.charge_operating_account_with_receipt_in(txn, &mut player, ship.ship_id, cost)?
+        else {
             return Ok(RuleResult::Rejected(
                 "the operating account cannot cover those life-support stores".into(),
             ));
-        }
+        };
         ship.provisions.person_days_remaining += quantity;
         ship.provisions.installed_capacity_person_days = maximum;
         ship.revision = ship.revision.saturating_add(1);
@@ -20568,7 +20570,17 @@ impl Store {
         )?;
         self.ships
             .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
-        Ok(RuleResult::Applied(self.ship_status_in(txn, identity)?))
+        Ok(RuleResult::Applied(ProvisionPurchaseReceipt {
+            packages,
+            person_days_loaded: quantity,
+            person_days_remaining: ship.provisions.person_days_remaining,
+            capacity_person_days: ship.provisions.installed_capacity_person_days,
+            cost_credits: cost,
+            restricted_payment_credits: payment.restricted_credits,
+            liquid_payment_credits: payment.liquid_credits,
+            restricted_balance_credits: payment.restricted_balance_credits,
+            liquid_balance_credits: payment.liquid_balance_credits,
+        }))
     }
 
     fn begin_replacement_in(
@@ -20679,14 +20691,16 @@ impl Store {
         if ship.revision != order.expected_ship_revision {
             return Ok(RuleResult::Rejected("the ship's stores or service ledger changed; review the current dockside quotation".into()));
         }
-        let mut fuel_purchase = None;
+        let mut detail = DockedServiceReceiptDetail::Generic;
         match &order.kind {
             DockedServiceOrderKind::Fuel {
                 kind: DockedFuelServiceKind::Refined,
                 quantity_millitons,
                 ..
             } => match self.buy_fuel_in(txn, identity, *quantity_millitons)? {
-                RuleResult::Applied(receipt) => fuel_purchase = Some(receipt),
+                RuleResult::Applied(receipt) => {
+                    detail = DockedServiceReceiptDetail::FuelPurchase(receipt)
+                }
                 RuleResult::Rejected(reason) => return Ok(RuleResult::Rejected(reason)),
             },
             DockedServiceOrderKind::Fuel {
@@ -20694,7 +20708,9 @@ impl Store {
                 quantity_millitons,
                 ..
             } => match self.buy_unrefined_fuel_in(txn, identity, *quantity_millitons)? {
-                RuleResult::Applied(receipt) => fuel_purchase = Some(receipt),
+                RuleResult::Applied(receipt) => {
+                    detail = DockedServiceReceiptDetail::FuelPurchase(receipt)
+                }
                 RuleResult::Rejected(reason) => return Ok(RuleResult::Rejected(reason)),
             },
             DockedServiceOrderKind::Fuel {
@@ -20743,7 +20759,7 @@ impl Store {
                         RuleResult::Applied(ship_status) => {
                             RuleResult::Applied(DockedServiceReceipt {
                                 ship_status,
-                                fuel_purchase: None,
+                                detail: DockedServiceReceiptDetail::Generic,
                             })
                         }
                         RuleResult::Rejected(reason) => RuleResult::Rejected(reason),
@@ -20753,10 +20769,12 @@ impl Store {
             DockedServiceOrderKind::Provisions { packages } => {
                 return Ok(
                     match self.buy_ship_provisions_in(txn, identity, *packages)? {
-                        RuleResult::Applied(ship_status) => {
+                        RuleResult::Applied(provision_purchase) => {
                             RuleResult::Applied(DockedServiceReceipt {
-                                ship_status,
-                                fuel_purchase: None,
+                                ship_status: self.ship_status_in(txn, identity)?,
+                                detail: DockedServiceReceiptDetail::ProvisionPurchase(
+                                    provision_purchase,
+                                ),
                             })
                         }
                         RuleResult::Rejected(reason) => RuleResult::Rejected(reason),
@@ -20769,7 +20787,7 @@ impl Store {
                         RuleResult::Applied(ship_status) => {
                             RuleResult::Applied(DockedServiceReceipt {
                                 ship_status,
-                                fuel_purchase: None,
+                                detail: DockedServiceReceiptDetail::Generic,
                             })
                         }
                         RuleResult::Rejected(reason) => RuleResult::Rejected(reason),
@@ -20780,7 +20798,7 @@ impl Store {
                 return Ok(match self.begin_refit_in(txn, identity)? {
                     RuleResult::Applied(ship_status) => RuleResult::Applied(DockedServiceReceipt {
                         ship_status,
-                        fuel_purchase: None,
+                        detail: DockedServiceReceiptDetail::Generic,
                     }),
                     RuleResult::Rejected(reason) => RuleResult::Rejected(reason),
                 });
@@ -20794,7 +20812,7 @@ impl Store {
                         RuleResult::Applied(ship_status) => {
                             RuleResult::Applied(DockedServiceReceipt {
                                 ship_status,
-                                fuel_purchase: None,
+                                detail: DockedServiceReceiptDetail::Generic,
                             })
                         }
                         RuleResult::Rejected(reason) => RuleResult::Rejected(reason),
@@ -20804,7 +20822,7 @@ impl Store {
         }
         Ok(RuleResult::Applied(DockedServiceReceipt {
             ship_status: self.ship_status_in(txn, identity)?,
-            fuel_purchase,
+            detail,
         }))
     }
 
@@ -34224,7 +34242,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(11);
+    bytes.push(12);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -34479,6 +34497,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 9
         && version != 10
         && version != 11
+        && version != 12
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -34664,7 +34683,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
             body: decoder.text()?,
         }),
         35 if version >= 11 => {
-            OutcomeKind::DockedServiceReceipt(decode_docked_service_receipt(&mut decoder)?)
+            OutcomeKind::DockedServiceReceipt(decode_docked_service_receipt(&mut decoder, version)?)
         }
         _ => return Err(StoreError::Corrupt("unknown outcome kind")),
     };
@@ -38227,61 +38246,110 @@ fn encode_docked_service_receipt_into(
     receipt: &DockedServiceReceipt,
 ) -> Result<(), StoreError> {
     encode_ship_status_into(bytes, &receipt.ship_status)?;
-    bytes.push(u8::from(receipt.fuel_purchase.is_some()));
-    if let Some(fuel) = &receipt.fuel_purchase {
-        bytes.push(match fuel.kind {
-            DockedFuelServiceKind::Refined => 0,
-            DockedFuelServiceKind::Unrefined => 1,
-            DockedFuelServiceKind::GasGiant => 2,
-            DockedFuelServiceKind::WildernessWater => 3,
-        });
-        for value in [
-            fuel.quantity_millitons,
-            fuel.current_fuel_millitons,
-            fuel.unrefined_fuel_millitons,
-            fuel.fuel_capacity_millitons,
-            fuel.cost_credits,
-            fuel.restricted_payment_credits,
-            fuel.liquid_payment_credits,
-            fuel.restricted_balance_credits,
-            fuel.liquid_balance_credits,
-        ] {
-            bytes.extend_from_slice(&value.to_be_bytes());
+    match &receipt.detail {
+        DockedServiceReceiptDetail::Generic => bytes.push(0),
+        DockedServiceReceiptDetail::FuelPurchase(fuel) => {
+            bytes.push(1);
+            encode_fuel_purchase_receipt_into(bytes, fuel);
+        }
+        DockedServiceReceiptDetail::ProvisionPurchase(provisions) => {
+            bytes.push(2);
+            bytes.extend_from_slice(&provisions.packages.to_be_bytes());
+            for value in [
+                provisions.person_days_loaded,
+                provisions.person_days_remaining,
+                provisions.capacity_person_days,
+                provisions.cost_credits,
+                provisions.restricted_payment_credits,
+                provisions.liquid_payment_credits,
+                provisions.restricted_balance_credits,
+                provisions.liquid_balance_credits,
+            ] {
+                bytes.extend_from_slice(&value.to_be_bytes());
+            }
         }
     }
     Ok(())
 }
 
+fn encode_fuel_purchase_receipt_into(bytes: &mut Vec<u8>, fuel: &FuelPurchaseReceipt) {
+    bytes.push(match fuel.kind {
+        DockedFuelServiceKind::Refined => 0,
+        DockedFuelServiceKind::Unrefined => 1,
+        DockedFuelServiceKind::GasGiant => 2,
+        DockedFuelServiceKind::WildernessWater => 3,
+    });
+    for value in [
+        fuel.quantity_millitons,
+        fuel.current_fuel_millitons,
+        fuel.unrefined_fuel_millitons,
+        fuel.fuel_capacity_millitons,
+        fuel.cost_credits,
+        fuel.restricted_payment_credits,
+        fuel.liquid_payment_credits,
+        fuel.restricted_balance_credits,
+        fuel.liquid_balance_credits,
+    ] {
+        bytes.extend_from_slice(&value.to_be_bytes());
+    }
+}
+
+fn decode_fuel_purchase_receipt(
+    decoder: &mut Decoder<'_>,
+) -> Result<FuelPurchaseReceipt, StoreError> {
+    let kind = match decoder.u8()? {
+        0 => DockedFuelServiceKind::Refined,
+        1 => DockedFuelServiceKind::Unrefined,
+        2 => DockedFuelServiceKind::GasGiant,
+        3 => DockedFuelServiceKind::WildernessWater,
+        _ => return Err(StoreError::Corrupt("unknown fuel purchase kind")),
+    };
+    Ok(FuelPurchaseReceipt {
+        kind,
+        quantity_millitons: decoder.u64()?,
+        current_fuel_millitons: decoder.u64()?,
+        unrefined_fuel_millitons: decoder.u64()?,
+        fuel_capacity_millitons: decoder.u64()?,
+        cost_credits: decoder.u64()?,
+        restricted_payment_credits: decoder.u64()?,
+        liquid_payment_credits: decoder.u64()?,
+        restricted_balance_credits: decoder.u64()?,
+        liquid_balance_credits: decoder.u64()?,
+    })
+}
+
 fn decode_docked_service_receipt(
     decoder: &mut Decoder<'_>,
+    outcome_version: u8,
 ) -> Result<DockedServiceReceipt, StoreError> {
     let ship_status = decode_ship_status(decoder)?;
-    let fuel_purchase = if decoder.u8()? != 0 {
-        let kind = match decoder.u8()? {
-            0 => DockedFuelServiceKind::Refined,
-            1 => DockedFuelServiceKind::Unrefined,
-            2 => DockedFuelServiceKind::GasGiant,
-            3 => DockedFuelServiceKind::WildernessWater,
-            _ => return Err(StoreError::Corrupt("unknown fuel purchase kind")),
-        };
-        Some(FuelPurchaseReceipt {
-            kind,
-            quantity_millitons: decoder.u64()?,
-            current_fuel_millitons: decoder.u64()?,
-            unrefined_fuel_millitons: decoder.u64()?,
-            fuel_capacity_millitons: decoder.u64()?,
-            cost_credits: decoder.u64()?,
-            restricted_payment_credits: decoder.u64()?,
-            liquid_payment_credits: decoder.u64()?,
-            restricted_balance_credits: decoder.u64()?,
-            liquid_balance_credits: decoder.u64()?,
-        })
+    let detail = if outcome_version == 11 {
+        if decoder.u8()? != 0 {
+            DockedServiceReceiptDetail::FuelPurchase(decode_fuel_purchase_receipt(decoder)?)
+        } else {
+            DockedServiceReceiptDetail::Generic
+        }
     } else {
-        None
+        match decoder.u8()? {
+            0 => DockedServiceReceiptDetail::Generic,
+            1 => DockedServiceReceiptDetail::FuelPurchase(decode_fuel_purchase_receipt(decoder)?),
+            2 => DockedServiceReceiptDetail::ProvisionPurchase(ProvisionPurchaseReceipt {
+                packages: decoder.u16()?,
+                person_days_loaded: decoder.u64()?,
+                person_days_remaining: decoder.u64()?,
+                capacity_person_days: decoder.u64()?,
+                cost_credits: decoder.u64()?,
+                restricted_payment_credits: decoder.u64()?,
+                liquid_payment_credits: decoder.u64()?,
+                restricted_balance_credits: decoder.u64()?,
+                liquid_balance_credits: decoder.u64()?,
+            }),
+            _ => return Err(StoreError::Corrupt("unknown docked-service receipt detail")),
+        }
     };
     Ok(DockedServiceReceipt {
         ship_status,
-        fuel_purchase,
+        detail,
     })
 }
 
@@ -46229,7 +46297,7 @@ mod tests {
         else {
             panic!("expected docked-service receipt");
         };
-        assert!(receipt.fuel_purchase.is_none());
+        assert_eq!(receipt.detail, DockedServiceReceiptDetail::Generic);
         let travel = store
             .travel_status_in(&store.env.read_txn().unwrap(), &identity())
             .unwrap();
@@ -46894,6 +46962,26 @@ mod tests {
             after.ship_status.provisions.person_days_remaining
                 > quotation.provisions.person_days_remaining
         );
+        let DockedServiceReceiptDetail::ProvisionPurchase(receipt) = after.detail else {
+            panic!("expected provision-purchase receipt");
+        };
+        assert_eq!(receipt.packages, 1);
+        assert_eq!(
+            receipt.person_days_loaded,
+            quotation.provision_package_person_days
+        );
+        assert_eq!(
+            receipt.person_days_remaining,
+            quotation.provisions.person_days_remaining + quotation.provision_package_person_days
+        );
+        assert_eq!(
+            receipt.capacity_person_days,
+            quotation.provisions.capacity_person_days
+        );
+        assert_eq!(
+            receipt.cost_credits,
+            quotation.provision_package_price_credits
+        );
         let mut txn = store.env.write_txn().unwrap();
         assert!(matches!(
             store
@@ -46970,7 +47058,9 @@ mod tests {
                 panic!("fuel purchase rejected");
             };
             txn.commit().unwrap();
-            let fuel = receipt.fuel_purchase.unwrap();
+            let DockedServiceReceiptDetail::FuelPurchase(fuel) = receipt.detail else {
+                panic!("expected fuel-purchase receipt");
+            };
             assert_eq!(fuel.kind, kind);
             assert_eq!(fuel.quantity_millitons, quantity);
             assert_eq!(fuel.current_fuel_millitons, capacity);
@@ -47000,6 +47090,98 @@ mod tests {
                 decode_finance_record(store.finances.get(&txn, &finance_key).unwrap().unwrap())
                     .unwrap();
             assert_eq!(finance.restricted_credits, fuel.restricted_balance_credits);
+        }
+    }
+
+    #[test]
+    fn provision_purchase_receipts_report_exact_account_allocation() {
+        for payment_case in 0..3 {
+            let dir = TempDir::new().unwrap();
+            let store = Store::open(dir.path()).unwrap();
+            initialize_player_fixture(&store);
+            let quotation = store
+                .docked_services_in(&store.env.read_txn().unwrap(), &identity())
+                .unwrap();
+            let cost = quotation.provision_package_price_credits;
+            let (restricted, liquid) = match payment_case {
+                0 => (cost + 100, 100),
+                1 => (0, cost + 100),
+                _ => (cost / 2, cost - cost / 2 + 100),
+            };
+            let mut player = store.player_record(&identity()).unwrap().unwrap();
+            let ship = store.ship_record(player.ship_id).unwrap().unwrap();
+            player.credits = liquid;
+            let finance_key = ship_finance_key(ship.ship_id);
+            let mut txn = store.env.write_txn().unwrap();
+            let mut finance =
+                decode_finance_record(store.finances.get(&txn, &finance_key).unwrap().unwrap())
+                    .unwrap();
+            finance.restricted_credits = restricted;
+            store
+                .players
+                .put(
+                    &mut txn,
+                    &encode_identity(&identity()),
+                    &encode_player_record(&player),
+                )
+                .unwrap();
+            store
+                .finances
+                .put(&mut txn, &finance_key, &encode_finance_record(&finance))
+                .unwrap();
+            txn.commit().unwrap();
+
+            let order = crate::wire::DockedServiceOrder {
+                expected_ship_revision: quotation.ship_revision,
+                kind: DockedServiceOrderKind::Provisions { packages: 1 },
+            };
+            let mut txn = store.env.write_txn().unwrap();
+            let RuleResult::Applied(receipt) = store
+                .commit_docked_service_in(&mut txn, &identity(), &order)
+                .unwrap()
+            else {
+                panic!("provision purchase rejected");
+            };
+            txn.commit().unwrap();
+            let DockedServiceReceiptDetail::ProvisionPurchase(provisions) = receipt.detail else {
+                panic!("expected provision-purchase receipt");
+            };
+            let expected_restricted = restricted.min(cost);
+            let expected_liquid = cost - expected_restricted;
+            assert_eq!(provisions.packages, 1);
+            assert_eq!(
+                provisions.person_days_loaded,
+                quotation.provision_package_person_days
+            );
+            assert_eq!(
+                provisions.person_days_remaining,
+                quotation.provisions.person_days_remaining
+                    + quotation.provision_package_person_days
+            );
+            assert_eq!(
+                provisions.capacity_person_days,
+                quotation.provisions.capacity_person_days
+            );
+            assert_eq!(provisions.cost_credits, cost);
+            assert_eq!(provisions.restricted_payment_credits, expected_restricted);
+            assert_eq!(provisions.liquid_payment_credits, expected_liquid);
+            assert_eq!(
+                provisions.restricted_balance_credits,
+                restricted - expected_restricted
+            );
+            assert_eq!(provisions.liquid_balance_credits, liquid - expected_liquid);
+            assert_eq!(
+                store.player_record(&identity()).unwrap().unwrap().credits,
+                provisions.liquid_balance_credits
+            );
+            let txn = store.env.read_txn().unwrap();
+            let finance =
+                decode_finance_record(store.finances.get(&txn, &finance_key).unwrap().unwrap())
+                    .unwrap();
+            assert_eq!(
+                finance.restricted_credits,
+                provisions.restricted_balance_credits
+            );
         }
     }
 
@@ -47061,9 +47243,66 @@ mod tests {
                 .unwrap();
             let delivery = store.process_next().unwrap().unwrap();
             assert!(!delivery.outcome.replayed);
+            // Version 11 used the same zero/one discriminator for generic and
+            // fuel receipts.  Existing retained outcomes must remain readable
+            // after version 12 adds the provision variant.
+            let mut version_eleven = encode_outcome(&delivery.outcome).unwrap();
+            version_eleven[0] = 11;
+            assert_eq!(decode_outcome(&version_eleven).unwrap(), delivery.outcome);
             let OutcomeKind::DockedServiceReceipt(committed) = delivery.outcome.kind else {
                 panic!("expected docked-service receipt");
             };
+            (epoch, purchase, committed)
+        };
+
+        let reopened = Store::open(dir.path()).unwrap();
+        assert_eq!(purchase.session_epoch, epoch);
+        reopened
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: purchase,
+            })
+            .unwrap();
+        let replay = reopened.process_next().unwrap().unwrap();
+        assert!(replay.outcome.replayed);
+        assert_eq!(
+            replay.outcome.kind,
+            OutcomeKind::DockedServiceReceipt(committed)
+        );
+    }
+
+    #[test]
+    fn provision_purchase_receipt_replays_across_restart() {
+        let dir = TempDir::new().unwrap();
+        let (epoch, purchase, committed) = {
+            let store = Store::open(dir.path()).unwrap();
+            let epoch = initialize_player_fixture(&store);
+            let quotation = store
+                .docked_services_in(&store.env.read_txn().unwrap(), &identity())
+                .unwrap();
+            let purchase = request(
+                epoch,
+                227,
+                Command::CommitDockedService(crate::wire::DockedServiceOrder {
+                    expected_ship_revision: quotation.ship_revision,
+                    kind: DockedServiceOrderKind::Provisions { packages: 1 },
+                }),
+            );
+            store
+                .enqueue(&QueuedCommand {
+                    identity: identity(),
+                    request: purchase.clone(),
+                })
+                .unwrap();
+            let delivery = store.process_next().unwrap().unwrap();
+            assert!(!delivery.outcome.replayed);
+            let OutcomeKind::DockedServiceReceipt(committed) = delivery.outcome.kind else {
+                panic!("expected docked-service receipt");
+            };
+            assert!(matches!(
+                &committed.detail,
+                DockedServiceReceiptDetail::ProvisionPurchase(_)
+            ));
             (epoch, purchase, committed)
         };
 

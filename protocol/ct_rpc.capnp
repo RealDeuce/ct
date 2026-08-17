@@ -707,10 +707,25 @@ struct FuelPurchaseReceipt {
   liquidBalanceCredits @9 :UInt64;
 }
 
+struct ProvisionPurchaseReceipt {
+  packages @0 :UInt16;
+  personDaysLoaded @1 :UInt64;
+  personDaysRemaining @2 :UInt64;
+  capacityPersonDays @3 :UInt64;
+  costCredits @4 :UInt64;
+  restrictedPaymentCredits @5 :UInt64;
+  liquidPaymentCredits @6 :UInt64;
+  restrictedBalanceCredits @7 :UInt64;
+  liquidBalanceCredits @8 :UInt64;
+}
+
 struct DockedServiceReceipt {
   shipStatus @0 :ShipStatusSnapshot;
-  fuelPurchase @1 :FuelPurchaseReceipt;
-  hasFuelPurchase @2 :Bool;
+  detail :union {
+    generic @1 :Void;
+    fuelPurchase @2 :FuelPurchaseReceipt;
+    provisionPurchase @3 :ProvisionPurchaseReceipt;
+  }
 }
 
 struct ShipActivityStatus {
