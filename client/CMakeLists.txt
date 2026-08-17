@@ -472,6 +472,7 @@ add_library(
   src/bbs_config.cpp
   src/bbs_credential.cpp
   src/crypto.cpp
+  src/first_watch.cpp
   src/player_identity_registry.cpp
   src/protocol.cpp
   src/sysop_protocol.cpp
@@ -598,6 +599,27 @@ if(BUILD_TESTING)
   add_test(
     NAME ct-player-identity-registry
     COMMAND ct-player-identity-registry-test
+  )
+
+  add_executable(
+    ct-first-watch-test
+    tests/first_watch_test.cpp
+  )
+  target_link_libraries(
+    ct-first-watch-test
+    PRIVATE ct-client-core
+  )
+  target_compile_options(
+    ct-first-watch-test
+    PRIVATE
+      -Wall
+      -Wextra
+      -Wpedantic
+      -Werror
+  )
+  add_test(
+    NAME ct-first-watch
+    COMMAND ct-first-watch-test
   )
 
   add_executable(

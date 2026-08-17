@@ -5,6 +5,7 @@
 #include "ct/crypto.hpp"
 #include "ct/door_help.hpp"
 #include "ct/door_presentation.hpp"
+#include "ct/first_watch.hpp"
 #include "ct/legal_text.hpp"
 #include "ct/player_identity_registry.hpp"
 #include "ct/protocol.hpp"
@@ -103,6 +104,14 @@ uint32_t local_identity_bbs_id = 0;
 uint32_t local_identity_player_id = 0;
 bool local_orientation_shown = false;
 bool page_pauses_enabled = true;
+ct::FirstWatchPreferenceState first_watch_state;
+bool first_watch_launch_pending = false;
+bool first_watch_preferences_recovered = false;
+
+struct FlightPlanEditorResult {
+   bool previewed = false;
+   std::optional<ct::TravelStatus> travel;
+};
 
 enum class HelpPageCommand {
    None,
@@ -143,7 +152,11 @@ void wait_for_enter(const char* destination = "Previous menu");
 bool confirm_return_to_bbs();
 void show_context_help();
 void show_help_browser(ct::HelpLevel& level);
-void show_player_preferences();
+bool show_player_preferences(ct::PlayerPhase phase);
+void run_first_watch(ct::TlsConnection& connection,
+                     ct::ServerHello& hello,
+                     ct::CommandIdGenerator& random,
+                     uint64_t& request_id);
 int door_get_key(BOOL wait);
 
 ct::DoorPresentation& output()
@@ -1546,7 +1559,58 @@ void show_help_browser_direct()
    restore_help_caller_prompt(saved_prompt, saved_prompt_on_current_line);
 }
 
-void show_player_preferences()
+const char* first_watch_disposition_name(
+   const ct::FirstWatchDisposition disposition)
+{
+   switch(disposition) {
+   case ct::FirstWatchDisposition::NotOffered:
+      return "Available";
+   case ct::FirstWatchDisposition::Active:
+      return "In progress";
+   case ct::FirstWatchDisposition::Hidden:
+      return "Hidden";
+   case ct::FirstWatchDisposition::LocallyComplete:
+      return "Complete";
+   }
+   return "Available";
+}
+
+void save_first_watch_state(const ct::FirstWatchPreferenceState state)
+{
+   first_watch_state = state;
+   try {
+      ct::set_player_first_watch_state(
+         local_identity_registry_path,
+         local_identity_bbs_id,
+         local_identity_player_id,
+         state);
+   } catch(const std::exception& error) {
+      door_error(
+         "First Watch progress could not be saved; it will remain available "
+         "for this call: %s\n\r",
+         safe_field(error.what()).c_str());
+   }
+}
+
+void mark_first_watch_seen(const ct::FirstWatchFact fact)
+{
+   auto state = first_watch_state;
+   ct::mark_first_watch_fact(state, fact);
+   save_first_watch_state(state);
+}
+
+void complete_first_watch()
+{
+   if(first_watch_state.disposition !=
+      ct::FirstWatchDisposition::Active) {
+      return;
+   }
+   auto state = first_watch_state;
+   state.disposition = ct::FirstWatchDisposition::LocallyComplete;
+   save_first_watch_state(state);
+}
+
+bool show_player_preferences(const ct::PlayerPhase phase)
 {
    const HelpScope help_scope(ct::DoorHelpTopic::PlayerPreferences);
    while(true) {
@@ -1558,8 +1622,22 @@ void show_player_preferences()
          default_help_level == ct::HelpLevel::Beginner ? "Beginner" : "Expert");
       door_label("Page pauses:  ");
       door_identifier("%s\n\r", page_pauses_enabled ? "Enabled" : "Disabled");
-      door_option_prompt({
-         "[H] Help level", "[P] Page pauses", "[Q/Enter] Console", "[?] Help"});
+      door_label("First Watch:  ");
+      door_identifier("%s\n\r", first_watch_disposition_name(
+         first_watch_state.disposition));
+      std::vector<std::string_view> options{
+         "[H] Help level", "[P] Page pauses", "[W] Begin/resume First Watch"};
+      if(first_watch_state.disposition == ct::FirstWatchDisposition::Active) {
+         options.emplace_back("[X] Hide First Watch");
+      }
+      if(first_watch_state.seen != 0 ||
+         first_watch_state.disposition ==
+            ct::FirstWatchDisposition::LocallyComplete) {
+         options.emplace_back("[R] Restart First Watch");
+      }
+      options.emplace_back("[Q/Enter] Console");
+      options.emplace_back("[?] Help");
+      door_option_prompt(options);
       const auto key = ::od_get_key(TRUE);
       if(key == 'h' || key == 'H') {
          echo_prompt_key(key, false);
@@ -1567,12 +1645,33 @@ void show_player_preferences()
       } else if(key == 'p' || key == 'P') {
          echo_prompt_key(key, false);
          edit_page_pauses();
+      } else if(key == 'w' || key == 'W' || key == 'r' || key == 'R') {
+         echo_prompt_key(key, false);
+         if(phase != ct::PlayerPhase::Docked) {
+            door_information(
+               "First Watch begins in port. It will remain available when "
+               "the command is next docked.\n\r");
+            wait_for_enter();
+            continue;
+         }
+         auto state = first_watch_state;
+         state.disposition = ct::FirstWatchDisposition::Active;
+         if(key == 'r' || key == 'R') {
+            state.seen = 0;
+         }
+         save_first_watch_state(state);
+         return true;
+      } else if(key == 'x' || key == 'X') {
+         echo_prompt_key(key, false);
+         auto state = first_watch_state;
+         state.disposition = ct::FirstWatchDisposition::Hidden;
+         save_first_watch_state(state);
       } else if(key == '?') {
          echo_prompt_key(key, true);
          show_context_help();
       } else if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
          echo_prompt_key(key, false);
-         return;
+         return false;
       }
    }
 }
@@ -2639,10 +2738,34 @@ bool run_player_creation(ct::TlsConnection& connection,
             door_value("%s", safe_field(created.creation.ship_name).c_str());
             door_information(".\n\rThe ship is ");
             door_success("docked and ready to depart");
-            door_information(".\n\r\n\r");
-            door_prompt("Press any key to enter the command console.\n\r");
-            od_get_key(TRUE);
-            return true;
+            door_information(
+               ".\n\r\n\rThe command library offers a guided First Watch: "
+               "a short inspection of the real ship, accounts, duties, and "
+               "departure procedure. It changes no rules and can be left at "
+               "any time.\n\r");
+            save_first_watch_state(ct::FirstWatchPreferenceState{});
+            const HelpScope first_watch_help(ct::DoorHelpTopic::FirstSession);
+            while(true) {
+               door_option_prompt({
+                  "[Enter] Begin First Watch",
+                  "[N] Docked operations",
+                  "[?] Help",
+               });
+               const auto first_watch_choice = od_get_key(TRUE);
+               if(first_watch_choice == '\r' || first_watch_choice == '\n') {
+                  auto state = first_watch_state;
+                  state.disposition = ct::FirstWatchDisposition::Active;
+                  save_first_watch_state(state);
+                  first_watch_launch_pending = true;
+                  return true;
+               }
+               if(first_watch_choice == 'n' || first_watch_choice == 'N') {
+                  auto state = first_watch_state;
+                  state.disposition = ct::FirstWatchDisposition::Hidden;
+                  save_first_watch_state(state);
+                  return true;
+               }
+            }
          }
       }
    }
@@ -7082,11 +7205,15 @@ void render_command_console(const ct::ServerHello& hello)
    door_number("T");
    door_label(". ");
    door_identifier("Task Management\n\r");
+   door_number("W");
+   door_label(". ");
+   door_identifier("Guided First Watch\n\r");
    door_option_prompt({
       "[A] Abandon captain",
       "[C/K/M/O/R/S/T] Manager",
       "[H] Help browser",
       "[P] Preferences",
+      "[W] First Watch",
       "[Enter] Refresh",
       "[X] Operational view",
       "[Q] Return to BBS",
@@ -7119,7 +7246,31 @@ bool run_command_console(
          show_help_browser_direct();
          render_command_console(hello);
       } else if(key == 'p' || key == 'P') {
-         show_player_preferences();
+         if(show_player_preferences(hello.phase)) {
+            run_first_watch(connection, hello, random, request_id);
+            if(hello.phase != ct::PlayerPhase::Docked) {
+               return false;
+            }
+         }
+         render_command_console(hello);
+      } else if(key == 'w' || key == 'W') {
+         if(hello.phase != ct::PlayerPhase::Docked) {
+            door_information(
+               "First Watch begins in port and will be available when the "
+               "command is next docked.\n\r");
+            wait_for_enter();
+         } else {
+            if(first_watch_state.disposition !=
+               ct::FirstWatchDisposition::Active) {
+               auto state = first_watch_state;
+               state.disposition = ct::FirstWatchDisposition::Active;
+               save_first_watch_state(state);
+            }
+            run_first_watch(connection, hello, random, request_id);
+            if(hello.phase != ct::PlayerPhase::Docked) {
+               return false;
+            }
+         }
          render_command_console(hello);
       } else if(key == 'a' || key == 'A') {
          if(abandon_captain(connection, hello, random, request_id)) {
@@ -8185,7 +8336,7 @@ bool replace_proposal_with_course(
    return true;
 }
 
-std::optional<ct::TravelStatus> run_flight_plan_editor(
+FlightPlanEditorResult run_flight_plan_editor(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
    ct::CommandIdGenerator& random,
@@ -8203,6 +8354,7 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
       .steps = current_plan.steps,
       .policy = current_plan.policy,
    };
+   bool previewed = false;
    while(true) {
       od_clr_scr();
       door_heading("Flight Plan\n\r===========\n\r\n\r");
@@ -8242,7 +8394,10 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
          continue;
       }
       if(key == 'Q') {
-         return std::nullopt;
+         return FlightPlanEditorResult{
+            .previewed = previewed,
+            .travel = std::nullopt,
+         };
       }
       if(key == 'A') {
          const uint64_t origin_system_id = proposal.steps.empty()
@@ -8530,6 +8685,7 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
             const auto preview = ct::preview_flight_plan(
                                     connection, session_epoch, proposal,
                                     random_command_id(random), request_id++);
+            previewed = true;
             od_clr_scr();
             door_heading("Flight Plan Preview\n\r===================\n\r\n\r");
             door_label("Estimated time: ");
@@ -8559,12 +8715,365 @@ std::optional<ct::TravelStatus> run_flight_plan_editor(
             ct::commit_flight_plan(
                connection, session_epoch, proposal, preview.preview_hash, true,
                random_command_id(random), request_id++);
-            return ct::get_travel_status(
-                      connection, session_epoch, random_command_id(random), request_id++);
+            return FlightPlanEditorResult{
+               .previewed = true,
+               .travel = ct::get_travel_status(
+                  connection, session_epoch, random_command_id(random), request_id++),
+            };
          } catch(const std::exception& error) {
             door_error("%s\n\r", safe_field(error.what()).c_str());
             wait_for_enter();
          }
+      }
+   }
+}
+
+void show_departure_authorized(const ct::TravelStatus& travel)
+{
+   od_clr_scr();
+   door_success("Departure authorized.\n\r\n\r");
+   door_label("Destination: ");
+   door_identifier("%s\n\r", safe_field(travel.destination_system_name).c_str());
+   door_label("Stage: ");
+   door_value("%s\n\r", travel_stage_name(travel.stage));
+   door_label("Next transition: ");
+   door_number("%s", game_date(travel.due_second).c_str());
+   door_label(" (");
+   door_number("%s", real_time_until(travel).c_str());
+   door_label(")\n\r");
+   door_information(
+      "\n\rThe flight plan has been filed. The ship will continue "
+      "on schedule if the captain leaves the bridge.\n\r");
+   wait_for_enter();
+}
+
+const char* first_watch_step_name(const ct::FirstWatchFact fact)
+{
+   switch(fact) {
+   case ct::FirstWatchFact::Welcome:
+      return "Taking the watch";
+   case ct::FirstWatchFact::Crew:
+      return "The people aboard";
+   case ct::FirstWatchFact::Ship:
+      return "The command itself";
+   case ct::FirstWatchFact::Finance:
+      return "Accounts and authority";
+   case ct::FirstWatchFact::Operations:
+      return "Orders and lawful authority";
+   case ct::FirstWatchFact::Messages:
+      return "What the command knows";
+   case ct::FirstWatchFact::Tasks:
+      return "Work and obligations";
+   case ct::FirstWatchFact::Opportunity:
+      return "A current opportunity";
+   case ct::FirstWatchFact::KnownUniverse:
+      return "The navigation library";
+   case ct::FirstWatchFact::Readiness:
+      return "Test the intended course";
+   case ct::FirstWatchFact::Departure:
+      return "Take the command out";
+   }
+   return "First Watch";
+}
+
+void render_first_watch_page(const ct::FirstWatchFact fact,
+                             const ct::FirstWatchCareer career)
+{
+   od_clr_scr();
+   door_heading("Guided First Watch\n\r");
+   door_heading("==================\n\r\n\r");
+   door_identifier("%s\n\r\n\r", first_watch_step_name(fact));
+   switch(fact) {
+   case ct::FirstWatchFact::Welcome:
+      door_information(
+         "This is the live command, not a practice copy. Time, traffic, mail, "
+         "markets, and other captains continue normally. First Watch only "
+         "points to the instruments already aboard; Q leaves it available "
+         "for later.\n\r");
+      break;
+   case ct::FirstWatchFact::Crew:
+      door_information(
+         "A ship acts through real people. Review who fills each appointment, "
+         "whether the required watches are covered, and who is tired, hurt, "
+         "unpaid, or still training.\n\r");
+      break;
+   case ct::FirstWatchFact::Ship:
+      if(career == ct::FirstWatchCareer::Navy) {
+         door_information(
+            "Review fuel, provisions, issued stores, installed machinery, "
+            "damage, and endurance. These are the command's physical limits "
+            "when carrying out its orders.\n\r");
+      } else if(career == ct::FirstWatchCareer::Privateer) {
+         door_information(
+            "Review fuel, provisions, hold space, installed machinery, "
+            "damage, and sponsor title. Endurance and capacity limit both a "
+            "commissioned cruise and any lawful work taken between cruises.\n\r");
+      } else {
+         door_information(
+            "Review fuel, provisions, cargo and passenger space, installed "
+            "machinery, damage, and title. These are physical limits on every "
+            "course and commercial promise.\n\r");
+      }
+      break;
+   case ct::FirstWatchFact::Finance:
+      if(career == ct::FirstWatchCareer::Privateer) {
+         door_information(
+            "Privateer accounts distinguish personal cash from restricted "
+            "operating credit. Review sponsor title, insurance, obligations, "
+            "and what the commission actually permits.\n\r");
+      } else if(career == ct::FirstWatchCareer::Navy) {
+         door_information(
+            "The vessel and service account belong to the institution. Review "
+            "the command's authority, issued funds, and duties rather than "
+            "treating the balance as personal money.\n\r");
+      } else {
+         door_information(
+            "Review liquid cash, reserved credit, title, insurance, debt, and "
+            "the next payment. A profitable voyage can still fail if the "
+            "command cannot pay to load or leave port.\n\r");
+      }
+      break;
+   case ct::FirstWatchFact::Operations:
+      if(career == ct::FirstWatchCareer::Navy) {
+         door_information(
+            "Operations is the command's duty desk. Review issued orders, "
+            "service standing, local traffic, and the limits of naval "
+            "authority. The next course should serve the current order rather "
+            "than search for commercial freight or passengers.\n\r");
+      } else {
+         door_information(
+            "Operations records commissions, sponsor standing, warrants, "
+            "lawful targets, local traffic, and the limits of the command's "
+            "authority. Reading it does not require accepting a combat "
+            "assignment.\n\r");
+      }
+      break;
+   case ct::FirstWatchFact::Messages:
+      if(career == ct::FirstWatchCareer::Navy) {
+         door_information(
+            "Orders and reports travel through a universe where distance "
+            "matters. Read their origins and dates, then compare them with the "
+            "current duty recorded in Operations.\n\r");
+      } else {
+         door_information(
+            "Messages are dated reports carried through a universe where "
+            "distance matters. Read origins and times before relying on an "
+            "offer, order, warrant, or market report.\n\r");
+      }
+      break;
+   case ct::FirstWatchFact::Tasks:
+      if(career == ct::FirstWatchCareer::Privateer) {
+         door_information(
+            "The Task Ledger shows ordinary lawful work separately from the "
+            "commission in Operations. Availability reasons and route "
+            "assessments describe this ship's present situation; accepting "
+            "supplementary work is optional.\n\r");
+      } else {
+         door_information(
+            "The Task Ledger separates available offers from obligations "
+            "already accepted. Availability reasons and route assessments "
+            "describe this ship's present situation; accepting work is "
+            "optional.\n\r");
+      }
+      break;
+   case ct::FirstWatchFact::Opportunity:
+      if(career == ct::FirstWatchCareer::Privateer) {
+         door_information(
+            "The library will look for lawful routine work that this command "
+            "may take between commissioned duties. It will show the real terms "
+            "but will neither reserve nor accept anything.\n\r");
+      } else {
+         door_information(
+            "The library will look for one routine, locally issued offer that "
+            "the current ship can reasonably inspect. It will show the real "
+            "terms but will neither reserve nor accept anything.\n\r");
+      }
+      break;
+   case ct::FirstWatchFact::KnownUniverse:
+      if(career == ct::FirstWatchCareer::Navy) {
+         door_information(
+            "The navigation library contains only knowledge this command has "
+            "received. Compare reachable systems with the current order, and "
+            "check the age and source of each record before plotting its next "
+            "duty course.\n\r");
+      } else {
+         door_information(
+            "The navigation library contains only knowledge this captain has "
+            "received. Inspect reachable systems and the age and source of "
+            "their records before choosing a destination.\n\r");
+      }
+      break;
+   case ct::FirstWatchFact::Readiness:
+      if(career == ct::FirstWatchCareer::Navy) {
+         door_information(
+            "Enter or import the intended duty course, then preview it. The "
+            "preview retains every ordinary warning about fuel, provisions, "
+            "crew, issued funds, law, and timing. You may revise or back out "
+            "without filing it.\n\r");
+      } else {
+         door_information(
+            "Enter or import a real course, then preview it. The preview "
+            "retains every ordinary warning about fuel, provisions, crew, "
+            "money, law, and deadlines. You may revise or back out without "
+            "filing it.\n\r");
+      }
+      break;
+   case ct::FirstWatchFact::Departure:
+      door_information(
+         "The command is ready for an ordinary Flight Plan decision. Filing a "
+         "valid plan ends First Watch; revising or backing out leaves the "
+         "guidance available.\n\r");
+      break;
+   }
+   door_option_prompt({
+      fact == ct::FirstWatchFact::Welcome
+         ? "[Enter] Continue"
+         : "[Enter] Open the ordinary screen",
+      fact == ct::FirstWatchFact::Departure
+         ? "[S] Leave departure for later"
+         : "[S] Skip this briefing",
+      "[H] Hide First Watch",
+      "[Q] Console",
+      "[?] Help",
+   });
+}
+
+void run_first_watch(ct::TlsConnection& connection,
+                     ct::ServerHello& hello,
+                     ct::CommandIdGenerator& random,
+                     uint64_t& request_id)
+{
+   const HelpScope help_scope(ct::DoorHelpTopic::GuidedFirstWatch);
+   if(hello.phase != ct::PlayerPhase::Docked ||
+      first_watch_state.disposition != ct::FirstWatchDisposition::Active) {
+      return;
+   }
+   const auto career_snapshot = ct::get_combat_career(
+      connection, hello.assigned_epoch, random_command_id(random), request_id++);
+   const auto career = ct::first_watch_career(career_snapshot.mode);
+   while(hello.phase == ct::PlayerPhase::Docked &&
+         first_watch_state.disposition == ct::FirstWatchDisposition::Active) {
+      const auto next = ct::next_first_watch_fact(first_watch_state, career);
+      if(!next) {
+         return;
+      }
+      const auto fact = *next;
+      render_first_watch_page(fact, career);
+      const auto key = static_cast<char>(std::toupper(
+         static_cast<unsigned char>(door_get_live_key())));
+      if(key == 'Q') {
+         return;
+      }
+      if(key == 'H') {
+         auto state = first_watch_state;
+         state.disposition = ct::FirstWatchDisposition::Hidden;
+         save_first_watch_state(state);
+         return;
+      }
+      if(key == 'S') {
+         if(fact == ct::FirstWatchFact::Departure) {
+            return;
+         }
+         mark_first_watch_seen(fact);
+         continue;
+      }
+      if(key != '\r' && key != '\n') {
+         continue;
+      }
+      switch(fact) {
+      case ct::FirstWatchFact::Welcome:
+         mark_first_watch_seen(fact);
+         break;
+      case ct::FirstWatchFact::Crew:
+         show_crew_manager(connection, hello.assigned_epoch, random, request_id);
+         mark_first_watch_seen(fact);
+         break;
+      case ct::FirstWatchFact::Ship:
+         show_ship_manager(connection, hello.assigned_epoch, random, request_id);
+         mark_first_watch_seen(fact);
+         break;
+      case ct::FirstWatchFact::Finance:
+         show_finance(connection, hello.assigned_epoch, random, request_id);
+         mark_first_watch_seen(fact);
+         break;
+      case ct::FirstWatchFact::Operations:
+         if(const auto phase = show_combat_operations(
+               connection, hello.assigned_epoch, random, request_id)) {
+            hello.phase = *phase;
+         }
+         mark_first_watch_seen(fact);
+         break;
+      case ct::FirstWatchFact::Messages:
+         show_message_manager(connection, hello.assigned_epoch, random, request_id);
+         mark_first_watch_seen(fact);
+         break;
+      case ct::FirstWatchFact::Tasks:
+         show_task_manager(connection, hello.assigned_epoch, random, request_id);
+         mark_first_watch_seen(fact);
+         break;
+      case ct::FirstWatchFact::Opportunity: {
+         const auto ledger = ct::get_task_ledger(
+            connection, hello.assigned_epoch, random_command_id(random), request_id++);
+         const auto charts = ct::get_known_destinations(
+            connection, hello.assigned_epoch, random_command_id(random), request_id++);
+         const auto recommendation =
+            ct::recommend_first_watch_offer(ledger, charts);
+         if(!recommendation) {
+            od_clr_scr();
+            door_heading("First Watch - Current Opportunity\n\r");
+            door_heading("=================================\n\r\n\r");
+            door_information(
+               "No routine local offer currently fits this command. Offers "
+               "change, and departure does not require accepting one. Continue "
+               "with the ship's present obligations and readiness.\n\r");
+            wait_for_enter("First Watch");
+         } else {
+            const auto offer = std::find_if(
+               ledger.local_offers.begin(), ledger.local_offers.end(),
+               [recommendation](const auto& item) {
+                  return item.offer_id == *recommendation;
+               });
+            const auto route = std::find_if(
+               ledger.route_assessments.begin(), ledger.route_assessments.end(),
+               [recommendation](const auto& item) {
+                  return item.offer_id == *recommendation;
+               });
+            if(offer == ledger.local_offers.end() ||
+               route == ledger.route_assessments.end()) {
+               door_information(
+                  "That offer is no longer in the current ledger. First Watch "
+                  "will continue without reserving another.\n\r");
+               wait_for_enter("First Watch");
+            } else {
+               show_task_offer_detail(
+                  *offer,
+                  pickup_slack(*offer, *route),
+                  task_offer_unavailable_reasons(*offer, *route));
+            }
+         }
+         mark_first_watch_seen(fact);
+         break;
+      }
+      case ct::FirstWatchFact::KnownUniverse:
+         show_known_universe_manager(
+            connection, hello.assigned_epoch, random, request_id);
+         mark_first_watch_seen(fact);
+         break;
+      case ct::FirstWatchFact::Readiness:
+      case ct::FirstWatchFact::Departure: {
+         const auto plan = run_flight_plan_editor(
+            connection, hello.assigned_epoch, random, request_id);
+         if(plan.travel) {
+            complete_first_watch();
+            show_departure_authorized(*plan.travel);
+            hello.phase = plan.travel->phase;
+            return;
+         }
+         if(fact == ct::FirstWatchFact::Readiness && plan.previewed) {
+            mark_first_watch_seen(fact);
+         }
+         break;
+      }
       }
    }
 }
@@ -8656,26 +9165,12 @@ ct::PlayerPhase run_docked_menu(
             return travel->phase;
          }
       } else if(key == 'D') {
-         const auto travel = run_flight_plan_editor(
+         const auto plan = run_flight_plan_editor(
                                 connection, hello.assigned_epoch, random, request_id);
-         if(travel) {
-            od_clr_scr();
-            door_success("Departure authorized.\n\r\n\r");
-            door_label("Destination: ");
-            door_identifier("%s\n\r",
-                            safe_field(travel->destination_system_name).c_str());
-            door_label("Stage: ");
-            door_value("%s\n\r", travel_stage_name(travel->stage));
-            door_label("Next transition: ");
-            door_number("%s", game_date(travel->due_second).c_str());
-            door_label(" (");
-            door_number("%s", real_time_until(*travel).c_str());
-            door_label(")\n\r");
-            door_information(
-               "\n\rThe flight plan has been filed. The ship will continue "
-               "on schedule if the captain leaves the bridge.\n\r");
-            wait_for_enter();
-            return travel->phase;
+         if(plan.travel) {
+            complete_first_watch();
+            show_departure_authorized(*plan.travel);
+            return plan.travel->phase;
          }
       } else if(key == 'A') {
          if(snapshot.authority_available) {
@@ -8761,8 +9256,10 @@ void show_travel_screen(
          continue;
       }
       if(key == 'F' || key == 'f') {
-         if(auto replanned = run_flight_plan_editor(connection, hello.assigned_epoch, random, request_id)) {
-            status = *replanned;
+         const auto replanned = run_flight_plan_editor(
+            connection, hello.assigned_epoch, random, request_id);
+         if(replanned.travel) {
+            status = *replanned.travel;
          }
          od_clr_scr();
          door_information("Flight Plan updated.\n\r");
@@ -9434,6 +9931,13 @@ void run_operational_loop(ct::TlsConnection& connection, ct::ServerHello& hello)
       if(latest_phase_status.has_value()) {
          hello.phase = latest_phase_status->phase;
       }
+      if(hello.phase == ct::PlayerPhase::Docked && first_watch_launch_pending) {
+         first_watch_launch_pending = false;
+         run_first_watch(connection, hello, random, request_id);
+         if(hello.phase != ct::PlayerPhase::Docked) {
+            continue;
+         }
+      }
       if(packet_generation != phase_event_generation) {
          if(hello.phase == ct::PlayerPhase::Docked ||
                hello.phase == ct::PlayerPhase::Interplanetary) {
@@ -9590,6 +10094,9 @@ int main(int argc, char** argv)
       default_help_level = local_identity.help_level;
       local_orientation_shown = local_identity.orientation_shown;
       page_pauses_enabled = local_identity.page_pauses;
+      first_watch_state = local_identity.first_watch;
+      first_watch_preferences_recovered =
+         local_identity.first_watch_preferences_recovered;
       output().set_paging_enabled(page_pauses_enabled);
       ct::TlsConnection connection(
          config.server,
@@ -9609,6 +10116,13 @@ int main(int argc, char** argv)
       event_connection = &connection;
       event_session_epoch = hello.assigned_epoch;
       render_hello(hello, connection);
+      if(first_watch_preferences_recovered) {
+         door_warning(
+            "Local First Watch preferences were unreadable and were reset. "
+            "The captain and universe records were not affected.\n\r");
+         wait_for_enter("Continue");
+         first_watch_preferences_recovered = false;
+      }
       bool session_finished = false;
       while(!session_finished) {
          try {

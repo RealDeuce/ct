@@ -200,6 +200,16 @@ durably disabled per local BBS identity in Player Preferences. Disabling them
 only streams paged output continuously; it never bypasses an action menu,
 confirmation, indexed-page control, or other required input.
 
+New-player interactive guidance follows
+[`docs/guided-first-watch.md`](docs/guided-first-watch.md): Guided First Watch
+uses the captain's real ship and shared live universe, keeps coaching prose and
+screen routing in the door, and performs every game action through the normal
+authoritative command. The initial field pilot uses existing typed snapshots
+and locally optional presentation progress; it neither creates a tutorial
+universe nor requires accepting a fixed offer. Server-owned tutorial
+persistence or recommendation is added only if field evidence justifies a
+coordinated protocol and storage change.
+
 Enhanced presentation uses stable semantic colours inspired by the
 high-contrast *TradeWars 2002* and *Yankee Trader* style: cyan labels,
 bright-white values, bright-yellow numbers, bright-magenta identifiers,

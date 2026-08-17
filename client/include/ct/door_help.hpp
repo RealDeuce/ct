@@ -13,6 +13,7 @@ enum class DoorHelpTopic : size_t {
    Orientation,
    Controls,
    FirstSession,
+   GuidedFirstWatch,
    HelpBrowser,
    PlayerPreferences,
    PlayerRegistration,

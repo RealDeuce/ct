@@ -105,23 +105,45 @@ until replacement personnel are assigned.
 The final confirmation creates the captain, ship, crew, and starting estate
 together. Nothing is registered until you answer `Y` on that screen.
 
+After registration, the command library offers **Guided First Watch**. It is
+an optional tour of your real crew, ship, accounts, messages, duty, charts,
+and Flight Plan procedure in the shared universe. The route follows the
+command: traders inspect commercial Tasks, privateers review their commission
+before any optional eligible work, and naval captains follow issued orders
+without being sent through cargo, passenger, or commercial-offer lessons. It
+does not stop time, reserve an offer, accept a Task, award a bonus, or relax a
+rule. Other captains and markets continue normally.
+
+Enter begins the watch; `S` skips one briefing, `Q` returns to the Console
+with progress available later, and `H` hides it. The Command Console's `W`
+choice and Player Preferences can begin or resume it. Preferences can also
+restart only the explanations without rewinding the captain or universe.
+First Watch completes only when a real Flight Plan is successfully filed;
+previewing and backing out does not launch the ship.
+
 ## A good first session
 
-Your new ship begins docked and ready to operate. The following route gives a
-useful tour without requiring a particular career or speculative purchase.
+Your new ship begins docked and ready to operate. Guided First Watch can lead
+you through the following route, or you can follow it yourself. The middle of
+the route depends on the command's career and authority.
 
 1. Open `U`, then inspect **Crew Management** and **Ship Management**. Note
-   duty coverage, fuel, cargo capacity, provisions, damage, and maintenance.
-2. Return to the docked menu and open **Jobs and Passage**. Read local offers,
-   but do not accept an obligation whose destination, deadline, or custody you
-   do not understand.
-3. Open the **Cargo Exchange**. Compare local stock with your carried market
-   reports and available hold space. You do not have to buy cargo merely
-   because it is offered.
-4. Check **Fuel and Supplies**. Leave enough fuel for the proposed route and
+   duty coverage, fuel, provisions, damage, endurance, and maintenance.
+2. Inspect **Banking and Accounts**. Distinguish personal cash from restricted
+   operating credit or institutional funds, and review title and obligations.
+3. Follow the command's duty path:
+   - Traders inspect **Jobs and Passage** and, when useful, the **Cargo
+     Exchange**. Do not accept an obligation whose route or terms you do not
+     understand, and do not buy cargo merely because it is offered.
+   - Privateers inspect **Operations** and the commission first. Ordinary Tasks
+     or cargo are supplementary choices only when the command is eligible.
+   - Naval captains inspect issued orders in **Operations**. They need not use
+     commercial cargo, passenger, or offer screens.
+4. Read **Messages**, paying attention to origin and age, then check **Fuel and
+   Supplies**. Leave enough fuel for the proposed route and
    enough provisions for everyone aboard.
 5. From `U`, open **Known Universe**. Inspect nearby systems and use the course
-   plotter before committing the ship to a destination.
+   plotter to relate the destination to the chosen work or issued duty.
 6. Choose **Depart**, build a flight plan, review its preview, and file it only
    when the destination, fuel use, and warnings make sense.
 

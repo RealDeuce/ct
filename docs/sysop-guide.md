@@ -318,12 +318,19 @@ bin/cepheus-trader-sysop identity-list
 ```
 
 Each line reports the numeric player ID, active or retired state, BBS record
-index (or `none`), default help level, page-pause mode, and account name. Help
-and page-pause preferences and the one-time orientation marker are stored per
-local player in this registry.
+index (or `none`), default help level, page-pause mode, First Watch state, and
+account name. Help,
+page-pause, one-time orientation, and Guided First Watch presentation state
+are stored per local player in this registry. First Watch state is optional
+and non-authoritative: losing it can repeat an explanation but cannot change
+the captain or shared universe.
 Older registries are read without manual conversion; their records begin in
 Beginner help mode with page pauses enabled and are rewritten in the current
-format when changed. If a BBS account is renamed or its record number changes,
+format when changed. Registry format 4 adds the First Watch disposition,
+presentation version, and viewed-objective bit set while retaining readers
+for formats 1 through 3. A client that rewrites a registry in format 4 must
+not be followed by an older client that does not understand that format.
+If a BBS account is renamed or its record number changes,
 update the existing mapping:
 
 ```console

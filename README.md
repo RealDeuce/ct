@@ -102,6 +102,7 @@ by the [release process](docs/release-process.md).
 - [Player documentation site](https://realdeuce.github.io/ct/)
 - [Development roadmap](ROADMAP.md)
 - [Player guide](docs/player-guide.md)
+- [Guided First Watch design](docs/guided-first-watch.md)
 - [BBS sysop installation and operations](docs/sysop-guide.md)
 - [Game design and implementation overview](docs/game-design.md)
 - [Milestone 7 field-alpha audit](docs/milestone-7-audit.md)

@@ -1393,6 +1393,31 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     assert!(reconnect_screen.contains("No.1 "));
     assert!(reconnect_screen.contains("Reserved:"));
 
+    // Existing captains are never interrupted by a newly installed tutorial,
+    // but may voluntarily open and hide the BBS-local guidance at 40 columns.
+    let mut first_watch_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
+    first_watch_door.send(b"\r");
+    first_watch_door.wait_for("Docked Operations");
+    assert!(!normalized_display_text(&first_watch_door.output()).contains("Guided First Watch"));
+    first_watch_door.send_through_page_prompt(
+        b"u",
+        "Captain's Command Console",
+        "Captain's Command Console",
+    );
+    first_watch_door.wait_for("Guided First Watch");
+    first_watch_door.send_through_page_prompt(b"w", "Taking the watch", "Taking the watch");
+    first_watch_door.send_through_page_prompt(b"\r", "The people aboard", "The people aboard");
+    first_watch_door.send_through_page_prompt(
+        b"h",
+        "Captain's Command Console",
+        "Captain's Command Console",
+    );
+    first_watch_door.send_through_page_prompt(b"x", "Docked Operations", "Docked Operations");
+    first_watch_door.return_to_bbs();
+    let first_watch_screen = normalized_display_text(&first_watch_door.finish());
+    assert!(first_watch_screen.contains("This is the live command"));
+    assert!(first_watch_screen.contains("The people aboard"));
+
     // Context help pages through the real door, then restores the exact
     // operational prompt that was active when the player pressed `?`.
     let mut help_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
@@ -1714,6 +1739,20 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let mut voyage_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     voyage_door.send(b"\r");
     voyage_door.wait_for("Docked Operations");
+    voyage_door.send_through_page_prompt(
+        b"u",
+        "Captain's Command Console",
+        "Captain's Command Console",
+    );
+    voyage_door.send(b"p");
+    voyage_door.wait_for("Player Preferences");
+    voyage_door.send_through_page_prompt(b"r", "Taking the watch", "Taking the watch");
+    voyage_door.send_through_page_prompt(
+        b"q",
+        "Captain's Command Console",
+        "Captain's Command Console",
+    );
+    voyage_door.send_through_page_prompt(b"x", "Docked Operations", "Docked Operations");
     voyage_door.send_through_page_prompt(b"c", "Find market", "Cargo Exchange -");
     voyage_door.send_through_page_prompt(b"b", "Offer (Q to cancel", "Offer (Q to cancel");
     voyage_door.send(b"1\r");
@@ -1740,6 +1779,14 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     voyage_door.send_through_page_prompt(b"\r", "Voyage Status -", "Voyage Status -");
     voyage_door.send_through_page_prompt(
         b"\r",
+        "Captain's Command Console",
+        "Captain's Command Console",
+    );
+    voyage_door.send(b"p");
+    voyage_door.wait_for("Player Preferences");
+    voyage_door.wait_for("First Watch:  Complete");
+    voyage_door.send_through_page_prompt(
+        b"q",
         "Captain's Command Console",
         "Captain's Command Console",
     );

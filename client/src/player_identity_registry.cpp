@@ -1,5 +1,6 @@
 #include "ct/player_identity_registry.hpp"
 #include "ct/crypto.hpp"
+#include "ct/first_watch.hpp"
 
 #include <algorithm>
 #include <array>
@@ -28,7 +29,7 @@ namespace ct {
 namespace {
 
 constexpr std::array<uint8_t, 8> MAGIC = {'C', 'T', 'I', 'D', 'M', 'A', 'P', 0};
-constexpr uint16_t FORMAT_VERSION = 3;
+constexpr uint16_t FORMAT_VERSION = 4;
 constexpr size_t DIGEST_BYTES = 32;
 constexpr size_t MAX_NAME_BYTES = 255;
 constexpr size_t MAX_RECORDS = 1'000'000;
@@ -84,6 +85,9 @@ std::vector<uint8_t> encode(const Registry& registry) {
       bytes.push_back(entry.help_level == HelpLevel::Expert ? 1 : 0);
       bytes.push_back(entry.orientation_shown ? 1 : 0);
       bytes.push_back(entry.page_pauses ? 1 : 0);
+      bytes.push_back(static_cast<uint8_t>(entry.first_watch.disposition));
+      put_u16(bytes, entry.first_watch.presentation_version);
+      put_u32(bytes, entry.first_watch.seen);
       put_u16(bytes, static_cast<uint16_t>(entry.name.size()));
       put_u32(bytes, entry.player_id);
       put_u32(bytes, entry.record_index.value_or(0));
@@ -110,7 +114,7 @@ Registry decode(const std::vector<uint8_t>& bytes, const uint32_t bbs_id) {
    }
    size_t offset = MAGIC.size();
    const auto version = get_u16(payload, offset);
-   if((version != 1 && version != 2 && version != FORMAT_VERSION) ||
+   if((version < 1 || version > FORMAT_VERSION) ||
       get_u16(payload, offset) != 0) {
       throw std::runtime_error("unsupported player identity registry format");
    }
@@ -129,7 +133,8 @@ Registry decode(const std::vector<uint8_t>& bytes, const uint32_t bbs_id) {
    }
    result.entries.reserve(count);
    for(uint32_t index = 0; index < count; ++index) {
-      const size_t entry_header_size = version == 1 ? 12 : version == 2 ? 14 : 15;
+      const size_t entry_header_size =
+         version == 1 ? 12 : version == 2 ? 14 : version == 3 ? 15 : 22;
       if(offset + entry_header_size > payload.size()) {
          throw std::runtime_error("truncated player identity registry entry");
       }
@@ -138,6 +143,8 @@ Registry decode(const std::vector<uint8_t>& bytes, const uint32_t bbs_id) {
       HelpLevel help_level = HelpLevel::Beginner;
       bool orientation_shown = false;
       bool page_pauses = true;
+      FirstWatchPreferenceState first_watch;
+      bool first_watch_preferences_recovered = false;
       if(version >= 2) {
          const auto encoded_help_level = payload[offset++];
          const auto encoded_orientation = payload[offset++];
@@ -156,6 +163,22 @@ Registry decode(const std::vector<uint8_t>& bytes, const uint32_t bbs_id) {
          }
          page_pauses = encoded_page_pauses != 0;
       }
+      if(version >= 4) {
+         const auto encoded_disposition = payload[offset++];
+         const auto presentation_version = get_u16(payload, offset);
+         const auto seen = get_u32(payload, offset);
+         if(encoded_disposition <=
+               static_cast<uint8_t>(FirstWatchDisposition::LocallyComplete) &&
+            presentation_version != 0) {
+            first_watch = FirstWatchPreferenceState{
+               .disposition = static_cast<FirstWatchDisposition>(encoded_disposition),
+               .presentation_version = presentation_version,
+               .seen = seen,
+            };
+         } else {
+            first_watch_preferences_recovered = true;
+         }
+      }
       const auto name_size = get_u16(payload, offset);
       const auto player_id = get_u32(payload, offset);
       const auto record_index = get_u32(payload, offset);
@@ -172,6 +195,8 @@ Registry decode(const std::vector<uint8_t>& bytes, const uint32_t bbs_id) {
          .help_level = help_level,
          .orientation_shown = orientation_shown,
          .page_pauses = page_pauses,
+         .first_watch = first_watch,
+         .first_watch_preferences_recovered = first_watch_preferences_recovered,
       });
       offset += name_size;
    }
@@ -576,6 +601,8 @@ LocalPlayerIdentity resolve_player_identity(
       .help_level = HelpLevel::Beginner,
       .orientation_shown = false,
       .page_pauses = true,
+      .first_watch = {},
+      .first_watch_preferences_recovered = false,
    });
    const auto created = registry.entries.back();
    file.replace(encode(registry));
@@ -649,6 +676,26 @@ void mark_player_orientation_shown(const std::string& path,
    LockedFile file(path, false);
    auto registry = load(file, bbs_id);
    active_by_id(registry, player_id).orientation_shown = true;
+   file.replace(encode(registry));
+}
+
+void set_player_first_watch_state(const std::string& path,
+                                  const uint32_t bbs_id,
+                                  const uint32_t player_id,
+                                  const FirstWatchPreferenceState state) {
+   if(static_cast<uint8_t>(state.disposition) >
+         static_cast<uint8_t>(FirstWatchDisposition::LocallyComplete) ||
+      state.presentation_version == 0) {
+      throw std::invalid_argument("invalid First Watch preference state");
+   }
+   LockedFile file(path, false);
+   auto registry = load(file, bbs_id);
+   auto& entry = active_by_id(registry, player_id);
+   const auto unknown_seen = entry.first_watch.seen & ~FIRST_WATCH_KNOWN_FACTS_MASK;
+   entry.first_watch = state;
+   entry.first_watch.seen =
+      unknown_seen | state.seen;
+   entry.first_watch_preferences_recovered = false;
    file.replace(encode(registry));
 }
 

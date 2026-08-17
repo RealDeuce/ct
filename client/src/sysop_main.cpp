@@ -29,6 +29,20 @@
 
 namespace {
 
+const char* first_watch_state_name(const ct::FirstWatchDisposition disposition) {
+   switch(disposition) {
+   case ct::FirstWatchDisposition::NotOffered:
+      return "first-watch-available";
+   case ct::FirstWatchDisposition::Active:
+      return "first-watch-active";
+   case ct::FirstWatchDisposition::Hidden:
+      return "first-watch-hidden";
+   case ct::FirstWatchDisposition::LocallyComplete:
+      return "first-watch-complete";
+   }
+   return "first-watch-available";
+}
+
 uint32_t parse_bbs_id(const std::string& text) {
    uint32_t value = 0;
    const auto [end, error] =
@@ -526,6 +540,8 @@ int main(int argc, char** argv) {
                                 ? "beginner"
                                 : "expert")
                          << '\t' << (entry.page_pauses ? "pauses" : "continuous")
+                         << '\t' << first_watch_state_name(
+                            entry.first_watch.disposition)
                          << '\t' << entry.name << '\n';
             }
             return 0;
