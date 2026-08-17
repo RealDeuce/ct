@@ -1251,8 +1251,7 @@ fn pay_finance_installment(player: &mut PlayerRecord, finance: &mut FinanceRecor
     player.credits -= liquid_payment;
     finance.principal_credits -= principal;
     player.debt_credits = player.debt_credits.saturating_sub(principal);
-    if finance.principal_credits == 0
-        && finance.title == crate::wire::ShipTitleKind::OwnedWithLien
+    if finance.principal_credits == 0 && finance.title == crate::wire::ShipTitleKind::OwnedWithLien
     {
         finance.title = crate::wire::ShipTitleKind::OwnedClear;
     }
@@ -17933,7 +17932,9 @@ impl Store {
             .transpose()?
             .ok_or(StoreError::Corrupt("ship finance record is missing"))?;
         if !finance.in_default {
-            return Ok(RuleResult::Rejected("this account is not in default".into()));
+            return Ok(RuleResult::Rejected(
+                "this account is not in default".into(),
+            ));
         }
         let (_, _, amount_due) = finance_installment_due(&finance);
         let insurance_from_restricted = finance
@@ -18942,17 +18943,13 @@ impl Store {
             in_default: finance.in_default,
             impound_order_known_locally: finance.impound_order_known_locally,
             credit_status: if finance.impound_order_known_locally {
-                if finance.principal_credits == 0
-                    && finance.monthly_insurance_escrow_credits != 0
-                {
+                if finance.principal_credits == 0 && finance.monthly_insurance_escrow_credits != 0 {
                     "A sponsor-insurance impound order has reached local authorities".into()
                 } else {
                     "A secured-credit impound order has reached local authorities".into()
                 }
             } else if finance.in_default {
-                if finance.principal_credits == 0
-                    && finance.monthly_insurance_escrow_credits != 0
-                {
+                if finance.principal_credits == 0 && finance.monthly_insurance_escrow_credits != 0 {
                     "Mandatory sponsor insurance is in default; an impound order has been filed"
                         .into()
                 } else {
@@ -46007,10 +46004,9 @@ mod tests {
         player.debt_credits = 0;
         let mut txn = store.env.write_txn().unwrap();
         let finance_key = ship_finance_key(ship.ship_id);
-        let mut finance = decode_finance_record(
-            store.finances.get(&txn, &finance_key).unwrap().unwrap(),
-        )
-        .unwrap();
+        let mut finance =
+            decode_finance_record(store.finances.get(&txn, &finance_key).unwrap().unwrap())
+                .unwrap();
         finance.title = crate::wire::ShipTitleKind::SponsorOwned;
         finance.principal_credits = 0;
         finance.monthly_payment_credits = 0;
@@ -46040,10 +46036,9 @@ mod tests {
         let after = store.player_record(&identity()).unwrap().unwrap();
         assert_eq!(after.credits, 10_000_000 - upkeep - payroll);
         let txn = store.env.read_txn().unwrap();
-        let finance = decode_finance_record(
-            store.finances.get(&txn, &finance_key).unwrap().unwrap(),
-        )
-        .unwrap();
+        let finance =
+            decode_finance_record(store.finances.get(&txn, &finance_key).unwrap().unwrap())
+                .unwrap();
         assert_eq!(finance.restricted_credits, 0);
         assert!(!finance.in_default);
     }
@@ -46076,10 +46071,9 @@ mod tests {
         });
         let finance_key = ship_finance_key(ship.ship_id);
         let mut txn = store.env.write_txn().unwrap();
-        let mut finance = decode_finance_record(
-            store.finances.get(&txn, &finance_key).unwrap().unwrap(),
-        )
-        .unwrap();
+        let mut finance =
+            decode_finance_record(store.finances.get(&txn, &finance_key).unwrap().unwrap())
+                .unwrap();
         finance.title = crate::wire::ShipTitleKind::SponsorOwned;
         finance.principal_credits = 0;
         finance.monthly_payment_credits = 0;
@@ -46128,10 +46122,9 @@ mod tests {
         assert_eq!(snapshot.restricted_credits, 30_513);
         assert_eq!(snapshot.liquid_credits, 0);
         let txn = store.env.read_txn().unwrap();
-        let finance = decode_finance_record(
-            store.finances.get(&txn, &finance_key).unwrap().unwrap(),
-        )
-        .unwrap();
+        let finance =
+            decode_finance_record(store.finances.get(&txn, &finance_key).unwrap().unwrap())
+                .unwrap();
         assert_eq!(finance.impound_message_id, 0);
     }
 
@@ -48931,10 +48924,7 @@ mod tests {
             identity: identity(),
             request: request(22, 205, Command::CureFinanceDefault),
         };
-        assert_eq!(
-            decode_queued(&encode_queued(&cure).unwrap()).unwrap(),
-            cure
-        );
+        assert_eq!(decode_queued(&encode_queued(&cure).unwrap()).unwrap(), cure);
     }
 
     #[test]
