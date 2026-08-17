@@ -26,14 +26,42 @@ not for closing the easiest issue.
 3. Confirm the `RealDeuce/ct` remote and current branch. Do not fetch, pull,
    switch branches, create a branch, or mutate GitHub during selection unless
    requested.
-4. Treat issue selection and planning as read-only. Do not edit repository
-   files before plan approval.
+4. Treat issue selection and planning as read-only except for the ignored
+   issue-evaluation cache described below. Do not edit tracked repository files
+   before plan approval.
+
+## Reuse local issue evaluations
+
+Use `.agents/cache/resolve-next-issue.json` as a disposable, Git-ignored cache
+of issue-content analysis. Never stage or commit it.
+
+1. Fetch the current open-issue index with number, title, `updated_at`, labels,
+   and assignees. GitHub remains authoritative for whether an issue is open.
+2. Load the cache only when `schema_version` is `1` and `repository` is
+   `RealDeuce/ct`. Ignore a missing or malformed cache without blocking work.
+3. Reuse a cached issue summary and judgment only when its `updated_at` exactly
+   matches GitHub. Fetch and fully evaluate every new or changed issue.
+4. Remove entries absent from the current open-issue index. Record, for each
+   remaining issue, its metadata, concise summary, classification/disposition,
+   impact judgment, dependencies or duplicates, known mechanism, code evidence,
+   and the commit inspected during the last code investigation.
+5. Refresh the cache after evaluating changed issues and after an accepted
+   resolution is pushed. Mark an implemented-but-still-open issue with its
+   resolution commit so it is not selected again accidentally.
+6. Treat cached code findings as leads, not current truth. Reinspect the current
+   repository for every shortlisted issue before proposing a plan, even when
+   its GitHub content is unchanged.
+
+Cache maintenance is the only write allowed during selection. It must not
+alter `git status`, substitute for fetching the current open-issue index, or
+weaken the approval gates.
 
 ## Phase 1: Select the issue
 
-Fetch all open issues, excluding pull requests. Read each candidate body,
-labels, comments, linked issues, and supplied attachments. Do not rely on the
-title or label alone.
+Fetch all open issues, excluding pull requests. For new or changed candidates,
+read the body, labels, comments, linked issues, and supplied attachments. For
+unchanged candidates, use the matching cached issue-content analysis. Do not
+rely on the title or label alone.
 
 Exclude issues that are:
 
@@ -185,13 +213,20 @@ an equally explicit commit-and-push instruction.
    and contains no unrelated files.
 2. Re-run any cheap final integrity check that may have become stale.
 3. Stage only the reviewed issue files.
-4. Create a concise commit naming the resolved behavior and issue where useful.
-   Do not use an automatic issue-closing keyword unless the user requests issue
-   closure.
-5. Push the current branch.
-6. Verify the resulting commit, upstream push, and clean worktree.
+4. Create a concise commit naming the resolved behavior. When the accepted
+   implementation completely resolves the selected issue, include `Fixes #N`
+   in the commit message so GitHub closes it on the target branch. Use a
+   non-closing `Refs #N` only for an explicitly accepted partial resolution or
+   when the user asks to keep the issue open.
+5. Before pushing, inspect the committed message and verify both the selected
+   issue number and the appropriate closing or non-closing keyword. If either
+   is wrong and the commit is still local, amend only the message. Never
+   rewrite already-pushed history merely to repair issue linkage.
+6. Push the current branch.
+7. Verify the resulting commit, upstream push, and clean worktree.
 
-Report the commit hash, subject, branch, push result, and any remaining local
-changes. Do not close, relabel, or comment on the GitHub issue unless the user
-separately authorizes that mutation. If commit succeeds but push fails, report
-the local commit and failure accurately rather than retrying destructively.
+Report the commit hash, subject, branch, push result, resulting issue state,
+and any remaining local changes. Do not manually close, relabel, or comment on
+the GitHub issue unless the user separately authorizes that mutation. If commit
+succeeds but push fails, report the local commit and failure accurately rather
+than retrying destructively.

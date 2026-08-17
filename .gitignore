@@ -14,6 +14,9 @@ __pycache__/
 *.rej
 .DS_Store
 
+# Local agent workflow state
+/.agents/cache/
+
 # CMake, CPack, and native build products
 CMakeCache.txt
 CMakeFiles/
