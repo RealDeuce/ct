@@ -1942,6 +1942,17 @@ rules into the game.
   cancellation, malformed-message handling, graceful close, and behavior when
   the connection disappears before a response is sent. Keep these semantics
   independent of simulator persistence and game state.
+- A player CT-RPC version advance must update the server declaration in
+  `server/src/wire.rs`, the client declaration in `client/src/protocol.cpp`,
+  both CT-RPC compatibility assertions in `tools/check_repository.py`, and the
+  current-version statements in `docs/rpc-and-storage-schema.md` in the same
+  change. Regenerate both language bindings through the normal builds and run
+  `python3 tools/check_repository.py`. The repository check is an intentional
+  manual compatibility tripwire; leaving its expected version behind will fail
+  CI even when the client and server agree. Continue following the protocol
+  numbering policy in `docs/rpc-and-storage-schema.md`: incompatible schema
+  work shares one version during a release-development cycle and advances again
+  only after that contract ships.
 - Do not replace TLS-PSK with certificate TLS merely to use a larger RPC stack.
   The custom envelope runs over the already-authenticated TLS-PSK byte stream;
   Cap'n Proto remains responsible for schema evolution and binary encoding,

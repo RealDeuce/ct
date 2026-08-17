@@ -97,7 +97,7 @@ def main() -> int:
         errors.append(str(error))
 
     compatibility_checks = [
-        ("server/src/wire.rs", r"pub const PROTOCOL_VERSION: u16 = 6;", "CT-RPC version 6"),
+        ("server/src/wire.rs", r"pub const PROTOCOL_VERSION: u16 = 7;", "CT-RPC version 7"),
         ("server/src/admin_wire.rs", r"pub const PROTOCOL_VERSION: u16 = 2;", "admin protocol version 2"),
         ("server/src/sysop_wire.rs", r"pub const PROTOCOL_VERSION: u16 = 2;", "sysop protocol version 2"),
         ("server/src/store.rs", r"pub const STORAGE_FORMAT_VERSION: u64 = 1;", "storage format version 1"),
@@ -112,7 +112,7 @@ def main() -> int:
         ("server/src/bbs_polity.rs", r"pub const BBS_POLITY_GENERATION_VERSION: u16 = 1;", "BBS polity generation version 1"),
         ("server/src/bbs_polity.rs", r"pub const BBS_COVERAGE_SAMPLER_VERSION: u16 = 1;", "BBS coverage sampler version 1"),
         ("server/src/creation.rs", r"pub const SETUP_REVISION: u64 = 1;", "setup revision 1"),
-        ("client/src/protocol.cpp", r"constexpr uint16_t PROTOCOL_VERSION = 6;", "CT-RPC version 6"),
+        ("client/src/protocol.cpp", r"constexpr uint16_t PROTOCOL_VERSION = 7;", "CT-RPC version 7"),
         ("client/src/admin_protocol.cpp", r"constexpr uint16_t PROTOCOL_VERSION = 2;", "admin protocol version 2"),
         ("client/src/sysop_protocol.cpp", r"constexpr uint16_t PROTOCOL_VERSION = 2;", "sysop protocol version 2"),
     ]
