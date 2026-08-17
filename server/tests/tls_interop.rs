@@ -663,7 +663,7 @@ fn complete_arrival_and_trade(
     let (selection, _) = session.wait_for_any(&["Tonnes (Q to", "That service"]);
     if selection == 0 {
         session.send(b"1\r");
-        session.wait_for("Ship's stores have been loaded");
+        session.wait_for("Fueling complete");
     } else {
         session.wait_for("That service");
     }
@@ -2167,6 +2167,18 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
             assert_eq!(ship.current_fuel_millitons, arrival_fuel);
         } else {
             assert_eq!(ship.current_fuel_millitons, arrival_fuel + 1_000);
+            for expected in [
+                "Fueling complete",
+                "Loaded:",
+                "Tanks:",
+                "Charge:",
+                "Paid from:",
+                "Restricted operating:",
+                "Liquid credits:",
+                "Balance after purchase:",
+            ] {
+                assert!(completed_screen.contains(expected), "{completed_screen:?}");
+            }
         }
         if !completed_screen.contains("No bonded chandlery") {
             // A monthly package may refill exactly to the pre-approach level

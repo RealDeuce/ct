@@ -21,7 +21,7 @@ namespace ct
 namespace
 {
 
-constexpr uint16_t PROTOCOL_VERSION = 6;
+constexpr uint16_t PROTOCOL_VERSION = 7;
 constexpr size_t MAX_FRAME_BYTES = 1024 * 1024;
 
 void send_frame(TlsConnection& connection, const kj::ArrayPtr<const kj::byte> message)
@@ -760,12 +760,12 @@ ShipSubsystemKind decode_ship_subsystem_kind(
    return ShipSubsystemKind::Other;
 }
 
-ShipStatusSnapshot decode_ship_status(const rpc::Response::Reader response)
+ShipStatusSnapshot decode_ship_status_snapshot(
+   const rpc::ShipStatusSnapshot::Reader source,
+   const uint64_t committed_sequence,
+   const uint64_t revision,
+   const PlayerPhase phase)
 {
-   if(!response.isShipStatus()) {
-      throw std::runtime_error("expected ShipStatusSnapshot");
-   }
-   const auto source = response.getShipStatus();
    ShipStatusSnapshot result{
       .ship_revision = source.getShipRevision(),
       .ship_id = source.getShipId(),
@@ -808,9 +808,9 @@ ShipStatusSnapshot decode_ship_status(const rpc::Response::Reader response)
       },
       .manifested_symptoms = {},
       .subsystems = {},
-      .committed_sequence = response.getCommittedSequence(),
-      .revision = response.getRevision(),
-      .phase = decode_response_phase(response.getPhase()),
+      .committed_sequence = committed_sequence,
+      .revision = revision,
+      .phase = phase,
    };
    for(const auto subsystem : source.getSubsystems()) {
       result.subsystems.push_back(ShipSubsystemStatus{
@@ -851,6 +851,18 @@ ShipStatusSnapshot decode_ship_status(const rpc::Response::Reader response)
    return result;
 }
 
+ShipStatusSnapshot decode_ship_status(const rpc::Response::Reader response)
+{
+   if(!response.isShipStatus()) {
+      throw std::runtime_error("expected ShipStatusSnapshot");
+   }
+   return decode_ship_status_snapshot(
+      response.getShipStatus(),
+      response.getCommittedSequence(),
+      response.getRevision(),
+      decode_response_phase(response.getPhase()));
+}
+
 DockedFuelServiceKind decode_docked_fuel_kind(const rpc::DockedFuelServiceKind kind)
 {
    switch(kind) {
@@ -864,6 +876,38 @@ DockedFuelServiceKind decode_docked_fuel_kind(const rpc::DockedFuelServiceKind k
       return DockedFuelServiceKind::WildernessWater;
    }
    throw std::runtime_error("unknown docked fuel service");
+}
+
+DockedServiceReceipt decode_docked_service_receipt(const rpc::Response::Reader response)
+{
+   if(!response.isDockedServiceReceipt()) {
+      throw std::runtime_error("expected DockedServiceReceipt");
+   }
+   const auto source = response.getDockedServiceReceipt();
+   DockedServiceReceipt result{
+      .ship_status = decode_ship_status_snapshot(
+         source.getShipStatus(),
+         response.getCommittedSequence(),
+         response.getRevision(),
+         decode_response_phase(response.getPhase())),
+      .fuel_purchase = std::nullopt,
+   };
+   if(source.getHasFuelPurchase()) {
+      const auto fuel = source.getFuelPurchase();
+      result.fuel_purchase = FuelPurchaseReceipt{
+         .kind = decode_docked_fuel_kind(fuel.getKind()),
+         .quantity_millitons = fuel.getQuantityMillitons(),
+         .current_fuel_millitons = fuel.getCurrentFuelMillitons(),
+         .unrefined_fuel_millitons = fuel.getUnrefinedFuelMillitons(),
+         .fuel_capacity_millitons = fuel.getFuelCapacityMillitons(),
+         .cost_credits = fuel.getCostCredits(),
+         .restricted_payment_credits = fuel.getRestrictedPaymentCredits(),
+         .liquid_payment_credits = fuel.getLiquidPaymentCredits(),
+         .restricted_balance_credits = fuel.getRestrictedBalanceCredits(),
+         .liquid_balance_credits = fuel.getLiquidBalanceCredits(),
+      };
+   }
+   return result;
 }
 
 DockedServices decode_docked_services(const rpc::Response::Reader response)
@@ -2056,7 +2100,7 @@ DockedServices get_docked_services(TlsConnection& connection, const uint64_t ses
    return decode_docked_services(checked_response(reader.getRoot<rpc::Envelope>(), command_id));
 }
 
-ShipStatusSnapshot commit_docked_service(TlsConnection& connection, const uint64_t session_epoch,
+DockedServiceReceipt commit_docked_service(TlsConnection& connection, const uint64_t session_epoch,
       const DockedServiceOrder& order, const std::array<uint8_t, 16>& command_id,
       const uint64_t request_id)
 {
@@ -2100,7 +2144,8 @@ ShipStatusSnapshot commit_docked_service(TlsConnection& connection, const uint64
    send_frame(connection, capnp::messageToFlatArray(message).asBytes());
    const auto words = receive_response(connection, session_epoch, request_id);
    capnp::FlatArrayMessageReader reader(words);
-   return decode_ship_status(checked_response(reader.getRoot<rpc::Envelope>(), command_id));
+   return decode_docked_service_receipt(
+      checked_response(reader.getRoot<rpc::Envelope>(), command_id));
 }
 
 DockedSnapshot get_docked_snapshot(

@@ -4220,8 +4220,12 @@ void show_ship_manager(
                             ct::DockedServiceOrder::Kind::ProperRepair;
                order.subsystem_id = item.subsystem_id;
                order.reconditioned = item.reconditioned;
-               snapshot = ct::commit_docked_service(connection, session_epoch, order, random_command_id(random),
-                                                    request_id++);
+               snapshot = ct::commit_docked_service(
+                             connection,
+                             session_epoch,
+                             order,
+                             random_command_id(random),
+                             request_id++).ship_status;
             } catch(const std::exception& error) {
                door_error("%s  Press any key.\n\r", safe_field(error.what()).c_str());
                od_get_key(TRUE);
@@ -4246,8 +4250,12 @@ void show_ship_manager(
             ct::DockedServiceOrder order{};
             order.expected_ship_revision = services.ship_revision;
             order.kind = ct::DockedServiceOrder::Kind::Refit;
-            snapshot = ct::commit_docked_service(connection, session_epoch, order, random_command_id(random),
-                                                 request_id++);
+            snapshot = ct::commit_docked_service(
+                          connection,
+                          session_epoch,
+                          order,
+                          random_command_id(random),
+                          request_id++).ship_status;
          } catch(const std::exception& error) {
             door_error("%s  Press any key.\n\r", safe_field(error.what()).c_str());
             od_get_key(TRUE);
@@ -7991,8 +7999,10 @@ std::optional<ct::TravelStatus> run_fuel_service(
    od_clr_scr();
    door_heading("Fuel and Supplies\n\r");
    door_heading("=================\n\r\n\r");
-   door_label("Operating account: ");
+   door_label("Liquid credits: ");
    door_number("Cr%llu\n\r", static_cast<unsigned long long>(account.credits));
+   door_label("Restricted operating: ");
+   door_number("Cr%llu\n\r", static_cast<unsigned long long>(account.restricted_credits));
    door_label("Tanks: ");
    door_number("%.1f/%.1f t\n\r", account.fuel_millitons / 1000.0,
                account.fuel_capacity_millitons / 1000.0);
@@ -8132,12 +8142,43 @@ std::optional<ct::TravelStatus> run_fuel_service(
       return std::nullopt;
    }
    try {
-      const auto result = ct::commit_docked_service(connection, session_epoch, order,
+      const auto receipt = ct::commit_docked_service(connection, session_epoch, order,
          random_command_id(random), request_id++);
-      if(result.phase == ct::PlayerPhase::Interplanetary) {
+      if(receipt.ship_status.phase == ct::PlayerPhase::Interplanetary) {
          return ct::get_travel_status(connection, session_epoch, random_command_id(random), request_id++);
       }
-      door_success("\n\rShip's stores have been loaded and the account settled.\n\r");
+      if(receipt.fuel_purchase) {
+         const auto& fuel = *receipt.fuel_purchase;
+         const auto* fuel_name = fuel.kind == ct::DockedFuelServiceKind::Refined
+                                 ? "refined"
+                                 : "unrefined";
+         door_success("\n\rFueling complete.\n\r");
+         door_label("Loaded: ");
+         door_number("%.1f t", fuel.quantity_millitons / 1000.0);
+         door_label(" of ");
+         door_identifier("%s fuel\n\r", fuel_name);
+         door_label("Tanks: ");
+         door_number("%.1f/%.1f t\n\r", fuel.current_fuel_millitons / 1000.0,
+                     fuel.fuel_capacity_millitons / 1000.0);
+         door_label("Unrefined aboard: ");
+         door_number("%.1f t\n\r", fuel.unrefined_fuel_millitons / 1000.0);
+         door_label("Charge: ");
+         door_number("Cr%llu\n\r", static_cast<unsigned long long>(fuel.cost_credits));
+         door_label("Paid from:\n\r  Restricted operating: ");
+         door_number("Cr%llu\n\r",
+                     static_cast<unsigned long long>(fuel.restricted_payment_credits));
+         door_label("  Liquid credits: ");
+         door_number("Cr%llu\n\r",
+                     static_cast<unsigned long long>(fuel.liquid_payment_credits));
+         door_label("Balance after purchase:\n\r  Restricted operating: ");
+         door_number("Cr%llu\n\r",
+                     static_cast<unsigned long long>(fuel.restricted_balance_credits));
+         door_label("  Liquid credits: ");
+         door_number("Cr%llu\n\r",
+                     static_cast<unsigned long long>(fuel.liquid_balance_credits));
+      } else {
+         door_success("\n\rShip's stores have been loaded and the account settled.\n\r");
+      }
       wait_for_enter();
    } catch(const std::exception& error) {
       door_error("%s  Press any key.\n\r", safe_field(error.what()).c_str());

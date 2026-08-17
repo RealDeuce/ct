@@ -1,6 +1,6 @@
 # RPC and Storage Schema
 
-*Current implementation: player CT-RPC 4, sysop/admin protocols 2, storage format 1, and record codecs 1.*
+*Current implementation: player CT-RPC 7, sysop/admin protocols 2, storage format 1, and record codecs 1.*
 
 ## Authority boundary
 
@@ -21,7 +21,7 @@ explain state, but it is never the machine-readable discriminator.
 
 ## Current protocol
 
-CT-RPC 4 is the only accepted player protocol. The sysop and administrator
+CT-RPC 7 is the only accepted player protocol. The sysop and administrator
 protocols likewise accept only version 2. Each TLS connection begins with a
 hello carrying one BCP 47 language tag. The server validates the tag and
 returns the selected supported tag. Bare `en` selects the server's `en-US`
@@ -132,9 +132,13 @@ reinterpret a previously committed purpose.
 Docked-service quotations return the ship revision, exact named fuel sources,
 physical provision and ammunition state, repair/replacement choices, facility
 reasons, prices, and elapsed times. One commit presents that revision and a
-closed union selecting exactly one order. Ship status includes physical stores,
-component identity, replacement basis, installation generation, and manifested
-symptoms; it never exposes a latent quirk.
+closed union selecting exactly one order. Its retained receipt contains the
+resulting ship status. A port-fuel receipt additionally records the fuel kind,
+quantity, tank state, price, exact restricted-versus-liquid payment allocation,
+and both resulting balances so a retry never reconstructs an accounting result
+from later observations. Ship status includes physical stores, component
+identity, replacement basis, installation generation, and manifested symptoms;
+it never exposes a latent quirk.
 
 ## Authoritative flight state
 

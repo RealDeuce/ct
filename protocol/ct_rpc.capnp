@@ -211,6 +211,7 @@ struct Response {
     fleet @35 :FleetSnapshot;
     systemRadio @36 :SystemRadioSnapshot;
     radioContent @37 :RadioContent;
+    dockedServiceReceipt @38 :DockedServiceReceipt;
   }
 }
 
@@ -691,6 +692,25 @@ struct DockedServiceOrder {
     refit @5 :Void;
     replacement @6 :DockedRepairOrder;
   }
+}
+
+struct FuelPurchaseReceipt {
+  kind @0 :DockedFuelServiceKind;
+  quantityMillitons @1 :UInt64;
+  currentFuelMillitons @2 :UInt64;
+  unrefinedFuelMillitons @3 :UInt64;
+  fuelCapacityMillitons @4 :UInt64;
+  costCredits @5 :UInt64;
+  restrictedPaymentCredits @6 :UInt64;
+  liquidPaymentCredits @7 :UInt64;
+  restrictedBalanceCredits @8 :UInt64;
+  liquidBalanceCredits @9 :UInt64;
+}
+
+struct DockedServiceReceipt {
+  shipStatus @0 :ShipStatusSnapshot;
+  fuelPurchase @1 :FuelPurchaseReceipt;
+  hasFuelPurchase @2 :Bool;
 }
 
 struct ShipActivityStatus {

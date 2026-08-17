@@ -12,7 +12,7 @@ use crate::ct_rpc_capnp::{
 };
 use crate::i18n::DisplayFormatting;
 
-pub const PROTOCOL_VERSION: u16 = 6;
+pub const PROTOCOL_VERSION: u16 = 7;
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 pub const COMMAND_ID_BYTES: usize = 16;
 pub const MAX_NAME_BYTES: usize = 128;
@@ -692,6 +692,26 @@ pub enum DockedServiceOrderKind {
 pub struct DockedServiceOrder {
     pub expected_ship_revision: u64,
     pub kind: DockedServiceOrderKind,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FuelPurchaseReceipt {
+    pub kind: DockedFuelServiceKind,
+    pub quantity_millitons: u64,
+    pub current_fuel_millitons: u64,
+    pub unrefined_fuel_millitons: u64,
+    pub fuel_capacity_millitons: u64,
+    pub cost_credits: u64,
+    pub restricted_payment_credits: u64,
+    pub liquid_payment_credits: u64,
+    pub restricted_balance_credits: u64,
+    pub liquid_balance_credits: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DockedServiceReceipt {
+    pub ship_status: ShipStatusSnapshot,
+    pub fuel_purchase: Option<FuelPurchaseReceipt>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2380,6 +2400,7 @@ pub enum OutcomeKind {
     ShipMarket(ShipMarket),
     CrewMarket(CrewMarket),
     DockedServices(DockedServices),
+    DockedServiceReceipt(DockedServiceReceipt),
     Fleet(FleetSnapshot),
     SystemRadio(SystemRadioSnapshot),
     RadioContent(RadioContent),
@@ -3412,6 +3433,9 @@ pub fn encode_response(
         }
         OutcomeKind::DockedServices(snapshot) => {
             set_docked_services(response.reborrow().init_docked_services(), snapshot)?;
+        }
+        OutcomeKind::DockedServiceReceipt(receipt) => {
+            set_docked_service_receipt(response.reborrow().init_docked_service_receipt(), receipt)?;
         }
         OutcomeKind::Fleet(snapshot) => {
             set_fleet(response.reborrow().init_fleet(), snapshot)?;
@@ -4848,6 +4872,28 @@ fn set_docked_services(
     builder.set_refit_unavailable_reason(&snapshot.refit_unavailable_reason);
     builder.set_refit_cost_credits(snapshot.refit_cost_credits);
     builder.set_refit_service_seconds(snapshot.refit_service_seconds);
+    Ok(())
+}
+
+fn set_docked_service_receipt(
+    mut builder: crate::ct_rpc_capnp::docked_service_receipt::Builder<'_>,
+    receipt: &DockedServiceReceipt,
+) -> Result<(), WireError> {
+    set_ship_status(builder.reborrow().init_ship_status(), &receipt.ship_status)?;
+    builder.set_has_fuel_purchase(receipt.fuel_purchase.is_some());
+    if let Some(source) = &receipt.fuel_purchase {
+        let mut target = builder.init_fuel_purchase();
+        target.set_kind(schema_docked_fuel_kind(source.kind));
+        target.set_quantity_millitons(source.quantity_millitons);
+        target.set_current_fuel_millitons(source.current_fuel_millitons);
+        target.set_unrefined_fuel_millitons(source.unrefined_fuel_millitons);
+        target.set_fuel_capacity_millitons(source.fuel_capacity_millitons);
+        target.set_cost_credits(source.cost_credits);
+        target.set_restricted_payment_credits(source.restricted_payment_credits);
+        target.set_liquid_payment_credits(source.liquid_payment_credits);
+        target.set_restricted_balance_credits(source.restricted_balance_credits);
+        target.set_liquid_balance_credits(source.liquid_balance_credits);
+    }
     Ok(())
 }
 

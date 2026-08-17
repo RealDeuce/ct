@@ -318,7 +318,10 @@ Refined and unrefined fuel are distinct, and availability depends on the port
 or selected collection method. Provisions are consumed by crew and awake
 passengers; passengers travelling in low berths do not consume them while
 frozen. Berth charges and other immediate obligations may be settled when the
-ship departs. Keep a reserve instead of committing every credit to cargo.
+ship departs. After a port fuel purchase, the fueling receipt lists the amount
+loaded, tank state, total charge, the restricted and liquid amounts used, and
+both remaining balances. Keep a reserve instead of committing every credit to
+cargo.
 
 ## Universal command console
 

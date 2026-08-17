@@ -180,6 +180,37 @@ int main() {
       check(maximum_visible_width(quotation_output) < columns);
    }
 
+   const std::string fuel_receipt =
+      "Fueling complete.\r\n"
+      "Loaded: 66.0 t of unrefined fuel\r\n"
+      "Tanks: 134.0/200.0 t\r\n"
+      "Unrefined aboard: 66.0 t\r\n"
+      "Charge: Cr6,600\r\n"
+      "Paid from:\r\n"
+      "  Restricted operating: Cr4,000\r\n"
+      "  Liquid credits: Cr2,600\r\n"
+      "Balance after purchase:\r\n"
+      "  Restricted operating: Cr145,191\r\n"
+      "  Liquid credits: Cr97,400\r\n";
+   for(const auto columns : {size_t{40}, size_t{80}}) {
+      const auto receipt_output = render(
+         ct::DoorProfile::Iso646,
+         columns,
+         24,
+         fuel_receipt,
+         ct::DoorTextRole::Information);
+      for(const auto expected : {
+            "Loaded:",
+            "Tanks:",
+            "Charge:",
+            "Paid from:",
+            "Balance after purchase:",
+         }) {
+         check(receipt_output.find(expected) != std::string::npos);
+      }
+      check(maximum_visible_width(receipt_output) < columns);
+   }
+
    const auto help_topics = ct::all_door_help();
    check(help_topics.size() ==
          static_cast<size_t>(ct::DoorHelpTopic::Count));
@@ -205,6 +236,8 @@ int main() {
          std::string_view::npos);
    check(shipyard_help.expert_body.find("does not replace destroyed installations") !=
          std::string_view::npos);
+   const auto& fuel_help = ct::door_help(ct::DoorHelpTopic::Fuel);
+   check(fuel_help.beginner_body.find("fueling receipt") != std::string_view::npos);
    for(const auto& help : help_topics) {
       check(!help.title.empty());
       check(!help.group.empty());

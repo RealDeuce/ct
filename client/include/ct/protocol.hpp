@@ -518,6 +518,24 @@ struct DockedServiceOrder {
    bool reconditioned = false;
 };
 
+struct FuelPurchaseReceipt {
+   DockedFuelServiceKind kind;
+   uint64_t quantity_millitons;
+   uint64_t current_fuel_millitons;
+   uint64_t unrefined_fuel_millitons;
+   uint64_t fuel_capacity_millitons;
+   uint64_t cost_credits;
+   uint64_t restricted_payment_credits;
+   uint64_t liquid_payment_credits;
+   uint64_t restricted_balance_credits;
+   uint64_t liquid_balance_credits;
+};
+
+struct DockedServiceReceipt {
+   ShipStatusSnapshot ship_status;
+   std::optional<FuelPurchaseReceipt> fuel_purchase;
+};
+
 struct DockedSnapshot {
    uint64_t ship_id;
    std::string ship_name;
@@ -1925,8 +1943,8 @@ ShipStatusSnapshot get_ship_status(
 
 DockedServices get_docked_services(TlsConnection&, uint64_t, const std::array<uint8_t, 16>&,
                                    uint64_t);
-ShipStatusSnapshot commit_docked_service(TlsConnection&, uint64_t, const DockedServiceOrder&,
-      const std::array<uint8_t, 16>&, uint64_t);
+DockedServiceReceipt commit_docked_service(TlsConnection&, uint64_t, const DockedServiceOrder&,
+                                           const std::array<uint8_t, 16>&, uint64_t);
 
 DockedSnapshot get_docked_snapshot(TlsConnection& connection,
                                    uint64_t session_epoch,
