@@ -137,9 +137,11 @@ Each subsystem has independent state for:
 Routine maintenance is normally performed continuously by the engineering
 and maintenance crew while the ship remains in service. The month is its
 accounting and degradation-check period, not a claim that the ship enters a
-yard every month. Adequate routine maintenance prevents neglect-related
-degradation; it does not remove combat damage, erase accumulated wear, reset
-component age, or substitute for overhaul.
+yard every month. Its automatic charge is an authorized ship expense, so
+restricted operating credit is used before the captain's liquid account.
+Adequate routine maintenance prevents neglect-related degradation; it does
+not remove combat damage, erase accumulated wear, reset component age, or
+substitute for overhaul.
 
 Calendar age, operating minutes, Jump and maneuver duty cycles, and stressful
 fuel-skimming cycles are recorded on the installations they actually stress.

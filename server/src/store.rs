@@ -1237,6 +1237,28 @@ fn finance_installment_due(finance: &FinanceRecord) -> (u64, u64, u64) {
     (principal, insurance, principal.saturating_add(insurance))
 }
 
+fn operating_account_payment_parts(
+    player: &PlayerRecord,
+    finance: &FinanceRecord,
+    amount: u64,
+) -> (u64, u64) {
+    let restricted_payment = finance.restricted_credits.min(amount);
+    let liquid_payment = player.credits.min(amount - restricted_payment);
+    (restricted_payment, liquid_payment)
+}
+
+fn apply_operating_account_payment(
+    player: &mut PlayerRecord,
+    finance: &mut FinanceRecord,
+    amount: u64,
+) -> u64 {
+    let (restricted_payment, liquid_payment) =
+        operating_account_payment_parts(player, finance, amount);
+    finance.restricted_credits -= restricted_payment;
+    player.credits -= liquid_payment;
+    restricted_payment + liquid_payment
+}
+
 /// Applies one installment atomically. Mandatory insurance is an authorized
 /// operating expense and therefore consumes restricted credit before liquid
 /// cash; secured principal is always a personal cash obligation.
@@ -14219,9 +14241,9 @@ impl Store {
             .map(decode_finance_record)
             .transpose()?
             .ok_or(StoreError::Corrupt("ship finance record is missing"))?;
-        let restricted_payment = finance.restricted_credits.min(amount);
-        let liquid_payment = amount - restricted_payment;
-        if player.credits < liquid_payment {
+        let (restricted_payment, liquid_payment) =
+            operating_account_payment_parts(player, &finance, amount);
+        if restricted_payment + liquid_payment != amount {
             return Ok(false);
         }
         let track_naval_expense =
@@ -14234,8 +14256,8 @@ impl Store {
                     "naval operating expense total overflow",
                 ))?;
         }
-        finance.restricted_credits -= restricted_payment;
-        player.credits -= liquid_payment;
+        let paid = apply_operating_account_payment(player, &mut finance, amount);
+        debug_assert_eq!(paid, amount);
         if restricted_payment != 0 || track_naval_expense {
             self.finances
                 .put(txn, &key, &encode_finance_record(&finance))?;
@@ -25770,16 +25792,17 @@ impl Store {
         let charge = crate::ship_condition::monthly_maintenance_credits(
             ship.maintenance.purchase_price_credits,
         );
-        let paid = institution_supplied || player.credits >= charge;
+        let payment = if institution_supplied {
+            charge
+        } else {
+            apply_operating_account_payment(&mut player, &mut finance, charge)
+        };
+        let paid = payment == charge;
         if paid {
-            if !institution_supplied {
-                player.credits -= charge;
-            }
             ship.maintenance.paid_through_second = due_second;
             ship.maintenance.consecutive_missed_cycles = 0;
         } else {
-            let unpaid = charge.saturating_sub(player.credits);
-            player.credits = 0;
+            let unpaid = charge - payment;
             ship.maintenance.arrears_credits = ship
                 .maintenance
                 .arrears_credits
@@ -45981,6 +46004,215 @@ mod tests {
             ship_after.maintenance.next_accounting_second,
             due + crate::ship_condition::ACCOUNTING_MONTH_SECONDS
         );
+    }
+
+    fn install_monthly_upkeep_test_state(
+        store: &Store,
+        player: &PlayerRecord,
+        ship: &ShipRecord,
+        title: crate::wire::ShipTitleKind,
+        restricted_credits: u64,
+    ) {
+        let finance_key = ship_finance_key(ship.ship_id);
+        let mut txn = store.env.write_txn().unwrap();
+        let mut finance =
+            decode_finance_record(store.finances.get(&txn, &finance_key).unwrap().unwrap())
+                .unwrap();
+        finance.title = title;
+        finance.restricted_credits = restricted_credits;
+        finance.principal_credits = 0;
+        finance.monthly_payment_credits = 0;
+        finance.monthly_insurance_escrow_credits = 0;
+        finance.next_payment_due_second = u64::MAX;
+        store
+            .players
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_player_record(player),
+            )
+            .unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(ship).unwrap())
+            .unwrap();
+        store
+            .finances
+            .put(&mut txn, &finance_key, &encode_finance_record(&finance))
+            .unwrap();
+        txn.commit().unwrap();
+    }
+
+    fn process_monthly_upkeep_test_cycle(store: &Store, ship: &ShipRecord) {
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .process_ship_condition_in(
+                &mut txn,
+                ship.maintenance.next_accounting_second,
+                ship.ship_id,
+            )
+            .unwrap();
+        txn.commit().unwrap();
+    }
+
+    fn restricted_credits_for_test_ship(store: &Store, ship_id: u64) -> u64 {
+        let txn = store.env.read_txn().unwrap();
+        decode_finance_record(
+            store
+                .finances
+                .get(&txn, &ship_finance_key(ship_id))
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap()
+        .restricted_credits
+    }
+
+    #[test]
+    fn monthly_upkeep_uses_restricted_credit_during_an_active_refit() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut player = store.player_record(&identity()).unwrap().unwrap();
+        let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        let upkeep = crate::ship_condition::monthly_maintenance_credits(
+            ship.maintenance.purchase_price_credits,
+        );
+        let due = ship.maintenance.next_accounting_second;
+        let (world_id, facility_id) = match &ship.location {
+            ShipLocationRecord::Docked {
+                world_id,
+                facility_id,
+                ..
+            } => (*world_id, *facility_id),
+            other => panic!("expected docked fixture ship, got {other:?}"),
+        };
+        ship.activity = Some(ShipActivityRecord {
+            activity_id: 91,
+            kind: ShipActivityKind::Refit,
+            started_second: due.saturating_sub(crate::simulation::SECONDS_PER_DAY),
+            due_second: due + crate::ship_condition::ACCOUNTING_MONTH_SECONDS,
+            cost_credits: upkeep.saturating_mul(4),
+            site: ShipActivitySite::Dockyard {
+                system_id: ship.system_id,
+                world_id,
+                facility_id,
+            },
+        });
+        let active_refit = ship.activity.clone();
+        player.credits = 0;
+        player.debt_credits = 0;
+        install_monthly_upkeep_test_state(
+            &store,
+            &player,
+            &ship,
+            crate::wire::ShipTitleKind::SponsorOwned,
+            upkeep,
+        );
+        process_monthly_upkeep_test_cycle(&store, &ship);
+
+        let player_after = store.player_record(&identity()).unwrap().unwrap();
+        assert_eq!(player_after.credits, 0);
+        let ship_after = store.ship_record(ship.ship_id).unwrap().unwrap();
+        assert_eq!(ship_after.activity, active_refit);
+        assert_eq!(ship_after.maintenance.paid_through_second, due);
+        assert_eq!(ship_after.maintenance.consecutive_missed_cycles, 0);
+        assert_eq!(ship_after.maintenance.arrears_credits, 0);
+        assert!(
+            ship_after
+                .subsystems
+                .iter()
+                .all(|subsystem| subsystem.neglect_damage_hits == 0)
+        );
+        assert_eq!(restricted_credits_for_test_ship(&store, ship.ship_id), 0);
+    }
+
+    #[test]
+    fn monthly_upkeep_can_split_restricted_and_liquid_payment() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut player = store.player_record(&identity()).unwrap().unwrap();
+        let ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        let upkeep = crate::ship_condition::monthly_maintenance_credits(
+            ship.maintenance.purchase_price_credits,
+        );
+        let restricted = upkeep / 3;
+        player.credits = upkeep - restricted;
+        player.debt_credits = 0;
+        install_monthly_upkeep_test_state(
+            &store,
+            &player,
+            &ship,
+            crate::wire::ShipTitleKind::SponsorOwned,
+            restricted,
+        );
+        process_monthly_upkeep_test_cycle(&store, &ship);
+
+        let player_after = store.player_record(&identity()).unwrap().unwrap();
+        assert_eq!(player_after.credits, 0);
+        let ship_after = store.ship_record(ship.ship_id).unwrap().unwrap();
+        assert_eq!(
+            ship_after.maintenance.paid_through_second,
+            ship.maintenance.next_accounting_second
+        );
+        assert_eq!(ship_after.maintenance.consecutive_missed_cycles, 0);
+        assert_eq!(ship_after.maintenance.arrears_credits, 0);
+        assert_eq!(restricted_credits_for_test_ship(&store, ship.ship_id), 0);
+    }
+
+    #[test]
+    fn underfunded_monthly_upkeep_records_only_the_uncovered_remainder() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut player = store.player_record(&identity()).unwrap().unwrap();
+        let ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        let upkeep = crate::ship_condition::monthly_maintenance_credits(
+            ship.maintenance.purchase_price_credits,
+        );
+        let restricted = upkeep / 3;
+        let liquid = upkeep / 4;
+        player.credits = liquid;
+        player.debt_credits = 0;
+        install_monthly_upkeep_test_state(
+            &store,
+            &player,
+            &ship,
+            crate::wire::ShipTitleKind::SponsorOwned,
+            restricted,
+        );
+        process_monthly_upkeep_test_cycle(&store, &ship);
+
+        let player_after = store.player_record(&identity()).unwrap().unwrap();
+        assert_eq!(player_after.credits, 0);
+        let ship_after = store.ship_record(ship.ship_id).unwrap().unwrap();
+        assert_eq!(
+            ship_after.maintenance.arrears_credits,
+            upkeep - restricted - liquid
+        );
+        assert_eq!(ship_after.maintenance.consecutive_missed_cycles, 1);
+        assert_eq!(ship_after.maintenance.paid_through_second, 0);
+        assert_eq!(restricted_credits_for_test_ship(&store, ship.ship_id), 0);
+    }
+
+    #[test]
+    fn institution_supplied_monthly_upkeep_remains_fully_covered() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let ship = make_fixture_naval_command(&store, 0);
+        let due = ship.maintenance.next_accounting_second;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .process_ship_condition_in(&mut txn, due, ship.ship_id)
+            .unwrap();
+        txn.commit().unwrap();
+
+        let ship_after = store.ship_record(ship.ship_id).unwrap().unwrap();
+        assert_eq!(ship_after.maintenance.paid_through_second, due);
+        assert_eq!(ship_after.maintenance.consecutive_missed_cycles, 0);
+        assert_eq!(ship_after.maintenance.arrears_credits, 0);
     }
 
     #[test]
