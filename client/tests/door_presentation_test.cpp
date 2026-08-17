@@ -160,6 +160,19 @@ int main() {
    const auto help_topics = ct::all_door_help();
    check(help_topics.size() ==
          static_cast<size_t>(ct::DoorHelpTopic::Count));
+   const auto& ship_help = ct::door_help(ct::DoorHelpTopic::Ship);
+   check(ship_help.beginner_body.find("charged automatically") !=
+         std::string_view::npos);
+   check(ship_help.beginner_body.find("no monthly yard order is needed") !=
+         std::string_view::npos);
+   check(ship_help.beginner_body.find("restricted operating credit first") !=
+         std::string_view::npos);
+   check(ship_help.beginner_body.find("can damage a subsystem") !=
+         std::string_view::npos);
+   check(ship_help.expert_body.find("automatic every 30 game days") !=
+         std::string_view::npos);
+   check(ship_help.expert_body.find("Proper repair and refit are separate") !=
+         std::string_view::npos);
    for(const auto& help : help_topics) {
       check(!help.title.empty());
       check(!help.group.empty());

@@ -4009,11 +4009,18 @@ void show_ship_manager(
             snapshot.consecutive_missed_maintenance,
             static_cast<unsigned long long>(snapshot.maintenance_arrears_credits));
       }
-      door_label("Next upkeep account: ");
+      door_label("Next automatic upkeep: ");
       door_number(
          "%s (%llu Cr)\n\r",
          game_date(snapshot.next_maintenance_second).c_str(),
          static_cast<unsigned long long>(snapshot.monthly_maintenance_credits));
+      print_wrapped(
+         "The crew handles upkeep automatically; no yard order is needed.",
+         "");
+      print_wrapped(
+         "Keep the operating account funded. An uncovered cycle can damage a subsystem.",
+         "",
+         ct::DoorTextRole::Warning);
       door_label("Life-support stores: ");
       if(snapshot.provisions.person_days_remaining == 0) {
          door_warning("empty\n\r");

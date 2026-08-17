@@ -1545,6 +1545,16 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     services_door.send(b"q");
     services_door.wait_for_occurrences("Captain's Command Console", 2);
     services_door.wait_for_occurrences("(C/K/M/O/R/S/T) Manager", 2);
+    services_door.send(b"s");
+    services_door.wait_for("Ship Status -");
+    services_door.wait_for("Next automatic upkeep:");
+    services_door.wait_for("no yard order is needed");
+    services_door.wait_for("operating account funded");
+    services_door.wait_for("uncovered cycle");
+    services_door.wait_for("damage a subsystem");
+    services_door.send(b"q");
+    services_door.wait_for_occurrences("Captain's Command Console", 3);
+    services_door.wait_for_occurrences("(C/K/M/O/R/S/T) Manager", 3);
     services_door.send(b"m");
     services_door.wait_for("Message Management");
     services_door.send_through_page_prompt(b"c", "Recipient", "Recipient");
@@ -1569,7 +1579,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Captain's Command Console",
         "Captain's Command Console",
     );
-    services_door.wait_for_occurrences("(C/K/M/O/R/S/T) Manager", 2);
+    services_door.wait_for_occurrences("(C/K/M/O/R/S/T) Manager", 4);
     services_door.send(b"x");
     let final_docked_occurrence = if banking_available { 3 } else { 2 };
     services_door.wait_for_occurrences("Docked Operations", final_docked_occurrence);
@@ -1577,7 +1587,13 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     services_door.return_to_bbs();
     let services_screen = services_door.finish();
     let services_semantic = normalized_display_text(&services_screen);
-    for expected in ["Message Management", "accepted for physical"] {
+    for expected in [
+        "Next automatic upkeep:",
+        "no yard order is needed",
+        "damage a subsystem",
+        "Message Management",
+        "accepted for physical",
+    ] {
         assert!(services_semantic.contains(expected), "{services_screen:?}");
     }
     if banking_available {

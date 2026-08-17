@@ -363,9 +363,15 @@ Ship Management shows vessels under the captain's control and the selected
 ship's hull, drives, systems, weapons, stores, damage, and service state. It
 also provides transfers and command changes where legal.
 
-Battlefield patches, proper repairs, scheduled maintenance, refits, and
-component replacement are different kinds of work. A temporary patch does not
-make underlying damage or overdue maintenance disappear.
+Routine upkeep is continuous work by the crew. Its cost is charged
+automatically every 30 game days to the operating account, using restricted
+operating credit before liquid credits, so there is no monthly yard order to
+place. If the account cannot cover the full charge, the shortfall becomes
+arrears and the missed cycle can damage a subsystem.
+
+Battlefield patches, proper repairs, routine upkeep, refits, and component
+replacement are different kinds of work. A temporary patch does not remove
+underlying damage, and a refit does not suspend routine upkeep.
 
 ### Task Management
 

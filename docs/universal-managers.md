@@ -102,19 +102,22 @@ currently commanded ship:
 - hull, drives, power, life support, weapons, defenses, and small craft;
 - active damage, failures, isolation state, casualties, and repair priorities;
 - fuel, cargo, passengers, mail, ammunition, spares, and other consumables;
-- maintenance due, endurance, and operational limitations; and
+- routine-upkeep account and due date, subsystem service history, endurance,
+  and operational limitations; and
 - proposed repair, configuration, and refit work.
 
 Status remains inspectable everywhere. Damage-control commands may be
-encounter-time actions; routine maintenance requires time and personnel; major
-repair or refit may require a suitable facility.
+encounter-time actions. Routine upkeep is continuous onboard work whose
+accounting is automatic every 30 game days; major repair or refit may require a
+suitable facility.
 
 Ship condition uses separate authoritative fields for sustained physical
-damage, temporary battlefield-repair coverage, and per-subsystem scheduled
-maintenance. A combat patch changes effective encounter damage but never
-removes the underlying hits, advances a service date, or survives the end of
-the encounter. Proper repair and scheduled service are also separate work
-results. The record and transition rules are specified in
+damage, temporary battlefield-repair coverage, ship-wide routine-upkeep
+performance, and per-subsystem age, use, and service history. A combat patch
+changes effective encounter damage but never removes the underlying hits,
+advances service history, or survives the end of the encounter. Proper repair,
+routine upkeep, and refit are separate work results. The record and transition
+rules are specified in
 [`ship-condition-and-maintenance.md`](ship-condition-and-maintenance.md).
 
 After an offline-controlled battle, a crew that retains the ship automatically
