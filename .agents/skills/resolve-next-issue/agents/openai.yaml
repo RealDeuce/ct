@@ -1,0 +1,4 @@
+interface:
+  display_name: "Resolve Next CT Issue"
+  short_description: "Select, plan, and implement the top CT issue"
+  default_prompt: "Use $resolve-next-issue to select the most impactful open Cepheus Trader issue and propose an implementation plan for approval."

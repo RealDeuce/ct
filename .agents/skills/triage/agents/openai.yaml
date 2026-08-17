@@ -1,0 +1,4 @@
+interface:
+  display_name: "CT Issue Triage"
+  short_description: "Review and classify Cepheus Trader issues"
+  default_prompt: "Use $triage to review the latest Cepheus Trader issue batch, apply appropriate existing labels, and post code-backed follow-ups where useful."
