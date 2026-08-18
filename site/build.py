@@ -384,6 +384,12 @@ PUBLISHED_SHIP_ART = {
         "patrol frigate with four triple turrets and two particle barbettes.",
         68.0,
     ),
+    93: (
+        "assets/ships/ship-093-nightingale.webp",
+        "Painted three-quarter view of Nightingale, a white thousand-ton hospital "
+        "ship with ward windows, rescue hangar, and defensive sandcasters.",
+        78.0,
+    ),
     95: (
         "assets/ships/ship-095-cook.webp",
         "Painted three-quarter view of Cook, a navy six-hundred-ton streamlined "
@@ -431,6 +437,12 @@ PUBLISHED_SHIP_ART = {
         "Painted three-quarter view of Cyclops, a yellow and violet eight-hundred-ton "
         "missile ship with six launch banks and a docked Wayfarer Cargo.",
         72.0,
+    ),
+    160: (
+        "assets/ships/ship-160-nightingale.webp",
+        "Painted three-quarter view of Nightingale, a white thousand-ton hospital "
+        "ship with enlarged four-gravity stern apertures and rescue hangar.",
+        78.0,
     ),
     139: (
         "assets/ships/ship-139-trelawney.webp",

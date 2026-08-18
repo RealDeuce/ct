@@ -456,6 +456,31 @@ class CatalogRecordTests(unittest.TestCase):
             corvette["armament"],
         )
 
+    def test_nightingale_hospital_refit_keeps_the_clinical_chassis(self) -> None:
+        early, late = (self.records[catalog_id] for catalog_id in (93, 160))
+        for record in (early, late):
+            self.assertEqual(record["family_id"], 93)
+            self.assertEqual(record["tons"], 1000)
+            self.assertEqual(record["configuration"], "Standard")
+            self.assertEqual(record["jump_drive"], "H")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["armor_points"], 4)
+            self.assertEqual(record["length_m"], 78.0)
+            self.assertIn("Full Hangar (110 tons contained)", record["equipment"])
+            self.assertIn("Carried Craft: Charon (ship-158)", record["equipment"])
+            self.assertIn("2 × Carried Craft: Proteus Mercy (ship-159)", record["equipment"])
+            self.assertIn("6 × Double Turret: Sandcaster", record["armament"])
+            self.assertIn("10 × Point Defense Node Mount", record["armament"])
+            self.assertEqual(record["unused_fire_control_stations"], 4)
+        self.assertEqual(early["maneuver_drive"], "L")
+        self.assertEqual(early["power_plant"], "L")
+        self.assertEqual(early["endurance"], 2)
+        self.assertEqual(early["cargo"], "106.5 tons")
+        self.assertEqual(late["maneuver_drive"], "P")
+        self.assertEqual(late["power_plant"], "P")
+        self.assertEqual(late["endurance"], 6)
+        self.assertEqual(late["cargo"], "31.5 tons")
+
 
 if __name__ == "__main__":
     unittest.main()
