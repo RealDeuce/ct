@@ -72,6 +72,18 @@ PUBLISHED_SHIP_ART = {
         "twenty-ton armored launch with one dorsal beam-laser turret.",
         17.5,
     ),
+    9: (
+        "assets/ships/ship-009-icarus-i.webp",
+        "Painted three-quarter view of Icarus I, a navy, ivory, and red "
+        "ten-ton wingless carrier interceptor with a shuttered missile turret.",
+        11.8,
+    ),
+    11: (
+        "assets/ships/ship-011-icarus-ii.webp",
+        "Painted three-quarter view of Icarus II, a navy, ivory, and red "
+        "ten-ton wingless carrier interceptor with doubled armor bands.",
+        11.8,
+    ),
     158: (
         "assets/ships/family-005-charon.webp",
         "Painted three-quarter view of Charon, an ivory, vermilion, and blue "
@@ -498,8 +510,6 @@ def catalog_records() -> list[dict[str, object]]:
             )
         if data.get("airlocks", 0):
             equipment.append("Pressure airlock")
-        if not equipment:
-            equipment.append("Priority cargo module")
         mount_entries = [
             {
                 "name": display_term(item["id"]),
@@ -515,6 +525,18 @@ def catalog_records() -> list[dict[str, object]]:
             f"{display_term(item['id'])}/{item['level']}"
             for item in data.get("software", [])
         ]
+        ammunition_entries = []
+        ammunition = []
+        for item in data.get("ammunition", []):
+            quantity = item["quantity"]
+            ammunition_name = display_term(item["id"])
+            plural_name = f"{ammunition_name}{'s' if quantity != 1 else ''}"
+            ammunition.append(f"{quantity} × {plural_name}")
+            ammunition_entries.append(
+                {"name": plural_name, "quantity": quantity}
+            )
+        if not equipment and not mount_entries and not ammunition_entries:
+            equipment.append("Priority cargo module")
         crew_entries = [
             {"role": display_term(item["role"]), "quantity": item["quantity"]}
             for item in data.get("crew", [])
@@ -572,6 +594,8 @@ def catalog_records() -> list[dict[str, object]]:
                 "equipment_entries": equipment_entries,
                 "armament": armament,
                 "mount_entries": mount_entries,
+                "ammunition": " · ".join(ammunition) or "None carried",
+                "ammunition_entries": ammunition_entries,
                 "assertions": data.get("assertions", {}),
                 "raw_data": data,
                 "art_path": art_path,
@@ -598,6 +622,7 @@ def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
                 ship["configuration"],
                 ship["equipment"],
                 ship["armament"],
+                ship["ammunition"],
                 *ship["software"],
                 *ship["secondary_roles"],
                 *ship["mission_tags"],
@@ -737,15 +762,25 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
     equipment = "".join(
         f'<li><strong>{entry["quantity"]}</strong> {html.escape(entry["name"])}</li>'
         for entry in ship["equipment_entries"]
-    ) or "<li>No separate equipment entries</li>"
+    )
     mounts = "".join(
         f'<li><strong>{html.escape(entry["name"])}</strong> '
         f'{html.escape(joined_terms(entry["weapons"]))}</li>'
         for entry in ship["mount_entries"]
     )
-    recognized_fit = ship["equipment"]
+    ammunition = "".join(
+        f'<li><strong>{entry["quantity"]}</strong> {html.escape(entry["name"])}</li>'
+        for entry in ship["ammunition_entries"]
+    )
+    installed_fit = equipment + mounts + ammunition
+    if not installed_fit:
+        installed_fit = "<li>No separate equipment, armament, or ammunition recorded</li>"
+    recognized_fit_parts = [ship["equipment"]] if ship["equipment"] else []
     if ship["armament"] != "None installed":
-        recognized_fit = f'{recognized_fit} · {ship["armament"]}'
+        recognized_fit_parts.append(ship["armament"])
+    if ship["ammunition"] != "None carried":
+        recognized_fit_parts.append(ship["ammunition"])
+    recognized_fit = " · ".join(recognized_fit_parts) or "No installed fit recorded"
     source_ids = "".join(f"<li><code>{html.escape(value)}</code></li>" for value in ship["source_ids"])
     ogc = "".join(f"<p>{html.escape(value)}</p>" for value in ship["ogc_designations"])
     assertions = ""
@@ -814,6 +849,7 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
             ('Airlocks', ship['airlocks']),
             ('Cargo', ship['cargo']),
             ('Armament', ship['armament']),
+            ('Ammunition', ship['ammunition']),
         ])}</section>
         <section><h3>Drives and control</h3>{record_list([
             ('Maneuver drive', ship['maneuver_drive']),
@@ -830,7 +866,7 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
       </div>
       <div class="ship-manifest-grid">
         <section><h3>Crew complement</h3><ul>{crew}</ul></section>
-        <section><h3>Installed equipment and armament</h3><ul>{equipment}{mounts}</ul></section>
+        <section><h3>Installed equipment, armament, and ammunition</h3><ul>{installed_fit}</ul></section>
         <section><h3>Mission classification</h3>{record_list([
             ('Primary role', ship['role']),
             ('Secondary roles', joined_terms(ship['secondary_roles'])),
