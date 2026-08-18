@@ -48,6 +48,19 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("Point Defense Laser", ligeia["armament"])
         self.assertIn("Point Defense 2", ligeia["software"])
 
+    def test_exterior_equivalent_mercators_share_one_plate(self) -> None:
+        mercators = [self.records[catalog_id] for catalog_id in (27, 28, 31)]
+        self.assertEqual(
+            {record["art_path"] for record in mercators},
+            {"assets/ships/family-027-mercator.webp"},
+        )
+        self.assertTrue(
+            all(record["unused_fire_control_stations"] == 1 for record in mercators)
+        )
+        self.assertEqual(mercators[0]["ammunition"], "12 × Standard Missiles")
+        self.assertEqual(mercators[1]["ammunition"], "None carried")
+        self.assertEqual(mercators[2]["ammunition"], "None carried")
+
 
 if __name__ == "__main__":
     unittest.main()

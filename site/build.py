@@ -150,6 +150,24 @@ PUBLISHED_SHIP_ART = {
         "dispatch courier with a mixed triple turret and broad freight door.",
         31.0,
     ),
+    27: (
+        "assets/ships/family-027-mercator.webp",
+        "Painted three-quarter view of Mercator, an ivory, blue, and vermilion "
+        "hundred-ton light trader with a broad freight door and empty hardpoint.",
+        32.5,
+    ),
+    28: (
+        "assets/ships/family-027-mercator.webp",
+        "Painted three-quarter view of Mercator, an ivory, blue, and vermilion "
+        "hundred-ton light trader with a broad freight door and empty hardpoint.",
+        32.5,
+    ),
+    31: (
+        "assets/ships/family-027-mercator.webp",
+        "Painted three-quarter view of Mercator, an ivory, blue, and vermilion "
+        "hundred-ton light trader with a broad freight door and empty hardpoint.",
+        32.5,
+    ),
     33: (
         "assets/ships/ship-033-ligeia.webp",
         "Painted three-quarter view of Ligeia, an aubergine hundred-ton covert "
