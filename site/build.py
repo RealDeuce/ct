@@ -330,6 +330,18 @@ PUBLISHED_SHIP_ART = {
         "escort raider with two mixed turrets and two particle barbettes.",
         58.0,
     ),
+    78: (
+        "assets/ships/ship-078-bonanza.webp",
+        "Painted three-quarter view of Bonanza, an avocado eight-hundred-ton "
+        "distributed mining tender with three externally docked small craft.",
+        76.0,
+    ),
+    79: (
+        "assets/ships/ship-079-skagway.webp",
+        "Painted three-quarter view of Skagway, an aubergine eight-hundred-ton "
+        "distributed assault tender with three externally docked small craft.",
+        76.0,
+    ),
     139: (
         "assets/ships/ship-139-trelawney.webp",
         "Painted three-quarter view of Trelawney, a polished sunflower and cobalt "

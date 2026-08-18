@@ -307,6 +307,26 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("Barracks", equipment_names)
         self.assertNotIn("Barrackss", equipment_names)
 
+    def test_klondike_modules_share_one_distributed_tender_frame(self) -> None:
+        bonanza, skagway = (self.records[catalog_id] for catalog_id in (78, 79))
+        for record in (bonanza, skagway):
+            self.assertEqual(record["family_id"], 78)
+            self.assertEqual(record["tons"], 800)
+            self.assertEqual(record["configuration"], "Distributed")
+            self.assertEqual(record["jump_drive"], "K")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["maneuver_drive"], "K")
+            self.assertEqual(record["armor_points"], 2)
+            self.assertEqual(record["external_load"], "110 tons")
+            self.assertEqual(record["length_m"], 76.0)
+            self.assertIn("2 × Carried Craft: Proteus Cargo (ship-20)", record["equipment"])
+            self.assertIn("Carried Craft: Charon (ship-158)", record["equipment"])
+            self.assertIn("Docking Clamp 300", record["equipment"])
+        self.assertEqual(bonanza["cargo"], "369 tons")
+        self.assertEqual(skagway["cargo"], "263 tons")
+        self.assertIn("2 × Single Turret: Pulse Laser", bonanza["armament"])
+        self.assertIn("4 × Double Turret: Beam Laser", skagway["armament"])
+
 
 if __name__ == "__main__":
     unittest.main()
