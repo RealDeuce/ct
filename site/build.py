@@ -192,6 +192,18 @@ PUBLISHED_SHIP_ART = {
         "prospecting ship with a cutter hangar and mixed turret.",
         43.0,
     ),
+    35: (
+        "assets/ships/ship-035-congreve-strike.webp",
+        "Painted three-quarter view of Congreve Strike, an ultramarine and violet "
+        "eighty-ton missile boat with twin yellow launch-shutter banks.",
+        29.0,
+    ),
+    36: (
+        "assets/ships/ship-036-congreve-escort.webp",
+        "Painted three-quarter view of Congreve Escort, an ultramarine and violet "
+        "eighty-ton missile boat with one active launch bank and one armored blank.",
+        29.0,
+    ),
     43: (
         "assets/ships/family-034-humboldt.webp",
         "Painted three-quarter view of Humboldt, an avocado and ochre two-hundred-ton "

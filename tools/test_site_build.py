@@ -98,6 +98,27 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(humboldts[0]["ammunition"], "20 × Sandcaster Canisters")
         self.assertEqual(humboldts[1]["ammunition"], "40 × Sandcaster Canisters")
 
+    def test_congreve_variants_keep_shared_hull_scale(self) -> None:
+        strike, escort = (self.records[catalog_id] for catalog_id in (35, 36))
+        for record in (strike, escort):
+            self.assertEqual(record["tons"], 80)
+            self.assertEqual(record["armor_points"], 4)
+            self.assertEqual(record["length_m"], 29.0)
+            self.assertEqual(record["airlocks"], 1)
+            self.assertIsNone(record["jump_drive"])
+        self.assertEqual(
+            strike["art_path"], "assets/ships/ship-035-congreve-strike.webp"
+        )
+        self.assertEqual(
+            escort["art_path"], "assets/ships/ship-036-congreve-escort.webp"
+        )
+        self.assertEqual(
+            strike["armament"], "Fixed Double Turret: Missile Rack · Missile Rack"
+        )
+        self.assertEqual(escort["armament"], "Single Turret: Missile Rack")
+        self.assertEqual(strike["ammunition"], "144 × Standard Missiles")
+        self.assertEqual(escort["ammunition"], "12 × Standard Missiles")
+
 
 if __name__ == "__main__":
     unittest.main()
