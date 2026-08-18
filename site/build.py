@@ -385,16 +385,24 @@ def catalog_records() -> list[dict[str, object]]:
         if not hull_match:
             raise RuntimeError(f"unknown hull ID in {source}: {data['hull']['id']}")
         equipment = []
+        equipment_entries = []
         for item in data.get("equipment", []):
             quantity = item.get("quantity", 1)
             if item["id"] == "grappling-arm":
                 equipment.append("Grappling arm")
             elif item["id"] == "acceleration-seat":
                 equipment.append(f"{quantity} passenger seats")
+            equipment_entries.append(
+                {"name": display_term(item["id"]), "quantity": quantity}
+            )
         if data.get("airlocks", 0):
             equipment.append("Pressure airlock")
         if not equipment:
             equipment.append("Priority cargo module")
+        crew_entries = [
+            {"role": display_term(item["role"]), "quantity": item["quantity"]}
+            for item in data.get("crew", [])
+        ]
         crew = sum(item["quantity"] for item in data.get("crew", []))
         records.append(
             {
@@ -408,12 +416,37 @@ def catalog_records() -> list[dict[str, object]]:
                 "path_id": catalog["upgrade_path_id"],
                 "path_name": path_names[catalog["upgrade_path_id"]]["display_name"],
                 "yard_name": path_names[catalog["upgrade_path_id"]]["manufacturer_name"],
+                "page": f"ship-{catalog_id:03}-{slug(catalog['display_name'])}.html",
+                "design_id": data["design_id"],
+                "schema_version": data["schema_version"],
+                "revision": data["revision"],
+                "ruleset": display_term(data["ruleset_id"].replace(".", " ")),
+                "source_ids": data["source_ids"],
+                "tech_level": data["tech_level"],
+                "standard_design": data["standard_design"],
+                "electronics": display_term(data["electronics"]),
+                "status": display_term(catalog["status"]),
+                "progression_stage": display_term(catalog["progression_stage"]),
+                "vessel_kind": display_term(catalog["vessel_kind"]),
+                "secondary_roles": [display_term(value) for value in catalog["secondary_roles"]],
+                "mission_tags": [display_term(value) for value in catalog["mission_tags"]],
+                "ogc_designations": catalog["open_game_content_designations"],
                 "tons": int(hull_match.group(1)),
+                "hull_id": data["hull"]["id"],
                 "configuration": display_term(data["hull"]["configuration"]),
+                "maneuver_drive": data["drives"]["maneuver"],
+                "power_plant": data["drives"]["power"],
+                "control": display_term(data["control"]["id"]),
+                "additional_passengers": data["control"]["additional_passengers"],
+                "computer": display_term(data["computer"]["id"]),
+                "computer_options": [display_term(value) for value in data["computer"]["options"]],
+                "airlocks": data.get("airlocks", 0),
                 "crew": crew,
+                "crew_entries": crew_entries,
                 "endurance": data["fuel"]["power_plant_weeks"],
                 "cargo": format_tons(data.get("cargo_millitons", 0)),
                 "equipment": " · ".join(equipment),
+                "equipment_entries": equipment_entries,
                 "art_path": art_path,
                 "art_alt": art_alt,
             }
@@ -421,66 +454,204 @@ def catalog_records() -> list[dict[str, object]]:
     return records
 
 
-def ship_catalog_page() -> str:
-    records = catalog_records()
-    cards = []
+def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
+    if records is None:
+        records = catalog_records()
+    index_links = []
     for ship in records:
-        paragraphs = "".join(f"<p>{html.escape(text)}</p>" for text in ship["description"])
-        weeks = ship["endurance"]
-        cards.append(
-            f"""
-<article class="ship-card path-{ship['path_id']}" id="{ship['tag']}">
-  <figure class="ship-plate">
-    <img src="{ship['art_path']}" alt="{html.escape(ship['art_alt'], quote=True)}" width="1536" height="1024" loading="lazy">
-    <figcaption>
-      <span>{ship['tag']} / Family {ship['family_id']:03}</span>
-      <span class="ship-scale">9.6 m overall</span>
-    </figcaption>
-  </figure>
-  <div class="ship-card-body">
-    <p class="ship-path">Path {ship['path_id']:02} / {html.escape(ship['path_name'])}</p>
-    <div class="ship-title-row"><h2>{html.escape(ship['name'])}</h2><span>{html.escape(ship['role'])}</span></div>
-    <dl class="ship-specs">
-      <div><dt>Displacement</dt><dd>{ship['tons']} tons</dd></div>
-      <div><dt>Configuration</dt><dd>{ship['configuration']}</dd></div>
-      <div><dt>Crew</dt><dd>{ship['crew']}</dd></div>
-      <div><dt>Endurance</dt><dd>{weeks} week{'s' if weeks != 1 else ''}</dd></div>
-      <div><dt>Cargo</dt><dd>{ship['cargo']}</dd></div>
-      <div><dt>Armament</dt><dd>Unarmed</dd></div>
-    </dl>
-    <p class="ship-fit"><span>Recognized fit</span>{html.escape(ship['equipment'])}</p>
-    <div class="ship-description">{paragraphs}</div>
-    <p class="ship-yard">Constructed in the design language of <strong>{html.escape(ship['yard_name'])}</strong>.</p>
-  </div>
-</article>"""
+        search_text = " ".join(
+            str(value)
+            for value in (
+                ship["name"],
+                ship["role"],
+                ship["family_name"],
+                ship["path_name"],
+                ship["yard_name"],
+                ship["configuration"],
+                ship["equipment"],
+                *ship["mission_tags"],
+                *ship["description"],
+            )
+        ).lower()
+        index_links.append(
+            f'<a href="{ship["page"]}" data-catalog-entry '
+            f'data-family="{ship["family_id"]}" data-path="{ship["path_id"]}" '
+            f'data-search="{html.escape(search_text, quote=True)}">'
+            f'<span>{ship["catalog_id"]:03}</span><strong>{html.escape(ship["name"])}</strong>'
+            f'<small>{html.escape(ship["family_name"])} family · {ship["tons"]} tons · '
+            f'{html.escape(ship["role"])}<br>{html.escape(ship["path_name"])}</small>'
+            f'<b>Open full dossier →</b></a>'
         )
+    families = sorted({(ship["family_id"], ship["family_name"]) for ship in records})
+    paths = sorted({(ship["path_id"], ship["path_name"]) for ship in records})
+    family_options = "".join(
+        f'<option value="{family_id}">{html.escape(family_name)}</option>'
+        for family_id, family_name in families
+    )
+    path_options = "".join(
+        f'<option value="{path_id}">{html.escape(path_name)}</option>'
+        for path_id, path_name in paths
+    )
     body = f"""
 <header class="document-hero catalog-hero">
-  <p class="eyebrow">Captain's library // SC-01</p>
+  <p class="eyebrow">Office of Vessel Recognition // SC-01</p>
   <h1>Ship Catalog</h1>
-  <p>Field-recognition plates and working summaries for canonical vessels encountered across the shared universe. Illustration proceeds by complete hull family so related ships remain visibly related.</p>
+  <p class="catalog-intro">Issued to captains, brokers, port officials, and boarding crews. Match silhouette and visible fittings before trusting a transponder return: local refits, improvised repairs, and false registry marks are common.</p>
   <dl class="catalog-overview" aria-label="Catalog publication status">
     <div><dt>Plates issued</dt><dd>{len(records):02}</dd></div>
-    <div><dt>Complete families</dt><dd>01</dd></div>
+    <div><dt>Complete families</dt><dd>{len(families):02}</dd></div>
     <div><dt>Catalog designs</dt><dd>213</dd></div>
     <div><dt>Current volume</dt><dd>10 displacement tons</dd></div>
   </dl>
 </header>
-<section class="catalog-family" aria-labelledby="daedalus-title">
-  <header class="catalog-family-header">
-    <div><p class="section-index">Family 001 / Auxiliary craft</p><h2 id="daedalus-title">Daedalus work pods</h2></div>
-    <div class="family-brief">
-      <p>Four local craft share one ten-ton distributed chassis: a two-seat faceted cockpit, open structural spine, replaceable mission cradle, and paired drive drums.</p>
-      <ul aria-label="Family characteristics"><li>10 displacement tons</li><li>Distributed hull</li><li>Two crew</li><li>Non-Jump</li><li>Unarmed</li></ul>
-    </div>
-  </header>
-  <div class="catalog-grid">{''.join(cards)}</div>
-  <p class="catalog-source"><span>Registry note</span> Mechanics and descriptions are read from the active ship records. Exterior dimensions, component placement, and illustrations are original canonical art decisions recorded in the Daedalus visual manifest.</p>
-</section>
+<div class="catalog-registry">
+  <div class="catalog-controls" role="search" aria-label="Search issued ship plates">
+    <label class="catalog-query" for="ship-query"><span>Search registry</span><input id="ship-query" type="search" autocomplete="off" placeholder="Name, role, yard, or visible fit…"></label>
+    <label for="ship-family"><span>Family</span><select id="ship-family"><option value="">All issued families</option>{family_options}</select></label>
+    <label for="ship-path"><span>Shipyard path</span><select id="ship-path"><option value="">All issued paths</option>{path_options}</select></label>
+    <p id="ship-results" role="status" aria-live="polite">Showing all {len(records)} issued entries.</p>
+  </div>
+  <section class="catalog-directory" aria-labelledby="catalog-index-title">
+    <header><p class="section-index">Registry finder</p><h2 id="catalog-index-title">Issued dossiers</h2><p>This register stays compact for rapid filtering. Open a vessel to see its complete recognition plate, operational profile, construction record, crew, equipment, and provenance.</p></header>
+    <nav class="catalog-index" id="catalog-index" aria-label="Issued ship plates">{''.join(index_links)}</nav>
+    <div id="no-ship-results" class="no-results" hidden><strong>No issued plate matches.</strong><p>Clear a filter or try a broader registry term.</p></div>
+    <p class="catalog-source"><span>Registry note</span> Only vessels with an approved family plate appear here. The active construction catalog currently contains 213 designs.</p>
+  </section>
+</div>
 """
     return page_shell(
         "Ship Catalog",
         "Illustrated player-facing ship catalog for Cepheus Trader, beginning with the complete Daedalus work-pod family.",
+        "catalog",
+        body,
+    )
+
+
+def record_list(rows: list[tuple[str, object]]) -> str:
+    return '<dl class="ship-record-list">' + "".join(
+        f"<div><dt>{html.escape(label)}</dt><dd>{html.escape(str(value))}</dd></div>"
+        for label, value in rows
+    ) + "</dl>"
+
+
+def joined_terms(values: list[str]) -> str:
+    return " · ".join(values) if values else "None"
+
+
+def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) -> str:
+    paragraphs = "".join(f"<p>{html.escape(text)}</p>" for text in ship["description"])
+    weeks = ship["endurance"]
+    family_members = [item for item in records if item["family_id"] == ship["family_id"]]
+    member_links = "".join(
+        f'<a href="{item["page"]}"{f" aria-current=\"page\"" if item is ship else ""}>'
+        f'<span>{item["catalog_id"]:03}</span><strong>{html.escape(item["name"])}</strong>'
+        f'<small>{html.escape(item["role"])}</small></a>'
+        for item in family_members
+    )
+    position = family_members.index(ship)
+    previous_link = (
+        f'<a rel="prev" href="{family_members[position - 1]["page"]}">← '
+        f'{html.escape(family_members[position - 1]["name"])}</a>'
+        if position > 0 else "<span></span>"
+    )
+    next_link = (
+        f'<a rel="next" href="{family_members[position + 1]["page"]}">'
+        f'{html.escape(family_members[position + 1]["name"])} →</a>'
+        if position + 1 < len(family_members) else "<span></span>"
+    )
+    crew = "".join(
+        f'<li><strong>{entry["quantity"]}</strong> {html.escape(entry["role"])}'
+        f'{"s" if entry["quantity"] != 1 else ""}</li>'
+        for entry in ship["crew_entries"]
+    ) or "<li>None recorded</li>"
+    equipment = "".join(
+        f'<li><strong>{entry["quantity"]}</strong> {html.escape(entry["name"])}</li>'
+        for entry in ship["equipment_entries"]
+    ) or "<li>No separate equipment entries</li>"
+    source_ids = "".join(f"<li><code>{html.escape(value)}</code></li>" for value in ship["source_ids"])
+    ogc = "".join(f"<p>{html.escape(value)}</p>" for value in ship["ogc_designations"])
+    body = f"""
+<article class="ship-detail path-{ship['path_id']}">
+  <header class="ship-detail-hero">
+    <nav class="ship-breadcrumb" aria-label="Breadcrumb"><a href="ships.html">Ship Catalog</a><span>/</span><span>Family {ship['family_id']:03}</span><span>/</span><span>Entry {ship['catalog_id']:03}</span></nav>
+    <div class="ship-detail-heading">
+      <div><p class="eyebrow">Office of Vessel Recognition // {ship['tag']}</p><h1>{html.escape(ship['name'])}</h1><p>{html.escape(ship['role'])}</p></div>
+      <div class="ship-detail-yard"><span>Path {ship['path_id']:02} / {html.escape(ship['path_name'])}</span><strong>{html.escape(ship['yard_name'])}</strong></div>
+    </div>
+  </header>
+  <div class="ship-detail-main">
+    <figure class="ship-detail-plate">
+      <img src="{ship['art_path']}" alt="{html.escape(ship['art_alt'], quote=True)}" width="1536" height="1024">
+      <figcaption><span>{ship['tag']} / Canonical recognition plate</span><span class="ship-scale">9.6 m overall</span></figcaption>
+    </figure>
+    <dl class="ship-detail-summary">
+      <div><dt>Displacement</dt><dd>{ship['tons']} tons</dd></div>
+      <div><dt>Configuration</dt><dd>{ship['configuration']}</dd></div>
+      <div><dt>Tech level</dt><dd>{ship['tech_level']}</dd></div>
+      <div><dt>Crew</dt><dd>{ship['crew']}</dd></div>
+      <div><dt>Endurance</dt><dd>{weeks} week{'s' if weeks != 1 else ''}</dd></div>
+      <div><dt>Cargo</dt><dd>{ship['cargo']}</dd></div>
+    </dl>
+    <div class="ship-detail-profile">
+      <section><p class="section-index">Operational profile</p><h2>Recognition and use</h2><div class="ship-description">{paragraphs}</div></section>
+      <aside><p class="ship-fit"><span>Recognized fit</span>{html.escape(ship['equipment'])}</p><p class="ship-yard">Yard pattern: <strong>{html.escape(ship['yard_name'])}</strong>.</p><div class="record-tags" aria-label="Mission tags">{''.join(f'<span>{html.escape(value)}</span>' for value in ship['mission_tags'])}</div></aside>
+    </div>
+    <section class="ship-construction" aria-labelledby="construction-title">
+      <header><p class="section-index">Complete record / Revision {ship['revision']}</p><h2 id="construction-title">Construction dossier</h2><p>All fields below are read from the active catalog record. “None” is explicit where the record contains no fitted item or option.</p></header>
+      <div class="ship-record-grid">
+        <section><h3>Registry</h3>{record_list([
+            ('Catalog entry', f'{ship["catalog_id"]:03}'),
+            ('Design ID', ship['design_id']),
+            ('Schema version', ship['schema_version']),
+            ('Record revision', ship['revision']),
+            ('Status', ship['status']),
+            ('Vessel kind', ship['vessel_kind']),
+            ('Progression stage', ship['progression_stage']),
+            ('Family', f'{ship["family_id"]:03} / {ship["family_name"]}'),
+            ('Shipyard path', f'{ship["path_id"]:02} / {ship["path_name"]}'),
+            ('Standard design', 'Yes' if ship['standard_design'] else 'No'),
+        ])}</section>
+        <section><h3>Hull and systems</h3>{record_list([
+            ('Ruleset', ship['ruleset']),
+            ('Tech level', ship['tech_level']),
+            ('Hull code', ship['hull_id']),
+            ('Displacement', f'{ship["tons"]} tons'),
+            ('Configuration', ship['configuration']),
+            ('Electronics', ship['electronics']),
+            ('Airlocks', ship['airlocks']),
+            ('Cargo', ship['cargo']),
+            ('Armament', 'None installed'),
+        ])}</section>
+        <section><h3>Drives and control</h3>{record_list([
+            ('Maneuver drive', ship['maneuver_drive']),
+            ('Power plant', ship['power_plant']),
+            ('Jump drive', 'None installed'),
+            ('Power endurance', f'{weeks} week{"s" if weeks != 1 else ""}'),
+            ('Control', ship['control']),
+            ('Additional passengers', ship['additional_passengers']),
+            ('Computer', ship['computer']),
+            ('Computer options', joined_terms(ship['computer_options'])),
+        ])}</section>
+      </div>
+      <div class="ship-manifest-grid">
+        <section><h3>Crew complement</h3><ul>{crew}</ul></section>
+        <section><h3>Installed equipment</h3><ul>{equipment}</ul></section>
+        <section><h3>Mission classification</h3>{record_list([
+            ('Primary role', ship['role']),
+            ('Secondary roles', joined_terms(ship['secondary_roles'])),
+            ('Mission tags', joined_terms(ship['mission_tags'])),
+        ])}</section>
+      </div>
+    </section>
+    <section class="ship-provenance"><div><p class="section-index">Record provenance</p><h2>Sources and designation</h2><p>Source record: <code>catalog/ships/ship-{ship['catalog_id']}.toml</code></p>{ogc}</div><ul>{source_ids}</ul></section>
+    <nav class="family-navigation" aria-label="Daedalus family vessels"><header><p class="section-index">Family {ship['family_id']:03}</p><h2>{html.escape(ship['family_name'])} family</h2></header><div>{member_links}</div></nav>
+    <nav class="dossier-pagination" aria-label="Previous and next family vessels">{previous_link}<a href="ships.html">All issued dossiers</a>{next_link}</nav>
+  </div>
+</article>
+"""
+    return page_shell(
+        ship["name"],
+        f"Complete recognition and construction dossier for the {ship['name']} {ship['role'].lower()}.",
         "catalog",
         body,
     )
@@ -636,12 +807,14 @@ def build(output: Path) -> None:
         shutil.rmtree(output)
     (output / "assets").mkdir(parents=True)
     topics = help_topics()
+    ships = catalog_records()
     pages = {
         "index.html": landing_page(),
-        "ships.html": ship_catalog_page(),
+        "ships.html": ship_catalog_page(ships),
         "reference.html": reference_page(),
         "beginner-help.html": beginner_help_page(topics),
     }
+    pages.update({ship["page"]: ship_detail_page(ship, ships) for ship in ships})
     for name, content in pages.items():
         (output / name).write_text(content, encoding="utf-8")
     for asset in (SITE / "assets").rglob("*"):

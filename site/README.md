@@ -11,9 +11,10 @@ The build has three authoritative content inputs:
 - `docs/player-guide.md` becomes the Player Reference.
 - Beginner bodies in `client/src/door_help.cpp` become searchable Beginner
   Help, checked against `DoorHelpTopic` in `client/include/ct/door_help.hpp`.
-- Published records under `catalog/ships/` become the mechanical summaries in
-  the Ship Catalog; canonical plates are served from `site/assets/ships/` and
-  their production manifests and masters remain under `site/ship-art/`.
+- Published records under `catalog/ships/` become the filtered Ship Catalog
+  index and complete per-vessel dossiers; canonical plates are served from
+  `site/assets/ships/`, while production manifests and masters remain under
+  `site/ship-art/`.
 
 Build and validate the site locally with:
 

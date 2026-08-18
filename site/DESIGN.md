@@ -195,6 +195,28 @@ answer quickly.
 The landing page may be cinematic and editorial. Reference and help pages must
 be quieter, denser, and optimized for repeated use.
 
+### Ship catalog
+
+The complete catalog is large enough that its information architecture must be
+designed for hundreds of entries from the beginning:
+
+- lead with a compact index, text search, and mechanical family and shipyard-
+  path filters rather than an unbounded gallery of illustrations;
+- give every ship a durable dedicated URL, with the filtered index serving as
+  a finder rather than attempting to hold every detail;
+- show one complete vessel dossier per detail page, including every meaningful
+  field in the active catalog record, with its plate constrained to the
+  available width at every breakpoint;
+- center short specification values within a regular register instead of
+  allowing them to collect against one edge or form irregular text blocks;
+- keep controls and registry fields plainly named even when their presentation
+  is in-world; search and filtering must remain useful without knowing setting
+  terminology; and
+- keep production vocabulary such as *prompt*, *design language*, and image-
+  generation instructions in the art guide. Player-facing copy should read as
+  a registry, recognition manual, or other artifact that could exist in the
+  setting.
+
 ## Accessibility and resilience
 
 The period character must be achieved through composition and art direction,
