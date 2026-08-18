@@ -228,6 +228,18 @@ PUBLISHED_SHIP_ART = {
         "prospecting ship with a cutter hangar and mixed turret.",
         43.0,
     ),
+    45: (
+        "assets/ships/family-045-sinbad.webp",
+        "Painted three-quarter view of Sinbad, a sunflower and cobalt two-hundred-ton "
+        "armored passenger trader with a mixed turret and air-raft bay.",
+        43.0,
+    ),
+    46: (
+        "assets/ships/family-045-sinbad.webp",
+        "Painted three-quarter view of Sinbad, a sunflower and cobalt two-hundred-ton "
+        "armored passenger trader with a mixed turret and air-raft bay.",
+        43.0,
+    ),
     134: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "

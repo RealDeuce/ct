@@ -137,6 +137,31 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("15 × Steerage", niccolo["equipment"])
         self.assertIn("8 × Stateroom", maffeo["equipment"])
 
+    def test_exterior_equivalent_sinbads_share_one_plate(self) -> None:
+        sinbads = [self.records[catalog_id] for catalog_id in (45, 46)]
+        self.assertEqual(
+            {record["art_path"] for record in sinbads},
+            {"assets/ships/family-045-sinbad.webp"},
+        )
+        for record in sinbads:
+            self.assertEqual(record["tons"], 200)
+            self.assertEqual(record["armor_points"], 4)
+            self.assertEqual(record["jump_drive"], "B")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["length_m"], 43.0)
+            self.assertEqual(
+                record["armament"],
+                "Triple Turret: Beam Laser · Missile Rack · Sandcaster",
+            )
+            self.assertEqual(
+                record["ammunition"],
+                "12 × Standard Missiles · 20 × Sandcaster Canisters",
+            )
+        self.assertEqual(sinbads[0]["cargo"], "42 tons")
+        self.assertEqual(sinbads[1]["cargo"], "41 tons")
+        self.assertEqual(sinbads[0]["electronics"], "Basic Civilian")
+        self.assertEqual(sinbads[1]["electronics"], "Basic Military")
+
 
 if __name__ == "__main__":
     unittest.main()
