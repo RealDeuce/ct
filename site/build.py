@@ -270,6 +270,90 @@ PUBLISHED_SHIP_ART = {
         "system freighter with three cargo shutters and blanked drive-service panels.",
         53.0,
     ),
+    54: (
+        "assets/ships/family-054-fogg.webp",
+        "Painted three-quarter view of Fogg, a sunflower and cobalt three-hundred-ton "
+        "armed passenger liner with three triple turrets and a glazed hotel deck.",
+        50.0,
+    ),
+    57: (
+        "assets/ships/family-054-hatteras.webp",
+        "Painted three-quarter view of Hatteras, an avocado and ochre three-hundred-ton "
+        "frontier trader with paired passenger panes and rugged cargo shutters.",
+        50.0,
+    ),
+    58: (
+        "assets/ships/family-054-hatteras.webp",
+        "Painted three-quarter view of Hatteras, an avocado and ochre three-hundred-ton "
+        "frontier trader with paired passenger panes and rugged cargo shutters.",
+        50.0,
+    ),
+    59: (
+        "assets/ships/family-054-aouda.webp",
+        "Painted three-quarter view of Aouda, an ivory and royal-blue three-hundred-ton "
+        "passenger trader with a regular glazed occupancy grid.",
+        50.0,
+    ),
+    60: (
+        "assets/ships/family-054-passepartout.webp",
+        "Painted three-quarter view of Passepartout, an ivory and royal-blue "
+        "three-hundred-ton bulk freighter with twelve closed cargo panels.",
+        50.0,
+    ),
+    62: (
+        "assets/ships/family-054-stahlstadt.webp",
+        "Painted three-quarter view of Stahlstadt, an ultramarine and violet "
+        "three-hundred-ton missile ship with a yellow-collared launch bank.",
+        50.0,
+    ),
+    65: (
+        "assets/ships/family-054-nemo.webp",
+        "Painted three-quarter view of Nemo, an emerald and cream three-hundred-ton "
+        "patrol ship with a boat hangar, two turrets, and particle-beam barbette.",
+        50.0,
+    ),
+    161: (
+        "assets/ships/family-054-hatteras.webp",
+        "Painted three-quarter view of Hatteras, an avocado and ochre three-hundred-ton "
+        "frontier trader with paired passenger panes and rugged cargo shutters.",
+        50.0,
+    ),
+    162: (
+        "assets/ships/family-054-aouda.webp",
+        "Painted three-quarter view of Aouda, an ivory and royal-blue three-hundred-ton "
+        "passenger trader with a regular glazed occupancy grid.",
+        50.0,
+    ),
+    163: (
+        "assets/ships/family-054-passepartout.webp",
+        "Painted three-quarter view of Passepartout, an ivory and royal-blue "
+        "three-hundred-ton bulk freighter with twelve closed cargo panels.",
+        50.0,
+    ),
+    164: (
+        "assets/ships/family-054-fogg.webp",
+        "Painted three-quarter view of Fogg, a sunflower and cobalt three-hundred-ton "
+        "armed passenger liner with three triple turrets and a glazed hotel deck.",
+        50.0,
+    ),
+    166: (
+        "assets/ships/family-054-nemo.webp",
+        "Painted three-quarter view of Nemo, an emerald and cream three-hundred-ton "
+        "patrol ship with a boat hangar, two turrets, and particle-beam barbette.",
+        50.0,
+    ),
+    167: (
+        "assets/ships/family-054-stahlstadt.webp",
+        "Painted three-quarter view of Stahlstadt, an ultramarine and violet "
+        "three-hundred-ton missile ship with a yellow-collared launch bank.",
+        50.0,
+    ),
+    168: (
+        "assets/ships/ship-168-robur.webp",
+        "Painted three-quarter view of Robur, a sunflower and cobalt three-hundred-ton "
+        "fast armed trader with three turrets and point-defense nodes.",
+        50.0,
+    ),
     55: (
         "assets/ships/ship-055-nereus.webp",
         "Painted three-quarter view of Nereus, a red, orange, and bone ninety-five-ton "
@@ -733,6 +817,9 @@ def catalog_records() -> list[dict[str, object]]:
         entry["family_id"]: entry["display_name"] for entry in names["family_name"]
     }
     path_names = {entry["path_id"]: entry for entry in names["path_name"]}
+    design_names = {
+        entry["tag"]: entry["display_name"] for entry in names["design_name"]
+    }
     shipbuilding = tomllib.loads(SHIPBUILDING_CORE.read_text(encoding="utf-8"))
     armor_points_per_layer = {
         entry["id"]: entry["protection_per_layer"]
@@ -808,6 +895,43 @@ def catalog_records() -> list[dict[str, object]]:
             equipment_entries.append(
                 {"name": hangar_name, "quantity": quantity}
             )
+        for item in data.get("docking_clamps", []):
+            quantity = int(item.get("quantity", 1))
+            clamp_name = display_term(item["id"])
+            equipment.append(
+                clamp_name if quantity == 1 else f"{quantity} × {clamp_name}"
+            )
+            equipment_entries.append({"name": clamp_name, "quantity": quantity})
+        for item in data.get("launch_facilities", []):
+            quantity = int(item.get("quantity", 1))
+            facility_name = (
+                f"{display_term(item['id'])} "
+                f"({format_tons(item['largest_craft_millitons'])} largest craft)"
+            )
+            equipment.append(
+                facility_name if quantity == 1 else f"{quantity} × {facility_name}"
+            )
+            equipment_entries.append(
+                {"name": facility_name, "quantity": quantity}
+            )
+        for item in data.get("carried_craft", []):
+            quantity = int(item.get("quantity", 1))
+            craft_tag = item["tag"]
+            craft_name = design_names.get(craft_tag, display_term(craft_tag))
+            carried_name = f"Carried Craft: {craft_name} ({craft_tag})"
+            equipment.append(
+                carried_name if quantity == 1 else f"{quantity} × {carried_name}"
+            )
+            equipment_entries.append(
+                {"name": carried_name, "quantity": quantity}
+            )
+        for item in data.get("screens", []):
+            quantity = int(item.get("quantity", 1))
+            screen_name = display_term(item["id"])
+            equipment.append(
+                screen_name if quantity == 1 else f"{quantity} × {screen_name}"
+            )
+            equipment_entries.append({"name": screen_name, "quantity": quantity})
         airlocks = data.get("airlocks")
         if airlocks:
             equipment.append(
@@ -827,6 +951,22 @@ def catalog_records() -> list[dict[str, object]]:
                     "quantity": int(item.get("quantity", 1)),
                 }
             )
+        for item in data.get("barbettes", []):
+            mount_entries.append(
+                {
+                    "name": display_term(item["id"]),
+                    "weapons": [],
+                    "quantity": int(item.get("quantity", 1)),
+                }
+            )
+        for item in data.get("bays", []):
+            mount_entries.append(
+                {
+                    "name": display_term(item["id"]),
+                    "weapons": [],
+                    "quantity": int(item.get("quantity", 1)),
+                }
+            )
         for item in data.get("point_defense", []):
             mount_entries.append(
                 {
@@ -840,9 +980,9 @@ def catalog_records() -> list[dict[str, object]]:
             mount_name = entry["name"]
             if entry["quantity"] != 1:
                 mount_name = f"{entry['quantity']} × {mount_name}"
-            armament_parts.append(
-                f"{mount_name}: {joined_terms(entry['weapons'])}"
-            )
+            if entry["weapons"]:
+                mount_name = f"{mount_name}: {joined_terms(entry['weapons'])}"
+            armament_parts.append(mount_name)
         armament = " · ".join(armament_parts) or "None installed"
         software = []
         for item in data.get("software", []):
@@ -868,6 +1008,20 @@ def catalog_records() -> list[dict[str, object]]:
         ]
         crew = sum(item["quantity"] for item in data.get("crew", []))
         control = data.get("control")
+        structural_options = []
+        for item in data.get("structural_options", []):
+            option_name = display_term(item["id"])
+            details = []
+            if "increments" in item:
+                details.append(
+                    f"{item['increments']} "
+                    f"increment{'s' if item['increments'] != 1 else ''}"
+                )
+            if "protected_component_id" in item:
+                details.append(display_term(item["protected_component_id"]))
+            structural_options.append(
+                f"{option_name} ({', '.join(details)})" if details else option_name
+            )
         records.append(
             {
                 "catalog_id": catalog_id,
@@ -902,8 +1056,17 @@ def catalog_records() -> list[dict[str, object]]:
                 "hull_id": data["hull"]["id"],
                 "configuration": display_term(data["hull"]["configuration"]),
                 "hull_options": hull_options,
+                "structural_options": structural_options,
+                "magazine_options": [
+                    display_term(value) for value in data.get("magazine_options", [])
+                ],
+                "power_options": [
+                    display_term(value) for value in data.get("power_options", [])
+                ],
+                "external_load": format_tons(data.get("external_load_millitons", 0)),
                 "maneuver_drive": data["drives"]["maneuver"],
                 "power_plant": data["drives"]["power"],
+                "thrust_g": data.get("thrust_g"),
                 "jump_drive": data["drives"].get("jump"),
                 "jump_distance": data["fuel"].get("jump_distance"),
                 "jump_count": data["fuel"].get("jump_count"),
@@ -1111,10 +1274,11 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
         mount_name = html.escape(entry["name"])
         if entry["quantity"] != 1:
             mount_name = f'{entry["quantity"]} × {mount_name}'
-        mount_items.append(
-            f'<li><strong>{mount_name}</strong> '
-            f'{html.escape(joined_terms(entry["weapons"]))}</li>'
+        weapon_fit = (
+            f' {html.escape(joined_terms(entry["weapons"]))}'
+            if entry["weapons"] else ""
         )
+        mount_items.append(f'<li><strong>{mount_name}</strong>{weapon_fit}</li>')
     mounts = "".join(mount_items)
     ammunition = "".join(
         f'<li><strong>{entry["quantity"]}</strong> {html.escape(entry["name"])}</li>'
@@ -1195,18 +1359,23 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
             ('Displacement', f'{ship["tons"]} tons'),
             ('Configuration', ship['configuration']),
             ('Hull options', joined_terms(ship['hull_options'])),
+            ('Structural options', joined_terms(ship['structural_options'])),
             ('Armor', ship['armor_id']),
             ('Armor layers', ship['armor_layers'] if ship['armor_layers'] else ('Not layer-rated' if ship['armor_points'] else 'None')),
             ('Armor points', ship['armor_points']),
             ('Electronics', ship['electronics']),
             ('Airlocks', ship['airlocks'] if ship['airlocks'] is not None else 'Not separately recorded'),
             ('Cargo', ship['cargo']),
+            ('External load', ship['external_load']),
+            ('Magazine options', joined_terms(ship['magazine_options'])),
             ('Armament', ship['armament']),
             ('Ammunition', ship['ammunition']),
         ])}</section>
         <section><h3>Drives and control</h3>{record_list([
             ('Maneuver drive', ship['maneuver_drive']),
+            ('Recorded thrust', f'{ship["thrust_g"]} g' if ship['thrust_g'] is not None else 'Derived from drive fit'),
             ('Power plant', ship['power_plant']),
+            ('Power options', joined_terms(ship['power_options'])),
             ('Jump drive', ship['jump_drive'] or 'None installed'),
             ('Jump distance', ship['jump_distance'] if ship['jump_distance'] is not None else 'Not applicable'),
             ('Jumps carried', ship['jump_count'] if ship['jump_count'] is not None else 'Not applicable'),

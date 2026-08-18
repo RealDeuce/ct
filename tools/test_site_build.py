@@ -203,6 +203,54 @@ class CatalogRecordTests(unittest.TestCase):
             self.assertIsNone(record["jump_drive"])
             self.assertEqual(record["cargo"], "211.5 tons")
 
+    def test_verne_records_resolve_to_seven_audited_exterior_fits(self) -> None:
+        fit_groups = {
+            "assets/ships/family-054-fogg.webp": (54, 164),
+            "assets/ships/family-054-hatteras.webp": (57, 58, 161),
+            "assets/ships/family-054-aouda.webp": (59, 162),
+            "assets/ships/family-054-passepartout.webp": (60, 163),
+            "assets/ships/family-054-stahlstadt.webp": (62, 167),
+            "assets/ships/family-054-nemo.webp": (65, 166),
+            "assets/ships/ship-168-robur.webp": (168,),
+        }
+        vernes = []
+        for art_path, catalog_ids in fit_groups.items():
+            records = [self.records[catalog_id] for catalog_id in catalog_ids]
+            vernes.extend(records)
+            self.assertEqual({record["art_path"] for record in records}, {art_path})
+        for record in vernes:
+            self.assertEqual(record["family_id"], 54)
+            self.assertEqual(record["tons"], 300)
+            self.assertEqual(record["configuration"], "Streamlined")
+            self.assertEqual(record["jump_drive"], "C")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["armor_points"], 4)
+            self.assertEqual(record["length_m"], 50.0)
+
+        stahlstadt = self.records[62]
+        self.assertIn("Missile Bank", stahlstadt["armament"])
+        self.assertEqual(
+            stahlstadt["ammunition"],
+            "240 × Standard Missiles · 40 × Sandcaster Canisters",
+        )
+
+        nemo, source_variant = (
+            self.records[catalog_id] for catalog_id in (65, 166)
+        )
+        for record in (nemo, source_variant):
+            self.assertIn("Particle Beam Barbette", record["armament"])
+            self.assertIn("Full Hangar (30 tons contained)", record["equipment"])
+        self.assertIn("Carried Craft: Jason (ship-17)", nemo["equipment"])
+        self.assertIn(
+            "Carried Craft: Wayfarer Armed (ship-165)", source_variant["equipment"]
+        )
+
+        robur = self.records[168]
+        self.assertEqual(robur["maneuver_drive"], "E")
+        self.assertEqual(robur["power_plant"], "E")
+        self.assertEqual(robur["thrust_g"], 3)
+        self.assertIn("3 × Point Defense Node Mount", robur["armament"])
+
 
 if __name__ == "__main__":
     unittest.main()
