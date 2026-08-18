@@ -126,6 +126,18 @@ PUBLISHED_SHIP_ART = {
         "and blue fifty-ton modular shuttle with six paired window groups.",
         26.0,
     ),
+    22: (
+        "assets/ships/family-022-albatross.webp",
+        "Painted three-quarter view of Albatross, an ivory, vermilion, and blue "
+        "forty-ton pinnace with eight passenger-window bays and a freight door.",
+        23.5,
+    ),
+    151: (
+        "assets/ships/family-022-albatross.webp",
+        "Painted three-quarter view of Albatross, an ivory, vermilion, and blue "
+        "forty-ton pinnace with eight passenger-window bays and a freight door.",
+        23.5,
+    ),
     24: (
         "assets/ships/ship-024-proteus-prospector.webp",
         "Painted three-quarter view of Proteus Prospector, an avocado, ochre, "
