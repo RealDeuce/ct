@@ -114,6 +114,24 @@ PUBLISHED_SHIP_ART = {
         "boarding transport with six cabin windows and airlock handholds.",
         21.0,
     ),
+    20: (
+        "assets/ships/ship-020-proteus-cargo.webp",
+        "Painted three-quarter view of Proteus Cargo, an ivory, vermilion, and "
+        "blue fifty-ton modular lighter with a broad two-leaf cargo door.",
+        26.0,
+    ),
+    21: (
+        "assets/ships/ship-021-proteus-passenger.webp",
+        "Painted three-quarter view of Proteus Passenger, an ivory, vermilion, "
+        "and blue fifty-ton modular shuttle with six paired window groups.",
+        26.0,
+    ),
+    24: (
+        "assets/ships/ship-024-proteus-prospector.webp",
+        "Painted three-quarter view of Proteus Prospector, an avocado, ochre, "
+        "and brick-red fifty-ton mining boat with workshop and drone shutters.",
+        26.0,
+    ),
     134: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
@@ -131,6 +149,12 @@ PUBLISHED_SHIP_ART = {
         "Painted three-quarter view of Charon, an ivory, vermilion, and blue "
         "ten-ton streamlined armored passenger launch with three cabin windows.",
         12.5,
+    ),
+    159: (
+        "assets/ships/ship-159-proteus-mercy.webp",
+        "Painted three-quarter view of Proteus Mercy, a white, cyan, and lime "
+        "fifty-ton medical cutter with two airlocks and ward windows.",
+        26.0,
     ),
     145: (
         "assets/ships/family-007-caduceus-concord.webp",
@@ -180,6 +204,12 @@ PUBLISHED_SHIP_ART = {
         "and blue thirty-ton unarmed utility boat with seven cabin windows.",
         18.8,
     ),
+    188: (
+        "assets/ships/ship-188-proteus-surveyor.webp",
+        "Painted three-quarter view of Proteus Surveyor, a white, cyan, and "
+        "lime fifty-ton survey cutter with instruments and an air-raft door.",
+        26.0,
+    ),
     185: (
         "assets/ships/family-007-caduceus-venture.webp",
         "Painted three-quarter view of Caduceus, a sunflower and cobalt "
@@ -191,6 +221,12 @@ PUBLISHED_SHIP_ART = {
         "Painted three-quarter view of Caduceus, a sunflower and cobalt "
         "twenty-ton armored fast launch with a closed dorsal hardpoint.",
         17.5,
+    ),
+    209: (
+        "assets/ships/ship-209-proteus-modular.webp",
+        "Painted three-quarter view of Proteus Modular, an ivory, vermilion, "
+        "and blue fifty-ton unfaired chassis with a sealed central module.",
+        25.5,
     ),
     212: (
         "assets/ships/ship-212-wayfarer-boarding.webp",
@@ -527,6 +563,20 @@ def format_tons(millitons: int) -> str:
     return f"{value} ton{'s' if tons != 1 else ''}"
 
 
+def parameterized_equipment_name(item: dict[str, object]) -> str:
+    details = []
+    if "beds" in item:
+        beds = int(item["beds"])
+        details.append(f"{beds} bed{'s' if beds != 1 else ''}")
+    if "contained_millitons" in item:
+        details.append(f"{format_tons(int(item['contained_millitons']))} contained")
+    for key, value in item.items():
+        if key not in {"id", "quantity", "beds", "contained_millitons"}:
+            details.append(f"{display_term(key)}: {value}")
+    name = display_term(str(item["id"]))
+    return f"{name} ({', '.join(details)})" if details else name
+
+
 def catalog_records() -> list[dict[str, object]]:
     names = tomllib.loads((SHIP_CATALOG / "names.toml").read_text(encoding="utf-8"))
     family_names = {
@@ -580,8 +630,20 @@ def catalog_records() -> list[dict[str, object]]:
                     "quantity": quantity,
                 }
             )
-        if data.get("airlocks", 0):
-            equipment.append("Pressure airlock")
+        for item in data.get("parameterized_equipment", []):
+            quantity = int(item.get("quantity", 1))
+            equipment_name = parameterized_equipment_name(item)
+            equipment.append(
+                equipment_name if quantity == 1 else f"{quantity} × {equipment_name}"
+            )
+            equipment_entries.append(
+                {"name": equipment_name, "quantity": quantity}
+            )
+        airlocks = data.get("airlocks", 0)
+        if airlocks:
+            equipment.append(
+                "Pressure airlock" if airlocks == 1 else f"{airlocks} pressure airlocks"
+            )
         mount_entries = []
         for item in data.get("mounts", []):
             mount_name = display_term(item["id"])
@@ -662,6 +724,9 @@ def catalog_records() -> list[dict[str, object]]:
                 "software": software,
                 "additional_fire_control_stations": data.get(
                     "additional_fire_control_stations", 0
+                ),
+                "unused_fire_control_stations": data.get(
+                    "unused_fire_control_stations", 0
                 ),
                 "airlocks": data.get("airlocks", 0),
                 "crew": crew,
@@ -940,6 +1005,7 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
             ('Computer options', joined_terms(ship['computer_options'])),
             ('Software', joined_terms(ship['software'])),
             ('Additional fire-control stations', ship['additional_fire_control_stations']),
+            ('Unused fire-control stations', ship['unused_fire_control_stations']),
         ])}</section>
       </div>
       <div class="ship-manifest-grid">
