@@ -1,6 +1,9 @@
 # Player documentation site
 
 This directory contains the dependency-free GitHub Pages site for players.
+Its visual language, in-world presentation, and usability principles are
+recorded in [the website design direction](DESIGN.md).
+
 The build has two authoritative content inputs:
 
 - `docs/player-guide.md` becomes the Player Reference.
