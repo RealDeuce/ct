@@ -84,6 +84,18 @@ PUBLISHED_SHIP_ART = {
         "ten-ton wingless carrier interceptor with doubled armor bands.",
         11.8,
     ),
+    12: (
+        "assets/ships/ship-012-skuld.webp",
+        "Painted three-quarter view of Skuld, an ultramarine and violet "
+        "ten-ton arrowhead missile fighter with a closed yellow launch shutter.",
+        12.4,
+    ),
+    15: (
+        "assets/ships/ship-015-sigrun.webp",
+        "Painted three-quarter view of Sigrun, a navy and ivory ten-ton "
+        "arrowhead fighter with one fixed dorsal beam-laser emitter.",
+        12.4,
+    ),
     158: (
         "assets/ships/family-005-charon.webp",
         "Painted three-quarter view of Charon, an ivory, vermilion, and blue "
@@ -510,13 +522,19 @@ def catalog_records() -> list[dict[str, object]]:
             )
         if data.get("airlocks", 0):
             equipment.append("Pressure airlock")
-        mount_entries = [
-            {
-                "name": display_term(item["id"]),
-                "weapons": [display_term(weapon) for weapon in item["weapons"]],
-            }
-            for item in data.get("mounts", [])
-        ]
+        mount_entries = []
+        for item in data.get("mounts", []):
+            mount_name = display_term(item["id"])
+            if item.get("fixed", False):
+                mount_name = f"Fixed {mount_name}"
+            if item.get("pop_up", False):
+                mount_name = f"Pop-Up {mount_name}"
+            mount_entries.append(
+                {
+                    "name": mount_name,
+                    "weapons": [display_term(weapon) for weapon in item["weapons"]],
+                }
+            )
         armament = " · ".join(
             f"{entry['name']}: {joined_terms(entry['weapons'])}"
             for entry in mount_entries
