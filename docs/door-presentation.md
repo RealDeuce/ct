@@ -106,7 +106,11 @@ narrow-terminal wrapping. No rows are reserved for the eventual action menu.
 After acknowledgement the door overwrites the prompt with spaces on the same
 line, does not clear the screen, and continues streaming output on that row.
 The continuation prompt also offers `C` for continuous output, which suppresses
-additional page pauses until the next keyboard input resets pagination.
+additional page pauses until the next keyboard input resets pagination, and
+`Q` to suppress the remaining ordinary output until the screen emits its real
+action prompt. The skip state spans separate renderer writes because a screen
+may assemble one logical record from several semantic colour roles. It never
+suppresses the action prompt itself or selects an action on the player's behalf.
 Automatic continuation pauses are enabled by default and may be durably
 disabled in Player Preferences for the local BBS identity. That preference
 only makes ordinary paged output continuous; explicit menus, confirmations,

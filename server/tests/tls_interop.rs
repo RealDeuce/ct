@@ -180,38 +180,33 @@ impl DoorSession {
     }
 
     fn acknowledge_page_prompts(&mut self, semantic: &str) {
-        const PAGE_PROMPT: &str = "[Enter/Space] Continue  [C] Continuous";
-        let erased_page_prompt = format!("\r{}\r", " ".repeat(PAGE_PROMPT.len()));
-        let page_prompts =
-            semantic.matches("Enter/Space").count() + semantic.matches("Enter/Sp)").count();
-        let erased_page_prompts = self
-            .output
-            .lock()
-            .unwrap()
-            .windows(erased_page_prompt.len())
-            .filter(|bytes| *bytes == erased_page_prompt.as_bytes())
-            .count();
+        const PAGE_PROMPTS: [&str; 2] = [
+            "[Enter/Sp] Continue  [C]ont  [Q] Menu",
+            "[Enter/Sp] [B]eg [C]ont [Q]uit [X]pert",
+        ];
+        let erased_page_prompts = |output: &[u8]| {
+            PAGE_PROMPTS
+                .iter()
+                .map(|prompt| format!("\r{}\r", " ".repeat(prompt.len())))
+                .map(|erasure| {
+                    output
+                        .windows(erasure.len())
+                        .filter(|bytes| *bytes == erasure.as_bytes())
+                        .count()
+                })
+                .sum::<usize>()
+        };
+        let page_prompts = semantic.matches("Enter/Sp").count();
+        let erased_count = erased_page_prompts(&self.output.lock().unwrap());
         self.acknowledged_page_prompts = self
             .acknowledged_page_prompts
-            .max(erased_page_prompts.min(page_prompts));
+            .max(erased_count.min(page_prompts));
         while self.acknowledged_page_prompts < page_prompts {
-            let erased_before = self
-                .output
-                .lock()
-                .unwrap()
-                .windows(erased_page_prompt.len())
-                .filter(|bytes| *bytes == erased_page_prompt.as_bytes())
-                .count();
+            let erased_before = erased_page_prompts(&self.output.lock().unwrap());
             self.send(b" ");
             let deadline = Instant::now() + Duration::from_secs(10);
             loop {
-                let erased_now = self
-                    .output
-                    .lock()
-                    .unwrap()
-                    .windows(erased_page_prompt.len())
-                    .filter(|bytes| *bytes == erased_page_prompt.as_bytes())
-                    .count();
+                let erased_now = erased_page_prompts(&self.output.lock().unwrap());
                 if erased_now > erased_before {
                     break;
                 }
@@ -1470,7 +1465,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     preference_door.send(b"d");
     preference_door.wait_for("Page pauses:  Disabled");
     let pauses_before = normalized_display_text(&preference_door.output())
-        .matches("Enter/Space")
+        .matches("Enter/Sp")
         .count();
     preference_door.send(b"q");
     preference_door.wait_for_occurrences("Captain's Command Console", 2);
@@ -1478,7 +1473,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     preference_door.wait_for("Crew Management -");
     preference_door.wait_for("managed appointments");
     let pauses_after = normalized_display_text(&preference_door.output())
-        .matches("Enter/Space")
+        .matches("Enter/Sp")
         .count();
     assert_eq!(pauses_after, pauses_before);
     preference_door.send(b"q");
@@ -1804,13 +1799,19 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         );
         combat_door.wait_for("(C/K/M/O/R/S/T) Manager");
         combat_door.send(b"o");
+        combat_door.wait_for_any_without_paging(&["Enter/Sp) Continue (C)ont (Q) Menu"]);
+        combat_door.send(b"q");
         combat_door.wait_for_occurrences("Accept order or file report", 1);
+        combat_door.send(b"q");
+        combat_door.wait_for_occurrences("Captain's Command Console", 2);
+        combat_door.send(b"o");
+        combat_door.wait_for_occurrences("Accept order or file report", 2);
         combat_door.send(b"m");
         combat_door.wait_for("Naval service");
         combat_door.send(b"r");
-        combat_door.wait_for_occurrences("Operations Ledger", 2);
+        combat_door.wait_for_occurrences("Operations Ledger", 3);
         combat_door.wait_for("Service: Pirate");
-        combat_door.wait_for_occurrences("Accept order or file report", 2);
+        combat_door.wait_for_occurrences("Accept order or file report", 3);
         combat_door.send(b"i");
         combat_door.wait_for("Contact (Q to cancel");
         combat_door.send(b"1\r");
@@ -1951,7 +1952,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     for expected in [
         "Cargo Exchange -",
         "Cargo aboard",
-        "Enter/Space",
+        "Enter/Sp",
         "Departure authorized.",
         "The flight plan has been filed.",
     ] {

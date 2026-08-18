@@ -951,7 +951,7 @@ void initialize_presentation(const ct::BbsConfig& config)
    });
    presentation->configure_paging(1, [] {
       constexpr std::string_view normal_prompt =
-         "[Enter/Space] Continue  [C] Continuous";
+         "[Enter/Sp] Continue  [C]ont  [Q] Menu";
       constexpr std::string_view help_prompt =
          "[Enter/Sp] [B]eg [C]ont [Q]uit [X]pert";
       const auto prompt = active_help_level ? help_prompt : normal_prompt;
@@ -965,6 +965,10 @@ void initialize_presentation(const ct::BbsConfig& config)
          if(key == 'c' || key == 'C') {
             output().erase_prompt(prompt.size());
             return ct::DoorPresentation::PagePauseAction::Continuous;
+         }
+         if(!active_help_level && (key == 'q' || key == 'Q')) {
+            output().erase_prompt(prompt.size());
+            return ct::DoorPresentation::PagePauseAction::SkipToPrompt;
          }
          if(active_help_level && (key == 'b' || key == 'B')) {
             help_page_command = HelpPageCommand::Beginner;

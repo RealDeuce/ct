@@ -508,6 +508,41 @@ int main() {
    check(abort_pauses == 1);
    check(aborted_page.size() < 40 * 30);
 
+   std::string skipped_page;
+   unsigned skip_pauses = 0;
+   ct::DoorPresentation skipping_pager(
+      ct::DoorProfile::Iso646,
+      40,
+      24,
+      [&skipped_page](const std::string_view bytes) {
+         skipped_page.append(bytes);
+      });
+   skipping_pager.configure_paging(1, [&skip_pauses] {
+      ++skip_pauses;
+      return ct::DoorPresentation::PagePauseAction::SkipToPrompt;
+   });
+   skipping_pager.resume_paging();
+   for(unsigned line = 0; line < 23; ++line) {
+      skipping_pager.write("visible record\n\r");
+   }
+   check(skip_pauses == 1);
+   check(!skipping_pager.write("hidden record\n\r"));
+   check(skipped_page.find("hidden record") == std::string::npos);
+   check(skipping_pager.write("[Q] Back", ct::DoorTextRole::Prompt));
+   check(skipped_page.find("(Q) Back") != std::string::npos);
+   check(skipping_pager.write("\n\rvisible again"));
+   check(skipped_page.find("visible again") != std::string::npos);
+   skipping_pager.reset_paging();
+   skipping_pager.resume_paging();
+   for(unsigned line = 0; line < 23; ++line) {
+      skipping_pager.write("second page\n\r");
+   }
+   check(skip_pauses == 2);
+   check(!skipping_pager.write("second hidden record\n\r"));
+   skipping_pager.clear();
+   check(skipping_pager.write("new screen"));
+   check(skipped_page.find("new screen") != std::string::npos);
+
    std::string wrapped_page;
    unsigned wrapped_pauses = 0;
    ct::DoorPresentation wrapped_pager(

@@ -637,6 +637,8 @@ void DoorPresentation::flush() {
 void DoorPresentation::clear() {
    column_ = 0;
    row_ = 0;
+   write_aborted_ = false;
+   skipping_to_prompt_ = false;
    if(!door_profile_uses_ansi(profile_)) {
       emit("\f");
    } else {
@@ -676,6 +678,9 @@ void DoorPresentation::pause_at_page_boundary(const DoorTextRole role) {
          paging_suppressed_until_input_ = true;
       } else if(action == PagePauseAction::Abort) {
          write_aborted_ = true;
+      } else if(action == PagePauseAction::SkipToPrompt) {
+         write_aborted_ = true;
+         skipping_to_prompt_ = true;
       }
    } catch(...) {
       handling_page_pause_ = false;
@@ -790,6 +795,12 @@ void DoorPresentation::emit_encoded(const std::string_view bytes,
 
 bool DoorPresentation::write(const std::string_view text,
                              const DoorTextRole role) {
+   if(skipping_to_prompt_) {
+      if(role != DoorTextRole::Prompt) {
+         return false;
+      }
+      skipping_to_prompt_ = false;
+   }
    write_aborted_ = false;
    const bool color = door_profile_uses_ansi(profile_);
    if(color) {
@@ -814,6 +825,12 @@ bool DoorPresentation::write_hanging(
    const size_t continuation_indent,
    const DoorTextRole role)
 {
+   if(skipping_to_prompt_) {
+      if(role != DoorTextRole::Prompt) {
+         return false;
+      }
+      skipping_to_prompt_ = false;
+   }
    write_aborted_ = false;
    if(continuation_indent >= content_columns()) {
       throw std::invalid_argument(

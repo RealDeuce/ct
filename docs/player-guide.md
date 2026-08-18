@@ -32,9 +32,10 @@ screen. Letter choices are case-insensitive.
   action changes the durable default.
 - `<` and `>` move between pages where shown. Some packet screens also accept
   the corresponding arrow keys and display letter alternatives.
-- A full page pauses at an `[Enter/Space] Continue  [C] Continuous` prompt.
-  Press Enter or Space to continue one page, or `C` to suppress further page
-  pauses until the next keyboard input. The prompt is erased and output resumes
+- A full page pauses at an `[Enter/Sp] Continue  [C]ont  [Q] Menu` prompt.
+  Press Enter or Space to continue one page, `C` to suppress further page
+  pauses until the next keyboard input, or `Q` to skip the remaining ordinary
+  output and reach the screen's menu. The prompt is erased and output resumes
   beneath it. Player Preferences can durably disable these automatic pauses;
   menus and confirmations still wait for input.
 - A menu may omit an action when the present port, ship, or situation cannot

@@ -64,6 +64,7 @@ public:
       Continue,
       Continuous,
       Abort,
+      SkipToPrompt,
    };
    using PagePause = std::function<PagePauseAction()>;
 
@@ -119,6 +120,7 @@ private:
    bool paging_suppressed_until_input_ = false;
    bool handling_page_pause_ = false;
    bool write_aborted_ = false;
+   bool skipping_to_prompt_ = false;
    Sink sink_;
    std::string pending_;
 };
