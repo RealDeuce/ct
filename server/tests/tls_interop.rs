@@ -1378,10 +1378,38 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         let mut time_door = DoorSession::spawn(&door, data.path(), profile, columns);
         time_door.send(b"\r");
         let screen = time_door.wait_for("Return to BBS");
+        let semantic = normalized_display_text(&screen);
         assert!(
-            normalized_display_text(&screen).contains("Ship time: Day"),
+            semantic.contains("Ship time: Day"),
             "{profile}/{columns}: {screen:?}"
         );
+        assert!(
+            semantic.contains("U. Universal Managers"),
+            "{profile}/{columns}: {screen:?}"
+        );
+        assert!(
+            !semantic.contains("[U] Universal managers"),
+            "{profile}/{columns}: {screen:?}"
+        );
+        let always_present = [
+            "C. Cargo Exchange",
+            "D. Depart",
+            "F. Fuel and Supplies",
+            "J. Jobs and Passage",
+            "U. Universal Managers",
+            "Y. Shipyard",
+        ];
+        let mut previous = 0;
+        for entry in always_present {
+            let position = semantic
+                .find(entry)
+                .unwrap_or_else(|| panic!("{profile}/{columns}: {screen:?}"));
+            assert!(
+                position >= previous,
+                "{profile}/{columns}: menu order in {screen:?}"
+            );
+            previous = position;
+        }
         time_door.return_to_bbs();
         time_door.finish();
     }

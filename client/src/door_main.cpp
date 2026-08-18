@@ -9258,15 +9258,16 @@ void render_docked_menu(const ct::DockedSnapshot& snapshot)
    od_clr_scr();
    render_docked_snapshot(snapshot);
    for(const auto& entry : std::array{
-   std::pair{'C', "Cargo Exchange"},
-   std::pair{'J', "Jobs and Passage"},
-   std::pair{'F', "Fuel and Supplies"},
-   std::pair{'Y', "Shipyard"},
-   std::pair{'P', "Personnel"},
-   std::pair{'B', "Banking and Accounts"},
-   std::pair{'A', "Authorities"},
-   std::pair{'D', "Depart"},
-}) {
+      std::pair{'A', "Authorities"},
+      std::pair{'B', "Banking and Accounts"},
+      std::pair{'C', "Cargo Exchange"},
+      std::pair{'D', "Depart"},
+      std::pair{'F', "Fuel and Supplies"},
+      std::pair{'J', "Jobs and Passage"},
+      std::pair{'P', "Personnel"},
+      std::pair{'U', "Universal Managers"},
+      std::pair{'Y', "Shipyard"},
+   }) {
       if((entry.first == 'P' && !snapshot.personnel_available) ||
          (entry.first == 'B' && !snapshot.banking_available) ||
          (entry.first == 'A' && !snapshot.authority_available)) {
@@ -9277,8 +9278,7 @@ void render_docked_menu(const ct::DockedSnapshot& snapshot)
       door_identifier("%s\n\r", entry.second);
    }
    door_option_prompt({
-      "[Letter] Docked service",
-      "[U] Universal managers",
+      "[Letter] Listed action",
       "[L] License",
       "[Enter] Refresh",
       "[Q] Return to BBS",

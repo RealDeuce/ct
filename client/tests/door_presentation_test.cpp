@@ -679,8 +679,7 @@ int main() {
       "License\n\nDesignation\nSee LICENSE.md.");
    const auto wide_options =
       ct::door_option_prompt(
-         {"[Letter] Docked service",
-          "[U] Universal managers",
+         {"[Letter] Listed action",
           "[L] License",
           "[Enter] Refresh",
           "[Q] Return to BBS",
@@ -688,22 +687,20 @@ int main() {
          80);
    check(
       wide_options ==
-      "\n\r[Enter] Refresh  [L] License  [Letter] Docked service  "
-      "[Q] Return to BBS\n\r[U] Universal managers  [?] Help: ");
+      "\n\r[Enter] Refresh  [L] License  [Letter] Listed action  "
+      "[Q] Return to BBS\n\r[?] Help: ");
    check(maximum_visible_width(wide_options) < 80);
    check(
       ct::door_option_prompt(
-         {"[Letter] Docked service",
-          "[U] Universal managers",
+         {"[Letter] Listed action",
           "[L] License",
           "[Enter] Refresh",
           "[Q] Return to BBS",
           "[?] Help"},
          40) ==
       "\n\r[Enter] Refresh  [L] License\n\r"
-      "[Letter] Docked service\n\r"
-      "[Q] Return to BBS\n\r"
-      "[U] Universal managers  [?] Help: ");
+      "[Letter] Listed action\n\r"
+      "[Q] Return to BBS  [?] Help: ");
    check(
       ct::door_option_prompt(
          {"[Z] Alpha label", "[A] Zulu label", "[?] Hilfe"}, 80) ==
