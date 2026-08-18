@@ -20,6 +20,10 @@ const PAGE_PROMPTS: [&str; 2] = [
     "[Enter/Sp] Continue  [C]ont  [Q] Menu",
     "[Enter/Sp] [B]eg [C]ont [Q]uit [X]pert",
 ];
+const ISO646_PAGE_PROMPTS: [&str; 2] = [
+    "(Enter/Sp) Continue  (C)ont  (Q) Menu",
+    "(Enter/Sp) (B)eg (C)ont (Q)uit (X)pert",
+];
 
 fn strip_ecma48(input: &str) -> String {
     let bytes = input.as_bytes();
@@ -54,7 +58,7 @@ fn normalized_display_text(input: &str) -> String {
 // instead remove them so an acknowledgement cannot split one semantic phrase.
 fn normalized_page_content(input: &str) -> String {
     let mut content = normalized_display_text(input);
-    for prompt in PAGE_PROMPTS {
+    for prompt in PAGE_PROMPTS.into_iter().chain(ISO646_PAGE_PROMPTS) {
         content = content.replace(&normalized_display_text(prompt), " ");
     }
     content.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -733,7 +737,10 @@ fn complete_arrival_and_trade(
     assert!(normalized_cargo.contains("Median Cr"));
     assert!(normalized_cargo.contains("Q3 Cr"));
     assert!(normalized_cargo.contains("Max Cr"));
-    assert!(normalized_cargo.contains("-price sale"));
+    assert!(
+        normalized_cargo.contains("-price sale"),
+        "cargo sale band was interrupted or omitted: {normalized_cargo:?}; raw section: {cargo_section:?}"
+    );
     let cargo_selection = normalized_cargo
         .split_once(&cargo_name)
         .and_then(|(before_name, _)| before_name.split_whitespace().next_back())
@@ -751,7 +758,7 @@ fn complete_arrival_and_trade(
 
 #[test]
 fn normalized_page_content_removes_transient_pager_output() {
-    for prompt in PAGE_PROMPTS {
+    for prompt in PAGE_PROMPTS.into_iter().chain(ISO646_PAGE_PROMPTS) {
         let captured = format!("low-price\r\n{prompt}\r{}\rsale", " ".repeat(prompt.len()));
         let normalized = normalized_page_content(&captured);
         assert_eq!(normalized, "low-price sale");
