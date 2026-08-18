@@ -61,6 +61,19 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(mercators[1]["ammunition"], "None carried")
         self.assertEqual(mercators[2]["ammunition"], "None carried")
 
+    def test_exterior_equivalent_goliaths_share_one_plate(self) -> None:
+        goliaths = [self.records[catalog_id] for catalog_id in (30, 32)]
+        self.assertEqual(
+            {record["art_path"] for record in goliaths},
+            {"assets/ships/family-030-goliath.webp"},
+        )
+        for record in goliaths:
+            self.assertEqual(record["tons"], 90)
+            self.assertIn("50 passenger seats", record["equipment"])
+            self.assertEqual(record["airlocks"], 2)
+            self.assertEqual(record["cargo"], "17.6 tons")
+            self.assertIsNone(record["jump_drive"])
+
 
 if __name__ == "__main__":
     unittest.main()

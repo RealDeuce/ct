@@ -162,11 +162,23 @@ PUBLISHED_SHIP_ART = {
         "hundred-ton light trader with a broad freight door and empty hardpoint.",
         32.5,
     ),
+    30: (
+        "assets/ships/family-030-goliath.webp",
+        "Painted three-quarter view of Goliath, a navy, white, and red ninety-ton "
+        "assault lander with two airlocks, a stores ramp, and beam-laser turret.",
+        30.0,
+    ),
     31: (
         "assets/ships/family-027-mercator.webp",
         "Painted three-quarter view of Mercator, an ivory, blue, and vermilion "
         "hundred-ton light trader with a broad freight door and empty hardpoint.",
         32.5,
+    ),
+    32: (
+        "assets/ships/family-030-goliath.webp",
+        "Painted three-quarter view of Goliath, a navy, white, and red ninety-ton "
+        "assault lander with two airlocks, a stores ramp, and beam-laser turret.",
+        30.0,
     ),
     33: (
         "assets/ships/ship-033-ligeia.webp",
