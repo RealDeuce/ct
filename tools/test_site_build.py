@@ -180,6 +180,29 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(glaucus["hull_options"], ["Stealth"])
         self.assertEqual(glaucus["ammunition"], "48 × Standard Missiles")
 
+    def test_hanse_generations_share_two_exterior_fits(self) -> None:
+        lubecks = [self.records[catalog_id] for catalog_id in (49, 51)]
+        hamburgs = [self.records[catalog_id] for catalog_id in (50, 52)]
+        self.assertEqual(
+            {record["art_path"] for record in lubecks},
+            {"assets/ships/family-049-lubeck.webp"},
+        )
+        self.assertEqual(
+            {record["art_path"] for record in hamburgs},
+            {"assets/ships/family-049-hamburg.webp"},
+        )
+        for record in (*lubecks, *hamburgs):
+            self.assertEqual(record["tons"], 300)
+            self.assertEqual(record["length_m"], 53.0)
+            self.assertEqual(record["armament"], "Single Turret: Beam Laser")
+        for record in lubecks:
+            self.assertEqual(record["jump_drive"], "C")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["cargo"], "131.5 tons")
+        for record in hamburgs:
+            self.assertIsNone(record["jump_drive"])
+            self.assertEqual(record["cargo"], "211.5 tons")
+
 
 if __name__ == "__main__":
     unittest.main()

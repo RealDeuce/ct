@@ -246,6 +246,30 @@ PUBLISHED_SHIP_ART = {
         "escort boat with a shuttered missile rack.",
         31.0,
     ),
+    49: (
+        "assets/ships/family-049-lubeck.webp",
+        "Painted three-quarter view of Lübeck, an ivory and royal-blue three-hundred-ton "
+        "Jump freighter with three cargo shutters and active drive-service inserts.",
+        53.0,
+    ),
+    50: (
+        "assets/ships/family-049-hamburg.webp",
+        "Painted three-quarter view of Hamburg, an ivory and royal-blue three-hundred-ton "
+        "system freighter with three cargo shutters and blanked drive-service panels.",
+        53.0,
+    ),
+    51: (
+        "assets/ships/family-049-lubeck.webp",
+        "Painted three-quarter view of Lübeck, an ivory and royal-blue three-hundred-ton "
+        "Jump freighter with three cargo shutters and active drive-service inserts.",
+        53.0,
+    ),
+    52: (
+        "assets/ships/family-049-hamburg.webp",
+        "Painted three-quarter view of Hamburg, an ivory and royal-blue three-hundred-ton "
+        "system freighter with three cargo shutters and blanked drive-service panels.",
+        53.0,
+    ),
     55: (
         "assets/ships/ship-055-nereus.webp",
         "Painted three-quarter view of Nereus, a red, orange, and bone ninety-five-ton "
