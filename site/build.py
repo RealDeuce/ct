@@ -378,6 +378,18 @@ PUBLISHED_SHIP_ART = {
         "patrol frigate with four triple turrets and a particle-beam barbette.",
         64.0,
     ),
+    91: (
+        "assets/ships/ship-091-cook.webp",
+        "Painted three-quarter view of Cook, a navy six-hundred-ton standard-hull "
+        "patrol frigate with four triple turrets and two particle barbettes.",
+        68.0,
+    ),
+    95: (
+        "assets/ships/ship-095-cook.webp",
+        "Painted three-quarter view of Cook, a navy six-hundred-ton streamlined "
+        "patrol corvette with four triple turrets and two particle barbettes.",
+        68.0,
+    ),
     96: (
         "assets/ships/ship-096-condottiere.webp",
         "Painted three-quarter view of Condottiere, a red five-hundred-fifty-ton "

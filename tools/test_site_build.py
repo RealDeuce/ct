@@ -416,6 +416,46 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("Meson Gun Bay", condottiere["armament"])
         self.assertNotIn("Particle Beam Barbette", condottiere["armament"])
 
+    def test_cook_refit_fairs_the_same_patrol_chassis(self) -> None:
+        frigate, corvette = (self.records[catalog_id] for catalog_id in (91, 95))
+        for record in (frigate, corvette):
+            self.assertEqual(record["family_id"], 91)
+            self.assertEqual(record["tons"], 600)
+            self.assertEqual(record["electronics"], "Advanced")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["maneuver_drive"], "S")
+            self.assertEqual(record["power_plant"], "S")
+            self.assertEqual(record["armor_points"], 4)
+            self.assertEqual(record["length_m"], 68.0)
+            self.assertIn("Full Hangar (30 tons contained)", record["equipment"])
+            self.assertIn("2 × Triple Turret: Beam Laser", record["armament"])
+            self.assertIn("Triple Turret: Missile Rack", record["armament"])
+            self.assertIn("Triple Turret: Sandcaster", record["armament"])
+            self.assertIn("2 × Particle Beam Barbette", record["armament"])
+
+        self.assertEqual(frigate["configuration"], "Standard")
+        self.assertEqual(frigate["jump_drive"], "H")
+        self.assertEqual(frigate["endurance"], 2)
+        self.assertIn("Carried Craft: Jason (ship-17)", frigate["equipment"])
+        self.assertIn("6 × Point Defense Node Mount", frigate["armament"])
+
+        self.assertEqual(corvette["configuration"], "Streamlined")
+        self.assertEqual(corvette["jump_drive"], "F")
+        self.assertEqual(corvette["endurance"], 4)
+        self.assertEqual(corvette["hull_options"], ["Radiation Shielding"])
+        self.assertEqual(
+            corvette["structural_options"], ["Reinforced Structure (1 increment)"]
+        )
+        self.assertIn("Carried Craft: Wayfarer Utility (ship-18)", corvette["equipment"])
+        self.assertIn(
+            "3 × Point Defense Node Mount: Point Defense Gatling Laser",
+            corvette["armament"],
+        )
+        self.assertIn(
+            "3 × Point Defense Node Mount: Point Defense Laser",
+            corvette["armament"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
