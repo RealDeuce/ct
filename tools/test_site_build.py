@@ -327,6 +327,64 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("2 × Single Turret: Pulse Laser", bonanza["armament"])
         self.assertIn("4 × Double Turret: Beam Laser", skagway["armament"])
 
+    def test_homeric_records_share_one_standard_modular_frame(self) -> None:
+        catalog_ids = (80, 82, 83, 86, 88, 152, 153, 154, 155, 156, 157)
+        homerics = [self.records[catalog_id] for catalog_id in catalog_ids]
+        for record in homerics:
+            self.assertEqual(record["family_id"], 80)
+            self.assertEqual(record["tons"], 800)
+            self.assertEqual(record["configuration"], "Standard")
+            self.assertEqual(record["hull_options"], ["Self Sealing"])
+            self.assertEqual(record["jump_drive"], "J")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["armor_points"], 0)
+            self.assertEqual(record["length_m"], 72.0)
+
+        self.assertEqual(
+            {self.records[catalog_id]["art_path"] for catalog_id in (80, 152)},
+            {"assets/ships/family-080-ithaca-external.webp"},
+        )
+        self.assertEqual(self.records[80]["cargo"], "373 tons")
+        self.assertEqual(self.records[152]["cargo"], "365 tons")
+        for catalog_id in (80, 82, 152):
+            self.assertEqual(self.records[catalog_id]["external_load"], "40 tons")
+            self.assertIn(
+                "Carried Craft: Albatross (ship-151)",
+                self.records[catalog_id]["equipment"],
+            )
+
+        port_freighter = self.records[86]
+        self.assertEqual(port_freighter["cargo"], "386 tons")
+        self.assertEqual(port_freighter["external_load"], "0 tons")
+        self.assertNotIn("Docking Clamp", port_freighter["equipment"])
+        self.assertNotIn("Carried Craft", port_freighter["equipment"])
+
+        self.assertIn("Carried Craft: Jason (ship-17)", self.records[83]["equipment"])
+        self.assertIn("Carried Craft: Jason (ship-17)", self.records[88]["equipment"])
+        for catalog_id in (153, 154, 155, 156, 157):
+            self.assertIn(
+                "Carried Craft: Wayfarer Cargo (ship-187)",
+                self.records[catalog_id]["equipment"],
+            )
+
+        calypso = self.records[153]
+        self.assertEqual(calypso["jump_count"], 2)
+        self.assertEqual(calypso["endurance"], 3)
+
+        for catalog_id in (88, 157):
+            cyclops = self.records[catalog_id]
+            self.assertEqual(cyclops["maneuver_drive"], "L")
+            self.assertEqual(cyclops["power_plant"], "L")
+            self.assertIn("6 × Missile Bank", cyclops["armament"])
+            self.assertIn("504 × Standard Missiles", cyclops["ammunition"])
+
+        armed_odysseus = self.records[156]
+        self.assertIn("2 × Double Turret: Beam Laser", armed_odysseus["armament"])
+        self.assertIn("2 × Double Turret: Missile Rack", armed_odysseus["armament"])
+        self.assertIn("2 × Double Turret: Sandcaster", armed_odysseus["armament"])
+        self.assertIn("2 × Particle Beam Barbette", armed_odysseus["armament"])
+        self.assertEqual(armed_odysseus["unused_fire_control_stations"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

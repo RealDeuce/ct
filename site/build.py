@@ -342,6 +342,72 @@ PUBLISHED_SHIP_ART = {
         "distributed assault tender with three externally docked small craft.",
         76.0,
     ),
+    80: (
+        "assets/ships/family-080-ithaca-external.webp",
+        "Painted three-quarter view of Ithaca, an ivory and blue eight-hundred-ton "
+        "modular freighter carrying an externally docked Albatross pinnace.",
+        72.0,
+    ),
+    82: (
+        "assets/ships/ship-082-odysseus.webp",
+        "Painted three-quarter view of Odysseus, an emerald eight-hundred-ton "
+        "modular freighter carrying an externally docked Albatross pinnace.",
+        72.0,
+    ),
+    83: (
+        "assets/ships/ship-083-scheria.webp",
+        "Painted three-quarter view of Scheria, an ivory and blue eight-hundred-ton "
+        "colonial transport with steerage modules and an externally docked Jason.",
+        72.0,
+    ),
+    86: (
+        "assets/ships/ship-086-ithaca.webp",
+        "Painted three-quarter view of Ithaca, an ivory and blue eight-hundred-ton "
+        "modular freighter with cargo modules and a blanked docking interface.",
+        72.0,
+    ),
+    88: (
+        "assets/ships/ship-088-cyclops.webp",
+        "Painted three-quarter view of Cyclops, a yellow and violet eight-hundred-ton "
+        "missile ship with six launch banks and an externally docked Jason.",
+        72.0,
+    ),
+    152: (
+        "assets/ships/family-080-ithaca-external.webp",
+        "Painted three-quarter view of Ithaca, an ivory and blue eight-hundred-ton "
+        "modular freighter carrying an externally docked Albatross pinnace.",
+        72.0,
+    ),
+    153: (
+        "assets/ships/ship-153-calypso.webp",
+        "Painted three-quarter view of Calypso, an avocado eight-hundred-ton "
+        "extended-range freighter with fuel modules and a docked Wayfarer Cargo.",
+        72.0,
+    ),
+    154: (
+        "assets/ships/ship-154-nausithous.webp",
+        "Painted three-quarter view of Nausithous, an ivory and blue eight-hundred-ton "
+        "passenger freighter with windowed modules and a docked Wayfarer Cargo.",
+        72.0,
+    ),
+    155: (
+        "assets/ships/ship-155-scheria.webp",
+        "Painted three-quarter view of Scheria, an ivory and blue eight-hundred-ton "
+        "colony transport with low-berth modules and a docked Wayfarer Cargo.",
+        72.0,
+    ),
+    156: (
+        "assets/ships/ship-156-odysseus.webp",
+        "Painted three-quarter view of Odysseus, an emerald eight-hundred-ton armed "
+        "merchant with six double turrets, two barbettes, and a docked Wayfarer.",
+        72.0,
+    ),
+    157: (
+        "assets/ships/ship-157-cyclops.webp",
+        "Painted three-quarter view of Cyclops, a yellow and violet eight-hundred-ton "
+        "missile ship with six launch banks and a docked Wayfarer Cargo.",
+        72.0,
+    ),
     139: (
         "assets/ships/ship-139-trelawney.webp",
         "Painted three-quarter view of Trelawney, a polished sunflower and cobalt "

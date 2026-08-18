@@ -22,7 +22,7 @@ primary_role = "modular-freighter"
 secondary_roles = []
 mission_tags = ["jump-2", "armed", "modular-freighter"]
 open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
-description_paragraphs = ["This Ithaca variant is an eight-hundred-ton modular freighter with Jump-2 range, two-gravity acceleration, twenty staterooms, twenty low berths, and a 386-ton hold. Omitting the carried module boat increases freight capacity while retaining direct surface access in the streamlined hull.", "Two mixed beam-laser, missile, and sandcaster turrets provide basic defense, and fuel scoops permit flexible refueling. The larger hold rewards established port-to-port service where separate lighterage is available."]
+description_paragraphs = ["This Ithaca variant is an eight-hundred-ton modular freighter with Jump-2 range, two-gravity acceleration, twenty staterooms, twenty low berths, and a 386-ton hold. Omitting the carried module boat increases freight capacity but leaves the standard-hull parent dependent on port lighterage.", "Two mixed beam-laser, missile, and sandcaster turrets provide basic defense, and fuel scoops permit flexible refueling. The larger hold rewards established port-to-port service where separate lighterage is available."]
 [hull]
 id = "ship-800"
 configuration = "standard"
