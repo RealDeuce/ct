@@ -74,6 +74,30 @@ class CatalogRecordTests(unittest.TestCase):
             self.assertEqual(record["cargo"], "17.6 tons")
             self.assertIsNone(record["jump_drive"])
 
+    def test_source_fit_humboldts_share_one_hull_plate(self) -> None:
+        humboldts = [self.records[catalog_id] for catalog_id in (34, 43)]
+        self.assertEqual(
+            {record["art_path"] for record in humboldts},
+            {"assets/ships/family-034-humboldt.webp"},
+        )
+        for record in humboldts:
+            self.assertEqual(record["tons"], 200)
+            self.assertEqual(record["jump_drive"], "B")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(
+                record["armament"], "Double Turret: Beam Laser · Sandcaster"
+            )
+        self.assertIn(
+            "Standard Hangar (45 tons contained)", humboldts[0]["equipment"]
+        )
+        self.assertIn(
+            "Standard Hangar (50 tons contained)", humboldts[1]["equipment"]
+        )
+        self.assertEqual(humboldts[0]["cargo"], "31 tons")
+        self.assertEqual(humboldts[1]["cargo"], "27 tons")
+        self.assertEqual(humboldts[0]["ammunition"], "20 × Sandcaster Canisters")
+        self.assertEqual(humboldts[1]["ammunition"], "40 × Sandcaster Canisters")
+
 
 if __name__ == "__main__":
     unittest.main()

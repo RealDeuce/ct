@@ -186,6 +186,18 @@ PUBLISHED_SHIP_ART = {
         "courier with split cargo and hangar shutters and point defense.",
         31.0,
     ),
+    34: (
+        "assets/ships/family-034-humboldt.webp",
+        "Painted three-quarter view of Humboldt, an avocado and ochre two-hundred-ton "
+        "prospecting ship with a cutter hangar and mixed turret.",
+        43.0,
+    ),
+    43: (
+        "assets/ships/family-034-humboldt.webp",
+        "Painted three-quarter view of Humboldt, an avocado and ochre two-hundred-ton "
+        "prospecting ship with a cutter hangar and mixed turret.",
+        43.0,
+    ),
     134: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
