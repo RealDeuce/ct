@@ -40,6 +40,23 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(pym["bridge_options"], ["Holographic Controls"])
         self.assertIsNone(pym["airlocks"])
 
+    def test_ariel_luxury_boat_sets_stevenson_hangar_clearance(self) -> None:
+        ariel = self.records[142]
+        self.assertEqual(ariel["family_id"], 142)
+        self.assertEqual(ariel["tons"], 30)
+        self.assertEqual(ariel["configuration"], "Streamlined")
+        self.assertEqual(ariel["maneuver_drive"], "sJ")
+        self.assertEqual(ariel["armor_points"], 4)
+        self.assertEqual(ariel["control"], "Two Person Control Cabin")
+        self.assertEqual(ariel["airlocks"], 1)
+        self.assertEqual(ariel["cargo"], "4.2 tons")
+        self.assertIn("8 passenger seats", ariel["equipment"])
+        self.assertIn("2 × Small Craft Stateroom", ariel["equipment"])
+        self.assertEqual(ariel["armament"], "None installed")
+        self.assertIsNone(ariel["jump_drive"])
+        self.assertEqual(ariel["art_path"], "assets/ships/ship-142-ariel.webp")
+        self.assertEqual(ariel["length_m"], 19.0)
+
     def test_starship_special_fits_are_searchable_and_visible(self) -> None:
         ligeia = self.records[33]
         self.assertEqual(ligeia["hull_options"], ["Stealth"])

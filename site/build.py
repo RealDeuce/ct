@@ -372,6 +372,12 @@ PUBLISHED_SHIP_ART = {
         "thirty-ton fast boat with a trainable dorsal beam-laser turret.",
         18.8,
     ),
+    142: (
+        "assets/ships/ship-142-ariel.webp",
+        "Painted three-quarter view of Ariel, an ivory and royal-blue thirty-ton "
+        "luxury boat with six cabin-window bays and two closed service doors.",
+        19.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
