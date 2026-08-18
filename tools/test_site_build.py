@@ -162,6 +162,24 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(sinbads[0]["electronics"], "Basic Civilian")
         self.assertEqual(sinbads[1]["electronics"], "Basic Military")
 
+    def test_trident_weapon_fits_keep_shared_attack_boat_scale(self) -> None:
+        triton, nereus, glaucus = (
+            self.records[catalog_id] for catalog_id in (48, 55, 56)
+        )
+        for record in (triton, nereus, glaucus):
+            self.assertEqual(record["tons"], 95)
+            self.assertEqual(record["armor_points"], 4)
+            self.assertEqual(record["maneuver_drive"], "sW")
+            self.assertEqual(record["airlocks"], 2)
+            self.assertEqual(record["length_m"], 31.0)
+            self.assertIsNone(record["jump_drive"])
+        self.assertEqual(triton["armament"], "Single Turret: Missile Rack")
+        self.assertEqual(triton["ammunition"], "60 × Standard Missiles")
+        self.assertEqual(nereus["armament"], "Single Turret: Particle Beam")
+        self.assertEqual(nereus["ammunition"], "None carried")
+        self.assertEqual(glaucus["hull_options"], ["Stealth"])
+        self.assertEqual(glaucus["ammunition"], "48 × Standard Missiles")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -240,6 +240,24 @@ PUBLISHED_SHIP_ART = {
         "armored passenger trader with a mixed turret and air-raft bay.",
         43.0,
     ),
+    48: (
+        "assets/ships/ship-048-triton.webp",
+        "Painted three-quarter view of Triton, a red, orange, and bone ninety-five-ton "
+        "escort boat with a shuttered missile rack.",
+        31.0,
+    ),
+    55: (
+        "assets/ships/ship-055-nereus.webp",
+        "Painted three-quarter view of Nereus, a red, orange, and bone ninety-five-ton "
+        "escort boat with a collared particle-beam emitter.",
+        31.0,
+    ),
+    56: (
+        "assets/ships/ship-056-glaucus.webp",
+        "Painted three-quarter view of Glaucus, a low-sheen red and orange ninety-five-ton "
+        "stealth escort boat with a shuttered missile rack.",
+        31.0,
+    ),
     134: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
