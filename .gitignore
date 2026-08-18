@@ -45,9 +45,12 @@ install_manifest.txt
 *.zip
 
 # Runtime databases, credentials, identities, and signing material
+*.conf
 *.credential
+*.identities
 *.identity
 *.lmdb
+*.lock
 *.mdb
 *.psk
 *.key
