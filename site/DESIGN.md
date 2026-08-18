@@ -116,6 +116,10 @@ When painterly art is used, favor the compositional confidence and physical
 media of 1970s/1980s science-fiction art. When diagrams are used, favor
 clarity and plausible annotation over decorative complexity.
 
+Ship-catalog illustration follows the detailed family, shipyard, component,
+scale, and production rules in
+[`SHIP-ART-GUIDE.md`](SHIP-ART-GUIDE.md).
+
 Do not default to sleek contemporary spacecraft, weightless holograms, generic
 cyberpunk cities, 1950s pulp rockets, steampunk ornament, or militaristic
 franchise mimicry. The world may contain advanced technology, but its visual

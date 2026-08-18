@@ -8,6 +8,7 @@ import html
 import json
 import re
 import shutil
+import tomllib
 from collections import defaultdict
 from html.parser import HTMLParser
 from pathlib import Path
@@ -19,6 +20,30 @@ SITE = ROOT / "site"
 CPP_HELP = ROOT / "client" / "src" / "door_help.cpp"
 HELP_HEADER = ROOT / "client" / "include" / "ct" / "door_help.hpp"
 PLAYER_GUIDE = ROOT / "docs" / "player-guide.md"
+SHIP_CATALOG = ROOT / "catalog" / "ships"
+
+PUBLISHED_SHIP_ART = {
+    1: (
+        "assets/ships/ship-001-hermes.webp",
+        "Painted three-quarter view of Hermes, a yellow and blue ten-ton "
+        "distributed courier pod with a sealed central cargo module.",
+    ),
+    2: (
+        "assets/ships/ship-002-labyrinth.webp",
+        "Painted three-quarter view of Labyrinth, a green and ochre ten-ton "
+        "distributed utility pod with a stowed industrial grappling arm.",
+    ),
+    3: (
+        "assets/ships/ship-003-knossos.webp",
+        "Painted three-quarter view of Knossos, an ivory, blue, and vermilion "
+        "ten-ton distributed passenger pod with four visible cabin windows.",
+    ),
+    4: (
+        "assets/ships/ship-004-minotaur.webp",
+        "Painted three-quarter view of Minotaur, an aubergine and orange "
+        "ten-ton distributed boarding pod with a grappling arm and docking collar.",
+    ),
+}
 
 CATEGORY_NAMES = {
     "GettingStarted": "Getting Started",
@@ -197,6 +222,7 @@ def page_shell(title: str, description: str, current: str, body: str) -> str:
     nav = []
     for key, label, href in (
         ("home", "Home", "index.html"),
+        ("catalog", "Ship Catalog", "ships.html"),
         ("reference", "Player Reference", "reference.html"),
         ("help", "Beginner Help", "beginner-help.html"),
     ):
@@ -317,6 +343,7 @@ def landing_page() -> str:
 
 <section class="resource-callout" aria-labelledby="resources-title">
   <div><p class="section-index">05 / Captain's library</p><h2 id="resources-title">The manual travels with you.</h2></div>
+  <a href="ships.html"><strong>Ship Catalog</strong><span>Recognition plates and mechanical summaries for documented vessel families.</span><b aria-hidden="true">↗</b></a>
   <a href="reference.html"><strong>Player Reference</strong><span>Complete controls, systems, operations, travel, combat, and practical advice.</span><b aria-hidden="true">↗</b></a>
   <a href="beginner-help.html"><strong>Beginner Help</strong><span>The same conceptual help available from every <kbd>?</kbd> prompt in the door.</span><b aria-hidden="true">↗</b></a>
 </section>
@@ -325,6 +352,136 @@ def landing_page() -> str:
         "Persistent space trade through the BBS",
         "The introduction and player help site for Cepheus Trader, a persistent multiplayer BBS space-trading game.",
         "home",
+        body,
+    )
+
+
+def display_term(value: str) -> str:
+    return value.replace("-", " ").title()
+
+
+def format_tons(millitons: int) -> str:
+    tons = millitons / 1000
+    value = f"{tons:,.3f}".rstrip("0").rstrip(".")
+    return f"{value} ton{'s' if tons != 1 else ''}"
+
+
+def catalog_records() -> list[dict[str, object]]:
+    names = tomllib.loads((SHIP_CATALOG / "names.toml").read_text(encoding="utf-8"))
+    family_names = {
+        entry["family_id"]: entry["display_name"] for entry in names["family_name"]
+    }
+    path_names = {entry["path_id"]: entry for entry in names["path_name"]}
+    records: list[dict[str, object]] = []
+    for catalog_id, (art_path, art_alt) in PUBLISHED_SHIP_ART.items():
+        source = SHIP_CATALOG / f"ship-{catalog_id}.toml"
+        data = tomllib.loads(source.read_text(encoding="utf-8"))
+        catalog = data["catalog"]
+        if catalog["catalog_id"] != catalog_id:
+            raise RuntimeError(f"catalog ID mismatch in {source}")
+        if not (SITE / art_path).is_file():
+            raise RuntimeError(f"missing published ship art: {art_path}")
+        hull_match = re.fullmatch(r"(?:small|ship)-(\d+)", data["hull"]["id"])
+        if not hull_match:
+            raise RuntimeError(f"unknown hull ID in {source}: {data['hull']['id']}")
+        equipment = []
+        for item in data.get("equipment", []):
+            quantity = item.get("quantity", 1)
+            if item["id"] == "grappling-arm":
+                equipment.append("Grappling arm")
+            elif item["id"] == "acceleration-seat":
+                equipment.append(f"{quantity} passenger seats")
+        if data.get("airlocks", 0):
+            equipment.append("Pressure airlock")
+        if not equipment:
+            equipment.append("Priority cargo module")
+        crew = sum(item["quantity"] for item in data.get("crew", []))
+        records.append(
+            {
+                "catalog_id": catalog_id,
+                "tag": catalog["tag"],
+                "name": catalog["display_name"],
+                "role": display_term(catalog["primary_role"]),
+                "description": catalog["description_paragraphs"],
+                "family_id": catalog["family_id"],
+                "family_name": family_names[catalog["family_id"]],
+                "path_id": catalog["upgrade_path_id"],
+                "path_name": path_names[catalog["upgrade_path_id"]]["display_name"],
+                "yard_name": path_names[catalog["upgrade_path_id"]]["manufacturer_name"],
+                "tons": int(hull_match.group(1)),
+                "configuration": display_term(data["hull"]["configuration"]),
+                "crew": crew,
+                "endurance": data["fuel"]["power_plant_weeks"],
+                "cargo": format_tons(data.get("cargo_millitons", 0)),
+                "equipment": " · ".join(equipment),
+                "art_path": art_path,
+                "art_alt": art_alt,
+            }
+        )
+    return records
+
+
+def ship_catalog_page() -> str:
+    records = catalog_records()
+    cards = []
+    for ship in records:
+        paragraphs = "".join(f"<p>{html.escape(text)}</p>" for text in ship["description"])
+        weeks = ship["endurance"]
+        cards.append(
+            f"""
+<article class="ship-card path-{ship['path_id']}" id="{ship['tag']}">
+  <figure class="ship-plate">
+    <img src="{ship['art_path']}" alt="{html.escape(ship['art_alt'], quote=True)}" width="1536" height="1024" loading="lazy">
+    <figcaption>
+      <span>{ship['tag']} / Family {ship['family_id']:03}</span>
+      <span class="ship-scale">9.6 m overall</span>
+    </figcaption>
+  </figure>
+  <div class="ship-card-body">
+    <p class="ship-path">Path {ship['path_id']:02} / {html.escape(ship['path_name'])}</p>
+    <div class="ship-title-row"><h2>{html.escape(ship['name'])}</h2><span>{html.escape(ship['role'])}</span></div>
+    <dl class="ship-specs">
+      <div><dt>Displacement</dt><dd>{ship['tons']} tons</dd></div>
+      <div><dt>Configuration</dt><dd>{ship['configuration']}</dd></div>
+      <div><dt>Crew</dt><dd>{ship['crew']}</dd></div>
+      <div><dt>Endurance</dt><dd>{weeks} week{'s' if weeks != 1 else ''}</dd></div>
+      <div><dt>Cargo</dt><dd>{ship['cargo']}</dd></div>
+      <div><dt>Armament</dt><dd>Unarmed</dd></div>
+    </dl>
+    <p class="ship-fit"><span>Recognized fit</span>{html.escape(ship['equipment'])}</p>
+    <div class="ship-description">{paragraphs}</div>
+    <p class="ship-yard">Constructed in the design language of <strong>{html.escape(ship['yard_name'])}</strong>.</p>
+  </div>
+</article>"""
+        )
+    body = f"""
+<header class="document-hero catalog-hero">
+  <p class="eyebrow">Captain's library // SC-01</p>
+  <h1>Ship Catalog</h1>
+  <p>Field-recognition plates and working summaries for canonical vessels encountered across the shared universe. Illustration proceeds by complete hull family so related ships remain visibly related.</p>
+  <dl class="catalog-overview" aria-label="Catalog publication status">
+    <div><dt>Plates issued</dt><dd>{len(records):02}</dd></div>
+    <div><dt>Complete families</dt><dd>01</dd></div>
+    <div><dt>Catalog designs</dt><dd>213</dd></div>
+    <div><dt>Current volume</dt><dd>10 displacement tons</dd></div>
+  </dl>
+</header>
+<section class="catalog-family" aria-labelledby="daedalus-title">
+  <header class="catalog-family-header">
+    <div><p class="section-index">Family 001 / Auxiliary craft</p><h2 id="daedalus-title">Daedalus work pods</h2></div>
+    <div class="family-brief">
+      <p>Four local craft share one ten-ton distributed chassis: a two-seat faceted cockpit, open structural spine, replaceable mission cradle, and paired drive drums.</p>
+      <ul aria-label="Family characteristics"><li>10 displacement tons</li><li>Distributed hull</li><li>Two crew</li><li>Non-Jump</li><li>Unarmed</li></ul>
+    </div>
+  </header>
+  <div class="catalog-grid">{''.join(cards)}</div>
+  <p class="catalog-source"><span>Registry note</span> Mechanics and descriptions are read from the active ship records. Exterior dimensions, component placement, and illustrations are original canonical art decisions recorded in the Daedalus visual manifest.</p>
+</section>
+"""
+    return page_shell(
+        "Ship Catalog",
+        "Illustrated player-facing ship catalog for Cepheus Trader, beginning with the complete Daedalus work-pod family.",
+        "catalog",
         body,
     )
 
@@ -481,13 +638,18 @@ def build(output: Path) -> None:
     topics = help_topics()
     pages = {
         "index.html": landing_page(),
+        "ships.html": ship_catalog_page(),
         "reference.html": reference_page(),
         "beginner-help.html": beginner_help_page(topics),
     }
     for name, content in pages.items():
         (output / name).write_text(content, encoding="utf-8")
-    for asset in ("site.css", "site.js"):
-        shutil.copy2(SITE / "assets" / asset, output / "assets" / asset)
+    for asset in (SITE / "assets").rglob("*"):
+        if not asset.is_file():
+            continue
+        destination = output / "assets" / asset.relative_to(SITE / "assets")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(asset, destination)
     (output / ".nojekyll").write_text("", encoding="utf-8")
     validate_output(output)
     print(f"Built {len(pages)} pages with {len(topics)} help topics in {output}")

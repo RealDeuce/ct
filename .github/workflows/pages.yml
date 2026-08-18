@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/pages.yml"
       - "site/**"
+      - "catalog/ships/**"
       - "docs/player-guide.md"
       - "client/src/door_help.cpp"
       - "client/include/ct/door_help.hpp"

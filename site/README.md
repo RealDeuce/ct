@@ -3,12 +3,17 @@
 This directory contains the dependency-free GitHub Pages site for players.
 Its visual language, in-world presentation, and usability principles are
 recorded in [the website design direction](DESIGN.md).
+The [ship catalog art guide](SHIP-ART-GUIDE.md) records the audited family,
+shipyard, component, scale, and image-production rules for exterior plates.
 
-The build has two authoritative content inputs:
+The build has three authoritative content inputs:
 
 - `docs/player-guide.md` becomes the Player Reference.
 - Beginner bodies in `client/src/door_help.cpp` become searchable Beginner
   Help, checked against `DoorHelpTopic` in `client/include/ct/door_help.hpp`.
+- Published records under `catalog/ships/` become the mechanical summaries in
+  the Ship Catalog; canonical plates are served from `site/assets/ships/` and
+  their production manifests and masters remain under `site/ship-art/`.
 
 Build and validate the site locally with:
 
