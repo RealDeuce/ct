@@ -861,6 +861,8 @@ void render_startup_notice()
    } else {
       door_accent("          An Alternate Cepheus Engine Universe\n\r\n\r");
    }
+   door_label("Client version: ");
+   door_number("%s\n\r\n\r", CT_PRODUCT_VERSION);
    door_printf(
       "This product contains Open Game Content used under the Open Game "
       "License version 1.0a.\n\r\n\r");

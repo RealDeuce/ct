@@ -1104,8 +1104,10 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         session.return_to_bbs();
         let screen = session.finish();
         let semantic_screen = normalized_display_text(&screen);
+        let expected_version = format!("Client version: {}", env!("CARGO_PKG_VERSION"));
         assert!(screen.contains("An Alternate Cepheus Engine"), "{screen:?}");
         assert!(screen.contains("Universe"), "{screen:?}");
+        assert!(semantic_screen.contains(&expected_version), "{screen:?}");
         assert!(
             semantic_screen.contains("Open Game License version 1.0a"),
             "{screen:?}"
