@@ -96,6 +96,18 @@ PUBLISHED_SHIP_ART = {
         "arrowhead fighter with one fixed dorsal beam-laser emitter.",
         12.4,
     ),
+    17: (
+        "assets/ships/ship-017-jason.webp",
+        "Painted three-quarter view of Jason, an emerald and cream thirty-ton "
+        "armored transport with four cabin windows and a beam-laser turret.",
+        21.0,
+    ),
+    19: (
+        "assets/ships/ship-019-medea.webp",
+        "Painted three-quarter view of Medea, an emerald and cream thirty-ton "
+        "boarding transport with six cabin windows and airlock handholds.",
+        21.0,
+    ),
     158: (
         "assets/ships/family-005-charon.webp",
         "Painted three-quarter view of Charon, an ivory, vermilion, and blue "
@@ -125,6 +137,18 @@ PUBLISHED_SHIP_ART = {
         "Painted three-quarter view of Zephyrus, an ivory, vermilion, and blue "
         "twenty-ton armored flag barge with four private-cabin windows.",
         18.5,
+    ),
+    178: (
+        "assets/ships/ship-178-castor.webp",
+        "Painted three-quarter view of Castor, a navy and ivory thirty-ton "
+        "armored personnel boat with four cabin windows and a beam-laser turret.",
+        21.0,
+    ),
+    179: (
+        "assets/ships/ship-179-pollux.webp",
+        "Painted three-quarter view of Pollux, a navy and ivory thirty-ton "
+        "armored marine boat with six shuttered troop-compartment bays.",
+        21.0,
     ),
     185: (
         "assets/ships/family-007-caduceus-venture.webp",
