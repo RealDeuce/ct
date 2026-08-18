@@ -21,6 +21,7 @@ CPP_HELP = ROOT / "client" / "src" / "door_help.cpp"
 HELP_HEADER = ROOT / "client" / "include" / "ct" / "door_help.hpp"
 PLAYER_GUIDE = ROOT / "docs" / "player-guide.md"
 SHIP_CATALOG = ROOT / "catalog" / "ships"
+SHIPBUILDING_CORE = ROOT / "catalog" / "shipbuilding" / "ce-core.toml"
 
 PUBLISHED_SHIP_ART = {
     1: (
@@ -59,11 +60,35 @@ PUBLISHED_SHIP_ART = {
         "twenty-ton streamlined utility launch with six cabin windows.",
         18.5,
     ),
+    7: (
+        "assets/ships/family-007-caduceus-venture.webp",
+        "Painted three-quarter view of Caduceus, a sunflower and cobalt "
+        "twenty-ton armored fast launch with a closed dorsal hardpoint.",
+        17.5,
+    ),
+    8: (
+        "assets/ships/ship-008-argus.webp",
+        "Painted three-quarter view of Argus, a sunflower and cobalt "
+        "twenty-ton armored launch with one dorsal beam-laser turret.",
+        17.5,
+    ),
     158: (
         "assets/ships/family-005-charon.webp",
         "Painted three-quarter view of Charon, an ivory, vermilion, and blue "
         "ten-ton streamlined armored passenger launch with three cabin windows.",
         12.5,
+    ),
+    145: (
+        "assets/ships/family-007-caduceus-concord.webp",
+        "Painted three-quarter view of Caduceus, an ivory and blue twenty-ton "
+        "armored fast launch with a closed dorsal hardpoint.",
+        17.5,
+    ),
+    146: (
+        "assets/ships/family-007-caduceus-concord.webp",
+        "Painted three-quarter view of Caduceus, an ivory and blue twenty-ton "
+        "armored fast launch with a closed dorsal hardpoint.",
+        17.5,
     ),
     176: (
         "assets/ships/ship-176-boreas.webp",
@@ -76,6 +101,18 @@ PUBLISHED_SHIP_ART = {
         "Painted three-quarter view of Zephyrus, an ivory, vermilion, and blue "
         "twenty-ton armored flag barge with four private-cabin windows.",
         18.5,
+    ),
+    185: (
+        "assets/ships/family-007-caduceus-venture.webp",
+        "Painted three-quarter view of Caduceus, a sunflower and cobalt "
+        "twenty-ton armored fast launch with a closed dorsal hardpoint.",
+        17.5,
+    ),
+    189: (
+        "assets/ships/family-007-caduceus-venture.webp",
+        "Painted three-quarter view of Caduceus, a sunflower and cobalt "
+        "twenty-ton armored fast launch with a closed dorsal hardpoint.",
+        17.5,
     ),
 }
 
@@ -412,6 +449,11 @@ def catalog_records() -> list[dict[str, object]]:
         entry["family_id"]: entry["display_name"] for entry in names["family_name"]
     }
     path_names = {entry["path_id"]: entry for entry in names["path_name"]}
+    shipbuilding = tomllib.loads(SHIPBUILDING_CORE.read_text(encoding="utf-8"))
+    armor_points_per_layer = {
+        entry["id"]: entry["protection_per_layer"]
+        for entry in shipbuilding["armor"]
+    }
     records: list[dict[str, object]] = []
     for catalog_id, (art_path, art_alt, length_m) in PUBLISHED_SHIP_ART.items():
         source = SHIP_CATALOG / f"ship-{catalog_id}.toml"
@@ -424,6 +466,19 @@ def catalog_records() -> list[dict[str, object]]:
         hull_match = re.fullmatch(r"(?:small|ship)-(\d+)", data["hull"]["id"])
         if not hull_match:
             raise RuntimeError(f"unknown hull ID in {source}: {data['hull']['id']}")
+        armor = data.get("armor")
+        armor_layers = armor.get("layers", 0) if armor else 0
+        if armor and "points" in armor:
+            armor_points = armor["points"]
+        elif armor:
+            try:
+                armor_points = armor_layers * armor_points_per_layer[armor["id"]]
+            except KeyError as error:
+                raise RuntimeError(
+                    f"unknown layered armor ID in {source}: {armor['id']}"
+                ) from error
+        else:
+            armor_points = 0
         equipment = []
         equipment_entries = []
         for item in data.get("equipment", []):
@@ -445,6 +500,21 @@ def catalog_records() -> list[dict[str, object]]:
             equipment.append("Pressure airlock")
         if not equipment:
             equipment.append("Priority cargo module")
+        mount_entries = [
+            {
+                "name": display_term(item["id"]),
+                "weapons": [display_term(weapon) for weapon in item["weapons"]],
+            }
+            for item in data.get("mounts", [])
+        ]
+        armament = " · ".join(
+            f"{entry['name']}: {joined_terms(entry['weapons'])}"
+            for entry in mount_entries
+        ) or "None installed"
+        software = [
+            f"{display_term(item['id'])}/{item['level']}"
+            for item in data.get("software", [])
+        ]
         crew_entries = [
             {"role": display_term(item["role"]), "quantity": item["quantity"]}
             for item in data.get("crew", [])
@@ -470,8 +540,9 @@ def catalog_records() -> list[dict[str, object]]:
                 "source_ids": data["source_ids"],
                 "tech_level": data["tech_level"],
                 "standard_design": data["standard_design"],
-                "armor_id": display_term(data["armor"]["id"]) if "armor" in data else "None",
-                "armor_points": data.get("armor", {}).get("points", 0),
+                "armor_id": display_term(armor["id"]) if armor else "None",
+                "armor_layers": armor_layers,
+                "armor_points": armor_points,
                 "electronics": display_term(data["electronics"]),
                 "status": display_term(catalog["status"]),
                 "progression_stage": display_term(catalog["progression_stage"]),
@@ -488,6 +559,10 @@ def catalog_records() -> list[dict[str, object]]:
                 "additional_passengers": data["control"]["additional_passengers"],
                 "computer": display_term(data["computer"]["id"]),
                 "computer_options": [display_term(value) for value in data["computer"]["options"]],
+                "software": software,
+                "additional_fire_control_stations": data.get(
+                    "additional_fire_control_stations", 0
+                ),
                 "airlocks": data.get("airlocks", 0),
                 "crew": crew,
                 "crew_entries": crew_entries,
@@ -495,6 +570,8 @@ def catalog_records() -> list[dict[str, object]]:
                 "cargo": format_tons(data.get("cargo_millitons", 0)),
                 "equipment": " · ".join(equipment),
                 "equipment_entries": equipment_entries,
+                "armament": armament,
+                "mount_entries": mount_entries,
                 "assertions": data.get("assertions", {}),
                 "raw_data": data,
                 "art_path": art_path,
@@ -520,6 +597,8 @@ def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
                 ship["yard_name"],
                 ship["configuration"],
                 ship["equipment"],
+                ship["armament"],
+                *ship["software"],
                 *ship["secondary_roles"],
                 *ship["mission_tags"],
                 *ship["description"],
@@ -659,6 +738,14 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
         f'<li><strong>{entry["quantity"]}</strong> {html.escape(entry["name"])}</li>'
         for entry in ship["equipment_entries"]
     ) or "<li>No separate equipment entries</li>"
+    mounts = "".join(
+        f'<li><strong>{html.escape(entry["name"])}</strong> '
+        f'{html.escape(joined_terms(entry["weapons"]))}</li>'
+        for entry in ship["mount_entries"]
+    )
+    recognized_fit = ship["equipment"]
+    if ship["armament"] != "None installed":
+        recognized_fit = f'{recognized_fit} · {ship["armament"]}'
     source_ids = "".join(f"<li><code>{html.escape(value)}</code></li>" for value in ship["source_ids"])
     ogc = "".join(f"<p>{html.escape(value)}</p>" for value in ship["ogc_designations"])
     assertions = ""
@@ -697,7 +784,7 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
     </dl>
     <div class="ship-detail-profile">
       <section><p class="section-index">Operational profile</p><h2>Recognition and use</h2><div class="ship-description">{paragraphs}</div></section>
-      <aside><p class="ship-fit"><span>Recognized fit</span>{html.escape(ship['equipment'])}</p><p class="ship-yard">Yard pattern: <strong>{html.escape(ship['yard_name'])}</strong>.</p><div class="record-tags" aria-label="Mission tags">{''.join(f'<span>{html.escape(value)}</span>' for value in ship['mission_tags'])}</div></aside>
+      <aside><p class="ship-fit"><span>Recognized fit</span>{html.escape(recognized_fit)}</p><p class="ship-yard">Yard pattern: <strong>{html.escape(ship['yard_name'])}</strong>.</p><div class="record-tags" aria-label="Mission tags">{''.join(f'<span>{html.escape(value)}</span>' for value in ship['mission_tags'])}</div></aside>
     </div>
     <section class="ship-construction" aria-labelledby="construction-title">
       <header><p class="section-index">Complete record / Revision {ship['revision']}</p><h2 id="construction-title">Construction dossier</h2><p>All fields below are read from the active catalog record. “None” is explicit where the record contains no fitted item or option.</p></header>
@@ -721,11 +808,12 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
             ('Displacement', f'{ship["tons"]} tons'),
             ('Configuration', ship['configuration']),
             ('Armor', ship['armor_id']),
+            ('Armor layers', ship['armor_layers'] if ship['armor_layers'] else ('Not layer-rated' if ship['armor_points'] else 'None')),
             ('Armor points', ship['armor_points']),
             ('Electronics', ship['electronics']),
             ('Airlocks', ship['airlocks']),
             ('Cargo', ship['cargo']),
-            ('Armament', 'None installed'),
+            ('Armament', ship['armament']),
         ])}</section>
         <section><h3>Drives and control</h3>{record_list([
             ('Maneuver drive', ship['maneuver_drive']),
@@ -736,11 +824,13 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
             ('Additional passengers', ship['additional_passengers']),
             ('Computer', ship['computer']),
             ('Computer options', joined_terms(ship['computer_options'])),
+            ('Software', joined_terms(ship['software'])),
+            ('Additional fire-control stations', ship['additional_fire_control_stations']),
         ])}</section>
       </div>
       <div class="ship-manifest-grid">
         <section><h3>Crew complement</h3><ul>{crew}</ul></section>
-        <section><h3>Installed equipment</h3><ul>{equipment}</ul></section>
+        <section><h3>Installed equipment and armament</h3><ul>{equipment}{mounts}</ul></section>
         <section><h3>Mission classification</h3>{record_list([
             ('Primary role', ship['role']),
             ('Secondary roles', joined_terms(ship['secondary_roles'])),
