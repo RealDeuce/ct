@@ -385,6 +385,37 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("2 × Particle Beam Barbette", armed_odysseus["armament"])
         self.assertEqual(armed_odysseus["unused_fire_control_stations"], 0)
 
+    def test_hawkwood_conversion_preserves_the_patrol_frigate_chassis(self) -> None:
+        hawkwood, condottiere = (
+            self.records[catalog_id] for catalog_id in (90, 96)
+        )
+        for record in (hawkwood, condottiere):
+            self.assertEqual(record["family_id"], 90)
+            self.assertEqual(record["tons"], 550)
+            self.assertEqual(record["configuration"], "Streamlined")
+            self.assertEqual(record["electronics"], "Advanced")
+            self.assertEqual(record["bridge_options"], ["Hardened Bridge"])
+            self.assertEqual(record["length_m"], 64.0)
+            self.assertIn("Full Hangar (20 tons contained)", record["equipment"])
+            self.assertIn("Carried Craft: Caduceus (ship-7)", record["equipment"])
+            self.assertIn("2 × Triple Turret: Beam Laser", record["armament"])
+            self.assertIn("Triple Turret: Missile Rack", record["armament"])
+            self.assertIn("Triple Turret: Sandcaster", record["armament"])
+            self.assertIn("5 × Point Defense Node Mount", record["armament"])
+
+        self.assertEqual(hawkwood["jump_drive"], "F")
+        self.assertEqual(hawkwood["jump_distance"], 2)
+        self.assertEqual(hawkwood["armor_points"], 8)
+        self.assertEqual(hawkwood["thrust_g"], 4)
+        self.assertIn("Particle Beam Barbette", hawkwood["armament"])
+        self.assertNotIn("Meson Gun Bay", hawkwood["armament"])
+
+        self.assertIsNone(condottiere["jump_drive"])
+        self.assertEqual(condottiere["jump_distance"], 0)
+        self.assertEqual(condottiere["armor_points"], 11)
+        self.assertIn("Meson Gun Bay", condottiere["armament"])
+        self.assertNotIn("Particle Beam Barbette", condottiere["armament"])
+
 
 if __name__ == "__main__":
     unittest.main()

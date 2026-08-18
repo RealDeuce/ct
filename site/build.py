@@ -372,6 +372,18 @@ PUBLISHED_SHIP_ART = {
         "missile ship with six launch banks and an externally docked Jason.",
         72.0,
     ),
+    90: (
+        "assets/ships/ship-090-hawkwood.webp",
+        "Painted three-quarter view of Hawkwood, an emerald five-hundred-fifty-ton "
+        "patrol frigate with four triple turrets and a particle-beam barbette.",
+        64.0,
+    ),
+    96: (
+        "assets/ships/ship-096-condottiere.webp",
+        "Painted three-quarter view of Condottiere, a red five-hundred-fifty-ton "
+        "system-defense frigate with heavy armor and an axial meson-gun bay.",
+        64.0,
+    ),
     152: (
         "assets/ships/family-080-ithaca-external.webp",
         "Painted three-quarter view of Ithaca, an ivory and blue eight-hundred-ton "
