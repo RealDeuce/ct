@@ -312,6 +312,42 @@ PUBLISHED_SHIP_ART = {
         "patrol ship with a boat hangar, two turrets, and particle-beam barbette.",
         50.0,
     ),
+    68: (
+        "assets/ships/ship-068-silver.webp",
+        "Painted three-quarter view of Silver, an aubergine four-hundred-ton "
+        "raider with two mixed turrets, two particle barbettes, and a boat hangar.",
+        58.0,
+    ),
+    69: (
+        "assets/ships/ship-069-trelawney.webp",
+        "Painted three-quarter view of Trelawney, a sunflower and cobalt "
+        "four-hundred-ton armed passenger ship with four triple turrets.",
+        58.0,
+    ),
+    72: (
+        "assets/ships/ship-072-smollett.webp",
+        "Painted three-quarter view of Smollett, an emerald four-hundred-ton "
+        "escort raider with two mixed turrets and two particle barbettes.",
+        58.0,
+    ),
+    139: (
+        "assets/ships/ship-139-trelawney.webp",
+        "Painted three-quarter view of Trelawney, a polished sunflower and cobalt "
+        "four-hundred-ton armed yacht with four laser-heavy turrets.",
+        58.0,
+    ),
+    140: (
+        "assets/ships/ship-140-silver.webp",
+        "Painted three-quarter view of Silver, an aubergine four-hundred-ton "
+        "boarding raider with four turrets and blanked barbette channels.",
+        58.0,
+    ),
+    141: (
+        "assets/ships/ship-141-smollett.webp",
+        "Painted three-quarter view of Smollett, an emerald four-hundred-ton light "
+        "escort with two turrets, two particle barbettes, and point defense.",
+        58.0,
+    ),
     161: (
         "assets/ships/family-054-hatteras.webp",
         "Painted three-quarter view of Hatteras, an avocado and ochre three-hundred-ton "
@@ -876,7 +912,11 @@ def catalog_records() -> list[dict[str, object]]:
                 equipment.append(f"{quantity} × {equipment_name}")
             equipment_entries.append(
                 {
-                    "name": f"{equipment_name}{'s' if quantity != 1 else ''}",
+                    "name": (
+                        f"{equipment_name}s"
+                        if quantity != 1 and not equipment_name.endswith("s")
+                        else equipment_name
+                    ),
                     "quantity": quantity,
                 }
             )

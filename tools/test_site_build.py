@@ -268,6 +268,45 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(robur["thrust_g"], 3)
         self.assertIn("3 × Point Defense Node Mount", robur["armament"])
 
+    def test_stevenson_generations_share_one_fast_clipper_chassis(self) -> None:
+        stevensons = [
+            self.records[catalog_id] for catalog_id in (68, 69, 72, 139, 140, 141)
+        ]
+        for record in stevensons:
+            self.assertEqual(record["family_id"], 68)
+            self.assertEqual(record["tons"], 400)
+            self.assertEqual(record["configuration"], "Streamlined")
+            self.assertEqual(record["jump_drive"], "D")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["maneuver_drive"], "H")
+            self.assertEqual(record["power_plant"], "H")
+            self.assertEqual(record["armor_points"], 4)
+            self.assertEqual(record["length_m"], 58.0)
+            self.assertIn("Full Hangar (30 tons contained)", record["equipment"])
+
+        for catalog_id in (68, 69, 72):
+            self.assertIn(
+                "Carried Craft: Jason (ship-17)", self.records[catalog_id]["equipment"]
+            )
+        for catalog_id in (139, 140, 141):
+            self.assertIn(
+                "Carried Craft: Ariel (ship-142)",
+                self.records[catalog_id]["equipment"],
+            )
+
+        self.assertEqual(self.records[68]["armament"], self.records[72]["armament"])
+        self.assertNotEqual(self.records[68]["art_path"], self.records[72]["art_path"])
+        self.assertIn("2 × Single Turret: Particle Beam", self.records[140]["armament"])
+        self.assertNotIn("Barbette", self.records[140]["armament"])
+        self.assertIn("2 × Particle Beam Barbette", self.records[141]["armament"])
+        self.assertIn("3 × Point Defense Node Mount", self.records[141]["armament"])
+        self.assertEqual(self.records[141]["endurance"], 4)
+        equipment_names = {
+            entry["name"] for entry in self.records[141]["equipment_entries"]
+        }
+        self.assertIn("Barracks", equipment_names)
+        self.assertNotIn("Barrackss", equipment_names)
+
 
 if __name__ == "__main__":
     unittest.main()
