@@ -538,7 +538,7 @@ main { position: relative; z-index: 1; }
 .ship-construction > header > p:last-child { grid-column: 2; grid-row: 1 / span 2; margin: 0; color: var(--ink-soft); }
 .ship-record-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: solid var(--line); border-width: 1px 0 0 1px; }
 .ship-record-grid > section { min-width: 0; padding: 1.3rem; border: solid var(--line); border-width: 0 1px 1px 0; }
-.ship-record-grid h3, .ship-manifest-grid h3 { margin: 0 0 1rem; color: var(--path-accent); font: 800 .76rem var(--display); letter-spacing: .08em; text-transform: uppercase; }
+.ship-record-grid h3, .ship-manifest-grid h3, .ship-assertions h3 { margin: 0 0 1rem; color: var(--path-accent); font: 800 .76rem var(--display); letter-spacing: .08em; text-transform: uppercase; }
 .ship-record-list { margin: 0; }
 .ship-record-list div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: .7rem; padding: .52rem 0; border-top: 1px solid rgba(70,80,82,.6); }
 .ship-record-list dt { color: var(--ink-soft); font: 600 .52rem/1.35 var(--mono); text-transform: uppercase; }
@@ -548,12 +548,29 @@ main { position: relative; z-index: 1; }
 .ship-manifest-grid ul { list-style: none; padding: 0; margin: 0; }
 .ship-manifest-grid li { padding: .55rem 0; border-top: 1px solid var(--line); color: var(--ink-soft); }
 .ship-manifest-grid li strong { color: var(--ink); font-family: var(--mono); }
+.ship-assertions { margin-top: 2rem; padding: 1.3rem; border: 1px solid var(--line); background: var(--space); }
+.ship-assertions > p { margin: -.55rem 0 1rem; color: var(--ink-soft); font-size: .9rem; }
+.ship-assertions > .ship-record-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 1.4rem; }
+.complete-ledger { margin-top: 2rem; border: 1px solid var(--line); background: var(--space); }
+.complete-ledger summary { display: flex; justify-content: space-between; gap: 1rem; padding: 1.1rem 1.3rem; color: var(--path-accent); cursor: pointer; font: 800 .76rem var(--display); letter-spacing: .08em; text-transform: uppercase; }
+.complete-ledger summary small { max-width: 30rem; color: var(--ink-soft); font: 600 .54rem/1.45 var(--mono); letter-spacing: 0; text-align: right; text-transform: none; }
+.complete-ledger-body { padding: 0 1.3rem 1.3rem; overflow-wrap: anywhere; }
+.complete-ledger-body > .source-ledger { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); }
+.complete-ledger-body > .source-ledger > div { padding: 1rem; background: var(--panel); }
+.source-ledger { margin: 0; }
+.source-ledger div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: .7rem; padding: .45rem 0; border-top: 1px solid rgba(70,80,82,.6); }
+.source-ledger dt { color: var(--ink-soft); font: 600 .52rem/1.35 var(--mono); text-transform: uppercase; }
+.source-ledger dd { min-width: 0; margin: 0; font: 700 .66rem/1.4 var(--display); text-align: right; }
+.source-ledger dd .source-ledger { margin-top: -.45rem; text-align: left; }
+.ledger-values, .ledger-records { list-style: none; margin: 0; padding: 0; }
+.ledger-values li + li, .ledger-records li + li { margin-top: .35rem; }
+.ledger-empty { color: var(--ink-soft); font-style: italic; }
 .ship-provenance { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(14rem, .7fr); gap: 3rem; margin-top: clamp(3rem, 7vw, 6rem); padding-top: clamp(3rem, 7vw, 6rem); border-top: 1px solid var(--line); }
 .ship-provenance p { color: var(--ink-soft); }
 .ship-provenance ul { list-style: none; margin: 0; padding: 0; }
 .ship-provenance li { padding: .5rem 0; border-bottom: 1px solid var(--line); }
 .family-navigation { margin-top: clamp(4rem, 9vw, 8rem); }
-.family-navigation > div { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--line); background: var(--line); }
+.family-navigation > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 1px; border: 1px solid var(--line); background: var(--line); }
 .family-navigation a { min-width: 0; display: grid; grid-template-columns: auto 1fr; gap: .2rem .65rem; padding: 1rem; background: var(--space); text-decoration: none; }
 .family-navigation a[aria-current="page"] { background: var(--panel-light); box-shadow: inset 0 4px var(--path-accent); }
 .family-navigation a span { grid-row: 1 / span 2; color: var(--orange); font: 600 .55rem var(--mono); }
@@ -676,6 +693,7 @@ main { position: relative; z-index: 1; }
   .ship-detail-summary div:nth-child(-n+3) { border-bottom: 1px solid var(--line); }
   .ship-construction > header > p:last-child { grid-column: 1; grid-row: auto; margin-top: 1rem; }
   .ship-record-grid, .ship-manifest-grid { grid-template-columns: 1fr; }
+  .ship-assertions > .ship-record-list, .complete-ledger-body > .source-ledger { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .family-navigation > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .document-layout, .help-layout { grid-template-columns: 1fr; }
   .document-toc, .help-index { position: static; max-height: none; padding-right: 0; }
@@ -721,6 +739,9 @@ main { position: relative; z-index: 1; }
   .ship-detail-profile { padding-top: 3.5rem; padding-bottom: 3.5rem; }
   .ship-construction { padding: 1.4rem; }
   .ship-record-list div { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
+  .ship-assertions > .ship-record-list, .complete-ledger-body > .source-ledger { grid-template-columns: 1fr; }
+  .complete-ledger summary { align-items: flex-start; flex-direction: column; }
+  .complete-ledger summary small { text-align: left; }
   .family-navigation > div { grid-template-columns: 1fr; }
   .dossier-pagination { grid-template-columns: 1fr; }
   .dossier-pagination a:nth-child(2), .dossier-pagination a:last-child { text-align: left; }
@@ -745,6 +766,7 @@ main { position: relative; z-index: 1; }
   .ship-detail-main { padding: 1rem 0; background: white; }
   .ship-detail-hero { width: 100%; }
   .ship-construction { padding: 1rem; background: white; }
+  .complete-ledger-body { display: block; }
   .family-navigation, .dossier-pagination { display: none; }
   a { color: #111; text-decoration: none; }
 }

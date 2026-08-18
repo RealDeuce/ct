@@ -27,21 +27,37 @@ PUBLISHED_SHIP_ART = {
         "assets/ships/ship-001-hermes.webp",
         "Painted three-quarter view of Hermes, a yellow and blue ten-ton "
         "distributed courier pod with a sealed central cargo module.",
+        9.6,
     ),
     2: (
         "assets/ships/ship-002-labyrinth.webp",
         "Painted three-quarter view of Labyrinth, a green and ochre ten-ton "
         "distributed utility pod with a stowed industrial grappling arm.",
+        9.6,
     ),
     3: (
         "assets/ships/ship-003-knossos.webp",
         "Painted three-quarter view of Knossos, an ivory, blue, and vermilion "
         "ten-ton distributed passenger pod with four visible cabin windows.",
+        9.6,
     ),
     4: (
         "assets/ships/ship-004-minotaur.webp",
         "Painted three-quarter view of Minotaur, an aubergine and orange "
         "ten-ton distributed boarding pod with a grappling arm and docking collar.",
+        9.6,
+    ),
+    5: (
+        "assets/ships/family-005-charon.webp",
+        "Painted three-quarter view of Charon, an ivory, vermilion, and blue "
+        "ten-ton streamlined armored passenger launch with three cabin windows.",
+        12.5,
+    ),
+    158: (
+        "assets/ships/family-005-charon.webp",
+        "Painted three-quarter view of Charon, an ivory, vermilion, and blue "
+        "ten-ton streamlined armored passenger launch with three cabin windows.",
+        12.5,
     ),
 }
 
@@ -373,7 +389,7 @@ def catalog_records() -> list[dict[str, object]]:
     }
     path_names = {entry["path_id"]: entry for entry in names["path_name"]}
     records: list[dict[str, object]] = []
-    for catalog_id, (art_path, art_alt) in PUBLISHED_SHIP_ART.items():
+    for catalog_id, (art_path, art_alt, length_m) in PUBLISHED_SHIP_ART.items():
         source = SHIP_CATALOG / f"ship-{catalog_id}.toml"
         data = tomllib.loads(source.read_text(encoding="utf-8"))
         catalog = data["catalog"]
@@ -424,6 +440,8 @@ def catalog_records() -> list[dict[str, object]]:
                 "source_ids": data["source_ids"],
                 "tech_level": data["tech_level"],
                 "standard_design": data["standard_design"],
+                "armor_id": display_term(data["armor"]["id"]) if "armor" in data else "None",
+                "armor_points": data.get("armor", {}).get("points", 0),
                 "electronics": display_term(data["electronics"]),
                 "status": display_term(catalog["status"]),
                 "progression_stage": display_term(catalog["progression_stage"]),
@@ -447,8 +465,11 @@ def catalog_records() -> list[dict[str, object]]:
                 "cargo": format_tons(data.get("cargo_millitons", 0)),
                 "equipment": " · ".join(equipment),
                 "equipment_entries": equipment_entries,
+                "assertions": data.get("assertions", {}),
+                "raw_data": data,
                 "art_path": art_path,
                 "art_alt": art_alt,
+                "length_m": length_m,
             }
         )
     return records
@@ -469,6 +490,7 @@ def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
                 ship["yard_name"],
                 ship["configuration"],
                 ship["equipment"],
+                *ship["secondary_roles"],
                 *ship["mission_tags"],
                 *ship["description"],
             )
@@ -498,10 +520,10 @@ def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
   <h1>Ship Catalog</h1>
   <p class="catalog-intro">Issued to captains, brokers, port officials, and boarding crews. Match silhouette and visible fittings before trusting a transponder return: local refits, improvised repairs, and false registry marks are common.</p>
   <dl class="catalog-overview" aria-label="Catalog publication status">
-    <div><dt>Plates issued</dt><dd>{len(records):02}</dd></div>
+    <div><dt>Dossiers issued</dt><dd>{len(records):02}</dd></div>
+    <div><dt>Distinct plates</dt><dd>{len({ship['art_path'] for ship in records}):02}</dd></div>
     <div><dt>Complete families</dt><dd>{len(families):02}</dd></div>
     <div><dt>Catalog designs</dt><dd>213</dd></div>
-    <div><dt>Current volume</dt><dd>10 displacement tons</dd></div>
   </dl>
 </header>
 <div class="catalog-registry">
@@ -521,7 +543,7 @@ def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
 """
     return page_shell(
         "Ship Catalog",
-        "Illustrated player-facing ship catalog for Cepheus Trader, beginning with the complete Daedalus work-pod family.",
+        "Illustrated player-facing ship catalog for Cepheus Trader, with complete recognition and construction dossiers.",
         "catalog",
         body,
     )
@@ -536,6 +558,45 @@ def record_list(rows: list[tuple[str, object]]) -> str:
 
 def joined_terms(values: list[str]) -> str:
     return " · ".join(values) if values else "None"
+
+
+def assertion_value(key: str, value: object) -> str:
+    if key.endswith("_millitons") and isinstance(value, int):
+        return f"{value:,} millitons / {format_tons(value)}"
+    if key.endswith("_credits") and isinstance(value, int):
+        return f"{value:,} Cr"
+    if key == "thrust_g":
+        return f"{value} g"
+    if key == "construction_weeks":
+        return f"{value} weeks"
+    return str(value)
+
+
+def source_ledger(value: object) -> str:
+    if isinstance(value, dict):
+        if not value:
+            return '<span class="ledger-empty">None recorded</span>'
+        rows = []
+        for key, child in value.items():
+            label = key.replace("_", " ").title()
+            rows.append(
+                f"<div><dt>{html.escape(label)}</dt><dd>{source_ledger(child)}</dd></div>"
+            )
+        return f'<dl class="source-ledger">{"".join(rows)}</dl>'
+    if isinstance(value, list):
+        if not value:
+            return '<span class="ledger-empty">None recorded</span>'
+        list_class = (
+            "ledger-records"
+            if any(isinstance(item, dict) for item in value)
+            else "ledger-values"
+        )
+        return f'<ol class="{list_class}">' + "".join(
+            f"<li>{source_ledger(item)}</li>" for item in value
+        ) + "</ol>"
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    return html.escape(str(value))
 
 
 def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) -> str:
@@ -570,6 +631,18 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
     ) or "<li>No separate equipment entries</li>"
     source_ids = "".join(f"<li><code>{html.escape(value)}</code></li>" for value in ship["source_ids"])
     ogc = "".join(f"<p>{html.escape(value)}</p>" for value in ship["ogc_designations"])
+    assertions = ""
+    if ship["assertions"]:
+        assertion_rows = [
+            (key.replace("_", " ").title(), assertion_value(key, value))
+            for key, value in ship["assertions"].items()
+        ]
+        assertions = f"""
+      <section class="ship-assertions">
+        <h3>Verified performance and procurement</h3>
+        <p>Construction assertions carried by this source record.</p>
+        {record_list(assertion_rows)}
+      </section>"""
     body = f"""
 <article class="ship-detail path-{ship['path_id']}">
   <header class="ship-detail-hero">
@@ -582,7 +655,7 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
   <div class="ship-detail-main">
     <figure class="ship-detail-plate">
       <img src="{ship['art_path']}" alt="{html.escape(ship['art_alt'], quote=True)}" width="1536" height="1024">
-      <figcaption><span>{ship['tag']} / Canonical recognition plate</span><span class="ship-scale">9.6 m overall</span></figcaption>
+      <figcaption><span>{ship['tag']} / Canonical recognition plate</span><span class="ship-scale">{ship['length_m']:g} m overall</span></figcaption>
     </figure>
     <dl class="ship-detail-summary">
       <div><dt>Displacement</dt><dd>{ship['tons']} tons</dd></div>
@@ -617,6 +690,8 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
             ('Hull code', ship['hull_id']),
             ('Displacement', f'{ship["tons"]} tons'),
             ('Configuration', ship['configuration']),
+            ('Armor', ship['armor_id']),
+            ('Armor points', ship['armor_points']),
             ('Electronics', ship['electronics']),
             ('Airlocks', ship['airlocks']),
             ('Cargo', ship['cargo']),
@@ -642,9 +717,14 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
             ('Mission tags', joined_terms(ship['mission_tags'])),
         ])}</section>
       </div>
+      {assertions}
+      <details class="complete-ledger">
+        <summary><span>Complete source ledger</span><small>Every field in the catalog record, including empty lists and construction assertions.</small></summary>
+        <div class="complete-ledger-body">{source_ledger(ship['raw_data'])}</div>
+      </details>
     </section>
     <section class="ship-provenance"><div><p class="section-index">Record provenance</p><h2>Sources and designation</h2><p>Source record: <code>catalog/ships/ship-{ship['catalog_id']}.toml</code></p>{ogc}</div><ul>{source_ids}</ul></section>
-    <nav class="family-navigation" aria-label="Daedalus family vessels"><header><p class="section-index">Family {ship['family_id']:03}</p><h2>{html.escape(ship['family_name'])} family</h2></header><div>{member_links}</div></nav>
+    <nav class="family-navigation" aria-label="{html.escape(ship['family_name'], quote=True)} family vessels"><header><p class="section-index">Family {ship['family_id']:03}</p><h2>{html.escape(ship['family_name'])} family</h2></header><div>{member_links}</div></nav>
     <nav class="dossier-pagination" aria-label="Previous and next family vessels">{previous_link}<a href="ships.html">All issued dossiers</a>{next_link}</nav>
   </div>
 </article>
