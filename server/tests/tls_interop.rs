@@ -1358,6 +1358,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Deliver to:",
         "Failure charge:",
         "Accepted obligations",
+        "Ship time: Day",
     ] {
         assert!(docked_semantic.contains(expected), "{docked_screen:?}");
     }
@@ -1368,6 +1369,21 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     );
     if showing_unavailable {
         assert!(docked_semantic.contains("Unavailable to this captain:"));
+    }
+    for (profile, columns) in [
+        ("iso646", "40"),
+        ("iso646-color", "80"),
+        ("cp437-color", "40"),
+    ] {
+        let mut time_door = DoorSession::spawn(&door, data.path(), profile, columns);
+        time_door.send(b"\r");
+        let screen = time_door.wait_for("Return to BBS");
+        assert!(
+            normalized_display_text(&screen).contains("Ship time: Day"),
+            "{profile}/{columns}: {screen:?}"
+        );
+        time_door.return_to_bbs();
+        time_door.finish();
     }
     let mut reconnected_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     reconnected_door.send(b"\r");

@@ -7468,6 +7468,8 @@ void render_docked_snapshot(const ct::DockedSnapshot& snapshot)
    door_number("%u", snapshot.tech_level);
    door_label(" Law ");
    door_number("%u\n\r", snapshot.law_level);
+   door_label("Ship time: ");
+   door_number("%s\n\r", game_date(snapshot.current_game_second).c_str());
    door_label("Cash: ");
    door_number("Cr%llu", static_cast<unsigned long long>(snapshot.credits));
    if(snapshot.restricted_credits != 0) {

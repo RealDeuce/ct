@@ -1009,6 +1009,7 @@ DockedSnapshot decode_docked_snapshot(const rpc::Response::Reader response)
       .population = source.getPopulation(),
       .law_level = source.getLawLevel(),
       .arrived_second = source.getArrivedSecond(),
+      .current_game_second = source.getCurrentGameSecond(),
       .credits = source.getCredits(),
       .restricted_credits = source.getRestrictedCredits(),
       .debt_credits = source.getDebtCredits(),

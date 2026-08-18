@@ -770,6 +770,7 @@ pub struct DockedSnapshot {
     pub population: u8,
     pub law_level: u8,
     pub arrived_second: u64,
+    pub current_game_second: u64,
     pub credits: u64,
     pub restricted_credits: u64,
     pub debt_credits: u64,
@@ -4949,6 +4950,7 @@ fn set_docked_snapshot(
     builder.set_population(snapshot.population);
     builder.set_law_level(snapshot.law_level);
     builder.set_arrived_second(snapshot.arrived_second);
+    builder.set_current_game_second(snapshot.current_game_second);
     builder.set_credits(snapshot.credits);
     builder.set_debt_credits(snapshot.debt_credits);
     builder.set_fuel_millitons(snapshot.fuel_millitons);

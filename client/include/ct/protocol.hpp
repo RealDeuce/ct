@@ -562,6 +562,7 @@ struct DockedSnapshot {
    uint8_t population;
    uint8_t law_level;
    uint64_t arrived_second;
+   uint64_t current_game_second;
    uint64_t credits;
    uint64_t restricted_credits;
    uint64_t debt_credits;

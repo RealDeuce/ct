@@ -14379,6 +14379,7 @@ impl Store {
             population: world.population,
             law_level: world.law_level,
             arrived_second,
+            current_game_second: current_second,
             credits: player.credits,
             restricted_credits,
             debt_credits: player.debt_credits,
@@ -34242,7 +34243,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(12);
+    bytes.push(13);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -34498,6 +34499,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 10
         && version != 11
         && version != 12
+        && version != 13
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -34540,7 +34542,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         8 => OutcomeKind::StartingCrewPlan(decode_starting_crew_plan(&mut decoder)?),
         9 => OutcomeKind::CrewManagement(decode_crew_management(&mut decoder, version)?),
         10 => OutcomeKind::ShipStatus(decode_ship_status(&mut decoder)?),
-        11 => OutcomeKind::DockedSnapshot(decode_docked_snapshot(&mut decoder)?),
+        11 => OutcomeKind::DockedSnapshot(decode_docked_snapshot(&mut decoder, version)?),
         12 => OutcomeKind::KnownDestinations(decode_known_destinations(&mut decoder, version)?),
         13 => OutcomeKind::Market(decode_market_snapshot(&mut decoder, version)?),
         14 => OutcomeKind::TravelStatus(decode_travel_status(&mut decoder)?),
@@ -38081,6 +38083,7 @@ fn encode_docked_snapshot_into(
     bytes.push(snapshot.medical_level);
     bytes.push(snapshot.clearance_required as u8);
     bytes.extend_from_slice(&snapshot.restricted_credits.to_be_bytes());
+    bytes.extend_from_slice(&snapshot.current_game_second.to_be_bytes());
     Ok(())
 }
 
@@ -38412,7 +38415,10 @@ fn decode_flight_locus_status(decoder: &mut Decoder<'_>) -> Result<FlightLocus, 
     }
 }
 
-fn decode_docked_snapshot(decoder: &mut Decoder<'_>) -> Result<DockedSnapshot, StoreError> {
+fn decode_docked_snapshot(
+    decoder: &mut Decoder<'_>,
+    outcome_version: u8,
+) -> Result<DockedSnapshot, StoreError> {
     let mut snapshot = DockedSnapshot {
         ship_id: decoder.u64()?,
         ship_name: decoder.text()?,
@@ -38427,6 +38433,7 @@ fn decode_docked_snapshot(decoder: &mut Decoder<'_>) -> Result<DockedSnapshot, S
         population: decoder.u8()?,
         law_level: decoder.u8()?,
         arrived_second: decoder.u64()?,
+        current_game_second: 0,
         credits: decoder.u64()?,
         restricted_credits: 0,
         debt_credits: decoder.u64()?,
@@ -38447,6 +38454,9 @@ fn decode_docked_snapshot(decoder: &mut Decoder<'_>) -> Result<DockedSnapshot, S
     };
     if decoder.remaining().len() >= std::mem::size_of::<u64>() {
         snapshot.restricted_credits = decoder.u64()?;
+    }
+    if outcome_version >= 13 {
+        snapshot.current_game_second = decoder.u64()?;
     }
     Ok(snapshot)
 }
@@ -40086,6 +40096,43 @@ mod tests {
             panic!("expected course plot");
         };
         assert_eq!(plot.current_game_second, 0);
+    }
+
+    #[test]
+    fn docked_snapshot_outcome_preserves_clock_and_reads_version_twelve() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        {
+            let mut transaction = store.env.write_txn().unwrap();
+            put_meta_u64(store.meta, &mut transaction, META_GAME_SECOND, 1_901_701).unwrap();
+            transaction.commit().unwrap();
+        }
+        let snapshot = store
+            .docked_snapshot_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        assert_eq!(snapshot.current_game_second, 1_901_701);
+        let outcome = Outcome {
+            command_id: [10; COMMAND_ID_BYTES],
+            committed_sequence: 17,
+            revision: 18,
+            replayed: false,
+            phase: PlayerPhase::Docked,
+            kind: OutcomeKind::DockedSnapshot(snapshot.clone()),
+        };
+
+        let encoded = encode_outcome(&outcome).unwrap();
+        assert_eq!(decode_outcome(&encoded).unwrap(), outcome);
+
+        let mut version_twelve = encoded;
+        version_twelve[0] = 12;
+        version_twelve.truncate(version_twelve.len() - 8);
+        let decoded = decode_outcome(&version_twelve).unwrap();
+        let OutcomeKind::DockedSnapshot(legacy) = decoded.kind else {
+            panic!("expected docked snapshot");
+        };
+        assert_eq!(legacy.current_game_second, 0);
+        assert_eq!(legacy.restricted_credits, snapshot.restricted_credits);
     }
 
     #[test]
