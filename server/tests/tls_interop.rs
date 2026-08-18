@@ -16,6 +16,11 @@ use cepheus_trader_server::wire::{
     PlayerIdentity, ResolveEncounterRequest,
 };
 
+const PAGE_PROMPTS: [&str; 2] = [
+    "[Enter/Sp] Continue  [C]ont  [Q] Menu",
+    "[Enter/Sp] [B]eg [C]ont [Q]uit [X]pert",
+];
+
 fn strip_ecma48(input: &str) -> String {
     let bytes = input.as_bytes();
     let mut plain = Vec::with_capacity(bytes.len());
@@ -43,6 +48,16 @@ fn normalized_display_text(input: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+// Live prompt detection must retain pager prompts. Completed-page assertions
+// instead remove them so an acknowledgement cannot split one semantic phrase.
+fn normalized_page_content(input: &str) -> String {
+    let mut content = normalized_display_text(input);
+    for prompt in PAGE_PROMPTS {
+        content = content.replace(&normalized_display_text(prompt), " ");
+    }
+    content.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn numeric_field(input: &str, name: &str) -> u64 {
@@ -180,10 +195,6 @@ impl DoorSession {
     }
 
     fn acknowledge_page_prompts(&mut self, semantic: &str) {
-        const PAGE_PROMPTS: [&str; 2] = [
-            "[Enter/Sp] Continue  [C]ont  [Q] Menu",
-            "[Enter/Sp] [B]eg [C]ont [Q]uit [X]pert",
-        ];
         let erased_page_prompts = |output: &[u8]| {
             PAGE_PROMPTS
                 .iter()
@@ -715,7 +726,7 @@ fn complete_arrival_and_trade(
     // Page prompts are erased with bare carriage returns, so a captured row
     // can share a logical line with the erased prompt.  Parse the normalized
     // display stream and take the numbered item immediately before the name.
-    let normalized_cargo = normalized_display_text(cargo_section);
+    let normalized_cargo = normalized_page_content(cargo_section);
     assert!(normalized_cargo.contains("Range"));
     assert!(normalized_cargo.contains("Min Cr"));
     assert!(normalized_cargo.contains("Q1 Cr"));
@@ -736,6 +747,16 @@ fn complete_arrival_and_trade(
     session.send_through_page_prompt(b"q", "Docked Operations", "Docked Operations");
     session.return_to_bbs();
     session.finish()
+}
+
+#[test]
+fn normalized_page_content_removes_transient_pager_output() {
+    for prompt in PAGE_PROMPTS {
+        let captured = format!("low-price\r\n{prompt}\r{}\rsale", " ".repeat(prompt.len()));
+        let normalized = normalized_page_content(&captured);
+        assert_eq!(normalized, "low-price sale");
+        assert!(normalized.contains("-price sale"));
+    }
 }
 
 #[test]
