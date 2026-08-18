@@ -119,6 +119,24 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(strike["ammunition"], "144 × Standard Missiles")
         self.assertEqual(escort["ammunition"], "12 × Standard Missiles")
 
+    def test_polo_internal_fits_keep_shared_trader_chassis(self) -> None:
+        marco, niccolo, maffeo = (
+            self.records[catalog_id] for catalog_id in (38, 39, 40)
+        )
+        for record in (marco, niccolo, maffeo):
+            self.assertEqual(record["tons"], 200)
+            self.assertEqual(record["jump_drive"], "B")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["maneuver_drive"], "C")
+            self.assertEqual(record["length_m"], 44.0)
+            self.assertEqual(record["armament"], "Double Turret: Beam Laser")
+        self.assertEqual(marco["cargo"], "88.7 tons")
+        self.assertEqual(niccolo["cargo"], "68.7 tons")
+        self.assertEqual(maffeo["cargo"], "67.7 tons")
+        self.assertNotIn("Steerage", marco["equipment"])
+        self.assertIn("15 × Steerage", niccolo["equipment"])
+        self.assertIn("8 × Stateroom", maffeo["equipment"])
+
 
 if __name__ == "__main__":
     unittest.main()

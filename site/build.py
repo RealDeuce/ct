@@ -204,6 +204,24 @@ PUBLISHED_SHIP_ART = {
         "eighty-ton missile boat with one active launch bank and one armored blank.",
         29.0,
     ),
+    38: (
+        "assets/ships/ship-038-marco-polo.webp",
+        "Painted three-quarter view of Marco Polo, an avocado and ochre two-hundred-ton "
+        "frontier trader with two closed freight shutters.",
+        44.0,
+    ),
+    39: (
+        "assets/ships/ship-039-niccolo-polo.webp",
+        "Painted three-quarter view of Niccolò Polo, an ivory, blue, and vermilion "
+        "two-hundred-ton steerage trader with five passenger-window groups.",
+        44.0,
+    ),
+    40: (
+        "assets/ships/ship-040-maffeo-polo.webp",
+        "Painted three-quarter view of Maffeo Polo, an ivory, blue, and vermilion "
+        "two-hundred-ton passenger trader with a six-pane occupancy insert.",
+        44.0,
+    ),
     43: (
         "assets/ships/family-034-humboldt.webp",
         "Painted three-quarter view of Humboldt, an avocado and ochre two-hundred-ton "
