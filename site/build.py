@@ -144,6 +144,18 @@ PUBLISHED_SHIP_ART = {
         "and brick-red fifty-ton mining boat with workshop and drone shutters.",
         26.0,
     ),
+    26: (
+        "assets/ships/ship-026-pym.webp",
+        "Painted three-quarter view of Pym, a yellow and cobalt hundred-ton "
+        "dispatch courier with a mixed triple turret and broad freight door.",
+        31.0,
+    ),
+    33: (
+        "assets/ships/ship-033-ligeia.webp",
+        "Painted three-quarter view of Ligeia, an aubergine hundred-ton covert "
+        "courier with split cargo and hangar shutters and point defense.",
+        31.0,
+    ),
     134: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
@@ -625,6 +637,13 @@ def catalog_records() -> list[dict[str, object]]:
                 ) from error
         else:
             armor_points = 0
+        hull_options = []
+        for item in data.get("hull_options", []):
+            quantity = int(item.get("quantity", 1))
+            option_name = display_term(item["id"])
+            hull_options.append(
+                option_name if quantity == 1 else f"{quantity} × {option_name}"
+            )
         equipment = []
         equipment_entries = []
         for item in data.get("equipment", []):
@@ -651,7 +670,19 @@ def catalog_records() -> list[dict[str, object]]:
             equipment_entries.append(
                 {"name": equipment_name, "quantity": quantity}
             )
-        airlocks = data.get("airlocks", 0)
+        for item in data.get("hangars", []):
+            quantity = int(item.get("quantity", 1))
+            hangar_name = (
+                f"{display_term(item['id'])} "
+                f"({format_tons(item['contained_millitons'])} contained)"
+            )
+            equipment.append(
+                hangar_name if quantity == 1 else f"{quantity} × {hangar_name}"
+            )
+            equipment_entries.append(
+                {"name": hangar_name, "quantity": quantity}
+            )
+        airlocks = data.get("airlocks")
         if airlocks:
             equipment.append(
                 "Pressure airlock" if airlocks == 1 else f"{airlocks} pressure airlocks"
@@ -667,16 +698,32 @@ def catalog_records() -> list[dict[str, object]]:
                 {
                     "name": mount_name,
                     "weapons": [display_term(weapon) for weapon in item["weapons"]],
+                    "quantity": int(item.get("quantity", 1)),
                 }
             )
-        armament = " · ".join(
-            f"{entry['name']}: {joined_terms(entry['weapons'])}"
-            for entry in mount_entries
-        ) or "None installed"
-        software = [
-            f"{display_term(item['id'])}/{item['level']}"
-            for item in data.get("software", [])
-        ]
+        for item in data.get("point_defense", []):
+            mount_entries.append(
+                {
+                    "name": display_term(item["mount_id"]),
+                    "weapons": [display_term(item["weapon_id"])],
+                    "quantity": int(item.get("quantity", 1)),
+                }
+            )
+        armament_parts = []
+        for entry in mount_entries:
+            mount_name = entry["name"]
+            if entry["quantity"] != 1:
+                mount_name = f"{entry['quantity']} × {mount_name}"
+            armament_parts.append(
+                f"{mount_name}: {joined_terms(entry['weapons'])}"
+            )
+        armament = " · ".join(armament_parts) or "None installed"
+        software = []
+        for item in data.get("software", []):
+            software_name = display_term(item["id"])
+            if "level" in item:
+                software_name = f"{software_name}/{item['level']}"
+            software.append(software_name)
         ammunition_entries = []
         ammunition = []
         for item in data.get("ammunition", []):
@@ -694,6 +741,7 @@ def catalog_records() -> list[dict[str, object]]:
             for item in data.get("crew", [])
         ]
         crew = sum(item["quantity"] for item in data.get("crew", []))
+        control = data.get("control")
         records.append(
             {
                 "catalog_id": catalog_id,
@@ -727,10 +775,22 @@ def catalog_records() -> list[dict[str, object]]:
                 "tons": int(hull_match.group(1)),
                 "hull_id": data["hull"]["id"],
                 "configuration": display_term(data["hull"]["configuration"]),
+                "hull_options": hull_options,
                 "maneuver_drive": data["drives"]["maneuver"],
                 "power_plant": data["drives"]["power"],
-                "control": display_term(data["control"]["id"]),
-                "additional_passengers": data["control"]["additional_passengers"],
+                "jump_drive": data["drives"].get("jump"),
+                "jump_distance": data["fuel"].get("jump_distance"),
+                "jump_count": data["fuel"].get("jump_count"),
+                "control": (
+                    display_term(control["id"]) if control else "Standard bridge"
+                ),
+                "additional_passengers": (
+                    control["additional_passengers"]
+                    if control else "Not applicable"
+                ),
+                "bridge_options": [
+                    display_term(value) for value in data.get("bridge_options", [])
+                ],
                 "computer": display_term(data["computer"]["id"]),
                 "computer_options": [display_term(value) for value in data["computer"]["options"]],
                 "software": software,
@@ -740,7 +800,7 @@ def catalog_records() -> list[dict[str, object]]:
                 "unused_fire_control_stations": data.get(
                     "unused_fire_control_stations", 0
                 ),
-                "airlocks": data.get("airlocks", 0),
+                "airlocks": airlocks,
                 "crew": crew,
                 "crew_entries": crew_entries,
                 "endurance": data["fuel"]["power_plant_weeks"],
@@ -775,9 +835,11 @@ def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
                 ship["path_name"],
                 ship["yard_name"],
                 ship["configuration"],
+                *ship["hull_options"],
                 ship["equipment"],
                 ship["armament"],
                 ship["ammunition"],
+                *ship["bridge_options"],
                 *ship["software"],
                 *ship["secondary_roles"],
                 *ship["mission_tags"],
@@ -918,11 +980,16 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
         f'<li><strong>{entry["quantity"]}</strong> {html.escape(entry["name"])}</li>'
         for entry in ship["equipment_entries"]
     )
-    mounts = "".join(
-        f'<li><strong>{html.escape(entry["name"])}</strong> '
-        f'{html.escape(joined_terms(entry["weapons"]))}</li>'
-        for entry in ship["mount_entries"]
-    )
+    mount_items = []
+    for entry in ship["mount_entries"]:
+        mount_name = html.escape(entry["name"])
+        if entry["quantity"] != 1:
+            mount_name = f'{entry["quantity"]} × {mount_name}'
+        mount_items.append(
+            f'<li><strong>{mount_name}</strong> '
+            f'{html.escape(joined_terms(entry["weapons"]))}</li>'
+        )
+    mounts = "".join(mount_items)
     ammunition = "".join(
         f'<li><strong>{entry["quantity"]}</strong> {html.escape(entry["name"])}</li>'
         for entry in ship["ammunition_entries"]
@@ -930,7 +997,11 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
     installed_fit = equipment + mounts + ammunition
     if not installed_fit:
         installed_fit = "<li>No separate equipment, armament, or ammunition recorded</li>"
-    recognized_fit_parts = [ship["equipment"]] if ship["equipment"] else []
+    recognized_fit_parts = (
+        [joined_terms(ship["hull_options"])] if ship["hull_options"] else []
+    )
+    if ship["equipment"]:
+        recognized_fit_parts.append(ship["equipment"])
     if ship["armament"] != "None installed":
         recognized_fit_parts.append(ship["armament"])
     if ship["ammunition"] != "None carried":
@@ -997,11 +1068,12 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
             ('Hull code', ship['hull_id']),
             ('Displacement', f'{ship["tons"]} tons'),
             ('Configuration', ship['configuration']),
+            ('Hull options', joined_terms(ship['hull_options'])),
             ('Armor', ship['armor_id']),
             ('Armor layers', ship['armor_layers'] if ship['armor_layers'] else ('Not layer-rated' if ship['armor_points'] else 'None')),
             ('Armor points', ship['armor_points']),
             ('Electronics', ship['electronics']),
-            ('Airlocks', ship['airlocks']),
+            ('Airlocks', ship['airlocks'] if ship['airlocks'] is not None else 'Not separately recorded'),
             ('Cargo', ship['cargo']),
             ('Armament', ship['armament']),
             ('Ammunition', ship['ammunition']),
@@ -1009,10 +1081,13 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
         <section><h3>Drives and control</h3>{record_list([
             ('Maneuver drive', ship['maneuver_drive']),
             ('Power plant', ship['power_plant']),
-            ('Jump drive', 'None installed'),
+            ('Jump drive', ship['jump_drive'] or 'None installed'),
+            ('Jump distance', ship['jump_distance'] if ship['jump_distance'] is not None else 'Not applicable'),
+            ('Jumps carried', ship['jump_count'] if ship['jump_count'] is not None else 'Not applicable'),
             ('Power endurance', f'{weeks} week{"s" if weeks != 1 else ""}'),
             ('Control', ship['control']),
             ('Additional passengers', ship['additional_passengers']),
+            ('Bridge options', joined_terms(ship['bridge_options'])),
             ('Computer', ship['computer']),
             ('Computer options', joined_terms(ship['computer_options'])),
             ('Software', joined_terms(ship['software'])),
