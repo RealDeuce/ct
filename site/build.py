@@ -102,11 +102,29 @@ PUBLISHED_SHIP_ART = {
         "armored transport with four cabin windows and a beam-laser turret.",
         21.0,
     ),
+    18: (
+        "assets/ships/ship-018-wayfarer-utility.webp",
+        "Painted three-quarter view of Wayfarer Utility, a yellow and cobalt "
+        "thirty-ton utility boat with a fixed dorsal beam-laser emitter.",
+        18.8,
+    ),
     19: (
         "assets/ships/ship-019-medea.webp",
         "Painted three-quarter view of Medea, an emerald and cream thirty-ton "
         "boarding transport with six cabin windows and airlock handholds.",
         21.0,
+    ),
+    134: (
+        "assets/ships/family-018-wayfarer-armed.webp",
+        "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
+        "thirty-ton fast boat with a trainable dorsal beam-laser turret.",
+        18.8,
+    ),
+    165: (
+        "assets/ships/family-018-wayfarer-armed.webp",
+        "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
+        "thirty-ton fast boat with a trainable dorsal beam-laser turret.",
+        18.8,
     ),
     158: (
         "assets/ships/family-005-charon.webp",
@@ -150,6 +168,18 @@ PUBLISHED_SHIP_ART = {
         "armored marine boat with six shuttered troop-compartment bays.",
         21.0,
     ),
+    181: (
+        "assets/ships/family-018-wayfarer-cargo.webp",
+        "Painted three-quarter view of Wayfarer Cargo, an ivory, vermilion, "
+        "and blue thirty-ton unarmed utility boat with seven cabin windows.",
+        18.8,
+    ),
+    187: (
+        "assets/ships/family-018-wayfarer-cargo.webp",
+        "Painted three-quarter view of Wayfarer Cargo, an ivory, vermilion, "
+        "and blue thirty-ton unarmed utility boat with seven cabin windows.",
+        18.8,
+    ),
     185: (
         "assets/ships/family-007-caduceus-venture.webp",
         "Painted three-quarter view of Caduceus, a sunflower and cobalt "
@@ -161,6 +191,12 @@ PUBLISHED_SHIP_ART = {
         "Painted three-quarter view of Caduceus, a sunflower and cobalt "
         "twenty-ton armored fast launch with a closed dorsal hardpoint.",
         17.5,
+    ),
+    212: (
+        "assets/ships/ship-212-wayfarer-boarding.webp",
+        "Painted three-quarter view of Wayfarer Boarding, an emerald and cream "
+        "thirty-ton boarding boat with a fixed beam emitter and airlock rails.",
+        18.8,
     ),
 }
 
