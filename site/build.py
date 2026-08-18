@@ -53,11 +53,29 @@ PUBLISHED_SHIP_ART = {
         "ten-ton streamlined armored passenger launch with three cabin windows.",
         12.5,
     ),
+    6: (
+        "assets/ships/ship-006-aeolus.webp",
+        "Painted three-quarter view of Aeolus, an ivory, blue, and vermilion "
+        "twenty-ton streamlined utility launch with six cabin windows.",
+        18.5,
+    ),
     158: (
         "assets/ships/family-005-charon.webp",
         "Painted three-quarter view of Charon, an ivory, vermilion, and blue "
         "ten-ton streamlined armored passenger launch with three cabin windows.",
         12.5,
+    ),
+    176: (
+        "assets/ships/ship-176-boreas.webp",
+        "Painted three-quarter view of Boreas, an ivory and blue twenty-ton "
+        "armored captain's gig with three paired cabin-window groups.",
+        18.5,
+    ),
+    177: (
+        "assets/ships/ship-177-zephyrus.webp",
+        "Painted three-quarter view of Zephyrus, an ivory, vermilion, and blue "
+        "twenty-ton armored flag barge with four private-cabin windows.",
+        18.5,
     ),
 }
 
@@ -373,6 +391,12 @@ def landing_page() -> str:
 
 
 def display_term(value: str) -> str:
+    overrides = {
+        "captains-gig": "Captain's Gig",
+        "ship's-boat": "Ship's Boat",
+    }
+    if value in overrides:
+        return overrides[value]
     return value.replace("-", " ").title()
 
 
@@ -404,12 +428,18 @@ def catalog_records() -> list[dict[str, object]]:
         equipment_entries = []
         for item in data.get("equipment", []):
             quantity = item.get("quantity", 1)
-            if item["id"] == "grappling-arm":
-                equipment.append("Grappling arm")
-            elif item["id"] == "acceleration-seat":
+            equipment_name = display_term(item["id"])
+            if item["id"] == "acceleration-seat":
                 equipment.append(f"{quantity} passenger seats")
+            elif quantity == 1:
+                equipment.append(equipment_name)
+            else:
+                equipment.append(f"{quantity} × {equipment_name}")
             equipment_entries.append(
-                {"name": display_term(item["id"]), "quantity": quantity}
+                {
+                    "name": f"{equipment_name}{'s' if quantity != 1 else ''}",
+                    "quantity": quantity,
+                }
             )
         if data.get("airlocks", 0):
             equipment.append("Pressure airlock")
@@ -472,7 +502,7 @@ def catalog_records() -> list[dict[str, object]]:
                 "length_m": length_m,
             }
         )
-    return records
+    return sorted(records, key=lambda ship: (ship["family_id"], ship["catalog_id"]))
 
 
 def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
