@@ -99,6 +99,18 @@ bool active_prompt_on_current_line = false;
 ct::DoorHelpTopic active_help_topic = ct::DoorHelpTopic::General;
 ct::HelpLevel default_help_level = ct::HelpLevel::Beginner;
 std::optional<ct::HelpLevel> active_help_level;
+
+ct::HelpLevel other_help_level(const ct::HelpLevel level)
+{
+   return level == ct::HelpLevel::Beginner ? ct::HelpLevel::Expert
+                                           : ct::HelpLevel::Beginner;
+}
+
+bool switches_help_level(const int key, const ct::HelpLevel level)
+{
+   return level == ct::HelpLevel::Beginner ? key == 'x' || key == 'X'
+                                           : key == 'b' || key == 'B';
+}
 std::string local_identity_registry_path;
 uint32_t local_identity_bbs_id = 0;
 uint32_t local_identity_player_id = 0;
@@ -954,38 +966,49 @@ void initialize_presentation(const ct::BbsConfig& config)
    presentation->configure_paging(1, [] {
       constexpr std::string_view normal_prompt =
          "[Enter/Sp] Continue  [C]ont  [Q] Menu";
-      constexpr std::string_view help_prompt =
-         "[Enter/Sp] [B]eg [C]ont [Q]uit [X]pert";
-      const auto prompt = active_help_level ? help_prompt : normal_prompt;
+      std::string help_prompt;
+      if(active_help_level) {
+         const auto target = other_help_level(*active_help_level);
+         help_prompt = "[Enter/Sp]";
+         if(target == ct::HelpLevel::Beginner) {
+            help_prompt += " [B]eg";
+         }
+         help_prompt += " [C]ont [Q]uit";
+         if(target == ct::HelpLevel::Expert) {
+            help_prompt += " [X]pert";
+         }
+      }
+      const std::string_view prompt =
+         active_help_level ? std::string_view(help_prompt) : normal_prompt;
       output().write(prompt, ct::DoorTextRole::Prompt);
+      const auto prompt_columns = prompt.size();
+      const auto abort_with = [prompt_columns](const HelpPageCommand command) {
+         help_page_command = command;
+         output().erase_prompt(prompt_columns);
+         return ct::DoorPresentation::PagePauseAction::Abort;
+      };
       while(true) {
          const auto key = ::od_get_key(TRUE);
          if(key == '\r' || key == '\n' || key == ' ') {
-            output().erase_prompt(prompt.size());
+            output().erase_prompt(prompt_columns);
             return ct::DoorPresentation::PagePauseAction::Continue;
          }
          if(key == 'c' || key == 'C') {
-            output().erase_prompt(prompt.size());
+            output().erase_prompt(prompt_columns);
             return ct::DoorPresentation::PagePauseAction::Continuous;
          }
          if(!active_help_level && (key == 'q' || key == 'Q')) {
-            output().erase_prompt(prompt.size());
+            output().erase_prompt(prompt_columns);
             return ct::DoorPresentation::PagePauseAction::SkipToPrompt;
          }
-         if(active_help_level && (key == 'b' || key == 'B')) {
-            help_page_command = HelpPageCommand::Beginner;
-            output().erase_prompt(prompt.size());
-            return ct::DoorPresentation::PagePauseAction::Abort;
-         }
-         if(active_help_level && (key == 'x' || key == 'X')) {
-            help_page_command = HelpPageCommand::Expert;
-            output().erase_prompt(prompt.size());
-            return ct::DoorPresentation::PagePauseAction::Abort;
+         if(active_help_level && switches_help_level(key, *active_help_level)) {
+            return abort_with(
+               other_help_level(*active_help_level) == ct::HelpLevel::Beginner
+                  ? HelpPageCommand::Beginner
+                  : HelpPageCommand::Expert);
          }
          if(active_help_level && (key == 'q' || key == 'Q')) {
-            help_page_command = HelpPageCommand::Quit;
-            output().erase_prompt(prompt.size());
-            return ct::DoorPresentation::PagePauseAction::Abort;
+            return abort_with(HelpPageCommand::Quit);
          }
       }
    });
@@ -1218,23 +1241,21 @@ HelpTopicResult show_help_topic(const ct::DoorHelpTopic topic,
       output().suspend_paging();
       active_prompt.clear();
       active_prompt_on_current_line = false;
-      if(from_browser) {
-         door_option_prompt({
-            "[B] Beginner", "[Enter] Topics", "[X] Expert"});
-      } else {
-         door_option_prompt({
-            "[B] Beginner", "[H] Help browser", "[Enter] Resume", "[X] Expert"});
+      std::vector<std::string_view> options{
+         from_browser ? "[Enter] Topics" : "[Enter] Resume"};
+      if(!from_browser) {
+         options.push_back("[H] Help browser");
       }
+      const auto level_target = other_help_level(level);
+      options.push_back(level_target == ct::HelpLevel::Beginner
+                           ? "[B] Beginner"
+                           : "[X] Expert");
+      door_option_prompt(options);
       while(true) {
          const auto key = ::od_get_key(TRUE);
-         if(key == 'b' || key == 'B') {
+         if(switches_help_level(key, level)) {
             echo_prompt_key(key, false);
-            level = ct::HelpLevel::Beginner;
-            break;
-         }
-         if(key == 'x' || key == 'X') {
-            echo_prompt_key(key, false);
-            level = ct::HelpLevel::Expert;
+            level = level_target;
             break;
          }
          if(!from_browser && (key == 'h' || key == 'H')) {
@@ -1311,28 +1332,16 @@ void edit_help_level(ct::HelpLevel* visit_level)
    door_information(
       "Beginner help introduces the game concepts behind a screen. Expert help "
       "is a shorter operational reference.\n\r");
-   if(default_help_level == ct::HelpLevel::Beginner) {
-      door_option_prompt({
-         "[Q/Enter] Keep", "[X] Expert", "[?] Help"});
-   } else {
-      door_option_prompt({
-         "[B] Beginner", "[Q/Enter] Keep", "[?] Help"});
-   }
+   const auto default_target = other_help_level(default_help_level);
+   door_option_prompt({
+      default_target == ct::HelpLevel::Beginner ? "[B] Beginner" : "[X] Expert",
+      "[Q/Enter] Keep",
+      "[?] Help"});
    while(true) {
       const auto key = ::od_get_key(TRUE);
-      if(default_help_level != ct::HelpLevel::Beginner &&
-         (key == 'b' || key == 'B')) {
+      if(switches_help_level(key, default_help_level)) {
          echo_prompt_key(key, false);
-         persist_help_level(ct::HelpLevel::Beginner);
-         if(visit_level != nullptr) {
-            *visit_level = default_help_level;
-         }
-         return;
-      }
-      if(default_help_level != ct::HelpLevel::Expert &&
-         (key == 'x' || key == 'X')) {
-         echo_prompt_key(key, false);
-         persist_help_level(ct::HelpLevel::Expert);
+         persist_help_level(default_target);
          if(visit_level != nullptr) {
             *visit_level = default_help_level;
          }
