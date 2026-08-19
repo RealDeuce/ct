@@ -98,6 +98,8 @@ public:
                       DoorTextRole role = DoorTextRole::Normal);
 
    size_t display_width(std::string_view text) const;
+   size_t ship_subsystem_label_column(size_t widest_label,
+                                      size_t widest_status) const;
    bool write_ship_subsystem_row(char selector,
                                  std::string_view label,
                                  size_t label_width,

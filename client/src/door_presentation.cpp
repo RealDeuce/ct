@@ -858,6 +858,22 @@ size_t DoorPresentation::display_width(const std::string_view text) const {
    return encode_text(text, profile_).size();
 }
 
+// Width of the selector and its ". " separator, then the gap that keeps the
+// longest label from running into the status column.
+constexpr size_t subsystem_selector_columns = 3;
+constexpr size_t subsystem_gutter_columns = 2;
+
+size_t DoorPresentation::ship_subsystem_label_column(
+   const size_t widest_label,
+   const size_t widest_status) const
+{
+   const size_t reserved =
+      subsystem_selector_columns + subsystem_gutter_columns + widest_status;
+   const size_t usable =
+      content_columns() > reserved ? content_columns() - reserved : 0;
+   return std::min(widest_label, usable);
+}
+
 bool DoorPresentation::write_ship_subsystem_row(
    const char selector,
    const std::string_view label,
@@ -868,15 +884,14 @@ bool DoorPresentation::write_ship_subsystem_row(
    // The label column is measured after profile encoding: ISO 646 expands
    // characters such as '#' and CP437 contracts multi-byte UTF-8, so raw
    // byte counts would leave the status column ragged.
-   constexpr size_t selector_cols = 3;  // selector plus ". "
-   constexpr size_t gutter_cols = 2;
+   constexpr auto selector_cols = subsystem_selector_columns;
+   constexpr auto gutter_cols = subsystem_gutter_columns;
    const auto label_cols = display_width(label);
    const auto status_cols = display_width(status);
-   const size_t reserved = selector_cols + gutter_cols + status_cols;
-   const size_t usable = content_columns() > reserved
-                            ? content_columns() - reserved
-                            : 0;
-   const auto column_width = std::min(label_width, usable);
+   // Callers pass a column already clamped against the widest status on the
+   // page, so this only binds for a caller that skipped that step.
+   const auto column_width =
+      ship_subsystem_label_column(label_width, status_cols);
    const size_t pad = column_width > label_cols ? column_width - label_cols : 0;
    const size_t prefix_cols = selector_cols + label_cols + pad + gutter_cols;
    if(!write(std::string(1, selector), DoorTextRole::Number)) {

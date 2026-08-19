@@ -792,6 +792,14 @@ int main() {
       // A label column wider than the terminal must not wrap a short label.
       {ct::DoorProfile::Iso646, 40, "Hull", 34, "Ready",
        ct::DoorTextRole::Value, "A. Hull" + std::string(27, ' ') + "Ready\r\n"},
+      // Two rows from one page share a column, so a short label puts Ready and
+      // Patched in the same place. Clamping against each row's own status
+      // instead would widen the Ready row by one column.
+      {ct::DoorProfile::Iso646, 40, "Hull", 23, "Ready",
+       ct::DoorTextRole::Value, "A. Hull" + std::string(21, ' ') + "Ready\r\n"},
+      {ct::DoorProfile::Iso646, 40, "Hull", 23, "Patched 3/5",
+       ct::DoorTextRole::Warning,
+       "A. Hull" + std::string(21, ' ') + "Patched 3/5\r\n"},
    };
 
    for(const auto& row_case : row_cases) {
@@ -804,5 +812,34 @@ int main() {
          row_case.status_role);
       check(rendered == row_case.expected);
       check(maximum_visible_width(rendered) < row_case.columns);
+   }
+
+   // The page-wide label column must depend only on the widest label and the
+   // widest status on the page, never on an individual row's status, or rows
+   // carrying a shorter status would be given a wider column than their
+   // neighbours and the status column would go ragged within one page.
+   {
+      std::string ignored;
+      ct::DoorPresentation narrow(
+         ct::DoorProfile::Iso646,
+         40,
+         24,
+         [&ignored](const std::string_view bytes) { ignored.append(bytes); });
+      // Content width 39, so a 24-column label and an 11-column status cannot
+      // share a line; the column gives way to the status.
+      check(narrow.ship_subsystem_label_column(24, 11) == 23);
+      check(narrow.ship_subsystem_label_column(24, 5) == 24);
+      // A page that fits keeps the widest label intact.
+      check(narrow.ship_subsystem_label_column(20, 11) == 20);
+      // A status that cannot fit at all collapses the column rather than
+      // underflowing the subtraction.
+      check(narrow.ship_subsystem_label_column(20, 60) == 0);
+
+      ct::DoorPresentation wide(
+         ct::DoorProfile::Iso646,
+         80,
+         24,
+         [&ignored](const std::string_view bytes) { ignored.append(bytes); });
+      check(wide.ship_subsystem_label_column(24, 11) == 24);
    }
 }

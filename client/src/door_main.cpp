@@ -3530,32 +3530,46 @@ void show_ship_subsystems(
       // A floor keeps the status column from shifting between pages when one
       // page happens to hold only short labels.
       const size_t minimum_label_width = 22;
-      size_t label_width = minimum_label_width;
-      for(size_t index = first; index < last; ++index) {
-         const auto len =
-            output().display_width(safe_field(snapshot.subsystems[index].label));
-         if(len > label_width) {
-            label_width = len;
-         }
-      }
+      size_t widest_label = minimum_label_width;
+      size_t widest_status = 0;
+      struct SubsystemRow {
+         std::string label;
+         std::string status;
+         ct::DoorTextRole status_role;
+      };
+      std::vector<SubsystemRow> rows;
+      rows.reserve(last - first);
       for(size_t index = first; index < last; ++index) {
          const auto& subsystem = snapshot.subsystems[index];
-         std::string status = "Ready";
-         auto status_role = ct::DoorTextRole::Value;
+         SubsystemRow row{safe_field(subsystem.label), "Ready",
+                          ct::DoorTextRole::Value};
          if(subsystem.sustained_hits > 0) {
-            status =
+            row.status =
                std::string(
                   subsystem.battlefield_repair_hits > 0 ? "Patched " : "Damage ") +
                std::to_string(subsystem.sustained_hits) + "/" +
                std::to_string(subsystem.maximum_hits);
-            status_role = ct::DoorTextRole::Warning;
+            row.status_role = ct::DoorTextRole::Warning;
          }
+         widest_label =
+            std::max(widest_label, output().display_width(row.label));
+         widest_status =
+            std::max(widest_status, output().display_width(row.status));
+         rows.push_back(std::move(row));
+      }
+      // Clamp once for the whole page. Clamping per row against that row's own
+      // status would give rows with longer statuses a narrower label column,
+      // leaving the status ragged within a single page.
+      const auto label_width =
+         output().ship_subsystem_label_column(widest_label, widest_status);
+      for(size_t index = 0; index < rows.size(); ++index) {
+         const auto& row = rows[index];
          if(!output().write_ship_subsystem_row(
-               crew_menu_key(index - first),
-               safe_field(subsystem.label),
+               crew_menu_key(index),
+               row.label,
                label_width,
-               status,
-               status_role)) {
+               row.status,
+               row.status_role)) {
             break;
          }
       }
