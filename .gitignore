@@ -48,9 +48,8 @@ install_manifest.txt
 *.conf
 *.credential
 *.identities
-*.identity
+*.identities.lock
 *.lmdb
-*.lock
 *.mdb
 *.psk
 *.key
