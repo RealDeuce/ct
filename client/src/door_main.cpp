@@ -1241,15 +1241,15 @@ HelpTopicResult show_help_topic(const ct::DoorHelpTopic topic,
       output().suspend_paging();
       active_prompt.clear();
       active_prompt_on_current_line = false;
-      std::vector<std::string_view> options{
-         from_browser ? "[Enter] Topics" : "[Enter] Resume"};
+      std::vector<std::string_view> options;
+      options.emplace_back(from_browser ? "[Enter] Topics" : "[Enter] Resume");
       if(!from_browser) {
-         options.push_back("[H] Help browser");
+         options.emplace_back("[H] Help browser");
       }
       const auto level_target = other_help_level(level);
-      options.push_back(level_target == ct::HelpLevel::Beginner
-                           ? "[B] Beginner"
-                           : "[X] Expert");
+      options.emplace_back(level_target == ct::HelpLevel::Beginner
+                              ? "[B] Beginner"
+                              : "[X] Expert");
       door_option_prompt(options);
       while(true) {
          const auto key = ::od_get_key(TRUE);
