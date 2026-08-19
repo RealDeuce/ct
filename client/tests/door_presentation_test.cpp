@@ -752,23 +752,49 @@ int main() {
        ct::DoorTextRole::Warning, "A. Hull" + hull_gap + "Patched 3/5\r\n"},
       {ct::DoorProfile::Iso646, 80, "Hull", 22, "Patched 3/5",
        ct::DoorTextRole::Warning, "A. Hull" + hull_gap + "Patched 3/5\r\n"},
-      // A label filling the 40-column row wraps, with the status right-aligned
-      // on the following line; the same row fits on one line at 80.
+      // A label too wide for the column continues on further lines indented
+      // under it, and the status sits beside the last of them.
       {ct::DoorProfile::Iso646, 40, long_label, 34, "Ready",
        ct::DoorTextRole::Value,
-       long_prefix + "\r\n" + std::string(34, ' ') + "Ready\r\n"},
+       "A. Powered Armor Maintenance\r\n   Workshop" + std::string(23, ' ') +
+          "Ready\r\n"},
       {ct::DoorProfile::Iso646, 80, long_label, 34, "Ready",
        ct::DoorTextRole::Value, long_prefix + "Ready\r\n"},
       {ct::DoorProfile::Iso646, 40, long_label, 34, "Damage 3/5",
        ct::DoorTextRole::Warning,
-       long_prefix + "\r\n" + std::string(29, ' ') + "Damage 3/5\r\n"},
+       "A. Powered Armor\r\n   Maintenance Workshop" + std::string(6, ' ') +
+          "Damage 3/5\r\n"},
       {ct::DoorProfile::Iso646, 80, long_label, 34, "Damage 3/5",
        ct::DoorTextRole::Warning, long_prefix + "Damage 3/5\r\n"},
       {ct::DoorProfile::Iso646, 40, long_label, 34, "Patched 3/5",
        ct::DoorTextRole::Warning,
-       long_prefix + "\r\n" + std::string(28, ' ') + "Patched 3/5\r\n"},
+       "A. Powered Armor\r\n   Maintenance Workshop" + std::string(5, ' ') +
+          "Patched 3/5\r\n"},
       {ct::DoorProfile::Iso646, 80, long_label, 34, "Patched 3/5",
        ct::DoorTextRole::Warning, long_prefix + "Patched 3/5\r\n"},
+      // The break falls on a word boundary.
+      {ct::DoorProfile::Iso646, 40, "Aft Sensor Array Cluster", 23,
+       "Patched 3/5", ct::DoorTextRole::Warning,
+       "A. Aft Sensor Array\r\n   Cluster" + std::string(18, ' ') +
+          "Patched 3/5\r\n"},
+      // The longest label the ship catalog can produce takes three lines and
+      // loses nothing.
+      {ct::DoorProfile::Iso646, 40,
+       "Powered Armor Maintenance Workshop group (25)", 23, "Patched 3/5",
+       ct::DoorTextRole::Warning,
+       "A. Powered Armor\r\n   Maintenance Workshop\r\n   group (25)" +
+          std::string(15, ' ') + "Patched 3/5\r\n"},
+      {ct::DoorProfile::Iso646, 40, "Underway Replenishment System group (10)",
+       23, "Ready", ct::DoorTextRole::Value,
+       "A. Underway Replenishment\r\n   System group (10)" +
+          std::string(8, ' ') + "Ready\r\n"},
+      // A label far beyond anything the catalog holds still loses nothing.
+      {ct::DoorProfile::Iso646, 40,
+       "Aaaa Bbbb Cccc Dddd Eeee Ffff Gggg Hhhh Iiii Jjjj Kkkk Llll Mmmm", 23,
+       "Ready", ct::DoorTextRole::Value,
+       "A. Aaaa Bbbb Cccc Dddd\r\n   Eeee Ffff Gggg Hhhh\r\n"
+       "   Iiii Jjjj Kkkk Llll\r\n   Mmmm" + std::string(21, ' ') +
+          "Ready\r\n"},
       // ISO 646 expands '#' to "No.", so a raw byte count would push the
       // status column three places right for catalog labels containing one.
       {ct::DoorProfile::Iso646, 80, "Cargo Bay", 22, "Ready",
@@ -801,6 +827,38 @@ int main() {
        ct::DoorTextRole::Warning,
        "A. Hull" + std::string(21, ' ') + "Patched 3/5\r\n"},
    };
+
+   // Row height drives the caller's page budget, so it must agree with what
+   // the row writer emits.
+   const auto row_height =
+      [](const std::string& label, const size_t label_width,
+         const std::string& status) -> std::pair<size_t, size_t> {
+      std::string row;
+      ct::DoorPresentation presentation(
+         ct::DoorProfile::Iso646,
+         40,
+         24,
+         [&row](const std::string_view bytes) { row.append(bytes); });
+      const auto claimed =
+         presentation.ship_subsystem_row_lines(label, label_width, status);
+      presentation.write_ship_subsystem_row(
+         'A', label, label_width, status, ct::DoorTextRole::Value);
+      size_t emitted = 0;
+      for(const char byte : row) {
+         if(byte == '\n') {
+            ++emitted;
+         }
+      }
+      return {claimed, emitted};
+   };
+
+   check(row_height("Hull", 23, "Ready") == std::pair<size_t, size_t>{1, 1});
+   check(row_height("Underway Replenishment System group (10)", 23, "Ready") ==
+         std::pair<size_t, size_t>{2, 2});
+   // door_single_line_field keeps trailing whitespace, which overflows the
+   // column without producing a second line.
+   check(row_height("Hull" + std::string(30, ' '), 23, "Ready") ==
+         std::pair<size_t, size_t>{1, 1});
 
    for(const auto& row_case : row_cases) {
       const auto rendered = subsystem_row(

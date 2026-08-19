@@ -250,6 +250,68 @@ std::string encode_text(const std::string_view text,
    return result;
 }
 
+// Longest prefix of text that renders within columns, plus the offset just past
+// the last space inside it. The prefix always advances by at least one code
+// point, so a word wider than the column still makes progress.
+struct TextBreak {
+   size_t end;
+   size_t last_space;
+};
+
+TextBreak text_break(const std::string_view text,
+                     const size_t columns,
+                     const DoorProfile profile) {
+   TextBreak result{0, 0};
+   size_t width = 0;
+   while(result.end < text.size()) {
+      const auto [value, length] = decode_utf8(text, result.end);
+      const auto cell =
+         encode_text(text.substr(result.end, length), profile).size();
+      if(width + cell > columns && result.end > 0) {
+         break;
+      }
+      result.end += length;
+      width += cell;
+      if(value == U' ') {
+         result.last_space = result.end;
+      }
+   }
+   return result;
+}
+
+// Width of the selector and its ". " separator, then the gap that keeps the
+// longest label from running into the status column.
+constexpr size_t subsystem_selector_columns = 3;
+constexpr size_t subsystem_gutter_columns = 2;
+
+// A subsystem label broken into the lines it occupies in the label column.
+// One decision, so a caller asking how tall the row will be cannot disagree
+// with what gets written.
+std::vector<std::string_view> subsystem_label_lines(std::string_view label,
+                                                    const size_t column_width,
+                                                    const DoorProfile profile) {
+   std::vector<std::string_view> lines;
+   while(!label.empty()) {
+      const auto measured = text_break(label, column_width, profile);
+      const auto split = measured.end < label.size() && measured.last_space > 0
+                            ? measured.last_space
+                            : measured.end;
+      auto line = label.substr(0, split);
+      while(!line.empty() && line.back() == ' ') {
+         line.remove_suffix(1);
+      }
+      lines.push_back(line);
+      label.remove_prefix(split);
+      while(!label.empty() && label.front() == ' ') {
+         label.remove_prefix(1);
+      }
+   }
+   if(lines.empty()) {
+      lines.push_back(label);
+   }
+   return lines;
+}
+
 std::string_view role_sequence(const DoorTextRole role) {
    // A high-contrast BBS palette inspired by TradeWars-era data screens and
    // Yankee Trader's rotating DOS colours. Roles, rather than individual
@@ -858,11 +920,19 @@ size_t DoorPresentation::display_width(const std::string_view text) const {
    return encode_text(text, profile_).size();
 }
 
-// Width of the selector and its ". " separator, then the gap that keeps the
-// longest label from running into the status column.
-constexpr size_t subsystem_selector_columns = 3;
-constexpr size_t subsystem_gutter_columns = 2;
-
+// The subsystem list layout rule, in full:
+//
+//   One label column for the whole list, wide enough for the widest label but
+//   never so wide that the widest status cannot sit beside it. A label too
+//   wide for the column continues on further lines indented under it, and the
+//   status sits beside the last of them, so every status starts in the same
+//   place and no label is ever shortened.
+//
+// The rejected alternative was to widen the column to the longest label and
+// push any status that no longer fits onto a wrapped line of its own. That
+// aligns the page equally well, but one long label then wraps every row on the
+// page rather than its own, and over a third of the ship catalog's subsystem
+// labels are long enough at 40 columns to trigger it.
 size_t DoorPresentation::ship_subsystem_label_column(
    const size_t widest_label,
    const size_t widest_status) const
@@ -874,6 +944,16 @@ size_t DoorPresentation::ship_subsystem_label_column(
    return std::min(widest_label, usable);
 }
 
+size_t DoorPresentation::ship_subsystem_row_lines(
+   const std::string_view label,
+   const size_t label_width,
+   const std::string_view status) const
+{
+   const auto column_width =
+      ship_subsystem_label_column(label_width, display_width(status));
+   return subsystem_label_lines(label, column_width, profile_).size();
+}
+
 bool DoorPresentation::write_ship_subsystem_row(
    const char selector,
    const std::string_view label,
@@ -881,45 +961,43 @@ bool DoorPresentation::write_ship_subsystem_row(
    const std::string_view status,
    const DoorTextRole status_role)
 {
-   // The label column is measured after profile encoding: ISO 646 expands
-   // characters such as '#' and CP437 contracts multi-byte UTF-8, so raw
-   // byte counts would leave the status column ragged.
-   constexpr auto selector_cols = subsystem_selector_columns;
-   constexpr auto gutter_cols = subsystem_gutter_columns;
-   const auto label_cols = display_width(label);
+   // Widths are measured after profile encoding: ISO 646 expands characters
+   // such as '#' and CP437 contracts multi-byte UTF-8, so raw byte counts
+   // would leave the status column ragged.
    const auto status_cols = display_width(status);
-   // Callers pass a column already clamped against the widest status on the
-   // page, so this only binds for a caller that skipped that step.
+   // Callers pass a column already clamped against the widest status in the
+   // list, so this only binds for a caller that skipped that step.
    const auto column_width =
       ship_subsystem_label_column(label_width, status_cols);
-   const size_t pad = column_width > label_cols ? column_width - label_cols : 0;
-   const size_t prefix_cols = selector_cols + label_cols + pad + gutter_cols;
-   if(!write(std::string(1, selector), DoorTextRole::Number)) {
-      return false;
-   }
-   if(!write(". ", DoorTextRole::Label)) {
-      return false;
-   }
-   if(!write(label, DoorTextRole::Identifier)) {
-      return false;
-   }
-   if(!write(std::string(pad + gutter_cols, ' '), DoorTextRole::Label)) {
-      return false;
-   }
-   if(prefix_cols + status_cols > content_columns()) {
-      const auto indent =
-         content_columns() > status_cols ? content_columns() - status_cols : 0;
+   const auto lines = subsystem_label_lines(label, column_width, profile_);
+   for(size_t index = 0; index < lines.size(); ++index) {
+      if(index == 0) {
+         if(!write(std::string(1, selector), DoorTextRole::Number) ||
+            !write(". ", DoorTextRole::Label)) {
+            return false;
+         }
+      } else if(!write(std::string(subsystem_selector_columns, ' '),
+                       DoorTextRole::Label)) {
+         return false;
+      }
+      if(!write(lines[index], DoorTextRole::Identifier)) {
+         return false;
+      }
+      if(index + 1 == lines.size()) {
+         const auto line_cols = display_width(lines[index]);
+         const size_t pad =
+            column_width > line_cols ? column_width - line_cols : 0;
+         if(!write(std::string(pad + subsystem_gutter_columns, ' '),
+                   DoorTextRole::Label) ||
+            !write(status, status_role)) {
+            return false;
+         }
+      }
       if(!write("\n", DoorTextRole::Normal)) {
          return false;
       }
-      if(!write(std::string(indent, ' '), DoorTextRole::Normal)) {
-         return false;
-      }
    }
-   if(!write(status, status_role)) {
-      return false;
-   }
-   return write("\n", DoorTextRole::Normal);
+   return true;
 }
 
 }  // namespace ct

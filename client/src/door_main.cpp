@@ -2357,9 +2357,11 @@ void render_ship_detail(const ct::StartingShipOptions& options)
    print_wrapped_field("Exit terms: ", options.terms.exit_terms);
 }
 
+constexpr size_t menu_selector_limit = 26;
+
 char crew_menu_key(const size_t index)
 {
-   if(index >= 26) {
+   if(index >= menu_selector_limit) {
       throw std::runtime_error(
          "starting crew roster exceeds the supported 26 named roles");
    }
@@ -2499,7 +2501,7 @@ std::optional<std::vector<ct::InitialCrewDraft>> edit_crew_roster(
    std::vector<ct::InitialCrewDraft> drafts = {})
 {
    const HelpScope help_scope(ct::DoorHelpTopic::StartingCrew);
-   if(plan.slots.size() > 26) {
+   if(plan.slots.size() > menu_selector_limit) {
       throw std::runtime_error(
          "server returned more than 26 named starting crew roles");
    }
@@ -3367,7 +3369,7 @@ void show_crew_manager(
                       session_epoch,
                       random_command_id(random),
                       request_id++);
-   if(snapshot.members.size() > 26) {
+   if(snapshot.members.size() > menu_selector_limit) {
       throw std::runtime_error(
          "crew manager supports at most 26 named crew records");
    }
@@ -3388,7 +3390,7 @@ void show_crew_manager(
       if(key == '\r' || key == '\n') {
          snapshot = ct::get_crew_management(
             connection, session_epoch, random_command_id(random), request_id++);
-         if(snapshot.members.size() > 26) {
+         if(snapshot.members.size() > menu_selector_limit) {
             throw std::runtime_error(
                "crew manager supports at most 26 named crew records");
          }
@@ -3515,32 +3517,24 @@ void show_ship_subsystems(
    const size_t reserved_rows = 7;
    const size_t available_rows =
       output().rows() > reserved_rows ? output().rows() - reserved_rows : 1;
-   const size_t page_size = std::min<size_t>(26, available_rows);
-   const size_t page_count = std::max<size_t>(
-                                1, (snapshot.subsystems.size() + page_size - 1) / page_size);
    size_t page = 0;
    while(true) {
       od_clr_scr();
       door_heading("Subsystem Status - ");
       door_value("%s\n\r", safe_field(snapshot.ship_name).c_str());
       door_heading("================\n\r\n\r");
-      const size_t first = page * page_size;
-      const size_t last =
-         std::min(first + page_size, snapshot.subsystems.size());
-      // A floor keeps the status column from shifting between pages when one
-      // page happens to hold only short labels.
-      const size_t minimum_label_width = 22;
-      size_t widest_label = minimum_label_width;
-      size_t widest_status = 0;
       struct SubsystemRow {
          std::string label;
          std::string status;
          ct::DoorTextRole status_role;
       };
       std::vector<SubsystemRow> rows;
-      rows.reserve(last - first);
-      for(size_t index = first; index < last; ++index) {
-         const auto& subsystem = snapshot.subsystems[index];
+      rows.reserve(snapshot.subsystems.size());
+      // A floor keeps a short list from rendering in a cramped column.
+      const size_t minimum_label_width = 22;
+      size_t widest_label = minimum_label_width;
+      size_t widest_status = 0;
+      for(const auto& subsystem : snapshot.subsystems) {
          SubsystemRow row{safe_field(subsystem.label), "Ready",
                           ct::DoorTextRole::Value};
          if(subsystem.sustained_hits > 0) {
@@ -3557,19 +3551,36 @@ void show_ship_subsystems(
             std::max(widest_status, output().display_width(row.status));
          rows.push_back(std::move(row));
       }
-      // Clamp once for the whole page. Clamping per row against that row's own
-      // status would give rows with longer statuses a narrower label column,
-      // leaving the status ragged within a single page.
+      // One column for the whole list keeps the status column in place across
+      // pages. Each page is then filled to the screen's line budget, because a
+      // wrapped label costs two lines and a fixed row count would overrun.
       const auto label_width =
          output().ship_subsystem_label_column(widest_label, widest_status);
+      std::vector<size_t> page_starts{0};
+      size_t used_rows = 0;
       for(size_t index = 0; index < rows.size(); ++index) {
-         const auto& row = rows[index];
+         const auto lines = output().ship_subsystem_row_lines(
+            rows[index].label, label_width, rows[index].status);
+         if(index > page_starts.back() &&
+            (used_rows + lines > available_rows ||
+             index - page_starts.back() == menu_selector_limit)) {
+            page_starts.push_back(index);
+            used_rows = 0;
+         }
+         used_rows += lines;
+      }
+      const auto page_count = page_starts.size();
+      page = std::min(page, page_count - 1);
+      const size_t first = page_starts[page];
+      const size_t last =
+         page + 1 < page_count ? page_starts[page + 1] : rows.size();
+      for(size_t index = first; index < last; ++index) {
          if(!output().write_ship_subsystem_row(
-               crew_menu_key(index),
-               row.label,
+               crew_menu_key(index - first),
+               rows[index].label,
                label_width,
-               row.status,
-               row.status_role)) {
+               rows[index].status,
+               rows[index].status_role)) {
             break;
          }
       }
