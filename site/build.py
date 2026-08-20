@@ -78,6 +78,12 @@ PUBLISHED_SHIP_ART = {
         "ten-ton wingless carrier interceptor with a shuttered missile turret.",
         11.8,
     ),
+    10: (
+        "assets/ships/ship-010-argo.webp",
+        "Painted three-quarter view of Argo, a warm-white, cyan, lime, and chrome "
+        "twenty-ton shield-shaped boarding launch with one beam-laser turret.",
+        16.5,
+    ),
     11: (
         "assets/ships/ship-011-icarus-ii.webp",
         "Painted three-quarter view of Icarus II, a navy, ivory, and red "

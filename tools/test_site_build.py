@@ -30,6 +30,30 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIsNone(albatross["jump_drive"])
         self.assertEqual(albatross["airlocks"], 1)
 
+    def test_argo_exposes_armored_boarding_launch_fit(self) -> None:
+        argo = self.records[10]
+        self.assertEqual(argo["family_id"], 10)
+        self.assertEqual(argo["tons"], 20)
+        self.assertEqual(argo["configuration"], "Streamlined")
+        self.assertEqual(argo["tech_level"], 11)
+        self.assertFalse(argo["standard_design"])
+        self.assertEqual(argo["electronics"], "Standard")
+        self.assertEqual(argo["armor_points"], 4)
+        self.assertEqual(argo["control"], "One Person Cockpit")
+        self.assertEqual(argo["additional_passengers"], 0)
+        self.assertEqual(argo["maneuver_drive"], "sF")
+        self.assertEqual(argo["power_plant"], "sG")
+        self.assertEqual(argo["assertions"]["thrust_g"], 6)
+        self.assertEqual(argo["endurance"], 2)
+        self.assertEqual(argo["cargo"], "2.5 tons")
+        self.assertEqual(argo["crew"], 1)
+        self.assertEqual(argo["airlocks"], 1)
+        self.assertIn("10 passenger seats", argo["equipment"])
+        self.assertEqual(argo["armament"], "Single Turret: Beam Laser")
+        self.assertIsNone(argo["jump_drive"])
+        self.assertEqual(argo["length_m"], 16.5)
+        self.assertEqual(argo["art_path"], "assets/ships/ship-010-argo.webp")
+
     def test_starship_exposes_jump_and_bridge_fields(self) -> None:
         pym = self.records[26]
         self.assertEqual(pym["jump_drive"], "A")
