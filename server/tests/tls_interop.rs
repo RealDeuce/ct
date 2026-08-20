@@ -16,13 +16,15 @@ use cepheus_trader_server::wire::{
     PlayerIdentity, ResolveEncounterRequest,
 };
 
-const PAGE_PROMPTS: [&str; 2] = [
+const PAGE_PROMPTS: [&str; 3] = [
     "[Enter/Sp] Continue  [C]ont  [Q] Menu",
-    "[Enter/Sp] [B]eg [C]ont [Q]uit [X]pert",
+    "[Enter/Sp] [C]ont [Q]uit [X]pert",
+    "[Enter/Sp] [B]eg [C]ont [Q]uit",
 ];
-const ISO646_PAGE_PROMPTS: [&str; 2] = [
+const ISO646_PAGE_PROMPTS: [&str; 3] = [
     "(Enter/Sp) Continue  (C)ont  (Q) Menu",
-    "(Enter/Sp) (B)eg (C)ont (Q)uit (X)pert",
+    "(Enter/Sp) (C)ont (Q)uit (X)pert",
+    "(Enter/Sp) (B)eg (C)ont (Q)uit",
 ];
 
 fn strip_ecma48(input: &str) -> String {
@@ -1497,6 +1499,17 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     help_door.send(b"?");
     help_door.wait_for("Help - Docked operations");
     help_door.wait_for("(Enter) Resume");
+    let beginner_help = normalized_display_text(&help_door.output());
+    assert!(beginner_help.contains("(X) Expert"), "{beginner_help:?}");
+    assert!(!beginner_help.contains("(B) Beginner"), "{beginner_help:?}");
+    let expert_help_start = help_door.output().len();
+    help_door.send(b"x");
+    help_door.wait_for("Help - Docked operations (Expert)");
+    help_door.wait_for("(B) Beginner");
+    let expert_help_output = help_door.output();
+    let expert_help = normalized_display_text(&expert_help_output[expert_help_start..]);
+    assert!(expert_help.contains("(B) Beginner"), "{expert_help:?}");
+    assert!(!expert_help.contains("(X) Expert"), "{expert_help:?}");
     help_door.send(b"\r");
     help_door.wait_for_occurrences("Return to BBS", 2);
     help_door.return_to_bbs();
