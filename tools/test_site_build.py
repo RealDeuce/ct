@@ -2179,6 +2179,58 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-208-galileo.webp",
         )
 
+    def test_jutland_exposes_dreadnought_battery_screens_and_air_group(self) -> None:
+        dreadnought = self.records[210]
+        self.assertEqual(dreadnought["family_id"], 210)
+        self.assertEqual(dreadnought["tons"], 5000)
+        self.assertEqual(dreadnought["configuration"], "Standard")
+        self.assertEqual(dreadnought["electronics"], "Very Advanced")
+        self.assertTrue(dreadnought["standard_design"])
+        self.assertEqual(dreadnought["armor_points"], 12)
+        self.assertIn("Stealth", dreadnought["hull_options"])
+        self.assertEqual(dreadnought["jump_drive"], "Z")
+        self.assertEqual(dreadnought["jump_distance"], 2)
+        self.assertEqual(dreadnought["jump_count"], 1)
+        self.assertEqual(dreadnought["maneuver_drive"], "Z")
+        self.assertEqual(dreadnought["power_plant"], "Z")
+        self.assertEqual(dreadnought["assertions"]["thrust_g"], 2)
+        self.assertEqual(dreadnought["endurance"], 4)
+        self.assertEqual(dreadnought["cargo"], "635 tons")
+        self.assertEqual(dreadnought["crew"], 223)
+        self.assertIn("60 × Barracks", dreadnought["equipment"])
+        self.assertIn("223 × Escape Pod", dreadnought["equipment"])
+        self.assertIn("54 × Fuel Processor", dreadnought["equipment"])
+        self.assertIn("Fuel Scoop", dreadnought["equipment"])
+        self.assertIn(
+            "Custom Hangar (300 tons contained)",
+            dreadnought["equipment"],
+        )
+        self.assertIn(
+            "20 × Carried Craft: Thermopylae (ship-200)",
+            dreadnought["equipment"],
+        )
+        self.assertIn(
+            "2 × Carried Craft: Proteus Modular (ship-209)",
+            dreadnought["equipment"],
+        )
+        self.assertIn("Meson Screen", dreadnought["equipment"])
+        self.assertIn("Nuclear Damper", dreadnought["equipment"])
+        self.assertEqual(
+            [entry["quantity"] for entry in dreadnought["mount_entries"]],
+            [35, 10, 5],
+        )
+        self.assertEqual(
+            dreadnought["mount_entries"][0]["weapons"],
+            ["Beam Laser", "Beam Laser", "Beam Laser"],
+        )
+        self.assertEqual(dreadnought["ammunition"], "3600 × Smart Missiles")
+        self.assertEqual(dreadnought["unused_fire_control_stations"], 0)
+        self.assertEqual(dreadnought["length_m"], 168.0)
+        self.assertEqual(
+            dreadnought["art_path"],
+            "assets/ships/ship-210-jutland.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

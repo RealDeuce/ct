@@ -922,6 +922,12 @@ PUBLISHED_SHIP_ART = {
         "chrome three-hundred-ton armed survey vessel with a ringed observatory.",
         59.0,
     ),
+    210: (
+        "assets/ships/ship-210-jutland.webp",
+        "Painted three-quarter view of Jutland, a navy, warm-white, signal-red, "
+        "and aluminum five-thousand-ton dreadnought and carrier.",
+        168.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
