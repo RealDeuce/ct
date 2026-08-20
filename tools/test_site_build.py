@@ -844,6 +844,38 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("96 × Standard Missiles", keep["ammunition"])
         self.assertEqual(keep["art_path"], "assets/ships/ship-122-keep.webp")
 
+    def test_cradle_exposes_its_empty_two_thousand_ton_tender_clamp(self) -> None:
+        cradle = self.records[123]
+        self.assertEqual(cradle["family_id"], 123)
+        self.assertEqual(cradle["tons"], 350)
+        self.assertEqual(cradle["configuration"], "Standard")
+        self.assertEqual(cradle["electronics"], "Standard")
+        self.assertEqual(
+            cradle["bridge_options"],
+            ["Hardened Bridge", "Holographic Controls"],
+        )
+        self.assertEqual(cradle["hull_options"], ["Self Sealing"])
+        self.assertEqual(cradle["armor_points"], 2)
+        self.assertEqual(cradle["jump_drive"], "D")
+        self.assertEqual(cradle["jump_distance"], 2)
+        self.assertEqual(cradle["jump_count"], 1)
+        self.assertEqual(cradle["maneuver_drive"], "D")
+        self.assertEqual(cradle["power_plant"], "D")
+        self.assertEqual(cradle["endurance"], 3)
+        self.assertEqual(cradle["cargo"], "148.75 tons")
+        self.assertEqual(cradle["external_load"], "0 tons")
+        self.assertIn("Fuel Scoop", cradle["equipment"])
+        self.assertIn("4 × Fuel Processor", cradle["equipment"])
+        self.assertIn("Repair Drones", cradle["equipment"])
+        self.assertIn("Docking Clamp 2000", cradle["equipment"])
+        self.assertEqual(
+            cradle["armament"],
+            "3 × Point Defense Node Mount: Point Defense Laser",
+        )
+        self.assertEqual(cradle["ammunition"], "None carried")
+        self.assertEqual(cradle["length_m"], 54.0)
+        self.assertEqual(cradle["art_path"], "assets/ships/ship-123-cradle.webp")
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

@@ -504,6 +504,12 @@ PUBLISHED_SHIP_ART = {
         "defense ship with an integrated particle-beam bay.",
         62.0,
     ),
+    123: (
+        "assets/ships/ship-123-cradle.webp",
+        "Painted three-quarter view of Cradle, a white, cyan, and lime three-"
+        "hundred-fifty-ton jump tender with an empty articulated docking yoke.",
+        54.0,
+    ),
     124: (
         "assets/ships/ship-124-archimedes.webp",
         "Painted three-quarter view of Archimedes, an avocado ten-ton vacuum work "
