@@ -231,6 +231,13 @@ generation. Place mounts for useful coverage, preserve those placements across
 variants, and explicitly list which are visible in the standard port view.
 Hidden mounts still exist and remain in the adjacent catalog statistics.
 
+The standard three-quarter view normally exposes only about half of a ship's
+turrets. For example, a broadly symmetric eighteen-mount battery should show
+roughly nine mounts, not all eighteen. Front/aft, dorsal/ventral, or role-driven
+asymmetry may move that number modestly, but every deviation must follow the
+actual station map and camera rather than a desire to display the full rules
+inventory. State visible and hidden counts separately in the manifest.
+
 Global weapon recognition:
 
 - **Beam laser:** a narrow optical barrel or recessed lens with a clean collar.

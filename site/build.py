@@ -456,6 +456,18 @@ PUBLISHED_SHIP_ART = {
         "close-structure destroyer with seven triple turrets and eight barbettes.",
         96.0,
     ),
+    116: (
+        "assets/ships/ship-116-citadel.webp",
+        "Painted three-quarter view of Citadel, a red twenty-five-hundred-ton "
+        "system battlecruiser with capital bays and layered armor.",
+        124.0,
+    ),
+    118: (
+        "assets/ships/ship-118-ravelin.webp",
+        "Painted three-quarter view of Ravelin, a navy twenty-five-hundred-ton "
+        "fleet cruiser with capital bays and reinforced structure.",
+        124.0,
+    ),
     124: (
         "assets/ships/ship-124-archimedes.webp",
         "Painted three-quarter view of Archimedes, an avocado ten-ton vacuum work "

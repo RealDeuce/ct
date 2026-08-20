@@ -636,6 +636,48 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("10 × Fuel Processor", ares["equipment"])
         self.assertIn("12 × Carried Craft: Triton (ship-48)", ares["equipment"])
 
+    def test_vauban_path_fits_preserve_the_capital_battery(self) -> None:
+        citadel, ravelin = (self.records[catalog_id] for catalog_id in (116, 118))
+        for record in (citadel, ravelin):
+            self.assertEqual(record["family_id"], 116)
+            self.assertEqual(record["tons"], 2500)
+            self.assertEqual(record["configuration"], "Streamlined")
+            self.assertEqual(record["electronics"], "Advanced")
+            self.assertEqual(
+                record["bridge_options"],
+                ["Command Bridge", "Hardened Bridge", "Holographic Controls"],
+            )
+            self.assertEqual(record["armor_points"], 8)
+            self.assertEqual(record["maneuver_drive"], "Z")
+            self.assertEqual(record["power_plant"], "Z")
+            self.assertEqual(record["length_m"], 124.0)
+            self.assertNotIn("Fuel Scoop", record["equipment"])
+            self.assertIn("5 × Triple Turret: Beam Laser", record["armament"])
+            self.assertIn("5 × Triple Turret: Missile Rack", record["armament"])
+            self.assertIn("5 × Triple Turret: Sandcaster", record["armament"])
+            self.assertIn("4 × Meson Gun Bay", record["armament"])
+            self.assertIn("4 × Particle Beam Bay", record["armament"])
+            self.assertIn("2 × Torpedo Bay 100", record["armament"])
+            self.assertIn("25 × Point Defense Node Mount", record["armament"])
+            self.assertEqual(record["unused_fire_control_stations"], 0)
+
+        self.assertIsNone(citadel["jump_drive"])
+        self.assertEqual(citadel["jump_distance"], 0)
+        self.assertEqual(citadel["endurance"], 3)
+        self.assertEqual(citadel["cargo"], "805 tons")
+        self.assertIn("Full Hangar (100 tons contained)", citadel["equipment"])
+        self.assertIn("Carried Craft: Proteus Cargo (ship-20)", citadel["equipment"])
+        self.assertIn("Carried Craft: Caduceus (ship-7)", citadel["equipment"])
+
+        self.assertEqual(ravelin["jump_drive"], "T")
+        self.assertEqual(ravelin["jump_distance"], 2)
+        self.assertEqual(ravelin["endurance"], 2)
+        self.assertEqual(ravelin["cargo"], "7.75 tons")
+        self.assertIn("Reinforced Structure (1 increment)", ravelin["structural_options"])
+        self.assertIn("Full Hangar (50 tons contained)", ravelin["equipment"])
+        self.assertIn("Carried Craft: Caduceus (ship-189)", ravelin["equipment"])
+        self.assertIn("Carried Craft: Grapnel (ship-211)", ravelin["equipment"])
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)
