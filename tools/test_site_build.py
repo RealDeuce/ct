@@ -1153,6 +1153,56 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-143-moriarty.webp",
         )
 
+    def test_vidocq_exposes_system_cutter_and_caduceus_hangar_fit(self) -> None:
+        vidocq = self.records[144]
+
+        self.assertEqual(vidocq["family_id"], 144)
+        self.assertEqual(vidocq["tons"], 200)
+        self.assertEqual(vidocq["configuration"], "Standard")
+        self.assertEqual(vidocq["electronics"], "Basic Military")
+        self.assertEqual(
+            vidocq["bridge_options"],
+            ["Hardened Bridge", "Holographic Controls"],
+        )
+        self.assertEqual(vidocq["armor_points"], 4)
+        self.assertIsNone(vidocq["jump_drive"])
+        self.assertEqual(vidocq["jump_distance"], 0)
+        self.assertEqual(vidocq["jump_count"], 0)
+        self.assertEqual(vidocq["maneuver_drive"], "F")
+        self.assertEqual(vidocq["power_plant"], "F")
+        self.assertIsNone(vidocq["thrust_g"])
+        self.assertIn("Six Gravity", vidocq["mission_tags"])
+        self.assertEqual(vidocq["endurance"], 2)
+        self.assertEqual(vidocq["cargo"], "32.1 tons")
+        self.assertIn("Fuel Scoop", vidocq["equipment"])
+        self.assertIn("Fuel Processor", vidocq["equipment"])
+        self.assertIn("Full Hangar (20 tons contained)", vidocq["equipment"])
+        self.assertIn(
+            "Carried Craft: Caduceus (ship-145)",
+            vidocq["equipment"],
+        )
+        self.assertIn(
+            "Triple Turret: Turret Plasma Gun · Turret Plasma Gun",
+            vidocq["armament"],
+        )
+        self.assertIn(
+            "Triple Turret: Beam Laser · Missile Rack · Sandcaster",
+            vidocq["armament"],
+        )
+        self.assertIn(
+            "2 × Point Defense Node Mount: Point Defense Gatling Laser",
+            vidocq["armament"],
+        )
+        self.assertEqual(
+            vidocq["ammunition"],
+            "24 × Standard Missiles · 20 × Sandcaster Canisters",
+        )
+        self.assertEqual(vidocq["length_m"], 46.0)
+        self.assertEqual(
+            vidocq["art_path"],
+            "assets/ships/ship-144-vidocq.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

@@ -729,6 +729,13 @@ PUBLISHED_SHIP_ART = {
         "a closed merchant cargo shutter.",
         78.0,
     ),
+    144: (
+        "assets/ships/ship-144-vidocq.webp",
+        "Painted three-quarter view of Vidocq, a white, cyan, and lime two-"
+        "hundred-ton security cutter with a twin-plasma turret and closed "
+        "fast-launch hangar.",
+        46.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
