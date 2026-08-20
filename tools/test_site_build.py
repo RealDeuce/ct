@@ -1413,6 +1413,45 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-180-trafalgar.webp",
         )
 
+    def test_silk_road_exposes_carrier_cargo_and_reserved_hardpoints(self) -> None:
+        silk_road = self.records[182]
+
+        self.assertEqual(silk_road["family_id"], 182)
+        self.assertEqual(silk_road["tons"], 4500)
+        self.assertEqual(silk_road["configuration"], "Standard")
+        self.assertEqual(silk_road["electronics"], "Basic Civilian")
+        self.assertEqual(silk_road["bridge_options"], ["Holographic Controls"])
+        self.assertEqual(silk_road["armor_points"], 4)
+        self.assertEqual(silk_road["jump_drive"], "Z")
+        self.assertEqual(silk_road["jump_distance"], 2)
+        self.assertEqual(silk_road["jump_count"], 1)
+        self.assertEqual(silk_road["maneuver_drive"], "Z")
+        self.assertEqual(silk_road["power_plant"], "Z")
+        self.assertEqual(silk_road["endurance"], 2)
+        self.assertEqual(silk_road["cargo"], "2,647.2 tons")
+        self.assertEqual(silk_road["unused_fire_control_stations"], 25)
+        self.assertIn("Full Hangar (60 tons contained)", silk_road["equipment"])
+        self.assertIn(
+            "2 × Carried Craft: Wayfarer Cargo (ship-181)",
+            silk_road["equipment"],
+        )
+        self.assertNotIn("Fuel Scoop", silk_road["equipment"])
+        self.assertNotIn("Fuel Processor", silk_road["equipment"])
+        self.assertIn(
+            "20 × Double Turret: Beam Laser · Beam Laser",
+            silk_road["armament"],
+        )
+        self.assertIn(
+            "45 × Point Defense Node Mount: Point Defense Laser",
+            silk_road["armament"],
+        )
+        self.assertEqual(silk_road["ammunition"], "None carried")
+        self.assertEqual(silk_road["length_m"], 150.0)
+        self.assertEqual(
+            silk_road["art_path"],
+            "assets/ships/ship-182-silk-road.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

@@ -876,6 +876,13 @@ PUBLISHED_SHIP_ART = {
         "and blue thirty-ton unarmed utility boat with seven cabin windows.",
         18.8,
     ),
+    182: (
+        "assets/ships/ship-182-silk-road.webp",
+        "Painted three-quarter view of Silk Road, an ivory and royal-blue four-"
+        "thousand-five-hundred-ton commercial carrier with six freight shutters, "
+        "distributed beam turrets, and capped spare hardpoints.",
+        150.0,
+    ),
     187: (
         "assets/ships/family-018-wayfarer-cargo.webp",
         "Painted three-quarter view of Wayfarer Cargo, an ivory, vermilion, "
