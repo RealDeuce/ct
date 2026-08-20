@@ -2552,6 +2552,32 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(phileas["length_m"], 41.0)
         self.assertEqual(phileas["art_path"], "assets/ships/ship-044-phileas.webp")
 
+    def test_antaeus_exposes_planetary_transport_fit(self) -> None:
+        antaeus = self.records[47]
+        self.assertEqual(antaeus["family_id"], 47)
+        self.assertEqual(antaeus["tons"], 200)
+        self.assertEqual(antaeus["configuration"], "Streamlined")
+        self.assertEqual(antaeus["tech_level"], 11)
+        self.assertFalse(antaeus["standard_design"])
+        self.assertEqual(antaeus["electronics"], "Basic Military")
+        self.assertEqual(antaeus["armor_points"], 4)
+        self.assertEqual(antaeus["jump_drive"], None)
+        self.assertEqual(antaeus["maneuver_drive"], "C")
+        self.assertEqual(antaeus["power_plant"], "C")
+        self.assertEqual(antaeus["endurance"], 2)
+        self.assertEqual(antaeus["cargo"], "113 tons")
+        self.assertEqual(antaeus["crew"], 5)
+        self.assertIn("3 × Stateroom", antaeus["equipment"])
+        self.assertIn("25 × Steerage", antaeus["equipment"])
+        self.assertIn("3 × Additional Airlock", antaeus["equipment"])
+        self.assertEqual(
+            antaeus["armament"],
+            "2 × Single Turret: Sandcaster",
+        )
+        self.assertEqual(antaeus["ammunition"], "40 × Sandcaster Canisters")
+        self.assertEqual(antaeus["length_m"], 48.0)
+        self.assertEqual(antaeus["art_path"], "assets/ships/ship-047-antaeus.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

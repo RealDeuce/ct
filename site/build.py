@@ -310,6 +310,13 @@ PUBLISHED_SHIP_ART = {
         "armored passenger trader with a mixed turret and air-raft bay.",
         43.0,
     ),
+    47: (
+        "assets/ships/ship-047-antaeus.webp",
+        "Painted three-quarter view of Antaeus, a navy, warm-white, signal-red, "
+        "and steel two-hundred-ton planetary transport with a sandcaster turret "
+        "and enormous freight shutter.",
+        48.0,
+    ),
     48: (
         "assets/ships/ship-048-triton.webp",
         "Painted three-quarter view of Triton, a red, orange, and bone ninety-five-ton "
