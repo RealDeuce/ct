@@ -1683,6 +1683,46 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-192-hudson.webp",
         )
 
+    def test_crusoe_exposes_armed_frontier_freight_trader(self) -> None:
+        crusoe = self.records[193]
+
+        self.assertEqual(crusoe["family_id"], 193)
+        self.assertEqual(crusoe["tons"], 300)
+        self.assertEqual(crusoe["configuration"], "Standard")
+        self.assertEqual(crusoe["electronics"], "Basic Civilian")
+        self.assertTrue(crusoe["standard_design"])
+        self.assertEqual(crusoe["armor_points"], 2)
+        self.assertEqual(crusoe["jump_drive"], "C")
+        self.assertEqual(crusoe["jump_distance"], 2)
+        self.assertEqual(crusoe["jump_count"], 1)
+        self.assertEqual(crusoe["maneuver_drive"], "C")
+        self.assertEqual(crusoe["power_plant"], "C")
+        self.assertEqual(crusoe["endurance"], 4)
+        self.assertEqual(crusoe["cargo"], "92 tons")
+        self.assertEqual(crusoe["external_load"], "0 tons")
+        self.assertEqual(crusoe["crew"], 7)
+        self.assertIn("12 × Stateroom", crusoe["equipment"])
+        self.assertIn("12 × Low Berth", crusoe["equipment"])
+        self.assertIn("3 × Fuel Processor", crusoe["equipment"])
+        self.assertIn("Fuel Scoop", crusoe["equipment"])
+        self.assertEqual(
+            crusoe["armament"].count(
+                "Triple Turret: Pulse Laser · Pulse Laser · Pulse Laser"
+            ),
+            2,
+        )
+        self.assertIn(
+            "Triple Turret: Sandcaster · Sandcaster · Sandcaster",
+            crusoe["armament"],
+        )
+        self.assertEqual(crusoe["unused_fire_control_stations"], 0)
+        self.assertEqual(crusoe["ammunition"], "100 × Sandcaster Canisters")
+        self.assertEqual(crusoe["length_m"], 58.0)
+        self.assertEqual(
+            crusoe["art_path"],
+            "assets/ships/ship-193-crusoe.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

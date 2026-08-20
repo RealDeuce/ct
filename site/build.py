@@ -822,6 +822,13 @@ PUBLISHED_SHIP_ART = {
         "vermilion two-hundred-ton unarmed passenger and freight trader.",
         48.0,
     ),
+    193: (
+        "assets/ships/ship-193-crusoe.webp",
+        "Painted three-quarter view of Crusoe, an avocado, ochre, and brick-"
+        "red three-hundred-ton frontier trader with a large freight shutter "
+        "and two visible defensive turrets.",
+        58.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
