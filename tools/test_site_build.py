@@ -2142,6 +2142,43 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(research["length_m"], 50.0)
         self.assertEqual(research["art_path"], "assets/ships/ship-207-bacon.webp")
 
+    def test_galileo_exposes_armed_survey_endurance_and_dory_hangars(self) -> None:
+        survey = self.records[208]
+        self.assertEqual(survey["family_id"], 208)
+        self.assertEqual(survey["tons"], 300)
+        self.assertEqual(survey["configuration"], "Standard")
+        self.assertEqual(survey["electronics"], "Basic Civilian")
+        self.assertTrue(survey["standard_design"])
+        self.assertEqual(survey["armor_points"], 2)
+        self.assertEqual(survey["hull_options"], [])
+        self.assertEqual(survey["jump_drive"], "B")
+        self.assertEqual(survey["jump_distance"], 1)
+        self.assertEqual(survey["jump_count"], 2)
+        self.assertEqual(survey["maneuver_drive"], "C")
+        self.assertEqual(survey["power_plant"], "C")
+        self.assertEqual(survey["assertions"]["thrust_g"], 2)
+        self.assertEqual(survey["endurance"], 4)
+        self.assertEqual(survey["cargo"], "39 tons")
+        self.assertEqual(survey["crew"], 14)
+        self.assertIn("2 × Lifeboat Hangar", survey["equipment"])
+        self.assertIn("4 × Probe Drones", survey["equipment"])
+        self.assertIn("6 × Laboratory", survey["equipment"])
+        self.assertIn("4 × Fuel Processor", survey["equipment"])
+        self.assertIn("Fuel Scoop", survey["equipment"])
+        self.assertIn(
+            "2 × Carried Craft: Dory (ship-194)",
+            survey["equipment"],
+        )
+        self.assertEqual(survey["armament"].count("Triple Turret"), 3)
+        self.assertEqual(survey["armament"].count("Beam Laser"), 9)
+        self.assertEqual(survey["ammunition"], "None carried")
+        self.assertEqual(survey["unused_fire_control_stations"], 0)
+        self.assertEqual(survey["length_m"], 59.0)
+        self.assertEqual(
+            survey["art_path"],
+            "assets/ships/ship-208-galileo.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

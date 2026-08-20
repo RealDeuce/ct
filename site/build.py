@@ -916,6 +916,12 @@ PUBLISHED_SHIP_ART = {
         "two-hundred-ton research vessel with two closed Dory launch cells.",
         50.0,
     ),
+    208: (
+        "assets/ships/ship-208-galileo.webp",
+        "Painted three-quarter view of Galileo, a warm-white, cyan, lime, and "
+        "chrome three-hundred-ton armed survey vessel with a ringed observatory.",
+        59.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
