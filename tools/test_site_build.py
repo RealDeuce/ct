@@ -1723,6 +1723,33 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-193-crusoe.webp",
         )
 
+    def test_dory_exposes_unarmed_standard_utility_launch(self) -> None:
+        dory = self.records[194]
+
+        self.assertEqual(dory["family_id"], 194)
+        self.assertEqual(dory["tons"], 20)
+        self.assertEqual(dory["configuration"], "Standard")
+        self.assertEqual(dory["electronics"], "Standard")
+        self.assertTrue(dory["standard_design"])
+        self.assertEqual(dory["armor_points"], 0)
+        self.assertEqual(dory["control"], "Two Person Control Cabin")
+        self.assertEqual(dory["additional_passengers"], 0)
+        self.assertEqual(dory["maneuver_drive"], "sA")
+        self.assertEqual(dory["power_plant"], "sA")
+        self.assertEqual(dory["endurance"], 1)
+        self.assertEqual(dory["cargo"], "10.9 tons")
+        self.assertEqual(dory["external_load"], "0 tons")
+        self.assertEqual(dory["crew"], 1)
+        self.assertIn("Priority cargo module", dory["equipment"])
+        self.assertEqual(dory["armament"], "None installed")
+        self.assertEqual(dory["ammunition"], "None carried")
+        self.assertEqual(dory["unused_fire_control_stations"], 1)
+        self.assertEqual(dory["length_m"], 14.5)
+        self.assertEqual(
+            dory["art_path"],
+            "assets/ships/ship-194-dory.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

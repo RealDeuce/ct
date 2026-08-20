@@ -829,6 +829,13 @@ PUBLISHED_SHIP_ART = {
         "and two visible defensive turrets.",
         58.0,
     ),
+    194: (
+        "assets/ships/ship-194-dory.webp",
+        "Painted three-quarter view of Dory, an ivory, royal-blue, and "
+        "vermilion twenty-ton unarmed utility launch built around a broad "
+        "cargo shutter.",
+        14.5,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
