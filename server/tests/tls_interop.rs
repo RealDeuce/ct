@@ -404,6 +404,7 @@ fn engine_request(epoch: u64, request_id: u64, command: WireCommand) -> CommandR
 }
 
 const SETTLEMENT_STEP_LIMIT: usize = 4_096;
+const SIMULATION_EVENT_LIMIT: usize = 65_536;
 
 fn advance_one_simulation_event(engine: &Engine, target_second: u64) -> bool {
     engine
@@ -448,8 +449,7 @@ fn advance_encounter_until_progress(
     );
 }
 
-fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
-    let mut request_id = 90_000_u64;
+fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity, request_id: &mut u64) {
     let mut steps = 0_usize;
     loop {
         steps += 1;
@@ -473,7 +473,7 @@ fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
                             identity.clone(),
                             engine_request(
                                 epoch,
-                                request_id,
+                                *request_id,
                                 WireCommand::ResolveEncounter(ResolveEncounterRequest {
                                     encounter_id: encounter.encounter_id,
                                     expected_revision: encounter.revision,
@@ -483,7 +483,7 @@ fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
                             ),
                         )
                         .unwrap();
-                    request_id += 1;
+                    *request_id += 1;
                 }
                 advance_encounter_until_progress(&engine, identity, &before);
                 let after = engine.pending_encounter(identity).unwrap();
@@ -505,14 +505,14 @@ fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
                         identity.clone(),
                         engine_request(
                             epoch,
-                            request_id,
+                            *request_id,
                             WireCommand::AcknowledgeCheckpoint {
                                 checkpoint_id: checkpoint.checkpoint_id,
                             },
                         ),
                     )
                     .unwrap();
-                request_id += 1;
+                *request_id += 1;
                 continue;
             }
             break;
@@ -534,10 +534,12 @@ fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
     }
 }
 
-fn settle_pending_arrival_encounter(data: &Path, identity: &PlayerIdentity) {
-    let engine = Engine::open(data, BbsRegistry::default()).unwrap();
-    let (epoch, _, _) = engine.issue_session(identity).unwrap();
-    let mut request_id = 95_000_u64;
+fn settle_pending_arrival_encounter_with_engine(
+    engine: &Engine,
+    identity: &PlayerIdentity,
+    epoch: u64,
+    request_id: &mut u64,
+) {
     for _ in 0..SETTLEMENT_STEP_LIMIT {
         let Some(encounter) = engine.pending_encounter(identity).unwrap() else {
             return;
@@ -549,7 +551,7 @@ fn settle_pending_arrival_encounter(data: &Path, identity: &PlayerIdentity) {
                     identity.clone(),
                     engine_request(
                         epoch,
-                        request_id,
+                        *request_id,
                         WireCommand::ResolveEncounter(ResolveEncounterRequest {
                             encounter_id: encounter.encounter_id,
                             expected_revision: encounter.revision,
@@ -559,7 +561,7 @@ fn settle_pending_arrival_encounter(data: &Path, identity: &PlayerIdentity) {
                     ),
                 )
                 .unwrap();
-            request_id += 1;
+            *request_id += 1;
         }
         advance_encounter_until_progress(&engine, identity, &before);
         let after = engine.pending_encounter(identity).unwrap();
@@ -577,10 +579,22 @@ fn settle_pending_arrival_encounter(data: &Path, identity: &PlayerIdentity) {
     panic!("arrival encounter did not settle after {SETTLEMENT_STEP_LIMIT} state transitions");
 }
 
-fn advance_player_simulation_to(data: &Path, identity: &PlayerIdentity, target_second: u64) {
-    for _ in 0..SETTLEMENT_STEP_LIMIT {
-        settle_pending_arrival_encounter(data, identity);
-        let engine = Engine::open(data, BbsRegistry::default()).unwrap();
+fn settle_pending_arrival_encounter(data: &Path, identity: &PlayerIdentity, request_id: &mut u64) {
+    let engine = Engine::open(data, BbsRegistry::default()).unwrap();
+    let (epoch, _, _) = engine.issue_session(identity).unwrap();
+    settle_pending_arrival_encounter_with_engine(&engine, identity, epoch, request_id);
+}
+
+fn advance_player_simulation_to(
+    data: &Path,
+    identity: &PlayerIdentity,
+    target_second: u64,
+    request_id: &mut u64,
+) {
+    let engine = Engine::open(data, BbsRegistry::default()).unwrap();
+    let (epoch, _, _) = engine.issue_session(identity).unwrap();
+    for _ in 0..SIMULATION_EVENT_LIMIT {
+        settle_pending_arrival_encounter_with_engine(&engine, identity, epoch, request_id);
         if engine.game_second().unwrap() > target_second {
             return;
         }
@@ -589,7 +603,7 @@ fn advance_player_simulation_to(data: &Path, identity: &PlayerIdentity, target_s
         }
     }
     panic!(
-        "simulation did not reach second {target_second} after {SETTLEMENT_STEP_LIMIT} scheduled events"
+        "simulation did not reach second {target_second} after {SIMULATION_EVENT_LIMIT} scheduled events"
     );
 }
 
@@ -597,9 +611,10 @@ fn advance_until_flight_leg(
     data: &Path,
     identity: &PlayerIdentity,
     matches_purpose: impl Fn(FlightLegPurpose) -> bool,
+    request_id: &mut u64,
 ) -> FlightLegRecord {
-    for _ in 0..SETTLEMENT_STEP_LIMIT {
-        settle_pending_arrival_encounter(data, identity);
+    for _ in 0..SIMULATION_EVENT_LIMIT {
+        settle_pending_arrival_encounter(data, identity, request_id);
         let store = Store::open(data).unwrap();
         let player = store.player_record(identity).unwrap().unwrap();
         let ship = store.ship_record(player.ship_id).unwrap().unwrap();
@@ -2046,6 +2061,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         bbs_id: 1,
         player_id: 1,
     };
+    let mut settlement_request_id = 90_000_u64;
     let (ship_id, cargo_lot_id, credits_before_mail, departure_due) = {
         let store = Store::open(data.path()).unwrap();
         let player = store.player_record(&identity).unwrap().unwrap();
@@ -2071,10 +2087,18 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     };
 
     let (pickup, jump_due) = {
-        advance_player_simulation_to(data.path(), &identity, departure_due);
-        let jump_leg = advance_until_flight_leg(data.path(), &identity, |purpose| {
-            matches!(purpose, FlightLegPurpose::Jump { .. })
-        });
+        advance_player_simulation_to(
+            data.path(),
+            &identity,
+            departure_due,
+            &mut settlement_request_id,
+        );
+        let jump_leg = advance_until_flight_leg(
+            data.path(),
+            &identity,
+            |purpose| matches!(purpose, FlightLegPurpose::Jump { .. }),
+            &mut settlement_request_id,
+        );
         let store = Store::open(data.path()).unwrap();
         let ship = store.ship_record(ship_id).unwrap().unwrap();
         assert!(
@@ -2106,10 +2130,13 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         .map_or(0, |custody| custody.advertised_stipend_credits);
 
     let (arrival_report, arrival_credits, arrival_fuel, arrival_provisions) = {
-        advance_player_simulation_to(data.path(), &identity, jump_due);
-        advance_until_flight_leg(data.path(), &identity, |purpose| {
-            matches!(purpose, FlightLegPurpose::ApproachPort)
-        });
+        advance_player_simulation_to(data.path(), &identity, jump_due, &mut settlement_request_id);
+        advance_until_flight_leg(
+            data.path(),
+            &identity,
+            |purpose| matches!(purpose, FlightLegPurpose::ApproachPort),
+            &mut settlement_request_id,
+        );
 
         let store = Store::open(data.path()).unwrap();
         let player = store.player_record(&identity).unwrap().unwrap();
@@ -2214,7 +2241,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
 
     // Complete the remaining checkpoint and physical approach before
     // returning to the real server.
-    settle_arrival_checkpoint(data.path(), &identity);
+    settle_arrival_checkpoint(data.path(), &identity, &mut settlement_request_id);
     server = spawn_server(
         &server_executable,
         &game_address_text,
