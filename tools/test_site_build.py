@@ -1203,6 +1203,96 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-144-vidocq.webp",
         )
 
+    def test_banks_family_exposes_modular_merchant_and_tizard_fits(self) -> None:
+        banks = self.records[147]
+        solander = self.records[148]
+        parkinson = self.records[149]
+        survey = self.records[150]
+        scout = self.records[190]
+
+        for record in (banks, solander, parkinson, survey, scout):
+            self.assertEqual(record["family_id"], 147)
+            self.assertEqual(record["tons"], 300)
+            self.assertEqual(record["configuration"], "Streamlined")
+            self.assertEqual(record["bridge_options"], ["Holographic Controls"])
+            self.assertEqual(record["armor_points"], 4)
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["endurance"], 2)
+            self.assertIn("Fuel Processor", record["equipment"])
+            self.assertNotIn("Fuel Scoop", record["equipment"])
+            self.assertEqual(
+                record["ammunition"],
+                "12 × Standard Missiles · 20 × Sandcaster Canisters",
+            )
+            self.assertEqual(record["length_m"], 58.0)
+
+        merchants = (banks, solander, parkinson)
+        for record in merchants:
+            self.assertEqual(record["electronics"], "Basic Civilian")
+            self.assertEqual(record["jump_drive"], "C")
+            self.assertEqual(record["jump_count"], 1)
+            self.assertEqual(record["maneuver_drive"], "E")
+            self.assertEqual(record["power_plant"], "E")
+            self.assertEqual(record["external_load"], "0 tons")
+            self.assertEqual(record["unused_fire_control_stations"], 2)
+            self.assertIn("Standard Hangar (4 tons contained)", record["equipment"])
+            self.assertEqual(
+                record["armament"],
+                "Triple Turret: Beam Laser · Missile Rack · Sandcaster",
+            )
+
+        self.assertEqual(banks["cargo"], "84.5 tons")
+        self.assertEqual(solander["cargo"], "35.5 tons")
+        self.assertEqual(parkinson["cargo"], "3 tons")
+        self.assertEqual(banks["art_path"], "assets/ships/ship-147-banks.webp")
+        self.assertEqual(
+            solander["art_path"],
+            "assets/ships/ship-148-solander.webp",
+        )
+        self.assertEqual(
+            parkinson["art_path"],
+            "assets/ships/ship-149-parkinson.webp",
+        )
+
+        for record in (survey, scout):
+            self.assertEqual(record["electronics"], "Advanced")
+            self.assertEqual(record["unused_fire_control_stations"], 0)
+            self.assertIn(
+                "Triple Turret: Beam Laser · Missile Rack · Sandcaster",
+                record["armament"],
+            )
+            self.assertIn(
+                "2 × Triple Turret: Beam Laser · Beam Laser · Beam Laser",
+                record["armament"],
+            )
+
+        self.assertEqual(survey["jump_drive"], "C")
+        self.assertEqual(survey["jump_count"], 2)
+        self.assertEqual(survey["maneuver_drive"], "E")
+        self.assertEqual(survey["power_plant"], "E")
+        self.assertEqual(survey["cargo"], "2.5 tons")
+        self.assertEqual(survey["external_load"], "0 tons")
+        self.assertIn("Standard Hangar (24 tons contained)", survey["equipment"])
+        self.assertIn("Carried Craft: Caduceus (ship-146)", survey["equipment"])
+        self.assertEqual(
+            survey["art_path"],
+            "assets/ships/ship-150-tizard-survey.webp",
+        )
+
+        self.assertEqual(scout["jump_drive"], "D")
+        self.assertEqual(scout["jump_count"], 1)
+        self.assertEqual(scout["maneuver_drive"], "F")
+        self.assertEqual(scout["power_plant"], "F")
+        self.assertEqual(scout["cargo"], "59.5 tons")
+        self.assertEqual(scout["external_load"], "20 tons")
+        self.assertIn("Docking Clamp 30", scout["equipment"])
+        self.assertIn("Air Raft Hangar", scout["equipment"])
+        self.assertIn("Carried Craft: Caduceus (ship-189)", scout["equipment"])
+        self.assertEqual(
+            scout["art_path"],
+            "assets/ships/ship-190-tizard-scout.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

@@ -736,6 +736,37 @@ PUBLISHED_SHIP_ART = {
         "fast-launch hangar.",
         46.0,
     ),
+    147: (
+        "assets/ships/ship-147-banks.webp",
+        "Painted three-quarter view of Banks, an ivory and royal-blue three-"
+        "hundred-ton modular merchant with four freight cells and one turret.",
+        58.0,
+    ),
+    148: (
+        "assets/ships/ship-148-solander.webp",
+        "Painted three-quarter view of Solander, an ivory and royal-blue three-"
+        "hundred-ton mixed merchant with one freight cell and eight cabin windows.",
+        58.0,
+    ),
+    149: (
+        "assets/ships/ship-149-parkinson.webp",
+        "Painted three-quarter view of Parkinson, an ivory and royal-blue three-"
+        "hundred-ton liner with twelve cabin windows and one turret.",
+        58.0,
+    ),
+    150: (
+        "assets/ships/ship-150-tizard-survey.webp",
+        "Painted three-quarter view of Tizard, a white, cyan, and lime three-"
+        "hundred-ton survey ship with a closed internal-launch hangar and two "
+        "visible turrets.",
+        58.0,
+    ),
+    190: (
+        "assets/ships/ship-190-tizard-scout.webp",
+        "Painted three-quarter view of Tizard, a white, cyan, and lime three-"
+        "hundred-ton scout carrying a yellow Caduceus launch on its dorsal clamp.",
+        58.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
