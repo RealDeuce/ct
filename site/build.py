@@ -722,6 +722,13 @@ PUBLISHED_SHIP_ART = {
         "luxury boat with six cabin-window bays and two closed service doors.",
         19.0,
     ),
+    143: (
+        "assets/ships/ship-143-moriarty.webp",
+        "Painted three-quarter view of Moriarty, an aubergine and vermilion "
+        "eight-hundred-ton commerce raider with disguised flank batteries and "
+        "a closed merchant cargo shutter.",
+        78.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
