@@ -414,11 +414,23 @@ PUBLISHED_SHIP_ART = {
         "bulk freighter with five large freight shutters and five mixed turrets.",
         104.0,
     ),
+    99: (
+        "assets/ships/ship-099-corbett.webp",
+        "Painted three-quarter view of Corbett, a navy fifteen-hundred-ton "
+        "distributed destroyer with seven triple turrets and eight barbettes.",
+        96.0,
+    ),
     101: (
         "assets/ships/family-097-baltic-logistics.webp",
         "Painted three-quarter view of Novgorod, a navy two-thousand-ton fleet "
         "logistics ship with ten replenishment stations and five mixed turrets.",
         104.0,
+    ),
+    107: (
+        "assets/ships/ship-107-corbett.webp",
+        "Painted three-quarter view of Corbett, a navy fifteen-hundred-ton "
+        "close-structure destroyer with seven triple turrets and eight barbettes.",
+        96.0,
     ),
     124: (
         "assets/ships/ship-124-archimedes.webp",

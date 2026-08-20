@@ -516,6 +516,48 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("5 × Fuel Processor", visby["equipment"])
         self.assertEqual(visby["cargo"], "1,122 tons")
 
+    def test_corbett_configurations_share_pressure_volumes_not_silhouettes(self) -> None:
+        distributed, close_structure = (
+            self.records[catalog_id] for catalog_id in (99, 107)
+        )
+        for record in (distributed, close_structure):
+            self.assertEqual(record["family_id"], 99)
+            self.assertEqual(record["tons"], 1500)
+            self.assertEqual(record["jump_drive"], "L")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["maneuver_drive"], "P")
+            self.assertEqual(record["power_plant"], "P")
+            self.assertEqual(record["endurance"], 3)
+            self.assertEqual(record["armor_points"], 2)
+            self.assertEqual(record["hull_options"], ["Radiation Shielding"])
+            self.assertEqual(record["length_m"], 96.0)
+            self.assertIn("Full Hangar (70 tons contained)", record["equipment"])
+            self.assertIn("Carried Craft: Archimedes (ship-124)", record["equipment"])
+            self.assertIn("6 × Particle Beam Barbette", record["armament"])
+            self.assertIn("2 × Railgun Barbette", record["armament"])
+            self.assertEqual(record["unused_fire_control_stations"], 0)
+            self.assertNotIn("Fuel Scoop", record["equipment"])
+
+        self.assertEqual(distributed["configuration"], "Distributed")
+        self.assertEqual(distributed["cargo"], "568.5 tons")
+        self.assertIn(
+            "2 × Carried Craft: Wayfarer Cargo (ship-187)",
+            distributed["equipment"],
+        )
+        self.assertIn("2 × Triple Turret: Beam Laser", distributed["armament"])
+        self.assertIn("2 × Triple Turret: Missile Rack", distributed["armament"])
+        self.assertIn("3 × Triple Turret: Sandcaster", distributed["armament"])
+
+        self.assertEqual(close_structure["configuration"], "Close Structure")
+        self.assertEqual(close_structure["cargo"], "541.7 tons")
+        self.assertIn(
+            "2 × Carried Craft: Wayfarer Utility (ship-18)",
+            close_structure["equipment"],
+        )
+        self.assertIn("3 × Triple Turret: Beam Laser", close_structure["armament"])
+        self.assertIn("2 × Triple Turret: Missile Rack", close_structure["armament"])
+        self.assertIn("2 × Triple Turret: Sandcaster", close_structure["armament"])
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
