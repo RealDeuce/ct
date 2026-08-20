@@ -1991,6 +1991,25 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(tender["length_m"], 17.5)
         self.assertEqual(tender["art_path"], "assets/ships/ship-202-tender.webp")
 
+    def test_bactrian_exposes_twin_hump_bulk_shuttle(self) -> None:
+        shuttle = self.records[203]
+        self.assertEqual(shuttle["family_id"], 203)
+        self.assertEqual(shuttle["tons"], 90)
+        self.assertEqual(shuttle["configuration"], "Standard")
+        self.assertEqual(shuttle["armor_points"], 0)
+        self.assertEqual(shuttle["control"], "Two Person Control Cabin")
+        self.assertEqual(shuttle["maneuver_drive"], "sN")
+        self.assertEqual(shuttle["power_plant"], "sN")
+        self.assertEqual(shuttle["endurance"], 1)
+        self.assertEqual(shuttle["cargo"], "67.4 tons")
+        self.assertEqual(shuttle["crew"], 2)
+        self.assertIn("Priority cargo module", shuttle["equipment"])
+        self.assertEqual(shuttle["armament"], "None installed")
+        self.assertEqual(shuttle["ammunition"], "None carried")
+        self.assertEqual(shuttle["unused_fire_control_stations"], 1)
+        self.assertEqual(shuttle["length_m"], 30.0)
+        self.assertEqual(shuttle["art_path"], "assets/ships/ship-203-bactrian.webp")
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

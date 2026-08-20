@@ -886,6 +886,12 @@ PUBLISHED_SHIP_ART = {
         "vermilion thirty-ton unarmed general-purpose ship's boat.",
         17.5,
     ),
+    203: (
+        "assets/ships/ship-203-bactrian.webp",
+        "Painted three-quarter view of Bactrian, an ivory, royal-blue, and "
+        "vermilion ninety-ton unarmed bulk shuttle with twin freight humps.",
+        30.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
