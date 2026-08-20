@@ -336,6 +336,43 @@ impl DoorSession {
         }
     }
 
+    fn send_to_menu(&mut self, bytes: &[u8], progress_text: &str) -> String {
+        // Headings are emitted before the remainder of a screen and therefore
+        // do not prove that the door is ready to read another key. Every
+        // interactive menu finishes with its Help option. Require both a fresh
+        // destination marker and the completed destination prompt so an
+        // asynchronous notice cannot satisfy the wait by redrawing the source
+        // menu. Retain the pager acknowledgement/resend behavior for a key
+        // intercepted by such a notice.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let initial = normalized_display_text(&self.output());
+        let progress = normalized_display_text(progress_text);
+        let progress_before = initial.matches(&progress).count();
+        let prompt_before = initial.matches("Help:").count();
+        let mut acknowledged_prompts = self.acknowledged_page_prompts;
+        self.send(bytes);
+        loop {
+            let output = self.output();
+            let semantic = normalized_display_text(&output);
+            self.acknowledge_page_prompts(&semantic);
+            let progressed = semantic.matches(&progress).count() > progress_before;
+            if progressed && semantic.matches("Help:").count() > prompt_before {
+                return output;
+            }
+            if self.acknowledged_page_prompts > acknowledged_prompts {
+                acknowledged_prompts = self.acknowledged_page_prompts;
+                if !progressed {
+                    self.send(bytes);
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "door did not finish rendering {progress_text:?} and its menu prompt; output: {output:?}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     fn finish(mut self) -> String {
         drop(self.input.take());
         let status = self.child.wait().unwrap();
@@ -370,10 +407,10 @@ fn advance_simulation_to_due(engine: &Engine, due_second: u64) {
     loop {
         engine.recover().unwrap();
         let current_second = engine.game_second().unwrap();
-        if due_second <= current_second {
-            return;
-        }
-        match engine.advance_simulation_to(due_second) {
+        // An encounter can become actionable after its scheduled second has
+        // already passed. Advancing through the current second admits that
+        // overdue work; returning here would leave it pending forever.
+        match engine.advance_simulation_to(due_second.max(current_second)) {
             Ok(_) => return,
             Err(EngineError::Store(StoreError::SimulationTimeReversal { .. })) => continue,
             Err(error) => panic!("simulation advance failed: {error}"),
@@ -381,22 +418,27 @@ fn advance_simulation_to_due(engine: &Engine, due_second: u64) {
     }
 }
 
+const SETTLEMENT_STEP_LIMIT: usize = 4_096;
+
 fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
-    let deadline = Instant::now() + Duration::from_secs(60);
     let mut request_id = 90_000_u64;
+    let mut steps = 0_usize;
     loop {
+        steps += 1;
         assert!(
-            Instant::now() < deadline,
-            "terminal approach did not settle before the interop timeout"
+            steps <= SETTLEMENT_STEP_LIMIT,
+            "terminal approach did not settle after {SETTLEMENT_STEP_LIMIT} state transitions"
         );
         let engine = Engine::open(data, BbsRegistry::default()).unwrap();
         let (epoch, _, _) = engine.issue_session(identity).unwrap();
         loop {
+            steps += 1;
             assert!(
-                Instant::now() < deadline,
-                "terminal approach encounter did not settle before the interop timeout"
+                steps <= SETTLEMENT_STEP_LIMIT,
+                "terminal approach encounter did not settle after {SETTLEMENT_STEP_LIMIT} state transitions"
             );
             if let Some(encounter) = engine.pending_encounter(identity).unwrap() {
+                let before = encounter.clone();
                 if encounter.state == EncounterState::AwaitingPosture {
                     engine
                         .submit(
@@ -422,6 +464,17 @@ fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
                     } else {
                         encounter.next_turn_second
                     },
+                );
+                let after = engine.pending_encounter(identity).unwrap();
+                assert_ne!(
+                    after.as_ref(),
+                    Some(&before),
+                    "terminal approach encounter made no progress: id={} revision={} state={:?} turn={} due={}",
+                    before.encounter_id,
+                    before.revision,
+                    before.state,
+                    before.turn,
+                    before.next_turn_second
                 );
                 continue;
             }
@@ -461,18 +514,14 @@ fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
 }
 
 fn settle_pending_arrival_encounter(data: &Path, identity: &PlayerIdentity) {
-    let deadline = Instant::now() + Duration::from_secs(60);
     let engine = Engine::open(data, BbsRegistry::default()).unwrap();
     let (epoch, _, _) = engine.issue_session(identity).unwrap();
     let mut request_id = 95_000_u64;
-    loop {
-        assert!(
-            Instant::now() < deadline,
-            "arrival encounter did not settle before the interop timeout"
-        );
+    for _ in 0..SETTLEMENT_STEP_LIMIT {
         let Some(encounter) = engine.pending_encounter(identity).unwrap() else {
             return;
         };
+        let before = encounter.clone();
         if encounter.state == EncounterState::AwaitingPosture {
             engine
                 .submit(
@@ -499,7 +548,19 @@ fn settle_pending_arrival_encounter(data: &Path, identity: &PlayerIdentity) {
                 encounter.next_turn_second
             },
         );
+        let after = engine.pending_encounter(identity).unwrap();
+        assert_ne!(
+            after.as_ref(),
+            Some(&before),
+            "arrival encounter made no progress: id={} revision={} state={:?} turn={} due={}",
+            before.encounter_id,
+            before.revision,
+            before.state,
+            before.turn,
+            before.next_turn_second
+        );
     }
+    panic!("arrival encounter did not settle after {SETTLEMENT_STEP_LIMIT} state transitions");
 }
 
 fn advance_until_flight_leg(
@@ -556,6 +617,7 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
             session.wait_for("Claim signed offer");
             session.send(b"a");
             session.wait_for("entered it in the task ledger");
+            session.wait_for_any(&["(Enter) Previous menu", "[Enter] Previous menu"]);
             session.send(b"\r");
             claimed = true;
             page_number += 1;
@@ -575,6 +637,7 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
     session.wait_for_occurrences("Stop review", page_number);
     session.send(b"q");
     session.wait_for("Arrival Communications Receipt");
+    session.wait_for_any(&["(Enter) Continue", "[Enter] Continue"]);
     session.send(b"\r");
     let (arrival_result, _) = session.wait_for_any(&[
         "Arrival Checkpoint",
@@ -582,37 +645,23 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
         "Docked Operations -",
     ]);
     if arrival_result == 0 {
+        session.wait_for("Take arrival watch");
         session.send(b"a");
-        let (watch_result, _) = session.wait_for_any(&["Voyage Status -", "Docked Operations -"]);
-        if watch_result == 0 {
-            session.send_through_page_prompt(
-                b"\r",
-                "Captain's Command Console",
-                "Captain's Command Console",
-            );
+        let (watch_result, _) = session.wait_for_any(&["Console", "console", "Return to BBS"]);
+        if watch_result < 2 {
+            session.send_to_menu(b"\r", "Captain's Command Console");
         } else {
-            session.send_through_page_prompt(
-                b"u",
-                "Captain's Command Console",
-                "Captain's Command Console",
-            );
+            session.send_to_menu(b"u", "Captain's Command Console");
         }
     } else if arrival_result == 1 {
-        session.send_through_page_prompt(
-            b"\r",
-            "Captain's Command Console",
-            "Captain's Command Console",
-        );
+        session.wait_for_any(&["Console", "console"]);
+        session.send_to_menu(b"\r", "Captain's Command Console");
     } else {
-        session.send_through_page_prompt(
-            b"u",
-            "Captain's Command Console",
-            "Captain's Command Console",
-        );
+        session.wait_for("Return to BBS");
+        session.send_to_menu(b"u", "Captain's Command Console");
     }
-    session.send(b"m");
     const MESSAGE_HEADING: &str = "Message Management\r\n==================";
-    session.wait_for(MESSAGE_HEADING);
+    session.send_to_menu(b"m", MESSAGE_HEADING);
     session.send_through_page_prompt(
         b"i",
         "Message number on this page",
@@ -632,22 +681,10 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
     );
     session.send_through_page_prompt(b"3", "Messages", "Communications Record");
     session.send_through_page_prompt(b"q", "Console", MESSAGE_HEADING);
-    session.send_through_page_prompt(
-        b"q",
-        "Captain's Command Console",
-        "Captain's Command Console",
-    );
+    session.send_to_menu(b"q", "Captain's Command Console");
     if columns == "80" {
-        session.send_through_page_prompt(
-            b"k",
-            "Ship's Navigation Library",
-            "Ship's Navigation Library",
-        );
-        session.send_through_page_prompt(
-            b"q",
-            "Captain's Command Console",
-            "Captain's Command Console",
-        );
+        session.send_to_menu(b"k", "Ship's Navigation Library");
+        session.send_to_menu(b"q", "Captain's Command Console");
     }
     session.return_to_bbs();
     session.finish()
@@ -661,13 +698,14 @@ fn complete_arrival_and_trade(
 ) -> String {
     let mut session = DoorSession::spawn(door, data, "iso646", "40");
     session.send(b"\r");
-    session.wait_for("Arrival Packet -");
+    session.wait_for("Stop review");
     session.send(b"q");
     session.wait_for("Arrival Communications Receipt");
+    session.wait_for("(Enter) Continue");
     session.send(b"\r");
-    session.wait_for("Docked Operations");
+    session.wait_for("Return to BBS");
 
-    session.send_through_page_prompt(b"f", "Fuel source", "Fuel and Supplies");
+    session.send_to_menu(b"f", "Fuel and Supplies");
     session.send_through_page_prompt(b"f", "Fuel source (Q to cancel", "Refined starship fuel");
     session.send(b"1\r");
     // The 40-column profile may wrap the prompt between "to" and
@@ -680,12 +718,12 @@ fn complete_arrival_and_trade(
         session.wait_for("That service");
     }
     session.wait_for("(Enter) Previous menu");
-    session.send_through_page_prompt(b"\r", "Docked Operations", "Docked Operations");
+    session.send_to_menu(b"\r", "Docked Operations");
 
     // Exercise the facility-backed provision service when the destination
     // has a chandlery. At a frontier port, prove the same stale/forged key is
     // rejected with in-world copy rather than inventing stock.
-    let supplies = session.send_through_page_prompt(b"f", "Fuel source", "Fuel and Supplies");
+    let supplies = session.send_to_menu(b"f", "Fuel and Supplies");
     session.send(b"p");
     if strip_ecma48(&supplies).contains("P) Provisions") {
         session.wait_for("Monthly packages (Q to");
@@ -695,7 +733,7 @@ fn complete_arrival_and_trade(
         session.wait_for("No bonded chandlery");
     }
     session.wait_for("(Enter) Previous menu");
-    session.send_through_page_prompt(b"\r", "Docked Operations", "Docked Operations");
+    session.send_to_menu(b"\r", "Docked Operations");
 
     // Arrival processing may add task-titled cargo, and the wire snapshot is
     // the authority for menu order. Identify the purchased lot by its rendered
@@ -721,7 +759,7 @@ fn complete_arrival_and_trade(
     // The heading is written before the rest of the page.  Wait for the
     // section delimiter used below so the reader thread has captured the
     // complete cargo list before taking the output snapshot.
-    let exchange = session.send_through_page_prompt(b"c", "Find market", "Cargo Exchange -");
+    let exchange = session.send_to_menu(b"c", "Cargo Exchange -");
     let semantic = strip_ecma48(&exchange);
     let cargo_section = semantic
         .rsplit_once("Cargo Exchange -")
@@ -752,8 +790,8 @@ fn complete_arrival_and_trade(
     session.send_through_page_prompt(b"s", "Cargo lot (Q to cancel", "Cargo lot (Q to cancel");
     session.send(format!("{cargo_selection}\r").as_bytes());
     session.wait_for("Tonnes (maximum");
-    session.send_through_page_prompt(b"1\r", "Find market", "Cargo Exchange -");
-    session.send_through_page_prompt(b"q", "Docked Operations", "Docked Operations");
+    session.send_to_menu(b"1\r", "Cargo Exchange -");
+    session.send_to_menu(b"q", "Docked Operations");
     session.return_to_bbs();
     session.finish()
 }
@@ -1328,16 +1366,13 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         .unwrap();
     let mut docked_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     docked_door.send(b"\r");
-    docked_door.wait_for("Arrival Packet -");
+    docked_door.wait_for("Stop review");
     docked_door.send(b"q");
     docked_door.wait_for("Arrival Communications Receipt");
+    docked_door.wait_for("(Enter) Continue");
     docked_door.send(b"\r");
-    docked_door.wait_for("Docked Operations");
     docked_door.wait_for("Return to BBS");
-    docked_door.send(b"j");
-    docked_door.wait_for("Task Ledger");
-    docked_door.wait_for("Carriage declaration");
-    let offer_list = normalized_display_text(&docked_door.wait_for("Offers available here ("));
+    let offer_list = normalized_display_text(&docked_door.send_to_menu(b"j", "Task Ledger"));
     let offer_section = &offer_list[offer_list.rfind("Offers available here (").unwrap()..];
     let offer_header_end =
         offer_section.find(" unavailable hidden)").unwrap() + " unavailable hidden)".len();
@@ -1345,8 +1380,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         .trim_start()
         .starts_with("None ");
     if showing_unavailable {
-        docked_door.send(b"v");
-        docked_door.wait_for("Offers unavailable to this captain");
+        docked_door.send_to_menu(b"v", "Offers unavailable to this captain");
     }
     docked_door.send(b"i");
     docked_door.wait_for("Offer (Q to cancel");
@@ -1372,7 +1406,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     docked_door.wait_for("(Q) Task ledger");
     docked_door.send(b"q");
     docked_door.wait_for_occurrences("Task Ledger", 4);
-    docked_door.send_through_page_prompt(b"q", "Docked Operations", "Docked Operations");
+    docked_door.send_to_menu(b"q", "Docked Operations");
     docked_door.wait_for_occurrences("Return to BBS", 2);
     docked_door.return_to_bbs();
     let docked_screen = docked_door.finish();
@@ -1447,15 +1481,12 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     }
     let mut reconnected_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     reconnected_door.send(b"\r");
-    reconnected_door.wait_for("Docked Operations");
     reconnected_door.wait_for("Return to BBS");
     // Enter refreshes the docked display; leaving the game requires Q and a
     // separate affirmative confirmation.
     reconnected_door.send(b"\r");
-    reconnected_door.wait_for_occurrences("Docked Operations", 2);
-    reconnected_door.send(b"j");
-    reconnected_door.wait_for("Task Ledger");
-    reconnected_door.wait_for("Carriage declaration");
+    reconnected_door.wait_for_occurrences("Return to BBS", 2);
+    reconnected_door.send_to_menu(b"j", "Task Ledger");
     reconnected_door.send(b"q");
     reconnected_door.wait_for_occurrences("Docked Operations", 3);
     reconnected_door.wait_for_occurrences("Return to BBS", 3);
@@ -1469,22 +1500,13 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     // but may voluntarily open and hide the BBS-local guidance at 40 columns.
     let mut first_watch_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     first_watch_door.send(b"\r");
-    first_watch_door.wait_for("Docked Operations");
+    first_watch_door.wait_for("Return to BBS");
     assert!(!normalized_display_text(&first_watch_door.output()).contains("Guided First Watch"));
-    first_watch_door.send_through_page_prompt(
-        b"u",
-        "Captain's Command Console",
-        "Captain's Command Console",
-    );
-    first_watch_door.wait_for("Guided First Watch");
-    first_watch_door.send_through_page_prompt(b"w", "Taking the watch", "Taking the watch");
-    first_watch_door.send_through_page_prompt(b"\r", "The people aboard", "The people aboard");
-    first_watch_door.send_through_page_prompt(
-        b"h",
-        "Captain's Command Console",
-        "Captain's Command Console",
-    );
-    first_watch_door.send_through_page_prompt(b"x", "Docked Operations", "Docked Operations");
+    first_watch_door.send_to_menu(b"u", "Captain's Command Console");
+    first_watch_door.send_to_menu(b"w", "Taking the watch");
+    first_watch_door.send_to_menu(b"\r", "The people aboard");
+    first_watch_door.send_to_menu(b"h", "Captain's Command Console");
+    first_watch_door.send_to_menu(b"x", "Docked Operations");
     first_watch_door.return_to_bbs();
     let first_watch_screen = normalized_display_text(&first_watch_door.finish());
     assert!(first_watch_screen.contains("This is the live command"));
@@ -1522,14 +1544,9 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     // its actual action prompt, and the choice must survive a new door process.
     let mut preference_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     preference_door.send(b"\r");
-    preference_door.wait_for("Docked Operations");
-    preference_door.send_through_page_prompt(
-        b"u",
-        "Captain's Command Console",
-        "Captain's Command Console",
-    );
-    preference_door.send(b"p");
-    preference_door.wait_for("Player Preferences");
+    preference_door.wait_for("Return to BBS");
+    preference_door.send_to_menu(b"u", "Captain's Command Console");
+    preference_door.send_to_menu(b"p", "Player Preferences");
     preference_door.wait_for("Page pauses:  Enabled");
     preference_door.send(b"h");
     preference_door.wait_for("Default Help Level");
@@ -1537,59 +1554,42 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let beginner_editor = normalized_display_text(&preference_door.output());
     let beginner_editor = &beginner_editor[beginner_editor.rfind("Default Help Level").unwrap()..];
     assert!(!beginner_editor.contains("(B) Beginner"));
-    preference_door.send(b"x");
-    preference_door.wait_for("Default help: Expert");
+    preference_door.send_to_menu(b"x", "Default help: Expert");
     preference_door.send(b"h");
     preference_door.wait_for_occurrences("Default Help Level", 2);
     preference_door.wait_for("(B) Beginner");
     let expert_editor = normalized_display_text(&preference_door.output());
     let expert_editor = &expert_editor[expert_editor.rfind("Default Help Level").unwrap()..];
     assert!(!expert_editor.contains("(X) Expert"));
-    preference_door.send(b"b");
-    preference_door.wait_for("Default help: Beginner");
-    preference_door.send(b"p");
-    preference_door.wait_for("Automatic Page Pauses");
-    preference_door.send(b"d");
-    preference_door.wait_for("Page pauses:  Disabled");
+    preference_door.send_to_menu(b"b", "Default help: Beginner");
+    preference_door.send_to_menu(b"p", "Automatic Page Pauses");
+    preference_door.send_to_menu(b"d", "Page pauses:  Disabled");
     let pauses_before = normalized_display_text(&preference_door.output())
         .matches("Enter/Sp")
         .count();
-    preference_door.send(b"q");
-    preference_door.wait_for_occurrences("Captain's Command Console", 2);
-    preference_door.send(b"c");
-    preference_door.wait_for("Crew Management -");
+    preference_door.send_to_menu(b"q", "Captain's Command Console");
+    preference_door.send_to_menu(b"c", "Crew Management -");
     preference_door.wait_for("managed appointments");
     let pauses_after = normalized_display_text(&preference_door.output())
         .matches("Enter/Sp")
         .count();
     assert_eq!(pauses_after, pauses_before);
-    preference_door.send(b"q");
-    preference_door.wait_for_occurrences("Captain's Command Console", 3);
-    preference_door.send(b"x");
-    preference_door.wait_for_occurrences("Docked Operations", 2);
+    preference_door.send_to_menu(b"q", "Captain's Command Console");
+    preference_door.send_to_menu(b"x", "Docked Operations");
     preference_door.return_to_bbs();
     let preference_screen = normalized_display_text(&preference_door.finish());
     assert!(preference_screen.contains("Page pauses: Disabled"));
 
     let mut persisted_preference_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     persisted_preference_door.send(b"\r");
-    persisted_preference_door.wait_for("Docked Operations");
-    persisted_preference_door.send(b"u");
-    persisted_preference_door.wait_for("Captain's Command Console");
-    persisted_preference_door.send(b"p");
-    persisted_preference_door.wait_for("Player Preferences");
+    persisted_preference_door.wait_for("Return to BBS");
+    persisted_preference_door.send_to_menu(b"u", "Captain's Command Console");
+    persisted_preference_door.send_to_menu(b"p", "Player Preferences");
     persisted_preference_door.wait_for("Page pauses:  Disabled");
-    persisted_preference_door.send(b"p");
-    persisted_preference_door.wait_for("Automatic Page Pauses");
-    persisted_preference_door.send(b"e");
-    persisted_preference_door.wait_for("Page pauses:  Enabled");
-    persisted_preference_door.send(b"q");
-    persisted_preference_door.wait_for_occurrences("Captain's Command Console", 2);
-    persisted_preference_door.send_through_page_prompt(
-        b"x",
-        "Docked Operations",
-        "Docked Operations",
-    );
+    persisted_preference_door.send_to_menu(b"p", "Automatic Page Pauses");
+    persisted_preference_door.send_to_menu(b"e", "Page pauses:  Enabled");
+    persisted_preference_door.send_to_menu(b"q", "Captain's Command Console");
+    persisted_preference_door.send_to_menu(b"x", "Docked Operations");
     persisted_preference_door.return_to_bbs();
     let persisted_preference_screen = normalized_display_text(&persisted_preference_door.finish());
     assert!(persisted_preference_screen.contains("Page pauses: Disabled"));
@@ -1603,39 +1603,28 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let services_menu = services_door.wait_for("Return to BBS");
     let banking_available = services_menu.contains("Banking and Accounts");
     if banking_available {
-        services_door.send(b"b");
-        services_door.wait_for("Banking and Accounts");
+        services_door.send_to_menu(b"b", "Banking and Accounts");
         services_door.wait_for("Cr350,000");
         services_door.send(b"b");
         services_door.wait_for("Purchase one year of destination assistance");
-        services_door.send(b"y");
-        services_door.wait_for_occurrences("Destination aid:", 2);
+        services_door.send_to_menu(b"y", "Destination aid:");
         services_door.wait_for("Day 365");
-        services_door.send(b"q");
-        services_door.wait_for_occurrences("Docked Operations", 2);
-        services_door.wait_for_occurrences("Return to BBS", 2);
+        services_door.send_to_menu(b"q", "Docked Operations");
     }
-    services_door.send_through_page_prompt(
-        b"u",
-        "Captain's Command Console",
-        "Captain's Command Console",
-    );
+    services_door.send_to_menu(b"u", "Captain's Command Console");
     services_door.wait_for("(C/K/M/O/R/S/T) Manager");
-    services_door.send(b"c");
-    services_door.wait_for("Crew Management -");
+    services_door.send_to_menu(b"c", "Crew Management -");
     services_door.wait_for("Complement:");
     services_door.wait_for("managed appointments");
-    services_door.send(b"q");
-    services_door.wait_for_occurrences("Captain's Command Console", 2);
+    services_door.send_to_menu(b"q", "Captain's Command Console");
     services_door.wait_for_occurrences("(C/K/M/O/R/S/T) Manager", 2);
-    services_door.send(b"s");
-    services_door.wait_for("Ship Status -");
+    services_door.send_to_menu(b"s", "Ship Status -");
     services_door.wait_for("Next automatic upkeep:");
     services_door.wait_for("no yard order is needed");
     services_door.wait_for("operating account funded");
     services_door.wait_for("uncovered cycle");
     services_door.wait_for("damage a subsystem");
-    services_door.send_through_page_prompt(b"s", "Subsystem Status -", "Subsystem Status -");
+    services_door.send_to_menu(b"s", "Subsystem Status -");
     services_door.wait_for("Ship-wide upkeep: current");
     services_door.wait_for("Paid through:");
     services_door.wait_for("Next upkeep:");
@@ -1646,15 +1635,11 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     services_door.wait_for_occurrences("Scheduled charge:", 2);
     services_door.wait_for("age and use records");
     services_door.wait_for("upkeep applies to the whole ship");
-    services_door.send(b"q");
-    services_door.wait_for_occurrences("Subsystem Status -", 2);
-    services_door.send(b"q");
-    services_door.wait_for_occurrences("Ship Status -", 2);
-    services_door.send(b"q");
-    services_door.wait_for_occurrences("Captain's Command Console", 3);
+    services_door.send_to_menu(b"q", "Subsystem Status -");
+    services_door.send_to_menu(b"q", "Ship Status -");
+    services_door.send_to_menu(b"q", "Captain's Command Console");
     services_door.wait_for_occurrences("(C/K/M/O/R/S/T) Manager", 3);
-    services_door.send(b"m");
-    services_door.wait_for("Message Management");
+    services_door.send_to_menu(b"m", "Message Management");
     services_door.send_through_page_prompt(b"c", "Recipient", "Recipient");
     services_door.send(b"c");
     services_door.wait_for("BBS number");
@@ -1669,16 +1654,10 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     services_door.send(b"Retain one ton for bonded freight.\r");
     services_door.wait_for("accepted for physical");
     services_door.wait_for("(Enter) Previous menu");
-    services_door.send(b"\r");
-    services_door.wait_for_occurrences("Message Management", 2);
-    services_door.wait_for_occurrences("(Q) Console", 2);
-    services_door.send_through_page_prompt(
-        b"q",
-        "Captain's Command Console",
-        "Captain's Command Console",
-    );
+    services_door.send_to_menu(b"\r", "Message Management");
+    services_door.send_to_menu(b"q", "Captain's Command Console");
     services_door.wait_for_occurrences("(C/K/M/O/R/S/T) Manager", 4);
-    services_door.send(b"x");
+    services_door.send_to_menu(b"x", "Docked Operations");
     let final_docked_occurrence = if banking_available { 3 } else { 2 };
     services_door.wait_for_occurrences("Docked Operations", final_docked_occurrence);
     services_door.wait_for_occurrences("Return to BBS", final_docked_occurrence);
@@ -1801,29 +1780,24 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     refit_door.send(b"\r");
     let (refit_entry, _) = refit_door.wait_for_any(&["Docked Operations", "Arrival Packet -"]);
     if refit_entry == 1 {
+        refit_door.wait_for("Stop review");
         refit_door.send(b"q");
         refit_door.wait_for("Arrival Communications Receipt");
+        refit_door.wait_for("(Enter) Continue");
         refit_door.send(b"\r");
-        refit_door.wait_for("Docked Operations");
+        refit_door.wait_for("Return to BBS");
+    } else {
+        refit_door.wait_for("Return to BBS");
     }
-    refit_door.send_through_page_prompt(
-        b"u",
-        "Captain's Command Console",
-        "Captain's Command Console",
-    );
-    refit_door.send(b"s");
-    refit_door.wait_for("Ship Status -");
-    refit_door.send(b"r");
-    refit_door.wait_for("Refit Quotation -");
+    refit_door.send_to_menu(b"u", "Captain's Command Console");
+    refit_door.send_to_menu(b"s", "Ship Status -");
+    refit_door.send_to_menu(b"r", "Refit Quotation -");
     refit_door.wait_for("Operating account charge:");
     refit_door.wait_for("Destroyed installations not replaced:");
     refit_door.wait_for("Authorize refit");
-    refit_door.send(b"q");
-    refit_door.wait_for_occurrences("Ship Status -", 2);
-    refit_door.send(b"r");
-    refit_door.wait_for_occurrences("Refit Quotation -", 2);
-    refit_door.send(b"r");
-    refit_door.wait_for_occurrences("Ship Status -", 3);
+    refit_door.send_to_menu(b"q", "Ship Status -");
+    refit_door.send_to_menu(b"r", "Refit Quotation -");
+    refit_door.send_to_menu(b"r", "Ship Status -");
     refit_door.wait_for("Active operation: Refit");
     refit_door.wait_for("Completes: Day");
     refit_door.wait_for("Time remaining:");
@@ -1897,19 +1871,14 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         );
         let mut combat_door = DoorSession::spawn(&door, combat_root.path(), "iso646", "40");
         combat_door.send(b"\r");
-        combat_door.wait_for("Docked Operations");
-        combat_door.send_through_page_prompt(
-            b"u",
-            "Captain's Command Console",
-            "Captain's Command Console",
-        );
+        combat_door.wait_for("Return to BBS");
+        combat_door.send_to_menu(b"u", "Captain's Command Console");
         combat_door.wait_for("(C/K/M/O/R/S/T) Manager");
         combat_door.send(b"o");
         combat_door.wait_for_any_without_paging(&["Enter/Sp) Continue (C)ont (Q) Menu"]);
         combat_door.send(b"q");
         combat_door.wait_for_occurrences("Accept order or file report", 1);
-        combat_door.send(b"q");
-        combat_door.wait_for_occurrences("Captain's Command Console", 2);
+        combat_door.send_to_menu(b"q", "Captain's Command Console");
         combat_door.send(b"o");
         combat_door.wait_for_occurrences("Accept order or file report", 2);
         combat_door.send(b"m");
@@ -2001,58 +1970,32 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     // refined nor bulk unrefined fuel; Milestone 3 owns frontier alternatives.
     let mut voyage_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     voyage_door.send(b"\r");
-    voyage_door.wait_for("Docked Operations");
-    voyage_door.send_through_page_prompt(
-        b"u",
-        "Captain's Command Console",
-        "Captain's Command Console",
-    );
-    voyage_door.send(b"p");
-    voyage_door.wait_for("Player Preferences");
-    voyage_door.send_through_page_prompt(b"r", "Taking the watch", "Taking the watch");
-    voyage_door.send_through_page_prompt(
-        b"q",
-        "Captain's Command Console",
-        "Captain's Command Console",
-    );
-    voyage_door.send_through_page_prompt(b"x", "Docked Operations", "Docked Operations");
-    voyage_door.send_through_page_prompt(b"c", "Find market", "Cargo Exchange -");
+    voyage_door.wait_for("Return to BBS");
+    voyage_door.send_to_menu(b"u", "Captain's Command Console");
+    voyage_door.send_to_menu(b"p", "Player Preferences");
+    voyage_door.send_to_menu(b"r", "Taking the watch");
+    voyage_door.send_to_menu(b"q", "Captain's Command Console");
+    voyage_door.send_to_menu(b"x", "Docked Operations");
+    voyage_door.send_to_menu(b"c", "Cargo Exchange -");
     voyage_door.send_through_page_prompt(b"b", "Offer (Q to cancel", "Offer (Q to cancel");
     voyage_door.send(b"1\r");
     voyage_door.wait_for("Tonnes (maximum");
-    voyage_door.send_through_page_prompt(b"1\r", "Find market", "Cargo Exchange -");
-    voyage_door.send_through_page_prompt(b"q", "Docked Operations", "Docked Operations");
-    voyage_door.send_through_page_prompt(
-        b"d",
-        "Flight Plan\r\n===========",
-        "Flight Plan\r\n===========",
-    );
-    voyage_door.send_through_page_prompt(b"a", "Add Charted Leg", "Add Charted Leg");
+    voyage_door.send_to_menu(b"1\r", "Cargo Exchange -");
+    voyage_door.send_to_menu(b"q", "Docked Operations");
+    voyage_door.send_to_menu(b"d", "Flight Plan\r\n===========");
+    voyage_door.send_to_menu(b"a", "Add Charted Leg");
     voyage_door.send(b"1");
     voyage_door.wait_for("Buy fresh course tape");
     voyage_door.send(b"o");
     voyage_door.wait_for("identifies a bad plot");
-    voyage_door.send_through_page_prompt(
-        b"r",
-        "Flight Plan\r\n===========",
-        "Flight Plan\r\n===========",
-    );
-    voyage_door.send_through_page_prompt(b"p", "File this plan", "Flight Plan Preview");
+    voyage_door.send_to_menu(b"r", "Flight Plan\r\n===========");
+    voyage_door.send_to_menu(b"p", "Flight Plan Preview");
     voyage_door.send_through_page_prompt(b"f", "Previous menu", "Departure authorized.");
     voyage_door.send_through_page_prompt(b"\r", "Voyage Status -", "Voyage Status -");
-    voyage_door.send_through_page_prompt(
-        b"\r",
-        "Captain's Command Console",
-        "Captain's Command Console",
-    );
-    voyage_door.send(b"p");
-    voyage_door.wait_for("Player Preferences");
+    voyage_door.send_to_menu(b"\r", "Captain's Command Console");
+    voyage_door.send_to_menu(b"p", "Player Preferences");
     voyage_door.wait_for("First Watch:  Complete");
-    voyage_door.send_through_page_prompt(
-        b"q",
-        "Captain's Command Console",
-        "Captain's Command Console",
-    );
+    voyage_door.send_to_menu(b"q", "Captain's Command Console");
     voyage_door.return_to_bbs();
     let voyage_screen = voyage_door.finish();
     for expected in [
