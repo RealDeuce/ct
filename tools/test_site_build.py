@@ -2428,6 +2428,41 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-029-myrmidon.webp",
         )
 
+    def test_scheherazade_exposes_armed_executive_yacht_fit(self) -> None:
+        scheherazade = self.records[37]
+        self.assertEqual(scheherazade["family_id"], 37)
+        self.assertEqual(scheherazade["tons"], 100)
+        self.assertEqual(scheherazade["configuration"], "Streamlined")
+        self.assertEqual(scheherazade["tech_level"], 12)
+        self.assertFalse(scheherazade["standard_design"])
+        self.assertEqual(scheherazade["electronics"], "Basic Civilian")
+        self.assertEqual(scheherazade["armor_points"], 4)
+        self.assertEqual(scheherazade["control"], "Standard bridge")
+        self.assertEqual(scheherazade["bridge_options"], ["Holographic Controls"])
+        self.assertEqual(scheherazade["jump_drive"], "A")
+        self.assertEqual(scheherazade["maneuver_drive"], "B")
+        self.assertEqual(scheherazade["power_plant"], "B")
+        self.assertEqual(scheherazade["assertions"]["jump_rating"], 2)
+        self.assertEqual(scheherazade["assertions"]["thrust_g"], 4)
+        self.assertEqual(scheherazade["endurance"], 2)
+        self.assertEqual(scheherazade["cargo"], "0.5 tons")
+        self.assertEqual(scheherazade["crew"], 6)
+        self.assertIn("4 × Stateroom", scheherazade["equipment"])
+        self.assertIn("2 × High Class Stateroom", scheherazade["equipment"])
+        self.assertIn("Repair Drones", scheherazade["equipment"])
+        self.assertEqual(
+            scheherazade["armament"],
+            "Double Turret: Beam Laser · Beam Laser · Point Defense Node "
+            "Mount: Point Defense Laser",
+        )
+        self.assertEqual(scheherazade["assertions"]["point_defense_nodes"], 1)
+        self.assertEqual(scheherazade["ammunition"], "None carried")
+        self.assertEqual(scheherazade["length_m"], 36.0)
+        self.assertEqual(
+            scheherazade["art_path"],
+            "assets/ships/ship-037-scheherazade.webp",
+        )
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

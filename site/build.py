@@ -246,6 +246,13 @@ PUBLISHED_SHIP_ART = {
         "eighty-ton missile boat with one active launch bank and one armored blank.",
         29.0,
     ),
+    37: (
+        "assets/ships/ship-037-scheherazade.webp",
+        "Painted three-quarter view of Scheherazade, an ivory, royal-blue, "
+        "vermilion, and chrome hundred-ton executive yacht with a side double "
+        "beam turret and lower point-defense laser.",
+        36.0,
+    ),
     38: (
         "assets/ships/ship-038-marco-polo.webp",
         "Painted three-quarter view of Marco Polo, an avocado and ochre two-hundred-ton "
