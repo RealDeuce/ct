@@ -558,6 +558,41 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("2 × Triple Turret: Missile Rack", close_structure["armament"])
         self.assertIn("2 × Triple Turret: Sandcaster", close_structure["armament"])
 
+    def test_duncan_command_refit_preserves_the_fleet_escort_chassis(self) -> None:
+        duncan, duncan_ii = (self.records[catalog_id] for catalog_id in (100, 102))
+        for record in (duncan, duncan_ii):
+            self.assertEqual(record["family_id"], 100)
+            self.assertEqual(record["tons"], 1000)
+            self.assertEqual(record["configuration"], "Standard")
+            self.assertEqual(record["electronics"], "Advanced")
+            self.assertEqual(
+                record["bridge_options"],
+                ["Hardened Bridge", "Holographic Controls"],
+            )
+            self.assertEqual(record["jump_drive"], "K")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["maneuver_drive"], "P")
+            self.assertEqual(record["power_plant"], "P")
+            self.assertEqual(record["endurance"], 3)
+            self.assertEqual(record["armor_points"], 8)
+            self.assertEqual(record["cargo"], "81.5 tons")
+            self.assertEqual(record["length_m"], 76.0)
+            self.assertIn("Fuel Scoop", record["equipment"])
+            self.assertIn("Full Hangar (50 tons contained)", record["equipment"])
+            self.assertIn("Carried Craft: Jason (ship-17)", record["equipment"])
+            self.assertIn("2 × Triple Turret: Particle Beam", record["armament"])
+            self.assertIn("2 × Triple Turret: Beam Laser", record["armament"])
+            self.assertIn("2 × Triple Turret: Sandcaster", record["armament"])
+            self.assertIn("2 × Meson Gun Bay", record["armament"])
+            self.assertIn("2 × Particle Beam Bay", record["armament"])
+            self.assertIn("10 × Point Defense Node Mount", record["armament"])
+            self.assertEqual(record["unused_fire_control_stations"], 0)
+
+        self.assertEqual(duncan["art_path"], "assets/ships/ship-100-duncan.webp")
+        self.assertEqual(
+            duncan_ii["art_path"], "assets/ships/ship-102-duncan-ii.webp"
+        )
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

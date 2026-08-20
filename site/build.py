@@ -420,11 +420,23 @@ PUBLISHED_SHIP_ART = {
         "distributed destroyer with seven triple turrets and eight barbettes.",
         96.0,
     ),
+    100: (
+        "assets/ships/ship-100-duncan.webp",
+        "Painted three-quarter view of Duncan, a navy thousand-ton armored "
+        "fleet escort with six triple turrets and four weapon bays.",
+        76.0,
+    ),
     101: (
         "assets/ships/family-097-baltic-logistics.webp",
         "Painted three-quarter view of Novgorod, a navy two-thousand-ton fleet "
         "logistics ship with ten replenishment stations and five mixed turrets.",
         104.0,
+    ),
+    102: (
+        "assets/ships/ship-102-duncan-ii.webp",
+        "Painted three-quarter view of Duncan II, a navy thousand-ton armored "
+        "command escort with a protected sensor brow and four weapon bays.",
+        76.0,
     ),
     107: (
         "assets/ships/ship-107-corbett.webp",
