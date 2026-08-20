@@ -1945,6 +1945,33 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-200-thermopylae.webp",
         )
 
+    def test_lighter_exposes_unarmed_five_gravity_cargo_pinnace(self) -> None:
+        lighter = self.records[201]
+
+        self.assertEqual(lighter["family_id"], 201)
+        self.assertEqual(lighter["tons"], 40)
+        self.assertEqual(lighter["configuration"], "Standard")
+        self.assertEqual(lighter["electronics"], "Standard")
+        self.assertTrue(lighter["standard_design"])
+        self.assertEqual(lighter["armor_points"], 0)
+        self.assertEqual(lighter["control"], "One Person Control Cabin")
+        self.assertEqual(lighter["additional_passengers"], 0)
+        self.assertEqual(lighter["maneuver_drive"], "sK")
+        self.assertEqual(lighter["power_plant"], "sL")
+        self.assertEqual(lighter["endurance"], 1)
+        self.assertEqual(lighter["cargo"], "25 tons")
+        self.assertEqual(lighter["external_load"], "0 tons")
+        self.assertEqual(lighter["crew"], 1)
+        self.assertIn("Priority cargo module", lighter["equipment"])
+        self.assertEqual(lighter["armament"], "None installed")
+        self.assertEqual(lighter["ammunition"], "None carried")
+        self.assertEqual(lighter["unused_fire_control_stations"], 1)
+        self.assertEqual(lighter["length_m"], 20.5)
+        self.assertEqual(
+            lighter["art_path"],
+            "assets/ships/ship-201-lighter.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

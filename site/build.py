@@ -874,6 +874,12 @@ PUBLISHED_SHIP_ART = {
         "signal-red ten-ton fleet-defense fighter with one fixed pulse laser.",
         11.8,
     ),
+    201: (
+        "assets/ships/ship-201-lighter.webp",
+        "Painted three-quarter view of Lighter, an ivory, royal-blue, and "
+        "vermilion forty-ton unarmed cargo pinnace with a five-gravity stern.",
+        20.5,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
