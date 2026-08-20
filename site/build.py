@@ -420,6 +420,12 @@ PUBLISHED_SHIP_ART = {
         "logistics ship with ten replenishment stations and five mixed turrets.",
         104.0,
     ),
+    124: (
+        "assets/ships/ship-124-archimedes.webp",
+        "Painted three-quarter view of Archimedes, an avocado ten-ton vacuum work "
+        "pod with a four-pane cockpit, passenger cabin, and cargo hatch.",
+        8.4,
+    ),
     152: (
         "assets/ships/family-080-ithaca-external.webp",
         "Painted three-quarter view of Ithaca, an ivory and blue eight-hundred-ton "

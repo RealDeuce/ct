@@ -516,6 +516,24 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("5 × Fuel Processor", visby["equipment"])
         self.assertEqual(visby["cargo"], "1,122 tons")
 
+    def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
+        archimedes = self.records[124]
+        self.assertEqual(archimedes["family_id"], 124)
+        self.assertEqual(archimedes["tons"], 10)
+        self.assertEqual(archimedes["configuration"], "Standard")
+        self.assertEqual(archimedes["hull_options"], ["Small Craft Radiation Shielding"])
+        self.assertEqual(archimedes["control"], "Two Person Cockpit")
+        self.assertEqual(archimedes["additional_passengers"], 0)
+        self.assertEqual(archimedes["maneuver_drive"], "sA")
+        self.assertEqual(archimedes["power_plant"], "sA")
+        self.assertEqual(archimedes["endurance"], 1)
+        self.assertEqual(archimedes["cargo"], "1.9 tons")
+        self.assertIn("4 passenger seats", archimedes["equipment"])
+        self.assertEqual(archimedes["armament"], "None installed")
+        self.assertIsNone(archimedes["jump_drive"])
+        self.assertEqual(archimedes["airlocks"], 1)
+        self.assertEqual(archimedes["length_m"], 8.4)
+
 
 if __name__ == "__main__":
     unittest.main()
