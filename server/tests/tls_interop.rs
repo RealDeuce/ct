@@ -563,7 +563,7 @@ fn settle_pending_arrival_encounter_with_engine(
                 .unwrap();
             *request_id += 1;
         }
-        advance_encounter_until_progress(&engine, identity, &before);
+        advance_encounter_until_progress(engine, identity, &before);
         let after = engine.pending_encounter(identity).unwrap();
         assert_ne!(
             after.as_ref(),
