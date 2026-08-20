@@ -1452,6 +1452,53 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-182-silk-road.webp",
         )
 
+    def test_zheng_he_exposes_patrol_battery_and_grapnel_hangar(self) -> None:
+        zheng_he = self.records[183]
+
+        self.assertEqual(zheng_he["family_id"], 183)
+        self.assertEqual(zheng_he["tons"], 400)
+        self.assertEqual(zheng_he["configuration"], "Standard")
+        self.assertEqual(zheng_he["electronics"], "Advanced")
+        self.assertEqual(
+            zheng_he["bridge_options"],
+            ["Hardened Bridge", "Holographic Controls"],
+        )
+        self.assertEqual(zheng_he["armor_points"], 4)
+        self.assertEqual(zheng_he["jump_drive"], "D")
+        self.assertEqual(zheng_he["jump_distance"], 2)
+        self.assertEqual(zheng_he["jump_count"], 1)
+        self.assertEqual(zheng_he["maneuver_drive"], "F")
+        self.assertEqual(zheng_he["power_plant"], "F")
+        self.assertEqual(zheng_he["endurance"], 4)
+        self.assertEqual(zheng_he["cargo"], "5 tons")
+        self.assertIn("Fuel Scoop", zheng_he["equipment"])
+        self.assertIn("5 × Fuel Processor", zheng_he["equipment"])
+        self.assertIn("Standard Hangar (30 tons contained)", zheng_he["equipment"])
+        self.assertIn("Carried Craft: Grapnel (ship-211)", zheng_he["equipment"])
+        self.assertIn(
+            "Triple Turret: Beam Laser · Beam Laser · Sandcaster",
+            zheng_he["armament"],
+        )
+        self.assertIn("2 × Particle Beam Barbette", zheng_he["armament"])
+        self.assertIn("Missile Bank", zheng_he["armament"])
+        self.assertIn(
+            "2 × Point Defense Node Mount: Point Defense Minigun",
+            zheng_he["armament"],
+        )
+        self.assertIn(
+            "2 × Point Defense Node Mount: Point Defense Laser",
+            zheng_he["armament"],
+        )
+        self.assertEqual(
+            zheng_he["ammunition"],
+            "120 × Standard Missiles · 40 × Sandcaster Canisters",
+        )
+        self.assertEqual(zheng_he["length_m"], 62.0)
+        self.assertEqual(
+            zheng_he["art_path"],
+            "assets/ships/ship-183-zheng-he.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

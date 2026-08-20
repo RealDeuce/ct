@@ -883,6 +883,13 @@ PUBLISHED_SHIP_ART = {
         "distributed beam turrets, and capped spare hardpoints.",
         150.0,
     ),
+    183: (
+        "assets/ships/ship-183-zheng-he.webp",
+        "Painted three-quarter view of Zheng He, an emerald and cream four-"
+        "hundred-ton patrol vessel with a 24-cell missile bank, particle "
+        "barbette, and closed boarding-boat hangar.",
+        62.0,
+    ),
     187: (
         "assets/ships/family-018-wayfarer-cargo.webp",
         "Painted three-quarter view of Wayfarer Cargo, an ivory, vermilion, "
