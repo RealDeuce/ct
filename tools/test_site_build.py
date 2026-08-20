@@ -100,6 +100,32 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(apollo["length_m"], 12.8)
         self.assertEqual(apollo["art_path"], "assets/ships/ship-014-apollo.webp")
 
+    def test_horatius_exposes_unarmored_laser_interceptor_fit(self) -> None:
+        horatius = self.records[16]
+        self.assertEqual(horatius["family_id"], 16)
+        self.assertEqual(horatius["tons"], 10)
+        self.assertEqual(horatius["configuration"], "Streamlined")
+        self.assertEqual(horatius["tech_level"], 11)
+        self.assertFalse(horatius["standard_design"])
+        self.assertEqual(horatius["electronics"], "Basic Military")
+        self.assertEqual(horatius["armor_points"], 0)
+        self.assertEqual(horatius["control"], "One Person Cockpit")
+        self.assertEqual(horatius["additional_passengers"], 0)
+        self.assertEqual(horatius["maneuver_drive"], "sC")
+        self.assertEqual(horatius["power_plant"], "sG")
+        self.assertEqual(horatius["endurance"], 1)
+        self.assertEqual(horatius["cargo"], "0 tons")
+        self.assertEqual(horatius["crew"], 1)
+        self.assertEqual(horatius["airlocks"], 0)
+        self.assertEqual(horatius["armament"], "Single Turret: Beam Laser")
+        self.assertEqual(horatius["ammunition"], "None carried")
+        self.assertIsNone(horatius["jump_drive"])
+        self.assertEqual(horatius["length_m"], 11.4)
+        self.assertEqual(
+            horatius["art_path"],
+            "assets/ships/ship-016-horatius.webp",
+        )
+
     def test_starship_exposes_jump_and_bridge_fields(self) -> None:
         pym = self.records[26]
         self.assertEqual(pym["jump_drive"], "A")

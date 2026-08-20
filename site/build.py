@@ -114,6 +114,12 @@ PUBLISHED_SHIP_ART = {
         "arrowhead fighter with one fixed dorsal beam-laser emitter.",
         12.4,
     ),
+    16: (
+        "assets/ships/ship-016-horatius.webp",
+        "Painted three-quarter view of Horatius, a navy, warm-white, red, and "
+        "aluminum ten-ton tower-shield interceptor with an aft-flank beam turret.",
+        11.4,
+    ),
     17: (
         "assets/ships/ship-017-jason.webp",
         "Painted three-quarter view of Jason, an emerald and cream thirty-ton "
