@@ -2611,6 +2611,40 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-053-challenger.webp",
         )
 
+    def test_argosy_exposes_frontier_merchant_freighter_fit(self) -> None:
+        argosy = self.records[61]
+        self.assertEqual(argosy["family_id"], 61)
+        self.assertEqual(argosy["tons"], 400)
+        self.assertEqual(argosy["configuration"], "Streamlined")
+        self.assertEqual(argosy["tech_level"], 11)
+        self.assertFalse(argosy["standard_design"])
+        self.assertEqual(argosy["electronics"], "Basic Military")
+        self.assertEqual(argosy["armor_points"], 4)
+        self.assertEqual(argosy["control"], "Standard bridge")
+        self.assertEqual(argosy["jump_drive"], "D")
+        self.assertEqual(argosy["maneuver_drive"], "D")
+        self.assertEqual(argosy["power_plant"], "D")
+        self.assertEqual(argosy["jump_distance"], 2)
+        self.assertEqual(argosy["thrust_g"], 2)
+        self.assertEqual(argosy["endurance"], 2)
+        self.assertEqual(argosy["cargo"], "182 tons")
+        self.assertEqual(argosy["crew"], 5)
+        self.assertIn("7 × Stateroom", argosy["equipment"])
+        self.assertIn("2 × Fuel Processor", argosy["equipment"])
+        self.assertIn("10 × Low Berth", argosy["equipment"])
+        self.assertIn("Medical Bay (1 bed)", argosy["equipment"])
+        self.assertEqual(
+            argosy["armament"],
+            "Triple Turret: Beam Laser · Missile Rack · Sandcaster",
+        )
+        self.assertEqual(
+            argosy["ammunition"],
+            "12 × Standard Missiles · 20 × Sandcaster Canisters",
+        )
+        self.assertEqual(argosy["unused_fire_control_stations"], 3)
+        self.assertEqual(argosy["length_m"], 68.0)
+        self.assertEqual(argosy["art_path"], "assets/ships/ship-061-argosy.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

@@ -384,6 +384,13 @@ PUBLISHED_SHIP_ART = {
         "three-hundred-ton bulk freighter with twelve closed cargo panels.",
         50.0,
     ),
+    61: (
+        "assets/ships/ship-061-argosy.webp",
+        "Painted three-quarter view of Argosy, a sunflower, cobalt, orange, and "
+        "chrome four-hundred-ton cargo whale with a mixed flank turret and an "
+        "enormous freight shutter.",
+        68.0,
+    ),
     62: (
         "assets/ships/family-054-stahlstadt.webp",
         "Painted three-quarter view of Stahlstadt, an ultramarine and violet "
