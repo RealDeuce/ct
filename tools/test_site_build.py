@@ -2072,6 +2072,43 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(boat["length_m"], 61.0)
         self.assertEqual(boat["art_path"], "assets/ships/ship-205-casemate.webp")
 
+    def test_blackbeard_exposes_raider_and_three_craft_hangar(self) -> None:
+        raider = self.records[206]
+        self.assertEqual(raider["family_id"], 206)
+        self.assertEqual(raider["tons"], 600)
+        self.assertEqual(raider["configuration"], "Standard")
+        self.assertEqual(raider["electronics"], "Basic Civilian")
+        self.assertTrue(raider["standard_design"])
+        self.assertEqual(raider["armor_points"], 8)
+        self.assertEqual(raider["hull_options"], [])
+        self.assertEqual(raider["jump_drive"], "F")
+        self.assertEqual(raider["jump_distance"], 2)
+        self.assertEqual(raider["jump_count"], 1)
+        self.assertEqual(raider["maneuver_drive"], "M")
+        self.assertEqual(raider["power_plant"], "M")
+        self.assertEqual(raider["thrust_g"], 4)
+        self.assertEqual(raider["endurance"], 4)
+        self.assertEqual(raider["cargo"], "55 tons")
+        self.assertEqual(raider["crew"], 24)
+        self.assertIn("4 × Detention Cell", raider["equipment"])
+        self.assertIn("6 × Fuel Processor", raider["equipment"])
+        self.assertIn("Fuel Scoop", raider["equipment"])
+        self.assertIn("Custom Hangar (50 tons contained)", raider["equipment"])
+        self.assertIn(
+            "2 × Carried Craft: Thermopylae (ship-200)",
+            raider["equipment"],
+        )
+        self.assertIn("Carried Craft: Tender (ship-202)", raider["equipment"])
+        self.assertEqual(raider["armament"].count("Triple Turret"), 6)
+        self.assertEqual(raider["armament"].count("Beam Laser"), 18)
+        self.assertEqual(raider["ammunition"], "None carried")
+        self.assertEqual(raider["unused_fire_control_stations"], 0)
+        self.assertEqual(raider["length_m"], 76.0)
+        self.assertEqual(
+            raider["art_path"],
+            "assets/ships/ship-206-blackbeard.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

@@ -904,6 +904,12 @@ PUBLISHED_SHIP_ART = {
         "stainless four-hundred-ton armored system-defense boat.",
         61.0,
     ),
+    206: (
+        "assets/ships/ship-206-blackbeard.webp",
+        "Painted three-quarter view of Blackbeard, an aubergine, vermilion, and "
+        "mustard six-hundred-ton raider with a closed three-craft hangar.",
+        76.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
