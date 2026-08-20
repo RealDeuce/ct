@@ -291,6 +291,13 @@ PUBLISHED_SHIP_ART = {
         "prospecting ship with a cutter hangar and mixed turret.",
         43.0,
     ),
+    44: (
+        "assets/ships/ship-044-phileas.webp",
+        "Painted three-quarter view of Phileas, a sunflower, cobalt, orange, and "
+        "chrome hundred-ton spearcoach courier with a mixed side turret and "
+        "lower point-defense laser.",
+        41.0,
+    ),
     45: (
         "assets/ships/family-045-sinbad.webp",
         "Painted three-quarter view of Sinbad, a sunflower and cobalt two-hundred-ton "

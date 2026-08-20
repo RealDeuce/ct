@@ -2518,6 +2518,40 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(ballista["length_m"], 32.0)
         self.assertEqual(ballista["art_path"], "assets/ships/ship-042-ballista.webp")
 
+    def test_phileas_exposes_fast_armed_courier_fit(self) -> None:
+        phileas = self.records[44]
+        self.assertEqual(phileas["family_id"], 44)
+        self.assertEqual(phileas["tons"], 100)
+        self.assertEqual(phileas["configuration"], "Streamlined")
+        self.assertEqual(phileas["tech_level"], 11)
+        self.assertFalse(phileas["standard_design"])
+        self.assertEqual(phileas["electronics"], "Basic Military")
+        self.assertEqual(phileas["armor_points"], 4)
+        self.assertEqual(phileas["control"], "Standard bridge")
+        self.assertEqual(phileas["bridge_options"], ["Hardened Bridge"])
+        self.assertEqual(phileas["jump_drive"], "A")
+        self.assertEqual(phileas["maneuver_drive"], "C")
+        self.assertEqual(phileas["power_plant"], "C")
+        self.assertEqual(phileas["jump_distance"], 2)
+        self.assertEqual(phileas["endurance"], 2)
+        self.assertEqual(phileas["cargo"], "14 tons")
+        self.assertEqual(phileas["crew"], 4)
+        self.assertIn("3 × Stateroom", phileas["equipment"])
+        self.assertIn("Fuel Processor", phileas["equipment"])
+        self.assertIn("Additional Airlock", phileas["equipment"])
+        self.assertIn("Emergency Low Berth", phileas["equipment"])
+        self.assertEqual(
+            phileas["armament"],
+            "Triple Turret: Missile Rack · Sandcaster · Beam Laser · Point "
+            "Defense Node Mount: Point Defense Laser",
+        )
+        self.assertEqual(
+            phileas["ammunition"],
+            "12 × Standard Missiles · 20 × Sandcaster Canisters",
+        )
+        self.assertEqual(phileas["length_m"], 41.0)
+        self.assertEqual(phileas["art_path"], "assets/ships/ship-044-phileas.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
