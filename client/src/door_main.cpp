@@ -1324,38 +1324,41 @@ void persist_help_level(const ct::HelpLevel level)
 void edit_help_level(ct::HelpLevel* visit_level)
 {
    output().suspend_paging();
-   door_heading("\n\rDefault Help Level\n\r");
-   door_heading("==================\n\r\n\r");
-   door_label("Current default: ");
-   door_identifier("%s\n\r",
-      default_help_level == ct::HelpLevel::Beginner ? "Beginner" : "Expert");
-   door_information(
-      "Beginner help introduces the game concepts behind a screen. Expert help "
-      "is a shorter operational reference.\n\r");
-   const auto default_target = other_help_level(default_help_level);
-   door_option_prompt({
-      default_target == ct::HelpLevel::Beginner ? "[B] Beginner" : "[X] Expert",
-      "[Q/Enter] Keep",
-      "[?] Help"});
    while(true) {
-      const auto key = ::od_get_key(TRUE);
-      if(switches_help_level(key, default_help_level)) {
-         echo_prompt_key(key, false);
-         persist_help_level(default_target);
-         if(visit_level != nullptr) {
-            *visit_level = default_help_level;
+      door_heading("\n\rDefault Help Level\n\r");
+      door_heading("==================\n\r\n\r");
+      door_label("Current default: ");
+      door_identifier("%s\n\r",
+         default_help_level == ct::HelpLevel::Beginner ? "Beginner" : "Expert");
+      door_information(
+         "Beginner help introduces the game concepts behind a screen. Expert help "
+         "is a shorter operational reference.\n\r");
+      const auto default_target = other_help_level(default_help_level);
+      door_option_prompt({
+         default_target == ct::HelpLevel::Beginner ? "[B] Beginner" : "[X] Expert",
+         "[Q/Enter] Keep",
+         "[?] Help"});
+      while(true) {
+         const auto key = ::od_get_key(TRUE);
+         if(switches_help_level(key, default_help_level)) {
+            echo_prompt_key(key, false);
+            persist_help_level(other_help_level(default_help_level));
+            if(visit_level != nullptr) {
+               *visit_level = default_help_level;
+            }
+            return;
          }
-         return;
-      }
-      if(key == '?') {
-         echo_prompt_key(key, true);
-         const HelpScope help_scope(ct::DoorHelpTopic::PlayerPreferences);
-         show_context_help();
-         continue;
-      }
-      if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
-         echo_prompt_key(key, false);
-         return;
+         if(key == '?') {
+            echo_prompt_key(key, false);
+            const HelpScope help_scope(ct::DoorHelpTopic::PlayerPreferences);
+            show_context_help();
+            od_clr_scr();
+            break;
+         }
+         if(key == '\r' || key == '\n' || key == 'q' || key == 'Q') {
+            echo_prompt_key(key, false);
+            return;
+         }
       }
    }
 }
