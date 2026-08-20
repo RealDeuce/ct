@@ -516,6 +516,12 @@ PUBLISHED_SHIP_ART = {
         "pod with a four-pane cockpit, passenger cabin, and cargo hatch.",
         8.4,
     ),
+    125: (
+        "assets/ships/ship-125-nausicaa.webp",
+        "Painted three-quarter view of Nausicaa, an ivory, royal-blue, and "
+        "vermilion thirty-ton cargo ship's boat with a broad freight shutter.",
+        19.5,
+    ),
     152: (
         "assets/ships/family-080-ithaca-external.webp",
         "Painted three-quarter view of Ithaca, an ivory and blue eight-hundred-ton "

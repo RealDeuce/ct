@@ -876,6 +876,34 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(cradle["length_m"], 54.0)
         self.assertEqual(cradle["art_path"], "assets/ships/ship-123-cradle.webp")
 
+    def test_nausicaa_sets_leviathan_boat_and_hangar_clearance(self) -> None:
+        nausicaa = self.records[125]
+        self.assertEqual(nausicaa["family_id"], 125)
+        self.assertEqual(nausicaa["tons"], 30)
+        self.assertEqual(nausicaa["configuration"], "Streamlined")
+        self.assertEqual(nausicaa["electronics"], "Standard")
+        self.assertEqual(
+            nausicaa["hull_options"],
+            ["Small Craft Radiation Shielding"],
+        )
+        self.assertEqual(nausicaa["armor_points"], 1)
+        self.assertEqual(nausicaa["control"], "Two Person Cockpit")
+        self.assertEqual(nausicaa["additional_passengers"], 0)
+        self.assertEqual(nausicaa["airlocks"], 1)
+        self.assertEqual(nausicaa["maneuver_drive"], "sE")
+        self.assertEqual(nausicaa["power_plant"], "sE")
+        self.assertEqual(nausicaa["endurance"], 2)
+        self.assertEqual(nausicaa["cargo"], "16.75 tons")
+        self.assertIn("4 passenger seats", nausicaa["equipment"])
+        self.assertEqual(nausicaa["armament"], "None installed")
+        self.assertEqual(nausicaa["ammunition"], "None carried")
+        self.assertIsNone(nausicaa["jump_drive"])
+        self.assertEqual(nausicaa["length_m"], 19.5)
+        self.assertEqual(
+            nausicaa["art_path"],
+            "assets/ships/ship-125-nausicaa.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)
