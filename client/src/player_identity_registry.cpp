@@ -10,12 +10,14 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #ifdef _WIN32
+#include <aclapi.h>
 #include <windows.h>
 #include <sddl.h>
 #else
@@ -365,6 +367,20 @@ public:
    }
    LocalMemory(const LocalMemory&) = delete;
    LocalMemory& operator=(const LocalMemory&) = delete;
+   LocalMemory(LocalMemory&& other) noexcept
+      : descriptor_(other.descriptor_) {
+      other.descriptor_ = nullptr;
+   }
+   LocalMemory& operator=(LocalMemory&& other) noexcept {
+      if(this != &other) {
+         if(descriptor_) {
+            LocalFree(descriptor_);
+         }
+         descriptor_ = other.descriptor_;
+         other.descriptor_ = nullptr;
+      }
+      return *this;
+   }
    PSECURITY_DESCRIPTOR get() const {
       return descriptor_;
    }
@@ -373,7 +389,90 @@ private:
    PSECURITY_DESCRIPTOR descriptor_;
 };
 
-LocalMemory secure_descriptor() {
+class Handle final {
+public:
+   explicit Handle(HANDLE handle) : handle_(handle) {}
+   ~Handle() {
+      if(handle_ != nullptr && handle_ != INVALID_HANDLE_VALUE) {
+         CloseHandle(handle_);
+      }
+   }
+   Handle(const Handle&) = delete;
+   Handle& operator=(const Handle&) = delete;
+   Handle(Handle&& other) noexcept : handle_(other.handle_) {
+      other.handle_ = nullptr;
+   }
+   Handle& operator=(Handle&& other) noexcept {
+      if(this != &other) {
+         if(handle_ != nullptr && handle_ != INVALID_HANDLE_VALUE) {
+            CloseHandle(handle_);
+         }
+         handle_ = other.handle_;
+         other.handle_ = nullptr;
+      }
+      return *this;
+   }
+   HANDLE get() const {
+      return handle_;
+   }
+
+private:
+   HANDLE handle_;
+};
+
+struct SecuritySnapshot {
+   LocalMemory descriptor;
+   PSID owner;
+   PSID group;
+   PACL dacl;
+};
+
+void validate_security_snapshot(const SecuritySnapshot& snapshot,
+                                const char* description) {
+   if(snapshot.owner == nullptr || !IsValidSid(snapshot.owner) ||
+      snapshot.group == nullptr || !IsValidSid(snapshot.group) ||
+      snapshot.dacl == nullptr || !IsValidAcl(snapshot.dacl)) {
+      throw std::runtime_error(
+         std::string(description) + " has an invalid security descriptor");
+   }
+   SECURITY_DESCRIPTOR_CONTROL control = 0;
+   DWORD revision = 0;
+   if(GetSecurityDescriptorControl(
+         snapshot.descriptor.get(), &control, &revision) == 0) {
+      throw windows_error(std::string(description) + " security inspection");
+   }
+   if((control & SE_DACL_PROTECTED) == 0) {
+      throw std::runtime_error(
+         std::string(description) + " does not have a protected DACL");
+   }
+}
+
+SecuritySnapshot inspect_security(const HANDLE handle,
+                                  const char* description) {
+   PSECURITY_DESCRIPTOR descriptor = nullptr;
+   PSID owner = nullptr;
+   PSID group = nullptr;
+   PACL dacl = nullptr;
+   const auto result = GetSecurityInfo(
+      handle, SE_FILE_OBJECT,
+      OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION |
+         DACL_SECURITY_INFORMATION,
+      &owner, &group, &dacl, nullptr, &descriptor);
+   if(result != ERROR_SUCCESS) {
+      SetLastError(result);
+      throw windows_error(std::string(description) + " security inspection");
+   }
+   SecuritySnapshot snapshot{
+      .descriptor = LocalMemory(descriptor),
+      .owner = owner,
+      .group = group,
+      .dacl = dacl,
+   };
+   validate_security_snapshot(snapshot, description);
+   return snapshot;
+}
+
+LocalMemory protected_dacl() {
    PSECURITY_DESCRIPTOR descriptor = nullptr;
    if(ConvertStringSecurityDescriptorToSecurityDescriptorW(
          L"D:P(A;;FA;;;OW)(A;;FA;;;SY)(A;;FA;;;BA)",
@@ -383,23 +482,116 @@ LocalMemory secure_descriptor() {
    return LocalMemory(descriptor);
 }
 
-class Handle final {
+SecuritySnapshot initial_file_security() {
+   HANDLE token_handle = nullptr;
+   if(OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token_handle) == 0) {
+      throw windows_error("identity registry process-token open");
+   }
+   Handle token(token_handle);
+   DWORD size = 0;
+   (void)GetTokenInformation(token.get(), TokenUser, nullptr, 0, &size);
+   if(size == 0 || GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+      throw windows_error("identity registry user lookup");
+   }
+   std::vector<uint8_t> buffer(size);
+   if(GetTokenInformation(
+         token.get(), TokenUser, buffer.data(), size, &size) == 0) {
+      throw windows_error("identity registry user lookup");
+   }
+   const auto user = reinterpret_cast<TOKEN_USER*>(buffer.data());
+   LPWSTR sid_text = nullptr;
+   if(ConvertSidToStringSidW(user->User.Sid, &sid_text) == 0) {
+      throw windows_error("identity registry user conversion");
+   }
+   const std::wstring sddl =
+      L"O:" + std::wstring(sid_text) + L"G:" + std::wstring(sid_text) +
+      L"D:P(A;;FA;;;OW)(A;;FA;;;SY)(A;;FA;;;BA)";
+   LocalFree(sid_text);
+   PSECURITY_DESCRIPTOR descriptor = nullptr;
+   if(ConvertStringSecurityDescriptorToSecurityDescriptorW(
+         sddl.c_str(), SDDL_REVISION_1, &descriptor, nullptr) == 0) {
+      throw windows_error("identity registry security descriptor creation");
+   }
+   PSID owner = nullptr;
+   PSID group = nullptr;
+   PACL dacl = nullptr;
+   BOOL defaulted = FALSE;
+   BOOL present = FALSE;
+   if(GetSecurityDescriptorOwner(descriptor, &owner, &defaulted) == 0 ||
+      GetSecurityDescriptorGroup(descriptor, &group, &defaulted) == 0 ||
+      GetSecurityDescriptorDacl(descriptor, &present, &dacl, &defaulted) == 0 ||
+      present == FALSE) {
+      LocalFree(descriptor);
+      throw windows_error("identity registry security descriptor inspection");
+   }
+   SecuritySnapshot snapshot{
+      .descriptor = LocalMemory(descriptor),
+      .owner = owner,
+      .group = group,
+      .dacl = dacl,
+   };
+   validate_security_snapshot(snapshot, "identity registry");
+   return snapshot;
+}
+
+class RestorePrivilege final {
 public:
-   explicit Handle(HANDLE handle) : handle_(handle) {}
-   ~Handle() {
-      if(handle_ != INVALID_HANDLE_VALUE) {
-         CloseHandle(handle_);
+   RestorePrivilege() {
+      HANDLE token_handle = nullptr;
+      if(OpenProcessToken(
+            GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
+            &token_handle) == 0) {
+         return;
+      }
+      token_ = Handle(token_handle);
+      LUID identifier{};
+      if(LookupPrivilegeValueW(
+            nullptr, L"SeRestorePrivilege", &identifier) == 0) {
+         return;
+      }
+      TOKEN_PRIVILEGES requested{};
+      requested.PrivilegeCount = 1;
+      requested.Privileges[0].Luid = identifier;
+      requested.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+      DWORD previous_size = sizeof(previous_);
+      SetLastError(ERROR_SUCCESS);
+      if(AdjustTokenPrivileges(
+            token_.get(), FALSE, &requested, sizeof(previous_), &previous_,
+            &previous_size) != 0 && GetLastError() == ERROR_SUCCESS) {
+         enabled_ = true;
       }
    }
-   Handle(const Handle&) = delete;
-   Handle& operator=(const Handle&) = delete;
-   HANDLE get() const {
-      return handle_;
+   ~RestorePrivilege() {
+      if(enabled_) {
+         (void)AdjustTokenPrivileges(
+            token_.get(), FALSE, &previous_, 0, nullptr, nullptr);
+      }
    }
+   RestorePrivilege(const RestorePrivilege&) = delete;
+   RestorePrivilege& operator=(const RestorePrivilege&) = delete;
 
 private:
-   HANDLE handle_;
+   Handle token_{nullptr};
+   TOKEN_PRIVILEGES previous_{};
+   bool enabled_ = false;
 };
+
+bool same_acl(const PACL left, const PACL right) {
+   return left != nullptr && right != nullptr &&
+          left->AclSize == right->AclSize &&
+          std::memcmp(left, right, left->AclSize) == 0;
+}
+
+void require_matching_security(const HANDLE handle,
+                               const SecuritySnapshot& expected) {
+   const auto actual = inspect_security(handle, "temporary identity registry");
+   if(EqualSid(actual.owner, expected.owner) == 0 ||
+      EqualSid(actual.group, expected.group) == 0 ||
+      !same_acl(actual.dacl, expected.dacl)) {
+      throw std::runtime_error(
+         "temporary identity registry did not preserve owner and DACL");
+   }
+}
 
 void require_regular_handle(const HANDLE handle, const char* description) {
    BY_HANDLE_FILE_INFORMATION information{};
@@ -414,7 +606,7 @@ void require_regular_handle(const HANDLE handle, const char* description) {
 }
 
 void protect_path(const std::wstring& path) {
-   auto descriptor = secure_descriptor();
+   auto descriptor = protected_dacl();
    if(SetFileSecurityW(
          path.c_str(),
          DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
@@ -427,7 +619,7 @@ class LockedFile final {
 public:
    LockedFile(const std::string& path, const bool create)
       : path_(wide_path(path)), lock_path_(wide_path(path + ".lock")) {
-      auto descriptor = secure_descriptor();
+      auto descriptor = protected_dacl();
       SECURITY_ATTRIBUTES attributes{
          .nLength = sizeof(SECURITY_ATTRIBUTES),
          .lpSecurityDescriptor = descriptor.get(),
@@ -469,6 +661,7 @@ public:
       }
       require_regular_handle(input.get(), "identity registry");
       protect_path(path_);
+      security_ = inspect_security(input.get(), "identity registry");
       LARGE_INTEGER size {};
       if(!GetFileSizeEx(input.get(), &size) || size.QuadPart < 0 ||
          size.QuadPart > 128 * 1024 * 1024) {
@@ -484,35 +677,49 @@ public:
    }
    void replace(const std::vector<uint8_t>& bytes) const {
       const auto temporary = path_ + L".new";
-      auto descriptor = secure_descriptor();
+      std::optional<SecuritySnapshot> initial_security;
+      if(!security_) {
+         initial_security = initial_file_security();
+      }
+      const auto& security = security_ ? *security_ : *initial_security;
       SECURITY_ATTRIBUTES attributes{
          .nLength = sizeof(SECURITY_ATTRIBUTES),
-         .lpSecurityDescriptor = descriptor.get(),
+         .lpSecurityDescriptor = security.descriptor.get(),
          .bInheritHandle = FALSE,
       };
-      bool okay = false;
-      {
-         Handle output(CreateFileW(
-            temporary.c_str(), GENERIC_WRITE, 0, &attributes, CREATE_NEW,
-            FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
-         if(output.get() == INVALID_HANDLE_VALUE) {
-            throw windows_error("temporary identity registry creation");
+      try {
+         bool okay = false;
+         {
+            RestorePrivilege restore_privilege;
+            Handle output(CreateFileW(
+               temporary.c_str(), GENERIC_WRITE | READ_CONTROL, 0, &attributes,
+               CREATE_NEW,
+               FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+            if(output.get() == INVALID_HANDLE_VALUE) {
+               throw windows_error("temporary identity registry creation");
+            }
+            require_regular_handle(output.get(), "temporary identity registry");
+            require_matching_security(output.get(), security);
+            DWORD written = 0;
+            okay = WriteFile(output.get(), bytes.data(),
+                             static_cast<DWORD>(bytes.size()), &written, nullptr) &&
+                   written == bytes.size() && FlushFileBuffers(output.get());
          }
-         DWORD written = 0;
-         okay = WriteFile(output.get(), bytes.data(),
-                          static_cast<DWORD>(bytes.size()), &written, nullptr) &&
-                written == bytes.size() && FlushFileBuffers(output.get());
-      }
-      if(!okay || !MoveFileExW(temporary.c_str(), path_.c_str(),
-                               MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+         if(!okay || !MoveFileExW(
+               temporary.c_str(), path_.c_str(),
+               MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            throw windows_error("atomic identity registry replacement");
+         }
+      } catch(...) {
          DeleteFileW(temporary.c_str());
-         throw windows_error("atomic identity registry replacement");
+         throw;
       }
    }
 private:
    std::wstring path_;
    std::wstring lock_path_;
    HANDLE handle_ = INVALID_HANDLE_VALUE;
+   mutable std::optional<SecuritySnapshot> security_;
 };
 
 #endif

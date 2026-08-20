@@ -8,7 +8,10 @@
 #include <stdexcept>
 #include <vector>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <windows.h>
+#include <aclapi.h>
+#else
 #include <sys/stat.h>
 #endif
 
@@ -149,6 +152,80 @@ void corrupt_first_watch_disposition(const std::filesystem::path& path) {
                 static_cast<std::streamsize>(bytes.size()));
 }
 
+#ifdef _WIN32
+
+std::vector<uint8_t> current_user_sid() {
+   HANDLE token = nullptr;
+   check(OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token) != 0);
+   DWORD size = 0;
+   (void)GetTokenInformation(token, TokenUser, nullptr, 0, &size);
+   check(size != 0 && GetLastError() == ERROR_INSUFFICIENT_BUFFER);
+   std::vector<uint8_t> token_buffer(size);
+   check(GetTokenInformation(
+      token, TokenUser, token_buffer.data(), size, &size) != 0);
+   CloseHandle(token);
+   const auto user = reinterpret_cast<TOKEN_USER*>(token_buffer.data());
+   std::vector<uint8_t> result(GetLengthSid(user->User.Sid));
+   check(CopySid(
+      static_cast<DWORD>(result.size()), result.data(), user->User.Sid) != 0);
+   return result;
+}
+
+std::vector<uint8_t> file_owner_sid(const std::filesystem::path& path) {
+   PSECURITY_DESCRIPTOR descriptor = nullptr;
+   PSID owner = nullptr;
+   const auto result = GetNamedSecurityInfoW(
+      path.c_str(), SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION,
+      &owner, nullptr, nullptr, nullptr, &descriptor);
+   check(result == ERROR_SUCCESS && descriptor != nullptr && owner != nullptr);
+   std::vector<uint8_t> bytes(GetLengthSid(owner));
+   check(CopySid(static_cast<DWORD>(bytes.size()), bytes.data(), owner) != 0);
+   LocalFree(descriptor);
+   return bytes;
+}
+
+bool same_sid(const std::vector<uint8_t>& left,
+              const std::vector<uint8_t>& right) {
+   return EqualSid(
+      const_cast<uint8_t*>(left.data()),
+      const_cast<uint8_t*>(right.data())) != 0;
+}
+
+bool set_administrators_owner(const std::filesystem::path& path,
+                              std::vector<uint8_t>& administrator_sid) {
+   DWORD size = SECURITY_MAX_SID_SIZE;
+   administrator_sid.resize(size);
+   if(CreateWellKnownSid(
+         WinBuiltinAdministratorsSid, nullptr, administrator_sid.data(),
+         &size) == 0) {
+      return false;
+   }
+   administrator_sid.resize(size);
+
+   HANDLE token = nullptr;
+   if(OpenProcessToken(
+         GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
+         &token) != 0) {
+      LUID identifier{};
+      if(LookupPrivilegeValueW(
+            nullptr, L"SeRestorePrivilege", &identifier) != 0) {
+         TOKEN_PRIVILEGES requested{};
+         requested.PrivilegeCount = 1;
+         requested.Privileges[0].Luid = identifier;
+         requested.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+         (void)AdjustTokenPrivileges(
+            token, FALSE, &requested, 0, nullptr, nullptr);
+      }
+      CloseHandle(token);
+   }
+   return SetNamedSecurityInfoW(
+      const_cast<wchar_t*>(path.c_str()), SE_FILE_OBJECT,
+      OWNER_SECURITY_INFORMATION, administrator_sid.data(), nullptr,
+      nullptr, nullptr) == ERROR_SUCCESS;
+}
+
+#endif
+
 }  // namespace
 
 int main() {
@@ -186,7 +263,11 @@ int main() {
 
    const auto path = (scratch.path / "players.bin").string();
    ct::create_player_identity_registry(path, 17);
-#ifndef _WIN32
+#ifdef _WIN32
+   const auto expected_owner = current_user_sid();
+   check(same_sid(
+      file_owner_sid(std::filesystem::path(path)), expected_owner));
+#else
    struct stat status {};
    check(stat(path.c_str(), &status) == 0);
    check((status.st_mode & (S_IRWXG | S_IRWXO)) == 0);
@@ -200,6 +281,18 @@ int main() {
    check(first.first_watch.presentation_version ==
          ct::FIRST_WATCH_PRESENTATION_VERSION);
    check(first.first_watch.seen == 0);
+#ifdef _WIN32
+   std::vector<uint8_t> administrator_owner;
+   if(set_administrators_owner(
+         std::filesystem::path(path), administrator_owner)) {
+      check(same_sid(
+         file_owner_sid(std::filesystem::path(path)), administrator_owner));
+      ct::set_player_help_level(
+         path, 17, first.player_id, ct::HelpLevel::Expert);
+      check(same_sid(
+         file_owner_sid(std::filesystem::path(path)), administrator_owner));
+   }
+#endif
    check(ct::resolve_player_identity(path, 17, "Jane Doe", 42).player_id ==
          first.player_id);
    check(throws([&] {

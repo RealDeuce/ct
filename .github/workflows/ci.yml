@@ -530,8 +530,10 @@ jobs:
             -DCT_PORTABLE_CLIENT=ON \
             -DCT_SOURCE_RELEASE_URL="$SOURCE_URL"
           cmake --build build/package --target \
-            cepheus-trader-door cepheus-trader-sysop ct-transport-boundary-test
-          ctest --test-dir build/package -R '^ct-transport-boundary$' \
+            cepheus-trader-door cepheus-trader-sysop \
+            ct-transport-boundary-test ct-player-identity-registry-test
+          ctest --test-dir build/package \
+            -R '^(ct-transport-boundary|ct-player-identity-registry)$' \
             --output-on-failure
           cpack --config build/package/CPackConfig.cmake -B artifacts
           python3 tools/verify_client_package.py artifacts/*.zip \

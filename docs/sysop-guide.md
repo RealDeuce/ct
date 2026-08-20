@@ -82,10 +82,11 @@ The command creates three files without overwriting an existing installation:
 - `cepheus-trader.identities`, the local BBS-account-to-player registry.
 
 On Unix, newly created directories are owner-only and the credential is mode
-`0600`. On Windows, the credential receives a protected DACL for its owner,
-Local System, and Administrators. Run the door and sysop utility under the
-same dedicated account, and ensure that other BBS users cannot read or replace
-these files.
+`0600`. On Windows, the credential and identity registry receive a protected
+DACL for their owner, Local System, and Administrators. Registry updates
+preserve the established owner even when the updating process is elevated.
+Run the door and sysop utility under the same dedicated account, and ensure
+that other BBS users cannot read or replace these files.
 
 ### Shared configuration
 
@@ -424,6 +425,31 @@ Restore the original credential rather than creating another one. On Unix,
 confirm that it is a regular file owned by the door account with mode `0600`
 and a single hard link. On Windows, confirm that it has not become a reparse
 point and retains its protected access control list.
+
+### The identity registry is denied on Windows
+
+Windows error 5 while opening `cepheus-trader.identities` means the account
+running the door cannot read the registry. Stop new door launches and inspect
+the configured identity file from an elevated PowerShell prompt:
+
+```powershell
+Get-Acl 'C:\path\to\cepheus-trader.identities' |
+  Format-List Path,Owner,Sddl
+```
+
+The owner should be the dedicated account that runs the door. If an older
+client replaced the file while elevated, the owner may instead be
+`BUILTIN\Administrators`. Preserve a private backup, then restore only the
+owner from an elevated command prompt, substituting the real machine and
+account names:
+
+```console
+icacls "C:\path\to\cepheus-trader.identities" /setowner "MACHINE\DoorAccount"
+```
+
+Run `identity-list` as the normal door account afterward. Do not delete or
+recreate the registry: it contains the durable mapping from BBS accounts to
+their existing game identities.
 
 ### The server connection fails
 

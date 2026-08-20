@@ -24,6 +24,13 @@ sysop uses `identity-rename`, `identity-reindex`, or `identity-retire`.
 Retirement is the BBS-account deletion operation and requires the literal
 `RETIRE` confirmation.
 
+On Windows, initial creation explicitly assigns the process user as owner.
+Every later atomic replacement reproduces and verifies the established owner,
+group, and protected owner/System/Administrators DACL on the temporary file
+before it may replace the registry. An elevated update must not transfer
+ownership to Administrators or Local System; inability to preserve the security
+identity leaves the original registry intact and fails the update.
+
 Server-side player access has active, suspended, and permanently removed
 states. Suspension/resumption is reversible. Removal is an irreversible
 tombstone and preserves the player and assets. A suspension or removal closes
