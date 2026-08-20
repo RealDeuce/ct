@@ -698,6 +698,48 @@ PUBLISHED_SHIP_ART = {
         "fast armed trader with three turrets and point-defense nodes.",
         50.0,
     ),
+    169: (
+        "assets/ships/family-169-franklin-commerce.webp",
+        "Painted three-quarter view of Franklin I, an ivory and royal-blue "
+        "hundred-ton light trader with two freight shutters and a closed hardpoint.",
+        38.0,
+    ),
+    170: (
+        "assets/ships/ship-170-poor-richard.webp",
+        "Painted three-quarter view of Poor Richard, an avocado and ochre "
+        "hundred-ton trader with separate cargo and vehicle-bay shutters.",
+        38.0,
+    ),
+    171: (
+        "assets/ships/family-169-franklin-commerce.webp",
+        "Painted three-quarter view of Franklin II, an ivory and royal-blue "
+        "hundred-ton light trader with two freight shutters and a closed hardpoint.",
+        38.0,
+    ),
+    172: (
+        "assets/ships/family-169-franklin-commerce.webp",
+        "Painted three-quarter view of Pennsylvania, an ivory and royal-blue "
+        "hundred-ton maximum-cargo trader with two broad freight shutters.",
+        38.0,
+    ),
+    173: (
+        "assets/ships/ship-173-deborah.webp",
+        "Painted three-quarter view of Deborah, an ivory and royal-blue hundred-"
+        "ton passenger trader with six cabin windows and a cargo shutter.",
+        38.0,
+    ),
+    174: (
+        "assets/ships/ship-174-postmaster.webp",
+        "Painted three-quarter view of Postmaster, a sunflower and cobalt hundred-"
+        "ton dispatch ship with four cabin windows and a secure priority hatch.",
+        38.0,
+    ),
+    175: (
+        "assets/ships/ship-175-gulf-stream.webp",
+        "Painted three-quarter view of Gulf Stream, an avocado and ochre hundred-"
+        "ton scout-trader with internal-fuel service panels and advanced sensors.",
+        38.0,
+    ),
     55: (
         "assets/ships/ship-055-nereus.webp",
         "Painted three-quarter view of Nereus, a red, orange, and bone ninety-five-ton "

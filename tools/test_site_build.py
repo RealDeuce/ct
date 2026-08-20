@@ -1293,6 +1293,77 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-190-tizard-scout.webp",
         )
 
+    def test_franklin_family_exposes_unarmed_light_trader_fits(self) -> None:
+        records = {catalog_id: self.records[catalog_id] for catalog_id in range(169, 176)}
+
+        for record in records.values():
+            self.assertEqual(record["family_id"], 169)
+            self.assertEqual(record["tons"], 100)
+            self.assertEqual(record["configuration"], "Streamlined")
+            self.assertEqual(record["bridge_options"], ["Holographic Controls"])
+            self.assertEqual(record["armor_points"], 4)
+            self.assertEqual(record["jump_drive"], "A")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["endurance"], 2)
+            self.assertEqual(record["external_load"], "0 tons")
+            self.assertEqual(record["unused_fire_control_stations"], 1)
+            self.assertIn("Fuel Processor", record["equipment"])
+            self.assertIn("Autodoc", record["equipment"])
+            self.assertNotIn("Fuel Scoop", record["equipment"])
+            self.assertEqual(record["armament"], "None installed")
+            self.assertEqual(record["ammunition"], "None carried")
+            self.assertEqual(record["length_m"], 38.0)
+
+        exterior_equivalents = (records[169], records[171], records[172])
+        self.assertEqual(
+            {record["art_path"] for record in exterior_equivalents},
+            {"assets/ships/family-169-franklin-commerce.webp"},
+        )
+        for record in exterior_equivalents:
+            self.assertEqual(record["electronics"], "Basic Civilian")
+            self.assertEqual(record["jump_count"], 1)
+            self.assertEqual(record["maneuver_drive"], "B")
+            self.assertEqual(record["power_plant"], "B")
+
+        self.assertEqual(records[169]["cargo"], "19.5 tons")
+        self.assertEqual(records[171]["cargo"], "19.5 tons")
+        self.assertEqual(records[172]["cargo"], "27.5 tons")
+
+        poor_richard = records[170]
+        self.assertEqual(poor_richard["maneuver_drive"], "A")
+        self.assertEqual(poor_richard["power_plant"], "A")
+        self.assertEqual(poor_richard["cargo"], "21.5 tons")
+        self.assertIn("Standard Hangar (4 tons contained)", poor_richard["equipment"])
+        self.assertEqual(
+            poor_richard["art_path"],
+            "assets/ships/ship-170-poor-richard.webp",
+        )
+
+        deborah = records[173]
+        self.assertEqual(deborah["cargo"], "7.5 tons")
+        self.assertIn("6 × Stateroom", deborah["equipment"])
+        self.assertEqual(deborah["art_path"], "assets/ships/ship-173-deborah.webp")
+
+        postmaster = records[174]
+        self.assertEqual(postmaster["maneuver_drive"], "C")
+        self.assertEqual(postmaster["power_plant"], "C")
+        self.assertEqual(postmaster["cargo"], "2.5 tons")
+        self.assertEqual(
+            postmaster["art_path"],
+            "assets/ships/ship-174-postmaster.webp",
+        )
+
+        gulf_stream = records[175]
+        self.assertEqual(gulf_stream["electronics"], "Advanced")
+        self.assertEqual(gulf_stream["jump_count"], 2)
+        self.assertEqual(gulf_stream["maneuver_drive"], "B")
+        self.assertEqual(gulf_stream["power_plant"], "B")
+        self.assertEqual(gulf_stream["cargo"], "1.5 tons")
+        self.assertEqual(
+            gulf_stream["art_path"],
+            "assets/ships/ship-175-gulf-stream.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)
