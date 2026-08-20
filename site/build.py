@@ -863,6 +863,13 @@ PUBLISHED_SHIP_ART = {
         "armored marine boat with six shuttered troop-compartment bays.",
         21.0,
     ),
+    180: (
+        "assets/ships/ship-180-trafalgar.webp",
+        "Painted three-quarter view of Trafalgar, a navy and warm-white five-"
+        "thousand-ton dreadnought with distributed turrets, barbettes, and "
+        "capital-bay apertures.",
+        160.0,
+    ),
     181: (
         "assets/ships/family-018-wayfarer-cargo.webp",
         "Painted three-quarter view of Wayfarer Cargo, an ivory, vermilion, "

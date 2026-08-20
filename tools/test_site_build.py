@@ -1364,6 +1364,55 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-175-gulf-stream.webp",
         )
 
+    def test_trafalgar_exposes_distributed_dreadnought_battery(self) -> None:
+        trafalgar = self.records[180]
+
+        self.assertEqual(trafalgar["family_id"], 180)
+        self.assertEqual(trafalgar["tons"], 5000)
+        self.assertEqual(trafalgar["configuration"], "Streamlined")
+        self.assertEqual(trafalgar["electronics"], "Advanced")
+        self.assertEqual(
+            trafalgar["bridge_options"],
+            ["Command Bridge", "Hardened Bridge", "Holographic Controls"],
+        )
+        self.assertEqual(trafalgar["hull_options"], ["Radiation Shielding"])
+        self.assertEqual(trafalgar["armor_points"], 10)
+        self.assertEqual(trafalgar["jump_drive"], "Z")
+        self.assertEqual(trafalgar["jump_distance"], 2)
+        self.assertEqual(trafalgar["jump_count"], 1)
+        self.assertEqual(trafalgar["maneuver_drive"], "Z")
+        self.assertEqual(trafalgar["power_plant"], "Z")
+        self.assertEqual(trafalgar["endurance"], 3)
+        self.assertEqual(trafalgar["cargo"], "959.1 tons")
+        self.assertEqual(trafalgar["unused_fire_control_stations"], 0)
+        self.assertIn("Full Hangar (100 tons contained)", trafalgar["equipment"])
+        self.assertIn("Carried Craft: Boreas (ship-176)", trafalgar["equipment"])
+        self.assertIn("Carried Craft: Zephyrus (ship-177)", trafalgar["equipment"])
+        self.assertIn("2 × Carried Craft: Castor (ship-178)", trafalgar["equipment"])
+        self.assertNotIn("Fuel Scoop", trafalgar["equipment"])
+        self.assertNotIn("Fuel Processor", trafalgar["equipment"])
+        self.assertIn("12 × Triple Turret: Beam Laser", trafalgar["armament"])
+        self.assertIn("10 × Triple Turret: Missile Rack", trafalgar["armament"])
+        self.assertIn("8 × Plasma Barbette", trafalgar["armament"])
+        self.assertIn("6 × Railgun Barbette", trafalgar["armament"])
+        self.assertIn("2 × Torpedo Bay 100", trafalgar["armament"])
+        self.assertIn("6 × Meson Gun Bay", trafalgar["armament"])
+        self.assertIn("6 × Particle Beam Bay", trafalgar["armament"])
+        self.assertIn(
+            "50 × Point Defense Node Mount: Point Defense Laser",
+            trafalgar["armament"],
+        )
+        self.assertEqual(
+            trafalgar["ammunition"],
+            "12 × Torpedo Basics · 576 × Railgun Basics · "
+            "1440 × Standard Missiles · 400 × Sandcaster Canisters",
+        )
+        self.assertEqual(trafalgar["length_m"], 160.0)
+        self.assertEqual(
+            trafalgar["art_path"],
+            "assets/ships/ship-180-trafalgar.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)
