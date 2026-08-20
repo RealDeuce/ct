@@ -1824,6 +1824,37 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-196-fugger.webp",
         )
 
+    def test_pullman_exposes_unarmed_scheduled_passenger_liner(self) -> None:
+        pullman = self.records[197]
+
+        self.assertEqual(pullman["family_id"], 197)
+        self.assertEqual(pullman["tons"], 300)
+        self.assertEqual(pullman["configuration"], "Standard")
+        self.assertEqual(pullman["electronics"], "Basic Civilian")
+        self.assertTrue(pullman["standard_design"])
+        self.assertEqual(pullman["armor_points"], 2)
+        self.assertEqual(pullman["jump_drive"], "B")
+        self.assertEqual(pullman["jump_distance"], 1)
+        self.assertEqual(pullman["jump_count"], 1)
+        self.assertEqual(pullman["maneuver_drive"], "B")
+        self.assertEqual(pullman["power_plant"], "B")
+        self.assertEqual(pullman["endurance"], 4)
+        self.assertEqual(pullman["cargo"], "46 tons")
+        self.assertEqual(pullman["external_load"], "0 tons")
+        self.assertEqual(pullman["crew"], 7)
+        self.assertIn("35 × Stateroom", pullman["equipment"])
+        self.assertIn("20 × Low Berth", pullman["equipment"])
+        self.assertIn("2 × Fuel Processor", pullman["equipment"])
+        self.assertIn("Fuel Scoop", pullman["equipment"])
+        self.assertEqual(pullman["armament"], "None installed")
+        self.assertEqual(pullman["ammunition"], "None carried")
+        self.assertEqual(pullman["unused_fire_control_stations"], 3)
+        self.assertEqual(pullman["length_m"], 72.0)
+        self.assertEqual(
+            pullman["art_path"],
+            "assets/ships/ship-197-pullman.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

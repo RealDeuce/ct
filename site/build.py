@@ -850,6 +850,12 @@ PUBLISHED_SHIP_ART = {
         "cargo shutters.",
         64.0,
     ),
+    197: (
+        "assets/ships/ship-197-pullman.webp",
+        "Painted three-quarter view of Pullman, an ivory, royal-blue, and "
+        "vermilion three-hundred-ton unarmed scheduled passenger liner.",
+        72.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
