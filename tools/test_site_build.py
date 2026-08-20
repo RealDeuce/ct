@@ -1855,6 +1855,37 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-197-pullman.webp",
         )
 
+    def test_pony_express_exposes_no_scoop_jump_two_courier(self) -> None:
+        courier = self.records[198]
+
+        self.assertEqual(courier["family_id"], 198)
+        self.assertEqual(courier["tons"], 100)
+        self.assertEqual(courier["configuration"], "Streamlined")
+        self.assertEqual(courier["electronics"], "Basic Civilian")
+        self.assertTrue(courier["standard_design"])
+        self.assertEqual(courier["armor_points"], 2)
+        self.assertEqual(courier["jump_drive"], "A")
+        self.assertEqual(courier["jump_distance"], 2)
+        self.assertEqual(courier["jump_count"], 1)
+        self.assertEqual(courier["maneuver_drive"], "B")
+        self.assertEqual(courier["power_plant"], "B")
+        self.assertEqual(courier["endurance"], 4)
+        self.assertEqual(courier["cargo"], "16 tons")
+        self.assertEqual(courier["external_load"], "0 tons")
+        self.assertEqual(courier["crew"], 3)
+        self.assertIn("4 × Stateroom", courier["equipment"])
+        self.assertIn("Emergency Low Berth", courier["equipment"])
+        self.assertIn("2 × Fuel Processor", courier["equipment"])
+        self.assertNotIn("Fuel Scoop", courier["equipment"])
+        self.assertEqual(courier["armament"], "None installed")
+        self.assertEqual(courier["ammunition"], "None carried")
+        self.assertEqual(courier["unused_fire_control_stations"], 1)
+        self.assertEqual(courier["length_m"], 38.0)
+        self.assertEqual(
+            courier["art_path"],
+            "assets/ships/ship-198-pony-express.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

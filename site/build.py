@@ -856,6 +856,12 @@ PUBLISHED_SHIP_ART = {
         "vermilion three-hundred-ton unarmed scheduled passenger liner.",
         72.0,
     ),
+    198: (
+        "assets/ships/ship-198-pony-express.webp",
+        "Painted three-quarter view of Pony Express, a sunflower, cobalt, and "
+        "orange one-hundred-ton unarmed Jump-2 priority courier.",
+        38.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
