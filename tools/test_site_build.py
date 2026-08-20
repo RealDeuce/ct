@@ -953,6 +953,61 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-127-behemoth.webp",
         )
 
+    def test_caravanserai_family_exposes_trade_replenishment_and_assault_fits(self) -> None:
+        samarkand = self.records[128]
+        bukhara = self.records[129]
+        merv = self.records[130]
+
+        for record in (samarkand, bukhara, merv):
+            self.assertEqual(record["family_id"], 128)
+            self.assertEqual(record["tons"], 600)
+            self.assertEqual(record["configuration"], "Standard")
+            self.assertEqual(record["bridge_options"], ["Holographic Controls"])
+            self.assertEqual(record["armor_points"], 4)
+            self.assertEqual(record["jump_drive"], "H")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["jump_count"], 1)
+            self.assertEqual(record["maneuver_drive"], "J")
+            self.assertEqual(record["power_plant"], "J")
+            self.assertEqual(record["endurance"], 2)
+            self.assertEqual(record["external_load"], "0 tons")
+            self.assertIn("Fuel Scoop", record["equipment"])
+            self.assertIn("2 × Fuel Processor", record["equipment"])
+            self.assertIn(
+                "6 × Point Defense Node Mount: Point Defense Laser",
+                record["armament"],
+            )
+            self.assertEqual(record["ammunition"], "20 × Sandcaster Canisters")
+            self.assertEqual(record["length_m"], 72.0)
+
+        self.assertEqual(samarkand["electronics"], "Basic Civilian")
+        self.assertEqual(samarkand["cargo"], "248 tons")
+        self.assertIn("5 × Triple Turret: Beam Laser", samarkand["armament"])
+        self.assertIn("Single Turret: Sandcaster", samarkand["armament"])
+        self.assertNotIn("Particle Beam", samarkand["armament"])
+        self.assertEqual(
+            samarkand["art_path"],
+            "assets/ships/ship-128-samarkand.webp",
+        )
+
+        self.assertEqual(bukhara["electronics"], "Basic Military")
+        self.assertEqual(bukhara["cargo"], "244 tons")
+        self.assertIn("Underway Replenishment System", bukhara["equipment"])
+        self.assertEqual(bukhara["armament"], samarkand["armament"])
+        self.assertEqual(
+            bukhara["art_path"],
+            "assets/ships/ship-129-bukhara.webp",
+        )
+
+        self.assertEqual(merv["electronics"], "Basic Military")
+        self.assertEqual(merv["cargo"], "5 tons")
+        self.assertIn("60 × Barracks", merv["equipment"])
+        self.assertIn("Full Hangar (70 tons contained)", merv["equipment"])
+        self.assertIn("3 × Triple Turret: Beam Laser", merv["armament"])
+        self.assertIn("2 × Single Turret: Particle Beam", merv["armament"])
+        self.assertIn("Single Turret: Sandcaster", merv["armament"])
+        self.assertEqual(merv["art_path"], "assets/ships/ship-130-merv.webp")
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

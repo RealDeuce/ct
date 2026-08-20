@@ -536,6 +536,24 @@ PUBLISHED_SHIP_ART = {
         "additional pressure-freight modules and two externally clamped work craft.",
         112.0,
     ),
+    128: (
+        "assets/ships/ship-128-samarkand.webp",
+        "Painted three-quarter view of Samarkand, a sunflower-yellow and cobalt "
+        "six-hundred-ton fast trader with three freight shutters and three visible turrets.",
+        72.0,
+    ),
+    129: (
+        "assets/ships/ship-129-bukhara.webp",
+        "Painted three-quarter view of Bukhara, a navy and warm-white six-hundred-ton "
+        "fleet replenishment ship with protected transfer gear.",
+        72.0,
+    ),
+    130: (
+        "assets/ships/ship-130-merv.webp",
+        "Painted three-quarter view of Merv, a navy and warm-white six-hundred-ton "
+        "assault transport with an armored vehicle-hangar shutter.",
+        72.0,
+    ),
     152: (
         "assets/ships/family-080-ithaca-external.webp",
         "Painted three-quarter view of Ithaca, an ivory and blue eight-hundred-ton "
