@@ -1886,6 +1886,38 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-198-pony-express.webp",
         )
 
+    def test_cleopatra_exposes_no_scoop_unarmed_diplomatic_yacht(self) -> None:
+        yacht = self.records[199]
+
+        self.assertEqual(yacht["family_id"], 199)
+        self.assertEqual(yacht["tons"], 100)
+        self.assertEqual(yacht["configuration"], "Streamlined")
+        self.assertEqual(yacht["electronics"], "Basic Civilian")
+        self.assertTrue(yacht["standard_design"])
+        self.assertEqual(yacht["armor_points"], 2)
+        self.assertEqual(yacht["jump_drive"], "A")
+        self.assertEqual(yacht["jump_distance"], 2)
+        self.assertEqual(yacht["jump_count"], 1)
+        self.assertEqual(yacht["maneuver_drive"], "A")
+        self.assertEqual(yacht["power_plant"], "A")
+        self.assertEqual(yacht["endurance"], 4)
+        self.assertEqual(yacht["cargo"], "12 tons")
+        self.assertEqual(yacht["external_load"], "0 tons")
+        self.assertEqual(yacht["crew"], 3)
+        self.assertIn("6 × Stateroom", yacht["equipment"])
+        self.assertIn("3 × Emergency Low Berth", yacht["equipment"])
+        self.assertIn("2 × Fuel Processor", yacht["equipment"])
+        self.assertIn("2 × Luxuries", yacht["equipment"])
+        self.assertNotIn("Fuel Scoop", yacht["equipment"])
+        self.assertEqual(yacht["armament"], "None installed")
+        self.assertEqual(yacht["ammunition"], "None carried")
+        self.assertEqual(yacht["unused_fire_control_stations"], 1)
+        self.assertEqual(yacht["length_m"], 40.0)
+        self.assertEqual(
+            yacht["art_path"],
+            "assets/ships/ship-199-cleopatra.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

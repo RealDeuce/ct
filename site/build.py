@@ -862,6 +862,12 @@ PUBLISHED_SHIP_ART = {
         "orange one-hundred-ton unarmed Jump-2 priority courier.",
         38.0,
     ),
+    199: (
+        "assets/ships/ship-199-cleopatra.webp",
+        "Painted three-quarter view of Cleopatra, an ivory, royal-blue, "
+        "vermilion, and chrome one-hundred-ton unarmed diplomatic yacht.",
+        40.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
