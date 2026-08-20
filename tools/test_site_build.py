@@ -126,6 +126,34 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-016-horatius.webp",
         )
 
+    def test_pegasus_exposes_passenger_and_freight_boat_fit(self) -> None:
+        pegasus = self.records[23]
+        self.assertEqual(pegasus["family_id"], 23)
+        self.assertEqual(pegasus["tons"], 50)
+        self.assertEqual(pegasus["configuration"], "Streamlined")
+        self.assertEqual(pegasus["tech_level"], 11)
+        self.assertFalse(pegasus["standard_design"])
+        self.assertEqual(pegasus["electronics"], "Standard")
+        self.assertEqual(pegasus["armor_points"], 2)
+        self.assertEqual(pegasus["control"], "Two Person Cockpit")
+        self.assertEqual(pegasus["additional_passengers"], 0)
+        self.assertEqual(pegasus["maneuver_drive"], "sK")
+        self.assertEqual(pegasus["power_plant"], "sK")
+        self.assertEqual(pegasus["endurance"], 1)
+        self.assertEqual(pegasus["cargo"], "22.05 tons")
+        self.assertEqual(pegasus["crew"], 2)
+        self.assertEqual(pegasus["airlocks"], 1)
+        self.assertIn("24 passenger seats", pegasus["equipment"])
+        self.assertIn("Small Craft Fuel Processor", pegasus["equipment"])
+        self.assertEqual(pegasus["armament"], "None installed")
+        self.assertEqual(pegasus["ammunition"], "None carried")
+        self.assertIsNone(pegasus["jump_drive"])
+        self.assertEqual(pegasus["length_m"], 23.0)
+        self.assertEqual(
+            pegasus["art_path"],
+            "assets/ships/ship-023-pegasus.webp",
+        )
+
     def test_starship_exposes_jump_and_bridge_fields(self) -> None:
         pym = self.records[26]
         self.assertEqual(pym["jump_drive"], "A")

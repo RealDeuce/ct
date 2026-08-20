@@ -156,6 +156,12 @@ PUBLISHED_SHIP_ART = {
         "forty-ton pinnace with eight passenger-window bays and a freight door.",
         23.5,
     ),
+    23: (
+        "assets/ships/ship-023-pegasus.webp",
+        "Painted three-quarter view of Pegasus, a warm-white, cyan, lime, and "
+        "chrome fifty-ton passenger boat with six window bays and a freight door.",
+        23.0,
+    ),
     25: (
         "assets/ships/ship-025-bellerophon.webp",
         "Painted three-quarter view of Bellerophon, a fire-red, bone, and "
