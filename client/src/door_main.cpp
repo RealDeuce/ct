@@ -3428,6 +3428,32 @@ void print_millitons(const uint64_t millitons)
    door_number("%s t", ct::format_tonnage(millitons).c_str());
 }
 
+void print_ship_upkeep_context(const ct::ShipStatusSnapshot& snapshot)
+{
+   door_label("Ship-wide upkeep: ");
+   if(snapshot.consecutive_missed_maintenance == 0) {
+      door_value("current\n\r");
+      door_label("Paid through: ");
+      door_number(
+         "%s\n\r",
+         game_date(snapshot.maintenance_paid_through_second).c_str());
+   } else {
+      door_warning("overdue\n\r");
+      door_label("Missed cycles: ");
+      door_warning("%u\n\r", snapshot.consecutive_missed_maintenance);
+      door_label("Arrears: ");
+      door_warning(
+         "Cr%llu\n\r",
+         static_cast<unsigned long long>(snapshot.maintenance_arrears_credits));
+   }
+   door_label("Next upkeep: ");
+   door_number("%s\n\r", game_date(snapshot.next_maintenance_second).c_str());
+   door_label("Scheduled charge: ");
+   door_number(
+      "Cr%llu\n\r",
+      static_cast<unsigned long long>(snapshot.monthly_maintenance_credits));
+}
+
 void show_ship_subsystem(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
@@ -3469,6 +3495,8 @@ void show_ship_subsystem(
             "%s\n\r", safe_field(subsystem.operational_effect).c_str());
       }
       od_printf("\n\r");
+      print_ship_upkeep_context(snapshot);
+      od_printf("\n\r");
       door_label("Last proper repair: ");
       door_number("%s\n\r", game_date(subsystem.last_proper_repair_second).c_str());
       door_label("Installed: ");
@@ -3480,6 +3508,9 @@ void show_ship_subsystem(
          "%u months / %u duty cycles\n\r",
          subsystem.calendar_age_months,
          subsystem.duty_cycles);
+      print_wrapped(
+         "These are age and use records; routine upkeep applies to the whole ship.",
+         "");
       if(subsystem.neglect_damage_hits > 0) {
          door_warning(
             "\n\r%u underlying hit(s) came from neglected routine upkeep.\n\r",
@@ -3514,7 +3545,9 @@ void show_ship_subsystems(
    ct::ShipStatusSnapshot& snapshot)
 {
    const HelpScope help_scope(ct::DoorHelpTopic::ShipSubsystems);
-   const size_t reserved_rows = 7;
+   // Header, ship-wide upkeep context, blank separator, and the widest
+   // 40-column action prompt remain outside the subsystem-row budget.
+   const size_t reserved_rows = 12;
    const size_t available_rows =
       output().rows() > reserved_rows ? output().rows() - reserved_rows : 1;
    size_t page = 0;
@@ -3523,6 +3556,8 @@ void show_ship_subsystems(
       door_heading("Subsystem Status - ");
       door_value("%s\n\r", safe_field(snapshot.ship_name).c_str());
       door_heading("================\n\r\n\r");
+      print_ship_upkeep_context(snapshot);
+      od_printf("\n\r");
       struct SubsystemRow {
          std::string label;
          std::string status;

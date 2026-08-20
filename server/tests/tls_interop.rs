@@ -1622,6 +1622,21 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     services_door.wait_for("operating account funded");
     services_door.wait_for("uncovered cycle");
     services_door.wait_for("damage a subsystem");
+    services_door.send_through_page_prompt(b"s", "Subsystem Status -", "Subsystem Status -");
+    services_door.wait_for("Ship-wide upkeep: current");
+    services_door.wait_for("Paid through:");
+    services_door.wait_for("Next upkeep:");
+    services_door.wait_for("Scheduled charge:");
+    services_door.send_through_page_prompt(b"a", "Underlying damage:", "Underlying damage:");
+    services_door.wait_for_occurrences("Ship-wide upkeep: current", 2);
+    services_door.wait_for_occurrences("Next upkeep:", 2);
+    services_door.wait_for_occurrences("Scheduled charge:", 2);
+    services_door.wait_for("age and use records");
+    services_door.wait_for("upkeep applies to the whole ship");
+    services_door.send(b"q");
+    services_door.wait_for_occurrences("Subsystem Status -", 2);
+    services_door.send(b"q");
+    services_door.wait_for_occurrences("Ship Status -", 2);
     services_door.send(b"q");
     services_door.wait_for_occurrences("Captain's Command Console", 3);
     services_door.wait_for_occurrences("(C/K/M/O/R/S/T) Manager", 3);
@@ -1661,6 +1676,10 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Next automatic upkeep:",
         "no yard order is needed",
         "damage a subsystem",
+        "Ship-wide upkeep: current",
+        "Next upkeep:",
+        "Scheduled charge:",
+        "upkeep applies to the whole ship",
         "Message Management",
         "accepted for physical",
     ] {
