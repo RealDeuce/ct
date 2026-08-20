@@ -404,6 +404,13 @@ PUBLISHED_SHIP_ART = {
         "turret and closed launch bay.",
         51.0,
     ),
+    64: (
+        "assets/ships/ship-064-darwin.webp",
+        "Painted three-quarter view of Darwin, a warm-white, cyan, lime, and "
+        "chrome three-hundred-ton survey scout with two observation bays, a "
+        "mixed turret, and a large sample-hold shutter.",
+        56.0,
+    ),
     65: (
         "assets/ships/family-054-nemo.webp",
         "Painted three-quarter view of Nemo, an emerald and cream three-hundred-ton "

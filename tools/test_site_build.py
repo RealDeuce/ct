@@ -2684,6 +2684,43 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(janus["length_m"], 51.0)
         self.assertEqual(janus["art_path"], "assets/ships/ship-063-janus.webp")
 
+    def test_darwin_exposes_independent_survey_scout_fit(self) -> None:
+        darwin = self.records[64]
+        self.assertEqual(darwin["family_id"], 64)
+        self.assertEqual(darwin["tons"], 300)
+        self.assertEqual(darwin["configuration"], "Streamlined")
+        self.assertEqual(darwin["tech_level"], 11)
+        self.assertFalse(darwin["standard_design"])
+        self.assertEqual(darwin["electronics"], "Basic Military")
+        self.assertEqual(darwin["armor_points"], 4)
+        self.assertEqual(darwin["control"], "Standard bridge")
+        self.assertEqual(darwin["bridge_options"], ["Holographic Controls"])
+        self.assertEqual(darwin["jump_drive"], "C")
+        self.assertEqual(darwin["maneuver_drive"], "E")
+        self.assertEqual(darwin["power_plant"], "E")
+        self.assertEqual(darwin["jump_distance"], 2)
+        self.assertEqual(darwin["endurance"], 2)
+        self.assertEqual(darwin["cargo"], "83 tons")
+        self.assertEqual(darwin["crew"], 8)
+        self.assertIn("8 × Stateroom", darwin["equipment"])
+        self.assertIn("4 × Emergency Low Berth", darwin["equipment"])
+        self.assertIn("20 × Crew Recreation", darwin["equipment"])
+        self.assertIn("Gymnasium", darwin["equipment"])
+        self.assertIn("2 × Laboratory", darwin["equipment"])
+        self.assertIn("Medical Bay (1 bed)", darwin["equipment"])
+        self.assertIn("Repair Drones", darwin["equipment"])
+        self.assertEqual(
+            darwin["armament"],
+            "Triple Turret: Beam Laser · Sandcaster · Missile Rack",
+        )
+        self.assertEqual(
+            darwin["ammunition"],
+            "12 × Standard Missiles · 20 × Sandcaster Canisters",
+        )
+        self.assertEqual(darwin["unused_fire_control_stations"], 2)
+        self.assertEqual(darwin["length_m"], 56.0)
+        self.assertEqual(darwin["art_path"], "assets/ships/ship-064-darwin.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
