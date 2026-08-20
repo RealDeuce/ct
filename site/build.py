@@ -678,6 +678,12 @@ PUBLISHED_SHIP_ART = {
         "and blue fifty-ton unfaired chassis with a sealed central module.",
         25.5,
     ),
+    211: (
+        "assets/ships/ship-211-grapnel.webp",
+        "Painted three-quarter view of Grapnel, an emerald thirty-ton armored "
+        "boarding boat with seven passenger windows and a fixed beam laser.",
+        18.6,
+    ),
     212: (
         "assets/ships/ship-212-wayfarer-boarding.webp",
         "Painted three-quarter view of Wayfarer Boarding, an emerald and cream "

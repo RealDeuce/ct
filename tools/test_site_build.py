@@ -636,6 +636,27 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("10 × Fuel Processor", ares["equipment"])
         self.assertIn("12 × Carried Craft: Triton (ship-48)", ares["equipment"])
 
+    def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
+        grapnel = self.records[211]
+        self.assertEqual(grapnel["family_id"], 211)
+        self.assertEqual(grapnel["tons"], 30)
+        self.assertEqual(grapnel["configuration"], "Streamlined")
+        self.assertEqual(grapnel["electronics"], "Standard")
+        self.assertEqual(grapnel["armor_points"], 4)
+        self.assertEqual(grapnel["control"], "Two Person Control Cabin")
+        self.assertEqual(grapnel["additional_passengers"], 0)
+        self.assertEqual(grapnel["maneuver_drive"], "sJ")
+        self.assertEqual(grapnel["power_plant"], "sJ")
+        self.assertEqual(grapnel["endurance"], 2)
+        self.assertEqual(grapnel["cargo"], "2.5 tons")
+        self.assertEqual(grapnel["airlocks"], 1)
+        self.assertIn("14 passenger seats", grapnel["equipment"])
+        self.assertIn("Small Craft Fuel Processor", grapnel["equipment"])
+        self.assertIn("Fixed Single Turret: Beam Laser", grapnel["armament"])
+        self.assertIsNone(grapnel["jump_drive"])
+        self.assertEqual(grapnel["length_m"], 18.6)
+        self.assertEqual(grapnel["art_path"], "assets/ships/ship-211-grapnel.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
