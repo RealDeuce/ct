@@ -890,6 +890,13 @@ PUBLISHED_SHIP_ART = {
         "barbette, and closed boarding-boat hangar.",
         62.0,
     ),
+    184: (
+        "assets/ships/ship-184-rampart.webp",
+        "Painted three-quarter view of Rampart, a fire-red and orange four-"
+        "hundred-ton armored system patrol ship with a flank particle barbette "
+        "and six-gravity stern.",
+        58.0,
+    ),
     187: (
         "assets/ships/family-018-wayfarer-cargo.webp",
         "Painted three-quarter view of Wayfarer Cargo, an ivory, vermilion, "

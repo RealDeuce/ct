@@ -1499,6 +1499,53 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-183-zheng-he.webp",
         )
 
+    def test_rampart_exposes_no_jump_armored_system_patrol_fit(self) -> None:
+        rampart = self.records[184]
+
+        self.assertEqual(rampart["family_id"], 184)
+        self.assertEqual(rampart["tons"], 400)
+        self.assertEqual(rampart["configuration"], "Streamlined")
+        self.assertEqual(rampart["electronics"], "Advanced")
+        self.assertEqual(
+            rampart["bridge_options"],
+            ["Hardened Bridge", "Holographic Controls"],
+        )
+        self.assertEqual(rampart["hull_options"], ["Radiation Shielding"])
+        self.assertEqual(rampart["armor_points"], 10)
+        self.assertIsNone(rampart["jump_drive"])
+        self.assertEqual(rampart["jump_distance"], 0)
+        self.assertEqual(rampart["jump_count"], 0)
+        self.assertEqual(rampart["maneuver_drive"], "M")
+        self.assertEqual(rampart["power_plant"], "M")
+        self.assertEqual(rampart["endurance"], 8)
+        self.assertEqual(rampart["cargo"], "7.25 tons")
+        self.assertIn("8 × Fuel Processor", rampart["equipment"])
+        self.assertNotIn("Fuel Scoop", rampart["equipment"])
+        self.assertIn("Full Hangar (30 tons contained)", rampart["equipment"])
+        self.assertIn("Carried Craft: Grapnel (ship-211)", rampart["equipment"])
+        self.assertIn(
+            "Triple Turret: Beam Laser · Beam Laser · Beam Laser",
+            rampart["armament"],
+        )
+        self.assertIn(
+            "Triple Turret: Missile Rack · Missile Rack · Sandcaster",
+            rampart["armament"],
+        )
+        self.assertIn("2 × Particle Beam Barbette", rampart["armament"])
+        self.assertIn(
+            "4 × Point Defense Node Mount: Point Defense Laser",
+            rampart["armament"],
+        )
+        self.assertEqual(
+            rampart["ammunition"],
+            "144 × Standard Missiles · 60 × Sandcaster Canisters",
+        )
+        self.assertEqual(rampart["length_m"], 58.0)
+        self.assertEqual(
+            rampart["art_path"],
+            "assets/ships/ship-184-rampart.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)
