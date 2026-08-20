@@ -347,6 +347,13 @@ PUBLISHED_SHIP_ART = {
         "system freighter with three cargo shutters and blanked drive-service panels.",
         53.0,
     ),
+    53: (
+        "assets/ships/ship-053-challenger.webp",
+        "Painted three-quarter view of Challenger, a warm-white, cyan, lime, and "
+        "chrome hundred-and-twenty-ton survey courier with a mixed side turret "
+        "and closed utility hangar.",
+        43.0,
+    ),
     54: (
         "assets/ships/family-054-fogg.webp",
         "Painted three-quarter view of Fogg, a sunflower and cobalt three-hundred-ton "

@@ -2578,6 +2578,39 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(antaeus["length_m"], 48.0)
         self.assertEqual(antaeus["art_path"], "assets/ships/ship-047-antaeus.webp")
 
+    def test_challenger_exposes_armed_survey_courier_fit(self) -> None:
+        challenger = self.records[53]
+        self.assertEqual(challenger["family_id"], 53)
+        self.assertEqual(challenger["tons"], 120)
+        self.assertEqual(challenger["configuration"], "Streamlined")
+        self.assertEqual(challenger["tech_level"], 11)
+        self.assertFalse(challenger["standard_design"])
+        self.assertEqual(challenger["electronics"], "Basic Military")
+        self.assertEqual(challenger["armor_points"], 4)
+        self.assertEqual(challenger["control"], "Standard bridge")
+        self.assertEqual(challenger["jump_drive"], "B")
+        self.assertEqual(challenger["maneuver_drive"], "E")
+        self.assertEqual(challenger["power_plant"], "E")
+        self.assertEqual(challenger["jump_distance"], 2)
+        self.assertEqual(challenger["thrust_g"], 5)
+        self.assertEqual(challenger["endurance"], 2)
+        self.assertEqual(challenger["cargo"], "2 tons")
+        self.assertEqual(challenger["crew"], 4)
+        self.assertIn("4 × Stateroom", challenger["equipment"])
+        self.assertIn("Fuel Processor", challenger["equipment"])
+        self.assertIn("Emergency Low Berth", challenger["equipment"])
+        self.assertIn("Standard Hangar (5 tons contained)", challenger["equipment"])
+        self.assertEqual(
+            challenger["armament"],
+            "Double Turret: Beam Laser · Sandcaster",
+        )
+        self.assertEqual(challenger["ammunition"], "20 × Sandcaster Canisters")
+        self.assertEqual(challenger["length_m"], 43.0)
+        self.assertEqual(
+            challenger["art_path"],
+            "assets/ships/ship-053-challenger.webp",
+        )
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
