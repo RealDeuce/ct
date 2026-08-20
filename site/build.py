@@ -572,6 +572,30 @@ PUBLISHED_SHIP_ART = {
         "hundred-ton Bellamy merchant family with two freight shutters.",
         60.0,
     ),
+    135: (
+        "assets/ships/ship-135-scipio.webp",
+        "Painted three-quarter view of Scipio, a navy and warm-white thousand-ton "
+        "battle destroyer with meson and particle-beam bay apertures.",
+        82.0,
+    ),
+    136: (
+        "assets/ships/ship-136-onager.webp",
+        "Painted three-quarter view of Onager, an ultramarine and violet thousand-ton "
+        "torpedo destroyer with six large closed launch shutters.",
+        82.0,
+    ),
+    137: (
+        "assets/ships/ship-137-corvus.webp",
+        "Painted three-quarter view of Corvus, a fire-red thousand-ton direct-fire "
+        "destroyer with two visible particle-beam channels.",
+        82.0,
+    ),
+    138: (
+        "assets/ships/ship-138-vesuvius.webp",
+        "Painted three-quarter view of Vesuvius, an ultramarine and violet thousand-ton "
+        "missile destroyer with a dense closed launch-cell bank.",
+        82.0,
+    ),
     152: (
         "assets/ships/family-080-ithaca-external.webp",
         "Painted three-quarter view of Ithaca, an ivory and blue eight-hundred-ton "

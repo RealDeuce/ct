@@ -231,6 +231,18 @@ generation. Place mounts for useful coverage, preserve those placements across
 variants, and explicitly list which are visible in the standard port view.
 Hidden mounts still exist and remain in the adjacent catalog statistics.
 
+Coverage matters as much as count. Do not let a general compositional preference
+for readable dorsal silhouettes turn into a fleet-wide assumption that turrets
+belong on the crown. Once a design has roughly eight or more weapon hardpoints,
+allocate its trainable mounts across dorsal, ventral, port/starboard flank or
+shoulder, forward, and aft arcs so the battery has overlapping fields of fire
+and minimal blind spots. Fixed bays and barbettes may dominate one axis, making
+cross-axis and stern coverage from the remaining turrets more important. A
+three-quarter plate should therefore reveal some side/shoulder stations on
+larger batteries when the hull permits, while its manifest accounts for the
+occluded ventral and far-side partners. Preserve this coverage map across every
+family variant; never migrate all mounts upward merely to make them visible.
+
 The standard three-quarter view normally exposes only about half of a ship's
 turrets. For example, a broadly symmetric eighteen-mount battery should show
 roughly nine mounts, not all eighteen. Front/aft, dorsal/ventral, or role-driven

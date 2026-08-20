@@ -1045,6 +1045,75 @@ class CatalogRecordTests(unittest.TestCase):
             )
             self.assertEqual(record["length_m"], 60.0)
 
+    def test_roman_family_exposes_four_distinct_capital_bay_fits(self) -> None:
+        scipio = self.records[135]
+        onager = self.records[136]
+        corvus = self.records[137]
+        vesuvius = self.records[138]
+
+        for record in (scipio, onager, corvus, vesuvius):
+            self.assertEqual(record["family_id"], 135)
+            self.assertEqual(record["tons"], 1000)
+            self.assertEqual(record["configuration"], "Standard")
+            self.assertEqual(record["electronics"], "Advanced")
+            self.assertEqual(
+                record["bridge_options"],
+                ["Hardened Bridge", "Holographic Controls"],
+            )
+            self.assertEqual(
+                record["hull_options"],
+                ["Radiation Shielding", "Self Sealing"],
+            )
+            self.assertEqual(record["armor_points"], 5)
+            self.assertEqual(record["jump_drive"], "K")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["jump_count"], 1)
+            self.assertEqual(record["maneuver_drive"], "S")
+            self.assertEqual(record["power_plant"], "S")
+            self.assertEqual(record["endurance"], 4)
+            self.assertIn("Fuel Scoop", record["equipment"])
+            self.assertIn("4 × Fuel Processor", record["equipment"])
+            self.assertIn("Full Hangar (30 tons contained)", record["equipment"])
+            self.assertIn(
+                "Carried Craft: Wayfarer Armed (ship-134)",
+                record["equipment"],
+            )
+            self.assertIn("4 × Triple Turret: Beam Laser", record["armament"])
+            self.assertIn("2 × Triple Turret: Missile Rack", record["armament"])
+            self.assertIn(
+                "10 × Point Defense Node Mount: Point Defense Laser",
+                record["armament"],
+            )
+            self.assertEqual(record["length_m"], 82.0)
+
+        self.assertEqual(scipio["cargo"], "2.6 tons")
+        self.assertIn("2 × Meson Gun Bay", scipio["armament"])
+        self.assertIn("2 × Particle Beam Bay", scipio["armament"])
+        self.assertNotIn("Torpedo Bay", scipio["armament"])
+        self.assertEqual(scipio["art_path"], "assets/ships/ship-135-scipio.webp")
+
+        self.assertEqual(onager["cargo"], "3 tons")
+        self.assertIn("2 × Torpedo Bay 50", onager["armament"])
+        self.assertIn("2 × Particle Beam Bay", onager["armament"])
+        self.assertEqual(onager["art_path"], "assets/ships/ship-136-onager.webp")
+
+        self.assertEqual(corvus["cargo"], "2.6 tons")
+        self.assertIn("4 × Particle Beam Bay", corvus["armament"])
+        self.assertNotIn("Meson Gun Bay", corvus["armament"])
+        self.assertEqual(corvus["art_path"], "assets/ships/ship-137-corvus.webp")
+
+        self.assertEqual(vesuvius["cargo"], "2.233 tons")
+        self.assertIn("2 × Missile Bank", vesuvius["armament"])
+        self.assertIn("2 × Particle Beam Bay", vesuvius["armament"])
+        self.assertEqual(
+            vesuvius["ammunition"],
+            "100 × Standard Missiles · 80 × Sandcaster Canisters",
+        )
+        self.assertEqual(
+            vesuvius["art_path"],
+            "assets/ships/ship-138-vesuvius.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)
