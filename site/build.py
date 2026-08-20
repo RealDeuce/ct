@@ -554,6 +554,24 @@ PUBLISHED_SHIP_ART = {
         "assault transport with an armored vehicle-hangar shutter.",
         72.0,
     ),
+    131: (
+        "assets/ships/family-131-bellamy.webp",
+        "Painted three-quarter view of the ivory, royal-blue, and chrome four-"
+        "hundred-ton Bellamy merchant family with two freight shutters.",
+        60.0,
+    ),
+    132: (
+        "assets/ships/family-131-bellamy.webp",
+        "Painted three-quarter view of the ivory, royal-blue, and chrome four-"
+        "hundred-ton Bellamy merchant family with two freight shutters.",
+        60.0,
+    ),
+    133: (
+        "assets/ships/family-131-bellamy.webp",
+        "Painted three-quarter view of the ivory, royal-blue, and chrome four-"
+        "hundred-ton Bellamy merchant family with two freight shutters.",
+        60.0,
+    ),
     152: (
         "assets/ships/family-080-ithaca-external.webp",
         "Painted three-quarter view of Ithaca, an ivory and blue eight-hundred-ton "

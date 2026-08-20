@@ -1008,6 +1008,43 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("Single Turret: Sandcaster", merv["armament"])
         self.assertEqual(merv["art_path"], "assets/ships/ship-130-merv.webp")
 
+    def test_exterior_equivalent_bellamy_generations_share_one_plate(self) -> None:
+        bellamys = [self.records[catalog_id] for catalog_id in (131, 132, 133)]
+
+        self.assertEqual(
+            {record["art_path"] for record in bellamys},
+            {"assets/ships/family-131-bellamy.webp"},
+        )
+        for record in bellamys:
+            self.assertEqual(record["family_id"], 131)
+            self.assertEqual(record["tons"], 400)
+            self.assertEqual(record["configuration"], "Standard")
+            self.assertEqual(record["electronics"], "Basic Civilian")
+            self.assertEqual(
+                record["hull_options"],
+                ["Radiation Shielding", "Self Sealing"],
+            )
+            self.assertEqual(record["armor_points"], 1)
+            self.assertEqual(record["jump_drive"], "D")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["maneuver_drive"], "B")
+            self.assertEqual(record["power_plant"], "D")
+            self.assertEqual(record["endurance"], 3)
+            self.assertEqual(record["cargo"], "172 tons")
+            self.assertEqual(record["unused_fire_control_stations"], 1)
+            self.assertIn("2 × Fuel Processor", record["equipment"])
+            self.assertNotIn("Fuel Scoop", record["equipment"])
+            self.assertEqual(
+                record["armament"],
+                "2 × Double Turret: Beam Laser · Beam Laser · "
+                "Double Turret: Sandcaster · Missile Rack",
+            )
+            self.assertEqual(
+                record["ammunition"],
+                "20 × Sandcaster Canisters · 12 × Standard Missiles",
+            )
+            self.assertEqual(record["length_m"], 60.0)
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)
