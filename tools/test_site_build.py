@@ -1793,6 +1793,37 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-195-decatur.webp",
         )
 
+    def test_fugger_exposes_unarmed_bulk_freight_capacity(self) -> None:
+        fugger = self.records[196]
+
+        self.assertEqual(fugger["family_id"], 196)
+        self.assertEqual(fugger["tons"], 400)
+        self.assertEqual(fugger["configuration"], "Standard")
+        self.assertEqual(fugger["electronics"], "Basic Civilian")
+        self.assertTrue(fugger["standard_design"])
+        self.assertEqual(fugger["armor_points"], 2)
+        self.assertEqual(fugger["jump_drive"], "B")
+        self.assertEqual(fugger["jump_distance"], 1)
+        self.assertEqual(fugger["jump_count"], 1)
+        self.assertEqual(fugger["maneuver_drive"], "B")
+        self.assertEqual(fugger["power_plant"], "B")
+        self.assertEqual(fugger["endurance"], 4)
+        self.assertEqual(fugger["cargo"], "261 tons")
+        self.assertEqual(fugger["external_load"], "0 tons")
+        self.assertEqual(fugger["crew"], 3)
+        self.assertIn("4 × Stateroom", fugger["equipment"])
+        self.assertIn("2 × Emergency Low Berth", fugger["equipment"])
+        self.assertIn("3 × Fuel Processor", fugger["equipment"])
+        self.assertIn("Fuel Scoop", fugger["equipment"])
+        self.assertEqual(fugger["armament"], "None installed")
+        self.assertEqual(fugger["ammunition"], "None carried")
+        self.assertEqual(fugger["unused_fire_control_stations"], 4)
+        self.assertEqual(fugger["length_m"], 64.0)
+        self.assertEqual(
+            fugger["art_path"],
+            "assets/ships/ship-196-fugger.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

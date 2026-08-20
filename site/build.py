@@ -843,6 +843,13 @@ PUBLISHED_SHIP_ART = {
         "closed flank missile turret.",
         60.0,
     ),
+    196: (
+        "assets/ships/ship-196-fugger.webp",
+        "Painted three-quarter view of Fugger, an ivory, royal-blue, and "
+        "vermilion four-hundred-ton unarmed bulk freighter with three immense "
+        "cargo shutters.",
+        64.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
