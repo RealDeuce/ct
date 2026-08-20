@@ -880,6 +880,12 @@ PUBLISHED_SHIP_ART = {
         "vermilion forty-ton unarmed cargo pinnace with a five-gravity stern.",
         20.5,
     ),
+    202: (
+        "assets/ships/ship-202-tender.webp",
+        "Painted three-quarter view of Tender, an ivory, royal-blue, and "
+        "vermilion thirty-ton unarmed general-purpose ship's boat.",
+        17.5,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
