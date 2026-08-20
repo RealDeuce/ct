@@ -402,6 +402,24 @@ PUBLISHED_SHIP_ART = {
         "system-defense frigate with heavy armor and an axial meson-gun bay.",
         64.0,
     ),
+    97: (
+        "assets/ships/family-097-baltic-logistics.webp",
+        "Painted three-quarter view of Riga, a navy two-thousand-ton fleet tanker "
+        "with ten replenishment stations and five mixed triple turrets.",
+        104.0,
+    ),
+    98: (
+        "assets/ships/ship-098-visby.webp",
+        "Painted three-quarter view of Visby, an ivory and blue two-thousand-ton "
+        "bulk freighter with five large freight shutters and five mixed turrets.",
+        104.0,
+    ),
+    101: (
+        "assets/ships/family-097-baltic-logistics.webp",
+        "Painted three-quarter view of Novgorod, a navy two-thousand-ton fleet "
+        "logistics ship with ten replenishment stations and five mixed turrets.",
+        104.0,
+    ),
     152: (
         "assets/ships/family-080-ithaca-external.webp",
         "Painted three-quarter view of Ithaca, an ivory and blue eight-hundred-ton "

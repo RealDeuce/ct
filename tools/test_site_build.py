@@ -481,6 +481,41 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(late["endurance"], 6)
         self.assertEqual(late["cargo"], "31.5 tons")
 
+    def test_baltic_league_uses_two_audited_logistics_fits(self) -> None:
+        riga, visby, novgorod = (
+            self.records[catalog_id] for catalog_id in (97, 98, 101)
+        )
+        for record in (riga, visby, novgorod):
+            self.assertEqual(record["family_id"], 97)
+            self.assertEqual(record["tons"], 2000)
+            self.assertEqual(record["configuration"], "Standard")
+            self.assertEqual(record["jump_drive"], "Q")
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["maneuver_drive"], "N")
+            self.assertEqual(record["power_plant"], "Q")
+            self.assertEqual(record["armor_points"], 2)
+            self.assertEqual(record["length_m"], 104.0)
+            self.assertIn("Full Hangar (30 tons contained)", record["equipment"])
+            self.assertIn("Carried Craft: Jason (ship-17)", record["equipment"])
+            self.assertIn("5 × Triple Turret", record["armament"])
+            self.assertEqual(record["unused_fire_control_stations"], 15)
+
+        self.assertEqual(
+            {riga["art_path"], novgorod["art_path"]},
+            {"assets/ships/family-097-baltic-logistics.webp"},
+        )
+        for record in (riga, novgorod):
+            self.assertIn("10 × Underway Replenishment System", record["equipment"])
+            self.assertIn("20 × Fuel Processor", record["equipment"])
+        self.assertEqual(riga["cargo"], "1,154 tons")
+        self.assertEqual(novgorod["cargo"], "1,142 tons")
+
+        self.assertEqual(visby["art_path"], "assets/ships/ship-098-visby.webp")
+        self.assertNotIn("Underway Replenishment", visby["equipment"])
+        self.assertIn("Air Raft Hangar", visby["equipment"])
+        self.assertIn("5 × Fuel Processor", visby["equipment"])
+        self.assertEqual(visby["cargo"], "1,122 tons")
+
 
 if __name__ == "__main__":
     unittest.main()
