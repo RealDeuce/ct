@@ -6,9 +6,9 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use cepheus_trader_server::engine::{BbsRegistry, Engine, EngineError};
+use cepheus_trader_server::engine::{BbsRegistry, Engine};
 use cepheus_trader_server::store::{
-    BbsSettings, FlightLegPurpose, FlightLegRecord, ShipLocationRecord, Store, StoreError,
+    BbsSettings, FlightLegPurpose, FlightLegRecord, ShipLocationRecord, Store,
 };
 use cepheus_trader_server::universe::INITIAL_SYSTEMS;
 use cepheus_trader_server::wire::{
@@ -403,22 +403,50 @@ fn engine_request(epoch: u64, request_id: u64, command: WireCommand) -> CommandR
     }
 }
 
-fn advance_simulation_to_due(engine: &Engine, due_second: u64) {
-    loop {
-        engine.recover().unwrap();
-        let current_second = engine.game_second().unwrap();
-        // An encounter can become actionable after its scheduled second has
-        // already passed. Advancing through the current second admits that
-        // overdue work; returning here would leave it pending forever.
-        match engine.advance_simulation_to(due_second.max(current_second)) {
-            Ok(_) => return,
-            Err(EngineError::Store(StoreError::SimulationTimeReversal { .. })) => continue,
-            Err(error) => panic!("simulation advance failed: {error}"),
-        }
-    }
+const SETTLEMENT_STEP_LIMIT: usize = 4_096;
+
+fn advance_one_simulation_event(engine: &Engine, target_second: u64) -> bool {
+    engine
+        .advance_simulation_toward(target_second, 1)
+        .unwrap()
+        .reached_target
 }
 
-const SETTLEMENT_STEP_LIMIT: usize = 4_096;
+fn advance_encounter_until_progress(
+    engine: &Engine,
+    identity: &PlayerIdentity,
+    before: &cepheus_trader_server::wire::EncounterSnapshot,
+) {
+    for _ in 0..SETTLEMENT_STEP_LIMIT {
+        let after = engine.pending_encounter(identity).unwrap();
+        if after.as_ref() != Some(before) {
+            return;
+        }
+        let due_second = if before.next_turn_second == 0 {
+            before.started_second + 1_000
+        } else {
+            before.next_turn_second
+        };
+        let reached_target = advance_one_simulation_event(engine, due_second);
+        let after = engine.pending_encounter(identity).unwrap();
+        if after.as_ref() != Some(before) {
+            return;
+        }
+        assert!(
+            !reached_target,
+            "encounter made no progress at its due second: id={} revision={} state={:?} turn={} due={}",
+            before.encounter_id,
+            before.revision,
+            before.state,
+            before.turn,
+            before.next_turn_second
+        );
+    }
+    panic!(
+        "encounter made no progress after {SETTLEMENT_STEP_LIMIT} scheduled events: id={} revision={} state={:?} turn={} due={}",
+        before.encounter_id, before.revision, before.state, before.turn, before.next_turn_second
+    );
+}
 
 fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
     let mut request_id = 90_000_u64;
@@ -457,14 +485,7 @@ fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
                         .unwrap();
                     request_id += 1;
                 }
-                advance_simulation_to_due(
-                    &engine,
-                    if encounter.next_turn_second == 0 {
-                        encounter.started_second + 1_000
-                    } else {
-                        encounter.next_turn_second
-                    },
-                );
+                advance_encounter_until_progress(&engine, identity, &before);
                 let after = engine.pending_encounter(identity).unwrap();
                 assert_ne!(
                     after.as_ref(),
@@ -506,7 +527,7 @@ fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity) {
                 let due_second = leg.due_second;
                 drop(store);
                 let engine = Engine::open(data, BbsRegistry::default()).unwrap();
-                advance_simulation_to_due(&engine, due_second);
+                advance_one_simulation_event(&engine, due_second);
             }
             other => panic!("terminal approach entered an unexpected locus: {other:?}"),
         }
@@ -540,14 +561,7 @@ fn settle_pending_arrival_encounter(data: &Path, identity: &PlayerIdentity) {
                 .unwrap();
             request_id += 1;
         }
-        advance_simulation_to_due(
-            &engine,
-            if encounter.next_turn_second == 0 {
-                encounter.started_second + 1_000
-            } else {
-                encounter.next_turn_second
-            },
-        );
+        advance_encounter_until_progress(&engine, identity, &before);
         let after = engine.pending_encounter(identity).unwrap();
         assert_ne!(
             after.as_ref(),
@@ -563,12 +577,28 @@ fn settle_pending_arrival_encounter(data: &Path, identity: &PlayerIdentity) {
     panic!("arrival encounter did not settle after {SETTLEMENT_STEP_LIMIT} state transitions");
 }
 
+fn advance_player_simulation_to(data: &Path, identity: &PlayerIdentity, target_second: u64) {
+    for _ in 0..SETTLEMENT_STEP_LIMIT {
+        settle_pending_arrival_encounter(data, identity);
+        let engine = Engine::open(data, BbsRegistry::default()).unwrap();
+        if engine.game_second().unwrap() > target_second {
+            return;
+        }
+        if advance_one_simulation_event(&engine, target_second) {
+            return;
+        }
+    }
+    panic!(
+        "simulation did not reach second {target_second} after {SETTLEMENT_STEP_LIMIT} scheduled events"
+    );
+}
+
 fn advance_until_flight_leg(
     data: &Path,
     identity: &PlayerIdentity,
     matches_purpose: impl Fn(FlightLegPurpose) -> bool,
 ) -> FlightLegRecord {
-    for _ in 0..32 {
+    for _ in 0..SETTLEMENT_STEP_LIMIT {
         settle_pending_arrival_encounter(data, identity);
         let store = Store::open(data).unwrap();
         let player = store.player_record(identity).unwrap().unwrap();
@@ -582,7 +612,7 @@ fn advance_until_flight_leg(
         }
         drop(store);
         let engine = Engine::open(data, BbsRegistry::default()).unwrap();
-        advance_simulation_to_due(&engine, leg.due_second);
+        advance_one_simulation_event(&engine, leg.due_second);
     }
     panic!("voyage did not reach the requested flight-leg purpose");
 }
@@ -2041,10 +2071,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     };
 
     let (pickup, jump_due) = {
-        Engine::open(data.path(), BbsRegistry::default())
-            .unwrap()
-            .advance_simulation_to(departure_due)
-            .unwrap();
+        advance_player_simulation_to(data.path(), &identity, departure_due);
         let jump_leg = advance_until_flight_leg(data.path(), &identity, |purpose| {
             matches!(purpose, FlightLegPurpose::Jump { .. })
         });
@@ -2079,10 +2106,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         .map_or(0, |custody| custody.advertised_stipend_credits);
 
     let (arrival_report, arrival_credits, arrival_fuel, arrival_provisions) = {
-        Engine::open(data.path(), BbsRegistry::default())
-            .unwrap()
-            .advance_simulation_to(jump_due)
-            .unwrap();
+        advance_player_simulation_to(data.path(), &identity, jump_due);
         advance_until_flight_leg(data.path(), &identity, |purpose| {
             matches!(purpose, FlightLegPurpose::ApproachPort)
         });
@@ -2105,11 +2129,13 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         )
     };
 
-    // Reopening and advancing to the same logical second is a no-op: neither
+    // Reopening and advancing to the current logical second is a no-op: neither
     // stipend nor mail visibility/custody may be duplicated.
     {
         let engine = Engine::open(data.path(), BbsRegistry::default()).unwrap();
-        let replay = engine.advance_simulation_to(jump_due).unwrap();
+        let replay = engine
+            .advance_simulation_to(engine.game_second().unwrap())
+            .unwrap();
         assert_eq!(replay.processed_events, 0);
         drop(engine);
         let store = Store::open(data.path()).unwrap();
