@@ -910,6 +910,12 @@ PUBLISHED_SHIP_ART = {
         "mustard six-hundred-ton raider with a closed three-craft hangar.",
         76.0,
     ),
+    207: (
+        "assets/ships/ship-207-bacon.webp",
+        "Painted three-quarter view of Bacon, a warm-white, cyan, lime, and chrome "
+        "two-hundred-ton research vessel with two closed Dory launch cells.",
+        50.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "

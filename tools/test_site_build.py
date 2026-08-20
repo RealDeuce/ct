@@ -2109,6 +2109,39 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-206-blackbeard.webp",
         )
 
+    def test_bacon_exposes_research_labs_probes_and_two_dory_hangars(self) -> None:
+        research = self.records[207]
+        self.assertEqual(research["family_id"], 207)
+        self.assertEqual(research["tons"], 200)
+        self.assertEqual(research["configuration"], "Standard")
+        self.assertEqual(research["electronics"], "Basic Civilian")
+        self.assertTrue(research["standard_design"])
+        self.assertEqual(research["armor_points"], 2)
+        self.assertEqual(research["hull_options"], [])
+        self.assertEqual(research["jump_drive"], "A")
+        self.assertEqual(research["jump_distance"], 1)
+        self.assertEqual(research["jump_count"], 1)
+        self.assertEqual(research["maneuver_drive"], "A")
+        self.assertEqual(research["power_plant"], "A")
+        self.assertEqual(research["assertions"]["thrust_g"], 1)
+        self.assertEqual(research["endurance"], 4)
+        self.assertEqual(research["cargo"], "29 tons")
+        self.assertEqual(research["crew"], 9)
+        self.assertIn("2 × Lifeboat Hangar", research["equipment"])
+        self.assertIn("3 × Probe Drones", research["equipment"])
+        self.assertIn("6 × Laboratory", research["equipment"])
+        self.assertIn("2 × Fuel Processor", research["equipment"])
+        self.assertIn("Fuel Scoop", research["equipment"])
+        self.assertIn(
+            "2 × Carried Craft: Dory (ship-194)",
+            research["equipment"],
+        )
+        self.assertEqual(research["armament"], "None installed")
+        self.assertEqual(research["ammunition"], "None carried")
+        self.assertEqual(research["unused_fire_control_stations"], 2)
+        self.assertEqual(research["length_m"], 50.0)
+        self.assertEqual(research["art_path"], "assets/ships/ship-207-bacon.webp")
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)
