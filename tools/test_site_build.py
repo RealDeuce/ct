@@ -2492,6 +2492,32 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(warden["length_m"], 38.0)
         self.assertEqual(warden["art_path"], "assets/ships/ship-041-warden.webp")
 
+    def test_ballista_exposes_persistent_missile_escort_fit(self) -> None:
+        ballista = self.records[42]
+        self.assertEqual(ballista["family_id"], 42)
+        self.assertEqual(ballista["tons"], 80)
+        self.assertEqual(ballista["configuration"], "Streamlined")
+        self.assertEqual(ballista["tech_level"], 11)
+        self.assertFalse(ballista["standard_design"])
+        self.assertEqual(ballista["electronics"], "Basic Military")
+        self.assertEqual(ballista["armor_points"], 4)
+        self.assertEqual(ballista["control"], "Four Person Control Cabin")
+        self.assertEqual(ballista["additional_passengers"], 0)
+        self.assertEqual(ballista["maneuver_drive"], "sQ")
+        self.assertEqual(ballista["power_plant"], "sQ")
+        self.assertEqual(ballista["endurance"], 1)
+        self.assertEqual(ballista["cargo"], "32.3 tons")
+        self.assertEqual(ballista["crew"], 4)
+        self.assertEqual(ballista["airlocks"], 1)
+        self.assertIn("3 × Small Craft Stateroom", ballista["equipment"])
+        self.assertIn("Small Craft Fuel Processor", ballista["equipment"])
+        self.assertIn("Emergency Low Berth", ballista["equipment"])
+        self.assertEqual(ballista["armament"], "Single Turret: Missile Rack")
+        self.assertEqual(ballista["ammunition"], "12 × Standard Missiles")
+        self.assertIsNone(ballista["jump_drive"])
+        self.assertEqual(ballista["length_m"], 32.0)
+        self.assertEqual(ballista["art_path"], "assets/ships/ship-042-ballista.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

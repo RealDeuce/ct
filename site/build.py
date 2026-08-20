@@ -278,6 +278,13 @@ PUBLISHED_SHIP_ART = {
         "launch hangar.",
         38.0,
     ),
+    42: (
+        "assets/ships/ship-042-ballista.webp",
+        "Painted three-quarter view of Ballista, a fire-red, orange, bone, and "
+        "stainless eighty-ton missile escort boat with a side missile turret "
+        "and broad stores shutter.",
+        32.0,
+    ),
     43: (
         "assets/ships/family-034-humboldt.webp",
         "Painted three-quarter view of Humboldt, an avocado and ochre two-hundred-ton "
