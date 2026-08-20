@@ -132,6 +132,12 @@ PUBLISHED_SHIP_ART = {
         "forty-ton pinnace with eight passenger-window bays and a freight door.",
         23.5,
     ),
+    25: (
+        "assets/ships/ship-025-bellerophon.webp",
+        "Painted three-quarter view of Bellerophon, a fire-red, bone, and "
+        "stainless fifteen-ton two-seat strike fighter with a shuttered missile turret.",
+        14.8,
+    ),
     151: (
         "assets/ships/family-022-albatross.webp",
         "Painted three-quarter view of Albatross, an ivory, vermilion, and blue "

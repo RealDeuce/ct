@@ -57,6 +57,31 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(ariel["art_path"], "assets/ships/ship-142-ariel.webp")
         self.assertEqual(ariel["length_m"], 19.0)
 
+    def test_bellerophon_sets_mitchell_strike_fighter_clearance(self) -> None:
+        bellerophon = self.records[25]
+        self.assertEqual(bellerophon["family_id"], 25)
+        self.assertEqual(bellerophon["tons"], 15)
+        self.assertEqual(bellerophon["configuration"], "Streamlined")
+        self.assertEqual(bellerophon["electronics"], "Basic Military")
+        self.assertEqual(bellerophon["armor_points"], 2)
+        self.assertEqual(bellerophon["control"], "Two Person Cockpit")
+        self.assertEqual(bellerophon["additional_passengers"], 0)
+        self.assertEqual(bellerophon["maneuver_drive"], "sE")
+        self.assertEqual(bellerophon["power_plant"], "sE")
+        self.assertIsNone(bellerophon["thrust_g"])
+        self.assertIn("Thrust 6", bellerophon["mission_tags"])
+        self.assertEqual(bellerophon["endurance"], 1)
+        self.assertEqual(bellerophon["cargo"], "1.925 tons")
+        self.assertEqual(bellerophon["airlocks"], 0)
+        self.assertEqual(bellerophon["armament"], "Single Turret: Missile Rack")
+        self.assertEqual(bellerophon["ammunition"], "12 × Standard Missiles")
+        self.assertIsNone(bellerophon["jump_drive"])
+        self.assertEqual(bellerophon["length_m"], 14.8)
+        self.assertEqual(
+            bellerophon["art_path"],
+            "assets/ships/ship-025-bellerophon.webp",
+        )
+
     def test_starship_special_fits_are_searchable_and_visible(self) -> None:
         ligeia = self.records[33]
         self.assertEqual(ligeia["hull_options"], ["Stealth"])
