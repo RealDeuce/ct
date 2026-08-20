@@ -791,6 +791,59 @@ class CatalogRecordTests(unittest.TestCase):
             "432 × Standard Missiles · 768 × Sandcaster Canisters",
         )
 
+    def test_bulwark_conversion_preserves_the_fast_escort_chassis(self) -> None:
+        curtain, keep = (self.records[catalog_id] for catalog_id in (121, 122))
+        for record in (curtain, keep):
+            self.assertEqual(record["family_id"], 121)
+            self.assertEqual(record["tons"], 500)
+            self.assertEqual(record["configuration"], "Standard")
+            self.assertEqual(record["electronics"], "Advanced")
+            self.assertEqual(
+                record["bridge_options"],
+                ["Hardened Bridge", "Holographic Controls"],
+            )
+            self.assertEqual(
+                record["hull_options"],
+                ["Radiation Shielding", "Self Sealing"],
+            )
+            self.assertEqual(record["maneuver_drive"], "Q")
+            self.assertEqual(record["power_plant"], "Q")
+            self.assertEqual(record["endurance"], 3)
+            self.assertEqual(record["length_m"], 62.0)
+            self.assertIn("Fuel Scoop", record["equipment"])
+            self.assertIn("8 × Fuel Processor", record["equipment"])
+            self.assertIn("Standard Hangar (30 tons contained)", record["equipment"])
+            self.assertIn(
+                "Carried Craft: Wayfarer Boarding (ship-212)",
+                record["equipment"],
+            )
+            self.assertIn("2 × Triple Turret: Beam Laser", record["armament"])
+            self.assertIn("Triple Turret: Missile Rack", record["armament"])
+            self.assertIn("5 × Point Defense Node Mount", record["armament"])
+            self.assertIn("40 × Sandcaster Canisters", record["ammunition"])
+
+        self.assertEqual(curtain["armor_points"], 4)
+        self.assertEqual(curtain["jump_drive"], "G")
+        self.assertEqual(curtain["jump_distance"], 2)
+        self.assertEqual(curtain["cargo"], "4 tons")
+        self.assertIn("2 × Particle Beam Barbette", curtain["armament"])
+        self.assertNotIn("Particle Beam Bay", curtain["armament"])
+        self.assertIn("84 × Standard Missiles", curtain["ammunition"])
+        self.assertEqual(
+            curtain["art_path"],
+            "assets/ships/ship-121-curtain.webp",
+        )
+
+        self.assertEqual(keep["armor_points"], 12)
+        self.assertIsNone(keep["jump_drive"])
+        self.assertEqual(keep["jump_distance"], 0)
+        self.assertEqual(keep["cargo"], "50.9 tons")
+        self.assertIn("Particle Beam Barbette", keep["armament"])
+        self.assertIn("Particle Beam Bay", keep["armament"])
+        self.assertNotIn("2 × Particle Beam Barbette", keep["armament"])
+        self.assertIn("96 × Standard Missiles", keep["ammunition"])
+        self.assertEqual(keep["art_path"], "assets/ships/ship-122-keep.webp")
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

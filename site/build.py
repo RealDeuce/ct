@@ -492,6 +492,18 @@ PUBLISHED_SHIP_ART = {
         "thirty-eight-hundred-ton strike carrier with five hangar modules.",
         150.0,
     ),
+    121: (
+        "assets/ships/ship-121-curtain.webp",
+        "Painted three-quarter view of Curtain, a navy five-hundred-ton fleet "
+        "escort with two visible turrets and a particle-beam barbette.",
+        62.0,
+    ),
+    122: (
+        "assets/ships/ship-122-keep.webp",
+        "Painted three-quarter view of Keep, a fire-red five-hundred-ton system-"
+        "defense ship with an integrated particle-beam bay.",
+        62.0,
+    ),
     124: (
         "assets/ships/ship-124-archimedes.webp",
         "Painted three-quarter view of Archimedes, an avocado ten-ton vacuum work "
