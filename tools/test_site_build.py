@@ -1652,6 +1652,37 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-191-faraday.webp",
         )
 
+    def test_hudson_exposes_unarmed_jump_two_mixed_trader(self) -> None:
+        hudson = self.records[192]
+
+        self.assertEqual(hudson["family_id"], 192)
+        self.assertEqual(hudson["tons"], 200)
+        self.assertEqual(hudson["configuration"], "Standard")
+        self.assertEqual(hudson["electronics"], "Basic Civilian")
+        self.assertTrue(hudson["standard_design"])
+        self.assertEqual(hudson["armor_points"], 2)
+        self.assertEqual(hudson["jump_drive"], "B")
+        self.assertEqual(hudson["jump_distance"], 2)
+        self.assertEqual(hudson["jump_count"], 1)
+        self.assertEqual(hudson["maneuver_drive"], "A")
+        self.assertEqual(hudson["power_plant"], "B")
+        self.assertEqual(hudson["endurance"], 4)
+        self.assertEqual(hudson["cargo"], "53 tons")
+        self.assertEqual(hudson["external_load"], "0 tons")
+        self.assertEqual(hudson["crew"], 3)
+        self.assertIn("10 × Stateroom", hudson["equipment"])
+        self.assertIn("20 × Low Berth", hudson["equipment"])
+        self.assertIn("2 × Fuel Processor", hudson["equipment"])
+        self.assertIn("Fuel Scoop", hudson["equipment"])
+        self.assertEqual(hudson["armament"], "None installed")
+        self.assertEqual(hudson["ammunition"], "None carried")
+        self.assertEqual(hudson["unused_fire_control_stations"], 2)
+        self.assertEqual(hudson["length_m"], 48.0)
+        self.assertEqual(
+            hudson["art_path"],
+            "assets/ships/ship-192-hudson.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

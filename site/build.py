@@ -816,6 +816,12 @@ PUBLISHED_SHIP_ART = {
         "defensive batteries and two externally clamped utility craft.",
         132.0,
     ),
+    192: (
+        "assets/ships/ship-192-hudson.webp",
+        "Painted three-quarter view of Hudson, an ivory, royal-blue, and "
+        "vermilion two-hundred-ton unarmed passenger and freight trader.",
+        48.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
