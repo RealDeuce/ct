@@ -593,6 +593,49 @@ class CatalogRecordTests(unittest.TestCase):
             duncan_ii["art_path"], "assets/ships/ship-102-duncan-ii.webp"
         )
 
+    def test_hephaestus_clamp_fits_account_for_the_external_flotilla(self) -> None:
+        enyo, ares = (self.records[catalog_id] for catalog_id in (104, 105))
+        for record in (enyo, ares):
+            self.assertEqual(record["family_id"], 104)
+            self.assertEqual(record["tons"], 1400)
+            self.assertEqual(record["configuration"], "Standard")
+            self.assertEqual(record["electronics"], "Advanced")
+            self.assertEqual(
+                record["bridge_options"],
+                ["Command Bridge", "Hardened Bridge", "Holographic Controls"],
+            )
+            self.assertEqual(record["armor_points"], 1)
+            self.assertEqual(record["endurance"], 3)
+            self.assertEqual(record["length_m"], 94.0)
+            self.assertIn("Full Hangar (20 tons contained)", record["equipment"])
+            self.assertIn("Carried Craft: Caduceus (ship-7)", record["equipment"])
+            self.assertIn("6 × Triple Turret: Beam Laser", record["armament"])
+            self.assertIn("4 × Triple Turret: Missile Rack", record["armament"])
+            self.assertIn("4 × Triple Turret: Sandcaster", record["armament"])
+            self.assertIn("14 × Point Defense Node Mount", record["armament"])
+            self.assertEqual(record["unused_fire_control_stations"], 0)
+
+        self.assertEqual(enyo["jump_drive"], "K")
+        self.assertEqual(enyo["jump_distance"], 2)
+        self.assertEqual(enyo["maneuver_drive"], "N")
+        self.assertEqual(enyo["power_plant"], "P")
+        self.assertEqual(enyo["cargo"], "499.5 tons")
+        self.assertEqual(enyo["external_load"], "0 tons")
+        self.assertIn("10 × Docking Clamp 90", enyo["equipment"])
+        self.assertNotIn("Fuel Scoop", enyo["equipment"])
+        self.assertNotIn("Triton", enyo["equipment"])
+
+        self.assertIsNone(ares["jump_drive"])
+        self.assertEqual(ares["jump_distance"], 0)
+        self.assertEqual(ares["maneuver_drive"], "W")
+        self.assertEqual(ares["power_plant"], "W")
+        self.assertEqual(ares["cargo"], "892.5 tons")
+        self.assertEqual(ares["external_load"], "1,140 tons")
+        self.assertIn("4 × Docking Clamp 300", ares["equipment"])
+        self.assertIn("Fuel Scoop", ares["equipment"])
+        self.assertIn("10 × Fuel Processor", ares["equipment"])
+        self.assertIn("12 × Carried Craft: Triton (ship-48)", ares["equipment"])
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

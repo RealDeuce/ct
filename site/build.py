@@ -438,6 +438,18 @@ PUBLISHED_SHIP_ART = {
         "command escort with a protected sensor brow and four weapon bays.",
         76.0,
     ),
+    104: (
+        "assets/ships/ship-104-enyo.webp",
+        "Painted three-quarter view of Enyo, a red fourteen-hundred-ton assault "
+        "carrier with ten empty docking clamps and fourteen triple turrets.",
+        94.0,
+    ),
+    105: (
+        "assets/ships/ship-105-ares.webp",
+        "Painted three-quarter view of Ares, a red fourteen-hundred-ton parasite "
+        "carrier with six visible docked Triton escort boats.",
+        94.0,
+    ),
     107: (
         "assets/ships/ship-107-corbett.webp",
         "Painted three-quarter view of Corbett, a navy fifteen-hundred-ton "
