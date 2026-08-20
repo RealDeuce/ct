@@ -2041,6 +2041,37 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(frigate["length_m"], 64.0)
         self.assertEqual(frigate["art_path"], "assets/ships/ship-204-perry.webp")
 
+    def test_casemate_exposes_armored_system_defense_boat(self) -> None:
+        boat = self.records[205]
+        self.assertEqual(boat["family_id"], 205)
+        self.assertEqual(boat["tons"], 400)
+        self.assertEqual(boat["configuration"], "Streamlined")
+        self.assertEqual(boat["electronics"], "Basic Civilian")
+        self.assertTrue(boat["standard_design"])
+        self.assertEqual(boat["armor_points"], 8)
+        self.assertEqual(boat["hull_options"], [])
+        self.assertIsNone(boat["jump_drive"])
+        self.assertEqual(boat["jump_distance"], 0)
+        self.assertEqual(boat["jump_count"], 0)
+        self.assertEqual(boat["maneuver_drive"], "M")
+        self.assertEqual(boat["power_plant"], "M")
+        self.assertEqual(boat["assertions"]["thrust_g"], 6)
+        self.assertEqual(boat["endurance"], 4)
+        self.assertEqual(boat["cargo"], "107 tons")
+        self.assertEqual(boat["external_load"], "0 tons")
+        self.assertEqual(boat["crew"], 19)
+        self.assertIn("10 × Stateroom", boat["equipment"])
+        self.assertIn("5 × Emergency Low Berth", boat["equipment"])
+        self.assertIn("3 × Fuel Processor", boat["equipment"])
+        self.assertNotIn("Fuel Scoop", boat["equipment"])
+        self.assertEqual(boat["armament"].count("Triple Turret"), 4)
+        self.assertEqual(boat["armament"].count("Missile Rack"), 6)
+        self.assertEqual(boat["armament"].count("Beam Laser"), 6)
+        self.assertEqual(boat["ammunition"], "360 × Smart Missiles")
+        self.assertEqual(boat["unused_fire_control_stations"], 0)
+        self.assertEqual(boat["length_m"], 61.0)
+        self.assertEqual(boat["art_path"], "assets/ships/ship-205-casemate.webp")
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

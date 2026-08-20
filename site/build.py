@@ -898,6 +898,12 @@ PUBLISHED_SHIP_ART = {
         "three-hundred-ton stealth patrol frigate with a closed twin-fighter hangar.",
         64.0,
     ),
+    205: (
+        "assets/ships/ship-205-casemate.webp",
+        "Painted three-quarter view of Casemate, a fire-red, orange, bone, and "
+        "stainless four-hundred-ton armored system-defense boat.",
+        61.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
