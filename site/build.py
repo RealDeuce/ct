@@ -96,6 +96,12 @@ PUBLISHED_SHIP_ART = {
         "ten-ton arrowhead missile fighter with a closed yellow launch shutter.",
         12.4,
     ),
+    13: (
+        "assets/ships/ship-013-orion.webp",
+        "Painted three-quarter view of Orion, a navy, warm-white, red, and "
+        "aluminum ten-ton lenticular patrol fighter with a closed missile turret.",
+        10.8,
+    ),
     15: (
         "assets/ships/ship-015-sigrun.webp",
         "Painted three-quarter view of Sigrun, a navy and ivory ten-ton "

@@ -54,6 +54,29 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(argo["length_m"], 16.5)
         self.assertEqual(argo["art_path"], "assets/ships/ship-010-argo.webp")
 
+    def test_orion_exposes_local_patrol_fighter_fit(self) -> None:
+        orion = self.records[13]
+        self.assertEqual(orion["family_id"], 13)
+        self.assertEqual(orion["tons"], 10)
+        self.assertEqual(orion["configuration"], "Streamlined")
+        self.assertEqual(orion["tech_level"], 11)
+        self.assertFalse(orion["standard_design"])
+        self.assertEqual(orion["electronics"], "Basic Military")
+        self.assertEqual(orion["armor_points"], 1)
+        self.assertEqual(orion["control"], "One Person Cockpit")
+        self.assertEqual(orion["additional_passengers"], 0)
+        self.assertEqual(orion["maneuver_drive"], "sC")
+        self.assertEqual(orion["power_plant"], "sC")
+        self.assertEqual(orion["endurance"], 1)
+        self.assertEqual(orion["cargo"], "0.475 tons")
+        self.assertEqual(orion["crew"], 1)
+        self.assertEqual(orion["airlocks"], 0)
+        self.assertEqual(orion["armament"], "Single Turret: Missile Rack")
+        self.assertEqual(orion["ammunition"], "12 × Standard Missiles")
+        self.assertIsNone(orion["jump_drive"])
+        self.assertEqual(orion["length_m"], 10.8)
+        self.assertEqual(orion["art_path"], "assets/ships/ship-013-orion.webp")
+
     def test_starship_exposes_jump_and_bridge_fields(self) -> None:
         pym = self.records[26]
         self.assertEqual(pym["jump_drive"], "A")
