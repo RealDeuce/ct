@@ -2401,6 +2401,33 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-213-cutlass.webp",
         )
 
+    def test_myrmidon_exposes_armored_strike_boat_fit(self) -> None:
+        myrmidon = self.records[29]
+        self.assertEqual(myrmidon["family_id"], 29)
+        self.assertEqual(myrmidon["tons"], 40)
+        self.assertEqual(myrmidon["configuration"], "Streamlined")
+        self.assertEqual(myrmidon["tech_level"], 11)
+        self.assertFalse(myrmidon["standard_design"])
+        self.assertEqual(myrmidon["electronics"], "Basic Military")
+        self.assertEqual(myrmidon["armor_points"], 4)
+        self.assertEqual(myrmidon["control"], "Four Person Control Cabin")
+        self.assertEqual(myrmidon["additional_passengers"], 0)
+        self.assertEqual(myrmidon["maneuver_drive"], "sL")
+        self.assertEqual(myrmidon["power_plant"], "sL")
+        self.assertEqual(myrmidon["endurance"], 1)
+        self.assertEqual(myrmidon["cargo"], "6 tons")
+        self.assertEqual(myrmidon["crew"], 4)
+        self.assertEqual(myrmidon["airlocks"], 1)
+        self.assertIn("2 × Small Craft Stateroom", myrmidon["equipment"])
+        self.assertEqual(myrmidon["armament"], "Single Turret: Beam Laser")
+        self.assertEqual(myrmidon["ammunition"], "None carried")
+        self.assertIsNone(myrmidon["jump_drive"])
+        self.assertEqual(myrmidon["length_m"], 24.5)
+        self.assertEqual(
+            myrmidon["art_path"],
+            "assets/ships/ship-029-myrmidon.webp",
+        )
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

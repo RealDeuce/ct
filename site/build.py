@@ -198,6 +198,12 @@ PUBLISHED_SHIP_ART = {
         "hundred-ton light trader with a broad freight door and empty hardpoint.",
         32.5,
     ),
+    29: (
+        "assets/ships/ship-029-myrmidon.webp",
+        "Painted three-quarter view of Myrmidon, a fire-red, orange, bone, and "
+        "stainless forty-ton armored strike boat with a side beam-laser turret.",
+        24.5,
+    ),
     30: (
         "assets/ships/family-030-goliath.webp",
         "Painted three-quarter view of Goliath, a navy, white, and red ninety-ton "
