@@ -2010,6 +2010,37 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(shuttle["length_m"], 30.0)
         self.assertEqual(shuttle["art_path"], "assets/ships/ship-203-bactrian.webp")
 
+    def test_perry_exposes_stealth_patrol_frigate_and_fighter_hangar(self) -> None:
+        frigate = self.records[204]
+        self.assertEqual(frigate["family_id"], 204)
+        self.assertEqual(frigate["tons"], 300)
+        self.assertEqual(frigate["configuration"], "Standard")
+        self.assertEqual(frigate["electronics"], "Advanced")
+        self.assertTrue(frigate["standard_design"])
+        self.assertEqual(frigate["armor_points"], 8)
+        self.assertIn("Stealth", frigate["hull_options"])
+        self.assertEqual(frigate["jump_drive"], "C")
+        self.assertEqual(frigate["jump_distance"], 2)
+        self.assertEqual(frigate["jump_count"], 1)
+        self.assertEqual(frigate["maneuver_drive"], "F")
+        self.assertEqual(frigate["power_plant"], "F")
+        self.assertEqual(frigate["thrust_g"], 4)
+        self.assertEqual(frigate["endurance"], 4)
+        self.assertEqual(frigate["cargo"], "22 tons")
+        self.assertEqual(frigate["crew"], 20)
+        self.assertIn("Custom Hangar (20 tons contained)", frigate["equipment"])
+        self.assertIn(
+            "2 × Carried Craft: Thermopylae (ship-200)",
+            frigate["equipment"],
+        )
+        self.assertEqual(frigate["armament"].count("Triple Turret"), 3)
+        self.assertEqual(frigate["armament"].count("Missile Rack"), 6)
+        self.assertEqual(frigate["armament"].count("Beam Laser"), 3)
+        self.assertEqual(frigate["ammunition"], "120 × Smart Missiles")
+        self.assertEqual(frigate["unused_fire_control_stations"], 0)
+        self.assertEqual(frigate["length_m"], 64.0)
+        self.assertEqual(frigate["art_path"], "assets/ships/ship-204-perry.webp")
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

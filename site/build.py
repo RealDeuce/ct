@@ -892,6 +892,12 @@ PUBLISHED_SHIP_ART = {
         "vermilion ninety-ton unarmed bulk shuttle with twin freight humps.",
         30.0,
     ),
+    204: (
+        "assets/ships/ship-204-perry.webp",
+        "Painted three-quarter view of Perry, a navy, warm-white, and signal-red "
+        "three-hundred-ton stealth patrol frigate with a closed twin-fighter hangar.",
+        64.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
