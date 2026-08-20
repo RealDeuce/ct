@@ -703,6 +703,94 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("Carried Craft: Caduceus (ship-189)", ravelin["equipment"])
         self.assertIn("Carried Craft: Grapnel (ship-211)", ravelin["equipment"])
 
+    def test_aviator_blocks_grow_one_carrier_module_at_a_time(self) -> None:
+        lilienthal, wright, mitchell = (
+            self.records[catalog_id] for catalog_id in (117, 119, 120)
+        )
+        for record in (lilienthal, wright, mitchell):
+            self.assertEqual(record["family_id"], 117)
+            self.assertEqual(record["configuration"], "Standard")
+            self.assertEqual(record["electronics"], "Advanced")
+            self.assertEqual(
+                record["bridge_options"],
+                ["Command Bridge", "Holographic Controls"],
+            )
+            self.assertEqual(record["hull_options"], ["Radiation Shielding"])
+            self.assertEqual(record["armor_points"], 4)
+            self.assertEqual(record["jump_distance"], 2)
+            self.assertEqual(record["jump_count"], 1)
+            self.assertEqual(record["endurance"], 2)
+            self.assertIn("Armored Bulkheads (Bridge)", record["structural_options"])
+            self.assertIn("Armored Bulkheads (Drives)", record["structural_options"])
+            self.assertIn(
+                "Armored Bulkheads (Ordnance Magazines)",
+                record["structural_options"],
+            )
+            self.assertEqual(record["magazine_options"], ["Improved Magazine"])
+            self.assertEqual(record["power_options"], ["Emergency Power"])
+            self.assertIn("Fuel Scoop", record["equipment"])
+            self.assertIn("15 × Fuel Processor", record["equipment"])
+            self.assertIn("2 × Flight Deck", record["equipment"])
+            self.assertIn("Recovery Deck", record["equipment"])
+            self.assertIn("2 × Carried Craft: Caduceus (ship-185)", record["equipment"])
+            self.assertIn(
+                "2 × Carried Craft: Wayfarer Cargo (ship-187)",
+                record["equipment"],
+            )
+            self.assertEqual(record["unused_fire_control_stations"], 0)
+
+        self.assertEqual(lilienthal["tons"], 2500)
+        self.assertEqual(lilienthal["length_m"], 118.0)
+        self.assertEqual(lilienthal["jump_drive"], "T")
+        self.assertEqual(lilienthal["maneuver_drive"], "W")
+        self.assertEqual(lilienthal["power_plant"], "W")
+        self.assertEqual(lilienthal["cargo"], "49.1 tons")
+        self.assertIn("Full Hangar (400 tons contained)", lilienthal["equipment"])
+        self.assertIn("30 × Carried Craft: Icarus I (ship-9)", lilienthal["equipment"])
+        self.assertIn("10 × Triple Turret: Beam Laser", lilienthal["armament"])
+        self.assertIn("9 × Triple Turret: Missile Rack", lilienthal["armament"])
+        self.assertIn("25 × Point Defense Node Mount", lilienthal["armament"])
+        self.assertEqual(
+            lilienthal["ammunition"],
+            "324 × Standard Missiles · 360 × Sandcaster Canisters",
+        )
+
+        self.assertEqual(wright["tons"], 3000)
+        self.assertEqual(wright["length_m"], 132.0)
+        self.assertEqual(wright["jump_drive"], "T")
+        self.assertEqual(wright["maneuver_drive"], "W")
+        self.assertEqual(wright["power_plant"], "W")
+        self.assertEqual(wright["cargo"], "91.98 tons")
+        self.assertIn("Full Hangar (600 tons contained)", wright["equipment"])
+        self.assertIn("50 × Carried Craft: Icarus II (ship-11)", wright["equipment"])
+        self.assertIn("14 × Triple Turret: Beam Laser", wright["armament"])
+        self.assertIn("10 × Triple Turret: Missile Rack", wright["armament"])
+        self.assertIn("30 × Point Defense Node Mount", wright["armament"])
+        self.assertEqual(
+            wright["ammunition"],
+            "360 × Standard Missiles · 384 × Sandcaster Canisters",
+        )
+
+        self.assertEqual(mitchell["tons"], 3800)
+        self.assertEqual(mitchell["length_m"], 150.0)
+        self.assertEqual(mitchell["jump_drive"], "Y")
+        self.assertEqual(mitchell["maneuver_drive"], "Z")
+        self.assertEqual(mitchell["power_plant"], "Z")
+        self.assertEqual(mitchell["cargo"], "175.36 tons")
+        self.assertIn("Full Hangar (825 tons contained)", mitchell["equipment"])
+        self.assertIn("50 × Carried Craft: Icarus II (ship-11)", mitchell["equipment"])
+        self.assertIn(
+            "15 × Carried Craft: Bellerophon (ship-25)",
+            mitchell["equipment"],
+        )
+        self.assertIn("14 × Triple Turret: Beam Laser", mitchell["armament"])
+        self.assertIn("12 × Triple Turret: Missile Rack", mitchell["armament"])
+        self.assertIn("33 × Point Defense Node Mount", mitchell["armament"])
+        self.assertEqual(
+            mitchell["ammunition"],
+            "432 × Standard Missiles · 768 × Sandcaster Canisters",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

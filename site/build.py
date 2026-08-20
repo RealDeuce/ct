@@ -468,11 +468,29 @@ PUBLISHED_SHIP_ART = {
         "system battlecruiser with capital bays and layered armor.",
         124.0,
     ),
+    117: (
+        "assets/ships/ship-117-lilienthal.webp",
+        "Painted three-quarter view of Lilienthal, a navy twenty-five-hundred-ton "
+        "fleet carrier with two launch decks, one recovery deck, and ten visible turrets.",
+        118.0,
+    ),
     118: (
         "assets/ships/ship-118-ravelin.webp",
         "Painted three-quarter view of Ravelin, a navy twenty-five-hundred-ton "
         "fleet cruiser with capital bays and reinforced structure.",
         124.0,
+    ),
+    119: (
+        "assets/ships/ship-119-wright.webp",
+        "Painted three-quarter view of Wright, a navy three-thousand-ton fleet "
+        "carrier with four hangar modules and twelve visible turrets.",
+        132.0,
+    ),
+    120: (
+        "assets/ships/ship-120-mitchell.webp",
+        "Painted three-quarter view of Mitchell, an ultramarine and violet "
+        "thirty-eight-hundred-ton strike carrier with five hangar modules.",
+        150.0,
     ),
     124: (
         "assets/ships/ship-124-archimedes.webp",
