@@ -836,6 +836,13 @@ PUBLISHED_SHIP_ART = {
         "cargo shutter.",
         14.5,
     ),
+    195: (
+        "assets/ships/ship-195-decatur.webp",
+        "Painted three-quarter view of Decatur, a navy, warm-white, and signal-"
+        "red three-hundred-ton stealth corvette with a triple-beam cup and a "
+        "closed flank missile turret.",
+        60.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "

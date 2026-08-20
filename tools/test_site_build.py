@@ -1750,6 +1750,49 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-194-dory.webp",
         )
 
+    def test_decatur_exposes_stealth_corvette_and_missile_battery(self) -> None:
+        decatur = self.records[195]
+
+        self.assertEqual(decatur["family_id"], 195)
+        self.assertEqual(decatur["tons"], 300)
+        self.assertEqual(decatur["configuration"], "Standard")
+        self.assertEqual(decatur["electronics"], "Advanced")
+        self.assertTrue(decatur["standard_design"])
+        self.assertEqual(decatur["armor_points"], 8)
+        self.assertEqual(decatur["hull_options"], ["Stealth"])
+        self.assertEqual(decatur["jump_drive"], "C")
+        self.assertEqual(decatur["jump_distance"], 2)
+        self.assertEqual(decatur["jump_count"], 1)
+        self.assertEqual(decatur["maneuver_drive"], "J")
+        self.assertEqual(decatur["power_plant"], "J")
+        self.assertEqual(decatur["endurance"], 4)
+        self.assertEqual(decatur["cargo"], "17 tons")
+        self.assertEqual(decatur["external_load"], "0 tons")
+        self.assertEqual(decatur["crew"], 18)
+        self.assertIn("9 × Stateroom", decatur["equipment"])
+        self.assertIn("5 × Emergency Low Berth", decatur["equipment"])
+        self.assertIn("Armory", decatur["equipment"])
+        self.assertIn("4 × Detention Cell", decatur["equipment"])
+        self.assertIn("5 × Fuel Processor", decatur["equipment"])
+        self.assertIn("Fuel Scoop", decatur["equipment"])
+        self.assertEqual(
+            decatur["armament"].count(
+                "Triple Turret: Missile Rack · Missile Rack · Missile Rack"
+            ),
+            2,
+        )
+        self.assertIn(
+            "Triple Turret: Beam Laser · Beam Laser · Beam Laser",
+            decatur["armament"],
+        )
+        self.assertEqual(decatur["unused_fire_control_stations"], 0)
+        self.assertEqual(decatur["ammunition"], "120 × Smart Missiles")
+        self.assertEqual(decatur["length_m"], 60.0)
+        self.assertEqual(
+            decatur["art_path"],
+            "assets/ships/ship-195-decatur.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)
