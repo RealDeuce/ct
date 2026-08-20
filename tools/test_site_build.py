@@ -1546,6 +1546,53 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-184-rampart.webp",
         )
 
+    def test_cerberus_exposes_jump_one_patrol_and_external_caduceus(self) -> None:
+        cerberus = self.records[186]
+
+        self.assertEqual(cerberus["family_id"], 186)
+        self.assertEqual(cerberus["tons"], 400)
+        self.assertEqual(cerberus["configuration"], "Streamlined")
+        self.assertEqual(cerberus["electronics"], "Advanced")
+        self.assertEqual(cerberus["bridge_options"], ["Holographic Controls"])
+        self.assertEqual(cerberus["hull_options"], ["Radiation Shielding"])
+        self.assertEqual(cerberus["armor_points"], 10)
+        self.assertEqual(cerberus["jump_drive"], "C")
+        self.assertEqual(cerberus["jump_distance"], 1)
+        self.assertEqual(cerberus["jump_count"], 1)
+        self.assertEqual(cerberus["maneuver_drive"], "Q")
+        self.assertEqual(cerberus["power_plant"], "Q")
+        self.assertEqual(cerberus["endurance"], 2)
+        self.assertEqual(cerberus["cargo"], "0.9 tons")
+        self.assertEqual(cerberus["external_load"], "20 tons")
+        self.assertIn("2 × Fuel Processor", cerberus["equipment"])
+        self.assertNotIn("Fuel Scoop", cerberus["equipment"])
+        self.assertNotIn("Hangar", cerberus["equipment"])
+        self.assertIn("Docking Clamp 30", cerberus["equipment"])
+        self.assertIn("Carried Craft: Caduceus (ship-185)", cerberus["equipment"])
+        self.assertIn(
+            "Triple Turret: Beam Laser · Beam Laser · Beam Laser",
+            cerberus["armament"],
+        )
+        self.assertIn(
+            "Triple Turret: Missile Rack · Missile Rack · Sandcaster",
+            cerberus["armament"],
+        )
+        self.assertIn("Particle Beam Barbette", cerberus["armament"])
+        self.assertIn("Particle Beam Bay", cerberus["armament"])
+        self.assertIn(
+            "4 × Point Defense Node Mount: Point Defense Laser",
+            cerberus["armament"],
+        )
+        self.assertEqual(
+            cerberus["ammunition"],
+            "120 × Standard Missiles · 40 × Sandcaster Canisters",
+        )
+        self.assertEqual(cerberus["length_m"], 66.0)
+        self.assertEqual(
+            cerberus["art_path"],
+            "assets/ships/ship-186-cerberus.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

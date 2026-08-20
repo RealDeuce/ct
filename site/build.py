@@ -897,6 +897,13 @@ PUBLISHED_SHIP_ART = {
         "and six-gravity stern.",
         58.0,
     ),
+    186: (
+        "assets/ships/ship-186-cerberus.webp",
+        "Painted three-quarter view of Cerberus, a fire-red and orange four-"
+        "hundred-ton patrol spear with particle weapons and an externally "
+        "clamped yellow Caduceus launch.",
+        66.0,
+    ),
     187: (
         "assets/ships/family-018-wayfarer-cargo.webp",
         "Painted three-quarter view of Wayfarer Cargo, an ivory, vermilion, "
