@@ -1918,6 +1918,33 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-199-cleopatra.webp",
         )
 
+    def test_thermopylae_exposes_fixed_pulse_interceptor(self) -> None:
+        fighter = self.records[200]
+
+        self.assertEqual(fighter["family_id"], 200)
+        self.assertEqual(fighter["tons"], 10)
+        self.assertEqual(fighter["configuration"], "Streamlined")
+        self.assertEqual(fighter["electronics"], "Standard")
+        self.assertTrue(fighter["standard_design"])
+        self.assertEqual(fighter["armor_points"], 0)
+        self.assertEqual(fighter["control"], "One Person Cockpit")
+        self.assertEqual(fighter["additional_passengers"], 0)
+        self.assertEqual(fighter["maneuver_drive"], "sC")
+        self.assertEqual(fighter["power_plant"], "sL")
+        self.assertEqual(fighter["endurance"], 1)
+        self.assertEqual(fighter["cargo"], "0 tons")
+        self.assertEqual(fighter["external_load"], "0 tons")
+        self.assertEqual(fighter["crew"], 1)
+        self.assertEqual(fighter["equipment"], "")
+        self.assertEqual(fighter["armament"], "Fixed Single Turret: Pulse Laser")
+        self.assertEqual(fighter["ammunition"], "None carried")
+        self.assertEqual(fighter["unused_fire_control_stations"], 0)
+        self.assertEqual(fighter["length_m"], 11.8)
+        self.assertEqual(
+            fighter["art_path"],
+            "assets/ships/ship-200-thermopylae.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

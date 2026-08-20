@@ -868,6 +868,12 @@ PUBLISHED_SHIP_ART = {
         "vermilion, and chrome one-hundred-ton unarmed diplomatic yacht.",
         40.0,
     ),
+    200: (
+        "assets/ships/ship-200-thermopylae.webp",
+        "Painted three-quarter view of Thermopylae, a navy, warm-white, and "
+        "signal-red ten-ton fleet-defense fighter with one fixed pulse laser.",
+        11.8,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
