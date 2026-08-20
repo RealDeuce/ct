@@ -522,6 +522,20 @@ PUBLISHED_SHIP_ART = {
         "vermilion thirty-ton cargo ship's boat with a broad freight shutter.",
         19.5,
     ),
+    126: (
+        "assets/ships/ship-126-leviathan.webp",
+        "Painted three-quarter view of Leviathan, an ivory, royal-blue, and "
+        "chrome nineteen-hundred-ton distributed freighter with exposed Jump "
+        "machinery and two externally clamped work craft.",
+        112.0,
+    ),
+    127: (
+        "assets/ships/ship-127-behemoth.webp",
+        "Painted three-quarter view of Behemoth, an ivory, royal-blue, and "
+        "chrome nineteen-hundred-ton distributed in-system freighter with "
+        "additional pressure-freight modules and two externally clamped work craft.",
+        112.0,
+    ),
     152: (
         "assets/ships/family-080-ithaca-external.webp",
         "Painted three-quarter view of Ithaca, an ivory and blue eight-hundred-ton "

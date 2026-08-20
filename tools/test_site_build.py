@@ -904,6 +904,55 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-125-nausicaa.webp",
         )
 
+    def test_leviathan_family_exposes_jump_and_freight_variant_geometry(self) -> None:
+        leviathan = self.records[126]
+        behemoth = self.records[127]
+
+        for record in (leviathan, behemoth):
+            self.assertEqual(record["family_id"], 126)
+            self.assertEqual(record["tons"], 1900)
+            self.assertEqual(record["configuration"], "Distributed")
+            self.assertEqual(record["electronics"], "Basic Civilian")
+            self.assertEqual(
+                record["hull_options"],
+                ["Self Sealing", "Radiation Shielding"],
+            )
+            self.assertEqual(record["armor_points"], 1)
+            self.assertEqual(record["maneuver_drive"], "K")
+            self.assertEqual(record["endurance"], 4)
+            self.assertEqual(record["external_load"], "40 tons")
+            self.assertIn("10 × Fuel Processor", record["equipment"])
+            self.assertIn("2 × Docking Clamp 30", record["equipment"])
+            self.assertIn("Carried Craft: Archimedes (ship-124)", record["equipment"])
+            self.assertIn("Carried Craft: Nausicaa (ship-125)", record["equipment"])
+            self.assertIn("2 × Double Turret: Missile Rack", record["armament"])
+            self.assertIn("6 × Double Turret: Beam Laser", record["armament"])
+            self.assertEqual(
+                record["ammunition"],
+                "24 × Standard Missiles · 40 × Sandcaster Canisters",
+            )
+            self.assertEqual(record["length_m"], 112.0)
+
+        self.assertEqual(leviathan["jump_drive"], "Q")
+        self.assertEqual(leviathan["jump_distance"], 2)
+        self.assertEqual(leviathan["jump_count"], 1)
+        self.assertEqual(leviathan["power_plant"], "Q")
+        self.assertEqual(leviathan["cargo"], "1,076.9 tons")
+        self.assertEqual(
+            leviathan["art_path"],
+            "assets/ships/ship-126-leviathan.webp",
+        )
+
+        self.assertIsNone(behemoth["jump_drive"])
+        self.assertEqual(behemoth["jump_distance"], 0)
+        self.assertEqual(behemoth["jump_count"], 0)
+        self.assertEqual(behemoth["power_plant"], "K")
+        self.assertEqual(behemoth["cargo"], "1,581.4 tons")
+        self.assertEqual(
+            behemoth["art_path"],
+            "assets/ships/ship-127-behemoth.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)
