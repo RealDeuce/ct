@@ -102,6 +102,12 @@ PUBLISHED_SHIP_ART = {
         "aluminum ten-ton lenticular patrol fighter with a closed missile turret.",
         10.8,
     ),
+    14: (
+        "assets/ships/ship-014-apollo.webp",
+        "Painted three-quarter view of Apollo, a navy, warm-white, red, and "
+        "aluminum ten-ton spindle fighter with a lower-port beam-laser turret.",
+        12.8,
+    ),
     15: (
         "assets/ships/ship-015-sigrun.webp",
         "Painted three-quarter view of Sigrun, a navy and ivory ten-ton "

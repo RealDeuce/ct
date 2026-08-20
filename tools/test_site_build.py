@@ -77,6 +77,29 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(orion["length_m"], 10.8)
         self.assertEqual(orion["art_path"], "assets/ships/ship-013-orion.webp")
 
+    def test_apollo_exposes_unarmored_energy_fighter_fit(self) -> None:
+        apollo = self.records[14]
+        self.assertEqual(apollo["family_id"], 14)
+        self.assertEqual(apollo["tons"], 10)
+        self.assertEqual(apollo["configuration"], "Streamlined")
+        self.assertEqual(apollo["tech_level"], 11)
+        self.assertFalse(apollo["standard_design"])
+        self.assertEqual(apollo["electronics"], "Basic Military")
+        self.assertEqual(apollo["armor_points"], 0)
+        self.assertEqual(apollo["control"], "One Person Cockpit")
+        self.assertEqual(apollo["additional_passengers"], 0)
+        self.assertEqual(apollo["maneuver_drive"], "sC")
+        self.assertEqual(apollo["power_plant"], "sG")
+        self.assertEqual(apollo["endurance"], 1)
+        self.assertEqual(apollo["cargo"], "0 tons")
+        self.assertEqual(apollo["crew"], 1)
+        self.assertEqual(apollo["airlocks"], 0)
+        self.assertEqual(apollo["armament"], "Single Turret: Beam Laser")
+        self.assertEqual(apollo["ammunition"], "None carried")
+        self.assertIsNone(apollo["jump_drive"])
+        self.assertEqual(apollo["length_m"], 12.8)
+        self.assertEqual(apollo["art_path"], "assets/ships/ship-014-apollo.webp")
+
     def test_starship_exposes_jump_and_bridge_fields(self) -> None:
         pym = self.records[26]
         self.assertEqual(pym["jump_drive"], "A")
