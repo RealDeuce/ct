@@ -2463,6 +2463,35 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-037-scheherazade.webp",
         )
 
+    def test_warden_exposes_customs_cutter_and_caduceus_hangar(self) -> None:
+        warden = self.records[41]
+        self.assertEqual(warden["family_id"], 41)
+        self.assertEqual(warden["tons"], 100)
+        self.assertEqual(warden["configuration"], "Streamlined")
+        self.assertEqual(warden["tech_level"], 11)
+        self.assertFalse(warden["standard_design"])
+        self.assertEqual(warden["electronics"], "Basic Military")
+        self.assertEqual(warden["armor_points"], 4)
+        self.assertEqual(warden["control"], "Standard bridge")
+        self.assertEqual(warden["maneuver_drive"], "C")
+        self.assertEqual(warden["power_plant"], "C")
+        self.assertIsNone(warden["jump_drive"])
+        self.assertEqual(warden["endurance"], 2)
+        self.assertEqual(warden["cargo"], "13 tons")
+        self.assertEqual(warden["crew"], 8)
+        self.assertIn("2 × Fuel Processor", warden["equipment"])
+        self.assertIn("2 × Ships Brig", warden["equipment"])
+        self.assertIn("Medical Bay (1 bed)", warden["equipment"])
+        self.assertIn("Standard Hangar (20 tons contained)", warden["equipment"])
+        self.assertIn("Carried Craft: Caduceus (ship-7)", warden["equipment"])
+        self.assertEqual(
+            warden["armament"],
+            "Triple Turret: Beam Laser · Beam Laser · Beam Laser",
+        )
+        self.assertEqual(warden["ammunition"], "None carried")
+        self.assertEqual(warden["length_m"], 38.0)
+        self.assertEqual(warden["art_path"], "assets/ships/ship-041-warden.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

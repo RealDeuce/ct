@@ -271,6 +271,13 @@ PUBLISHED_SHIP_ART = {
         "two-hundred-ton passenger trader with a six-pane occupancy insert.",
         44.0,
     ),
+    41: (
+        "assets/ships/ship-041-warden.webp",
+        "Painted three-quarter view of Warden, a warm-white, cyan, lime, and "
+        "chrome hundred-ton customs cutter with a triple-beam turret and closed "
+        "launch hangar.",
+        38.0,
+    ),
     43: (
         "assets/ships/family-034-humboldt.webp",
         "Painted three-quarter view of Humboldt, an avocado and ochre two-hundred-ton "
