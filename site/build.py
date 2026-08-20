@@ -1065,6 +1065,12 @@ PUBLISHED_SHIP_ART = {
         "thirty-ton boarding boat with a fixed beam emitter and airlock rails.",
         18.8,
     ),
+    213: (
+        "assets/ships/ship-213-cutlass.webp",
+        "Painted three-quarter view of Cutlass, an aubergine, vermilion, mustard, "
+        "and blackened-chrome fifty-ton assault cutter with a fixed beam laser.",
+        22.0,
+    ),
 }
 
 CATEGORY_NAMES = {

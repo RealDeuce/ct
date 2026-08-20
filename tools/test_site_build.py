@@ -2252,6 +2252,31 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(grapnel["length_m"], 18.6)
         self.assertEqual(grapnel["art_path"], "assets/ships/ship-211-grapnel.webp")
 
+    def test_cutlass_is_revenants_armed_assault_cutter(self) -> None:
+        cutlass = self.records[213]
+        self.assertEqual(cutlass["family_id"], 213)
+        self.assertEqual(cutlass["tons"], 50)
+        self.assertEqual(cutlass["configuration"], "Streamlined")
+        self.assertEqual(cutlass["electronics"], "Standard")
+        self.assertEqual(cutlass["armor_points"], 2)
+        self.assertEqual(cutlass["control"], "Two Person Control Cabin")
+        self.assertEqual(cutlass["additional_passengers"], 0)
+        self.assertEqual(cutlass["maneuver_drive"], "sK")
+        self.assertEqual(cutlass["power_plant"], "sK")
+        self.assertEqual(cutlass["assertions"]["thrust_g"], 4)
+        self.assertEqual(cutlass["endurance"], 2)
+        self.assertEqual(cutlass["cargo"], "17.25 tons")
+        self.assertEqual(cutlass["crew"], 2)
+        self.assertEqual(cutlass["airlocks"], 1)
+        self.assertIn("24 passenger seats", cutlass["equipment"])
+        self.assertIn("Fixed Single Turret: Beam Laser", cutlass["armament"])
+        self.assertIsNone(cutlass["jump_drive"])
+        self.assertEqual(cutlass["length_m"], 22.0)
+        self.assertEqual(
+            cutlass["art_path"],
+            "assets/ships/ship-213-cutlass.webp",
+        )
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
