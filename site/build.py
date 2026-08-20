@@ -397,6 +397,13 @@ PUBLISHED_SHIP_ART = {
         "three-hundred-ton missile ship with a yellow-collared launch bank.",
         50.0,
     ),
+    63: (
+        "assets/ships/ship-063-janus.webp",
+        "Painted three-quarter view of Janus, a warm-white, cyan, lime, and "
+        "chrome two-hundred-ton armored system patrol ship with a mixed flank "
+        "turret and closed launch bay.",
+        51.0,
+    ),
     65: (
         "assets/ships/family-054-nemo.webp",
         "Painted three-quarter view of Nemo, an emerald and cream three-hundred-ton "

@@ -2645,6 +2645,45 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(argosy["length_m"], 68.0)
         self.assertEqual(argosy["art_path"], "assets/ships/ship-061-argosy.webp")
 
+    def test_janus_exposes_armored_system_patrol_fit(self) -> None:
+        janus = self.records[63]
+        self.assertEqual(janus["family_id"], 63)
+        self.assertEqual(janus["tons"], 200)
+        self.assertEqual(janus["configuration"], "Streamlined")
+        self.assertEqual(janus["tech_level"], 11)
+        self.assertFalse(janus["standard_design"])
+        self.assertEqual(janus["electronics"], "Basic Military")
+        self.assertEqual(janus["armor_points"], 11)
+        self.assertEqual(janus["control"], "Standard bridge")
+        self.assertEqual(
+            janus["bridge_options"],
+            ["Hardened Bridge", "Holographic Controls"],
+        )
+        self.assertIsNone(janus["jump_drive"])
+        self.assertEqual(janus["maneuver_drive"], "F")
+        self.assertEqual(janus["power_plant"], "F")
+        self.assertEqual(janus["endurance"], 2)
+        self.assertEqual(janus["cargo"], "49.5 tons")
+        self.assertEqual(janus["crew"], 8)
+        self.assertIn("2 × Ships Brig", janus["equipment"])
+        self.assertIn("Emergency Low Berth", janus["equipment"])
+        self.assertIn("Repair Drones", janus["equipment"])
+        self.assertIn("Standard Hangar (20 tons contained)", janus["equipment"])
+        self.assertIn("Carried Craft: Caduceus (ship-7)", janus["equipment"])
+        self.assertEqual(
+            janus["armament"],
+            "Triple Turret: Beam Laser · Beam Laser · Beam Laser · Triple "
+            "Turret: Missile Rack · Missile Rack · Sandcaster · 3 × Point "
+            "Defense Node Mount: Point Defense Laser",
+        )
+        self.assertEqual(
+            janus["ammunition"],
+            "84 × Standard Missiles · 40 × Sandcaster Canisters",
+        )
+        self.assertEqual(janus["unused_fire_control_stations"], 0)
+        self.assertEqual(janus["length_m"], 51.0)
+        self.assertEqual(janus["art_path"], "assets/ships/ship-063-janus.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
