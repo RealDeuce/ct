@@ -1593,6 +1593,65 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-186-cerberus.webp",
         )
 
+    def test_faraday_exposes_exploration_carrier_and_distributed_battery(self) -> None:
+        faraday = self.records[191]
+
+        self.assertEqual(faraday["family_id"], 191)
+        self.assertEqual(faraday["tons"], 2500)
+        self.assertEqual(faraday["configuration"], "Standard")
+        self.assertEqual(faraday["electronics"], "Advanced")
+        self.assertEqual(faraday["bridge_options"], ["Holographic Controls"])
+        self.assertEqual(faraday["hull_options"], ["Self Sealing"])
+        self.assertEqual(faraday["armor_points"], 2)
+        self.assertEqual(faraday["jump_drive"], "T")
+        self.assertEqual(faraday["jump_distance"], 2)
+        self.assertEqual(faraday["jump_count"], 2)
+        self.assertEqual(faraday["maneuver_drive"], "T")
+        self.assertEqual(faraday["power_plant"], "T")
+        self.assertEqual(faraday["endurance"], 2)
+        self.assertEqual(faraday["cargo"], "2 tons")
+        self.assertEqual(faraday["external_load"], "80 tons")
+        self.assertEqual(faraday["crew"], 66)
+        self.assertIn("Fuel Scoop", faraday["equipment"])
+        self.assertIn("20 × Fuel Processor", faraday["equipment"])
+        self.assertIn("Full Hangar (600 tons contained)", faraday["equipment"])
+        self.assertIn("Docking Clamp 30", faraday["equipment"])
+        self.assertIn("Docking Clamp 90", faraday["equipment"])
+        self.assertIn(
+            "2 × Carried Craft: Tizard (ship-190)",
+            faraday["equipment"],
+        )
+        self.assertIn(
+            "Carried Craft: Wayfarer Cargo (ship-187)",
+            faraday["equipment"],
+        )
+        self.assertIn(
+            "Carried Craft: Proteus Surveyor (ship-188)",
+            faraday["equipment"],
+        )
+        self.assertIn(
+            "20 × Double Turret: Beam Laser · Beam Laser",
+            faraday["armament"],
+        )
+        self.assertIn(
+            "5 × Double Turret: Missile Rack · Sandcaster",
+            faraday["armament"],
+        )
+        self.assertIn(
+            "25 × Point Defense Node Mount: Point Defense Laser",
+            faraday["armament"],
+        )
+        self.assertEqual(faraday["unused_fire_control_stations"], 0)
+        self.assertEqual(
+            faraday["ammunition"],
+            "120 × Standard Missiles · 200 × Sandcaster Canisters",
+        )
+        self.assertEqual(faraday["length_m"], 132.0)
+        self.assertEqual(
+            faraday["art_path"],
+            "assets/ships/ship-191-faraday.webp",
+        )
+
     def test_grapnel_is_the_armored_boat_for_ravelins_hangar(self) -> None:
         grapnel = self.records[211]
         self.assertEqual(grapnel["family_id"], 211)

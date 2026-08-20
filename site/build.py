@@ -809,6 +809,13 @@ PUBLISHED_SHIP_ART = {
         "hundred-ton scout carrying a yellow Caduceus launch on its dorsal clamp.",
         58.0,
     ),
+    191: (
+        "assets/ships/ship-191-faraday.webp",
+        "Painted three-quarter view of Faraday, a white, cyan, and lime two-"
+        "thousand-five-hundred-ton exploration carrier with distributed "
+        "defensive batteries and two externally clamped utility craft.",
+        132.0,
+    ),
     165: (
         "assets/ships/family-018-wayfarer-armed.webp",
         "Painted three-quarter view of Wayfarer Armed, an emerald and cream "
