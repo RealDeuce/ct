@@ -3167,6 +3167,49 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(raleigh["length_m"], 72.0)
         self.assertEqual(raleigh["art_path"], "assets/ships/ship-081-raleigh.webp")
 
+    def test_aquarius_exposes_distributed_fleet_tanker_fit(self) -> None:
+        aquarius = self.records[84]
+        self.assertEqual(aquarius["family_id"], 84)
+        self.assertEqual(aquarius["path_name"], "Admiralty Line")
+        self.assertEqual(aquarius["tons"], 1000)
+        self.assertEqual(aquarius["configuration"], "Distributed")
+        self.assertEqual(aquarius["tech_level"], 11)
+        self.assertFalse(aquarius["standard_design"])
+        self.assertEqual(aquarius["electronics"], "Advanced")
+        self.assertEqual(aquarius["armor_points"], 0)
+        self.assertEqual(aquarius["computer"], "Model 3")
+        self.assertEqual(aquarius["computer_options"], ["Bis"])
+        self.assertEqual(aquarius["jump_drive"], "H")
+        self.assertEqual(aquarius["jump_distance"], 2)
+        self.assertEqual(aquarius["jump_count"], 1)
+        self.assertEqual(aquarius["maneuver_drive"], "H")
+        self.assertEqual(aquarius["power_plant"], "H")
+        self.assertEqual(aquarius["endurance"], 2)
+        self.assertEqual(aquarius["cargo"], "607 tons")
+        self.assertEqual(aquarius["crew"], 9)
+        self.assertIn("5 × Stateroom", aquarius["equipment"])
+        self.assertIn("Emergency Low Berth", aquarius["equipment"])
+        self.assertIn("Repair Drones", aquarius["equipment"])
+        self.assertIn("Standard Hangar (20 tons contained)", aquarius["equipment"])
+        self.assertIn("Carried Craft: Argo (ship-10)", aquarius["equipment"])
+        self.assertIn("2 × Single Turret: Beam Laser", aquarius["armament"])
+        self.assertIn("2 × Single Turret: Missile Rack", aquarius["armament"])
+        self.assertIn(
+            "2 × Double Turret: Sandcaster · Sandcaster",
+            aquarius["armament"],
+        )
+        self.assertNotIn("Point Defense", aquarius["armament"])
+        self.assertEqual(
+            aquarius["ammunition"],
+            "24 × Standard Missiles · 80 × Sandcaster Canisters",
+        )
+        self.assertEqual(aquarius["unused_fire_control_stations"], 4)
+        self.assertEqual(aquarius["length_m"], 84.0)
+        self.assertEqual(
+            aquarius["art_path"],
+            "assets/ships/ship-084-aquarius.webp",
+        )
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

@@ -535,6 +535,13 @@ PUBLISHED_SHIP_ART = {
         "colonial transport with steerage modules and an externally docked Jason.",
         72.0,
     ),
+    84: (
+        "assets/ships/ship-084-aquarius.webp",
+        "Painted three-quarter view of Aquarius, a navy, warm-white, signal-red, "
+        "and aluminum thousand-ton distributed fleet tanker with four permanent "
+        "tank drums and an open transfer spine.",
+        84.0,
+    ),
     86: (
         "assets/ships/ship-086-ithaca.webp",
         "Painted three-quarter view of Ithaca, an ivory and blue eight-hundred-ton "
