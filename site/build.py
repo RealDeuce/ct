@@ -542,6 +542,13 @@ PUBLISHED_SHIP_ART = {
         "tank drums and an open transfer spine.",
         84.0,
     ),
+    85: (
+        "assets/ships/ship-085-caravan.webp",
+        "Painted three-quarter view of Caravan, a sunflower, cobalt, orange, and "
+        "chrome thousand-ton frontier freight lozenge with four visible turrets, "
+        "one blank hardpoint, and a closed six-leaf cargo shutter.",
+        74.0,
+    ),
     86: (
         "assets/ships/ship-086-ithaca.webp",
         "Painted three-quarter view of Ithaca, an ivory and blue eight-hundred-ton "

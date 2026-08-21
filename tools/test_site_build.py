@@ -3210,6 +3210,51 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-084-aquarius.webp",
         )
 
+    def test_caravan_exposes_frontier_armed_freighter_fit(self) -> None:
+        caravan = self.records[85]
+        self.assertEqual(caravan["family_id"], 85)
+        self.assertEqual(caravan["path_name"], "Venture Passage")
+        self.assertEqual(caravan["tons"], 1000)
+        self.assertEqual(caravan["configuration"], "Standard")
+        self.assertEqual(caravan["tech_level"], 11)
+        self.assertFalse(caravan["standard_design"])
+        self.assertEqual(caravan["electronics"], "Advanced")
+        self.assertEqual(caravan["armor_points"], 2)
+        self.assertEqual(caravan["bridge_options"], ["Holographic Controls"])
+        self.assertEqual(caravan["computer"], "Model 3")
+        self.assertEqual(caravan["computer_options"], ["Bis"])
+        self.assertEqual(caravan["jump_drive"], "H")
+        self.assertEqual(caravan["jump_distance"], 2)
+        self.assertEqual(caravan["jump_count"], 1)
+        self.assertEqual(caravan["maneuver_drive"], "H")
+        self.assertEqual(caravan["power_plant"], "H")
+        self.assertEqual(caravan["endurance"], 2)
+        self.assertEqual(caravan["cargo"], "498 tons")
+        self.assertEqual(caravan["crew"], 17)
+        self.assertIn("16 × Stateroom", caravan["equipment"])
+        self.assertIn("20 × Low Berth", caravan["equipment"])
+        self.assertIn("5 × Fuel Processor", caravan["equipment"])
+        self.assertIn("Fuel Scoop", caravan["equipment"])
+        self.assertIn("Medical Bay (2 beds)", caravan["equipment"])
+        self.assertIn("Full Hangar (10 tons contained)", caravan["equipment"])
+        self.assertIn("Carried Craft: Charon (ship-158)", caravan["equipment"])
+        self.assertIn(
+            "4 × Double Turret: Beam Laser · Beam Laser",
+            caravan["armament"],
+        )
+        self.assertIn(
+            "3 × Double Turret: Sandcaster · Missile Rack",
+            caravan["armament"],
+        )
+        self.assertNotIn("Point Defense", caravan["armament"])
+        self.assertEqual(
+            caravan["ammunition"],
+            "36 × Standard Missiles · 60 × Sandcaster Canisters",
+        )
+        self.assertEqual(caravan["unused_fire_control_stations"], 3)
+        self.assertEqual(caravan["length_m"], 74.0)
+        self.assertEqual(caravan["art_path"], "assets/ships/ship-085-caravan.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
