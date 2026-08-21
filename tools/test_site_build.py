@@ -3365,6 +3365,70 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(fabius["length_m"], 78.0)
         self.assertEqual(fabius["art_path"], "assets/ships/ship-089-fabius.webp")
 
+    def test_greyhound_exposes_fast_patrol_frigate_fit(self) -> None:
+        greyhound = self.records[92]
+        self.assertEqual(greyhound["family_id"], 92)
+        self.assertEqual(greyhound["path_name"], "Admiralty Line")
+        self.assertEqual(greyhound["tons"], 600)
+        self.assertEqual(greyhound["configuration"], "Standard")
+        self.assertEqual(greyhound["tech_level"], 11)
+        self.assertFalse(greyhound["standard_design"])
+        self.assertEqual(greyhound["electronics"], "Advanced")
+        self.assertEqual(greyhound["armor_points"], 4)
+        self.assertEqual(
+            greyhound["bridge_options"],
+            ["Hardened Bridge", "Holographic Controls"],
+        )
+        self.assertEqual(greyhound["computer"], "Model 3")
+        self.assertEqual(greyhound["computer_options"], ["Bis"])
+        self.assertEqual(greyhound["jump_drive"], "H")
+        self.assertEqual(greyhound["jump_distance"], 2)
+        self.assertEqual(greyhound["jump_count"], 1)
+        self.assertEqual(greyhound["maneuver_drive"], "V")
+        self.assertEqual(greyhound["power_plant"], "V")
+        self.assertEqual(greyhound["endurance"], 2)
+        self.assertEqual(greyhound["cargo"], "127 tons")
+        self.assertEqual(greyhound["crew"], 26)
+        self.assertIn("8 × Fuel Processor", greyhound["equipment"])
+        self.assertIn("Fuel Scoop", greyhound["equipment"])
+        self.assertIn("Probe Drones", greyhound["equipment"])
+        self.assertIn("4 × Ships Brig", greyhound["equipment"])
+        self.assertIn("2 × Emergency Low Berth", greyhound["equipment"])
+        self.assertIn("Medical Bay (2 beds)", greyhound["equipment"])
+        self.assertIn("Repair Drones", greyhound["equipment"])
+        self.assertIn("Full Hangar (20 tons contained)", greyhound["equipment"])
+        self.assertIn(
+            "Carried Craft: Caduceus (ship-7)",
+            greyhound["equipment"],
+        )
+        self.assertIn(
+            "2 × Triple Turret: Beam Laser · Beam Laser · Beam Laser",
+            greyhound["armament"],
+        )
+        self.assertIn(
+            "Triple Turret: Missile Rack · Missile Rack · Missile Rack",
+            greyhound["armament"],
+        )
+        self.assertIn(
+            "Triple Turret: Sandcaster · Sandcaster · Sandcaster",
+            greyhound["armament"],
+        )
+        self.assertIn("2 × Particle Beam Barbette", greyhound["armament"])
+        self.assertIn(
+            "6 × Point Defense Node Mount: Point Defense Laser",
+            greyhound["armament"],
+        )
+        self.assertEqual(
+            greyhound["ammunition"],
+            "72 × Standard Missiles · 60 × Sandcaster Canisters",
+        )
+        self.assertEqual(greyhound["unused_fire_control_stations"], 0)
+        self.assertEqual(greyhound["length_m"], 72.0)
+        self.assertEqual(
+            greyhound["art_path"],
+            "assets/ships/ship-092-greyhound.webp",
+        )
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

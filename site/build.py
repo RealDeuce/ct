@@ -587,6 +587,13 @@ PUBLISHED_SHIP_ART = {
         "patrol frigate with four triple turrets and two particle barbettes.",
         68.0,
     ),
+    92: (
+        "assets/ships/ship-092-greyhound.webp",
+        "Painted three-quarter view of Greyhound, a navy, warm-white, red, and "
+        "bright-aluminum six-hundred-ton pursuit-cleaver frigate with three "
+        "visible triple turrets and a particle-beam barbette.",
+        72.0,
+    ),
     93: (
         "assets/ships/ship-093-nightingale.webp",
         "Painted three-quarter view of Nightingale, a white thousand-ton hospital "
