@@ -722,6 +722,13 @@ PUBLISHED_SHIP_ART = {
         "visible weapon bays and two distributed mixed turrets.",
         86.0,
     ),
+    113: (
+        "assets/ships/ship-113-hannibal.webp",
+        "Painted three-quarter view of Hannibal, a navy, warm-white, red, and "
+        "chrome twenty-five-hundred-ton twin-deck assault carrier with one "
+        "visible particle bay and twelve distributed triple turrets.",
+        122.0,
+    ),
     116: (
         "assets/ships/ship-116-citadel.webp",
         "Painted three-quarter view of Citadel, a red twenty-five-hundred-ton "
