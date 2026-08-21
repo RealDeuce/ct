@@ -715,6 +715,13 @@ PUBLISHED_SHIP_ART = {
         "visible weapon bays and four distributed mixed turrets.",
         100.0,
     ),
+    112: (
+        "assets/ships/ship-112-jellicoe.webp",
+        "Painted three-quarter view of Jellicoe, a navy, warm-white, red, and "
+        "chrome twelve-hundred-ton armored-crucible battlecruiser with four "
+        "visible weapon bays and two distributed mixed turrets.",
+        86.0,
+    ),
     116: (
         "assets/ships/ship-116-citadel.webp",
         "Painted three-quarter view of Citadel, a red twenty-five-hundred-ton "

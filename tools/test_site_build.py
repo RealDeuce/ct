@@ -3786,6 +3786,38 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(fisher["length_m"], 100.0)
         self.assertEqual(fisher["art_path"], "assets/ships/ship-111-fisher.webp")
 
+    def test_jellicoe_exposes_fleet_battlecruiser_fit(self) -> None:
+        ship = self.records[112]
+        self.assertEqual(ship["family_id"], 112)
+        self.assertEqual(ship["path_name"], "Admiralty Line")
+        self.assertEqual((ship["tons"], ship["configuration"]), (1200, "Standard"))
+        self.assertEqual((ship["tech_level"], ship["armor_points"]), (11, 8))
+        self.assertFalse(ship["standard_design"])
+        self.assertEqual(ship["electronics"], "Advanced")
+        self.assertEqual(ship["hull_options"], ["Self Sealing", "Radiation Shielding"])
+        self.assertEqual(ship["bridge_options"], ["Holographic Controls"])
+        self.assertEqual(ship["computer_options"], ["Bis", "Fib"])
+        self.assertEqual((ship["jump_drive"], ship["jump_distance"]), ("L", 2))
+        self.assertEqual((ship["maneuver_drive"], ship["power_plant"]), ("S", "S"))
+        self.assertEqual((ship["endurance"], ship["cargo"], ship["crew"]), (3, "51.8 tons", 31))
+        self.assertIn("8 × Stateroom", ship["equipment"])
+        self.assertIn("2 × Emergency Low Berth", ship["equipment"])
+        self.assertIn("Medical Bay (2 beds)", ship["equipment"])
+        self.assertIn("Repair Drones", ship["equipment"])
+        self.assertNotIn("Hangar", ship["equipment"])
+        self.assertNotIn("Carried Craft", ship["equipment"])
+        self.assertIn("4 × Triple Turret: Beam Laser · Missile Rack · Sandcaster", ship["armament"])
+        self.assertIn("4 × Meson Gun Bay", ship["armament"])
+        self.assertIn("4 × Particle Beam Bay", ship["armament"])
+        self.assertIn("12 × Point Defense Node Mount", ship["armament"])
+        self.assertEqual(ship["ammunition"], "48 × Standard Missiles · 80 × Sandcaster Canisters")
+        self.assertEqual(ship["structural_options"], ["Armored Bulkheads (Bridge)"])
+        self.assertEqual(ship["power_options"], ["Emergency Power"])
+        self.assertEqual(ship["magazine_options"], ["Improved Magazine"])
+        self.assertEqual(ship["unused_fire_control_stations"], 0)
+        self.assertEqual(ship["length_m"], 86.0)
+        self.assertEqual(ship["art_path"], "assets/ships/ship-112-jellicoe.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
