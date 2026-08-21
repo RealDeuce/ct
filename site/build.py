@@ -729,6 +729,13 @@ PUBLISHED_SHIP_ART = {
         "visible particle bay and twelve distributed triple turrets.",
         122.0,
     ),
+    114: (
+        "assets/ships/ship-114-tsushima.webp",
+        "Painted three-quarter view of Tsushima, a navy, warm-white, red, and "
+        "chrome two-thousand-ton command-bastille fleet cruiser with four "
+        "visible weapon bays and four distributed triple turrets.",
+        108.0,
+    ),
     116: (
         "assets/ships/ship-116-citadel.webp",
         "Painted three-quarter view of Citadel, a red twenty-five-hundred-ton "
