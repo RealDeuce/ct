@@ -463,6 +463,13 @@ PUBLISHED_SHIP_ART = {
         "escort raider with two mixed turrets and two particle barbettes.",
         58.0,
     ),
+    73: (
+        "assets/ships/ship-073-aegis.webp",
+        "Painted three-quarter view of Aegis, a fire-red, orange, bone, and "
+        "stainless three-hundred-ton shield-vault cruiser with an architectural "
+        "meson bay and lower-flank turret.",
+        48.0,
+    ),
     78: (
         "assets/ships/ship-078-bonanza.webp",
         "Painted three-quarter view of Bonanza, an avocado eight-hundred-ton "

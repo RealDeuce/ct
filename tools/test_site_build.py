@@ -2867,6 +2867,59 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(xanadu["length_m"], 65.0)
         self.assertEqual(xanadu["art_path"], "assets/ships/ship-071-xanadu.webp")
 
+    def test_aegis_exposes_reinforced_meson_cruiser_fit(self) -> None:
+        aegis = self.records[73]
+        self.assertEqual(aegis["family_id"], 73)
+        self.assertEqual(aegis["tons"], 300)
+        self.assertEqual(aegis["configuration"], "Streamlined")
+        self.assertEqual(aegis["tech_level"], 11)
+        self.assertFalse(aegis["standard_design"])
+        self.assertEqual(
+            aegis["structural_options"],
+            ["Reinforced Structure (1 increment)"],
+        )
+        self.assertEqual(aegis["electronics"], "Advanced")
+        self.assertEqual(aegis["armor_points"], 11)
+        self.assertEqual(aegis["control"], "Standard bridge")
+        self.assertEqual(
+            aegis["bridge_options"],
+            ["Hardened Bridge", "Holographic Controls"],
+        )
+        self.assertEqual(aegis["computer"], "Model 3")
+        self.assertEqual(aegis["computer_options"], ["Bis"])
+        self.assertIsNone(aegis["jump_drive"])
+        self.assertEqual(aegis["maneuver_drive"], "J")
+        self.assertEqual(aegis["power_plant"], "J")
+        self.assertEqual(aegis["endurance"], 2)
+        self.assertEqual(aegis["cargo"], "57.25 tons")
+        self.assertEqual(aegis["crew"], 15)
+        self.assertIn("Armory", aegis["equipment"])
+        self.assertIn("Office", aegis["equipment"])
+        self.assertIn("2 × Fuel Processor", aegis["equipment"])
+        self.assertIn("Emergency Low Berth", aegis["equipment"])
+        self.assertIn("Medical Bay (1 bed)", aegis["equipment"])
+        self.assertIn("Repair Drones", aegis["equipment"])
+        self.assertIn(
+            "Triple Turret: Beam Laser · Beam Laser · Sandcaster",
+            aegis["armament"],
+        )
+        self.assertIn(
+            "Triple Turret: Missile Rack · Missile Rack · Sandcaster",
+            aegis["armament"],
+        )
+        self.assertIn("Meson Gun Bay", aegis["armament"])
+        self.assertIn(
+            "3 × Point Defense Node Mount: Point Defense Laser",
+            aegis["armament"],
+        )
+        self.assertEqual(
+            aegis["ammunition"],
+            "72 × Standard Missiles · 60 × Sandcaster Canisters",
+        )
+        self.assertEqual(aegis["unused_fire_control_stations"], 0)
+        self.assertEqual(aegis["length_m"], 48.0)
+        self.assertEqual(aegis["art_path"], "assets/ships/ship-073-aegis.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
