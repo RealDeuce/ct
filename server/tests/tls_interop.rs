@@ -475,67 +475,25 @@ fn advance_encounter_until_progress(
 }
 
 fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity, request_id: &mut u64) {
-    let mut settlement_steps = 0_usize;
     for _ in 0..SIMULATION_EVENT_LIMIT {
         let engine = Engine::open(data, BbsRegistry::default()).unwrap();
         let (epoch, _, _) = engine.issue_session(identity).unwrap();
-        loop {
-            settlement_steps += 1;
-            assert!(
-                settlement_steps <= SETTLEMENT_STEP_LIMIT,
-                "terminal approach encounter did not settle after {SETTLEMENT_STEP_LIMIT} state transitions"
-            );
-            if let Some(encounter) = engine.pending_encounter(identity).unwrap() {
-                let before = encounter.clone();
-                if encounter.state == EncounterState::AwaitingPosture {
-                    engine
-                        .submit(
-                            identity.clone(),
-                            engine_request(
-                                epoch,
-                                *request_id,
-                                WireCommand::ResolveEncounter(ResolveEncounterRequest {
-                                    encounter_id: encounter.encounter_id,
-                                    expected_revision: encounter.revision,
-                                    posture: EncounterPosture::Comply,
-                                    fallbacks: vec![EncounterFallback::Surrender],
-                                }),
-                            ),
-                        )
-                        .unwrap();
-                    *request_id += 1;
-                }
-                advance_encounter_until_progress(&engine, identity, &before);
-                let after = engine.pending_encounter(identity).unwrap();
-                assert_ne!(
-                    after.as_ref(),
-                    Some(&before),
-                    "terminal approach encounter made no progress: id={} revision={} state={:?} turn={} due={}",
-                    before.encounter_id,
-                    before.revision,
-                    before.state,
-                    before.turn,
-                    before.next_turn_second
-                );
-                continue;
-            }
-            if let Some(checkpoint) = engine.pending_checkpoint(identity).unwrap() {
-                engine
-                    .submit(
-                        identity.clone(),
-                        engine_request(
-                            epoch,
-                            *request_id,
-                            WireCommand::AcknowledgeCheckpoint {
-                                checkpoint_id: checkpoint.checkpoint_id,
-                            },
-                        ),
-                    )
-                    .unwrap();
-                *request_id += 1;
-                continue;
-            }
-            break;
+        settle_pending_arrival_encounter_with_engine(&engine, identity, epoch, request_id);
+        if let Some(checkpoint) = engine.pending_checkpoint(identity).unwrap() {
+            engine
+                .submit(
+                    identity.clone(),
+                    engine_request(
+                        epoch,
+                        *request_id,
+                        WireCommand::AcknowledgeCheckpoint {
+                            checkpoint_id: checkpoint.checkpoint_id,
+                        },
+                    ),
+                )
+                .unwrap();
+            *request_id += 1;
+            settle_pending_arrival_encounter_with_engine(&engine, identity, epoch, request_id);
         }
         drop(engine);
         let store = Store::open(data).unwrap();
