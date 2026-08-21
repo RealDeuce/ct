@@ -2205,7 +2205,7 @@ def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
     <label for="ship-jump-max"><span>Maximum Jump</span><select id="ship-jump-max"><option value="">No maximum</option>{jump_options}</select></label>
     <label for="ship-thrust-min"><span>Minimum acceleration</span><select id="ship-thrust-min"><option value="">No minimum</option>{thrust_options}</select></label>
     <label for="ship-thrust-max"><span>Maximum acceleration</span><select id="ship-thrust-max"><option value="">No maximum</option>{thrust_options}</select></label>
-    <fieldset class="catalog-sort"><legend>Primary sort key</legend><div>
+    <fieldset class="catalog-sort"><legend>Primary sort key</legend><span class="catalog-sort-heading" aria-hidden="true">Primary sort key</span><div>
       <label><input type="radio" name="ship-sort" value="catalog" checked> Catalog ID</label>
       <label><input type="radio" name="ship-sort" value="tonnage"> Displacement</label>
       <label><input type="radio" name="ship-sort" value="price"> Price</label>
