@@ -3429,6 +3429,43 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-092-greyhound.webp",
         )
 
+    def test_cochrane_exposes_assault_escort_fit(self) -> None:
+        cochrane = self.records[94]
+        self.assertEqual(cochrane["family_id"], 94)
+        self.assertEqual(cochrane["path_name"], "Marque Marine")
+        self.assertEqual(cochrane["tons"], 1000)
+        self.assertEqual(cochrane["configuration"], "Standard")
+        self.assertEqual(cochrane["tech_level"], 11)
+        self.assertFalse(cochrane["standard_design"])
+        self.assertEqual(cochrane["electronics"], "Advanced")
+        self.assertEqual(cochrane["armor_points"], 8)
+        self.assertEqual(cochrane["bridge_options"], ["Hardened Bridge", "Holographic Controls"])
+        self.assertEqual(cochrane["computer"], "Model 3")
+        self.assertEqual(cochrane["computer_options"], ["Bis", "Fib"])
+        self.assertEqual(cochrane["jump_drive"], "K")
+        self.assertEqual(cochrane["jump_distance"], 2)
+        self.assertEqual(cochrane["maneuver_drive"], "P")
+        self.assertEqual(cochrane["power_plant"], "P")
+        self.assertEqual(cochrane["assertions"]["thrust_g"], 4)
+        self.assertEqual(cochrane["endurance"], 4)
+        self.assertEqual(cochrane["cargo"], "0 tons")
+        self.assertEqual(cochrane["crew"], 70)
+        self.assertIn("30 × Barracks", cochrane["equipment"])
+        self.assertIn("48 × Escape Pod", cochrane["equipment"])
+        self.assertIn("Atv Hangar", cochrane["equipment"])
+        self.assertIn("Full Hangar (60 tons contained)", cochrane["equipment"])
+        self.assertIn("Carried Craft: Charon (ship-158)", cochrane["equipment"])
+        self.assertIn("Carried Craft: Proteus Surveyor (ship-188)", cochrane["equipment"])
+        self.assertIn("2 × Particle Beam Bay", cochrane["armament"])
+        self.assertIn("4 × Triple Turret: Beam Laser · Beam Laser · Beam Laser", cochrane["armament"])
+        self.assertIn("2 × Triple Turret: Missile Rack · Missile Rack · Missile Rack", cochrane["armament"])
+        self.assertIn("2 × Triple Turret: Sandcaster · Sandcaster · Sandcaster", cochrane["armament"])
+        self.assertIn("10 × Point Defense Node Mount: Point Defense Laser", cochrane["armament"])
+        self.assertEqual(cochrane["ammunition"], "120 × Standard Missiles · 120 × Sandcaster Canisters")
+        self.assertEqual(cochrane["unused_fire_control_stations"], 0)
+        self.assertEqual(cochrane["length_m"], 82.0)
+        self.assertEqual(cochrane["art_path"], "assets/ships/ship-094-cochrane.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

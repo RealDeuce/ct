@@ -600,6 +600,13 @@ PUBLISHED_SHIP_ART = {
         "ship with ward windows, rescue hangar, and defensive sandcasters.",
         78.0,
     ),
+    94: (
+        "assets/ships/ship-094-cochrane.webp",
+        "Painted three-quarter view of Cochrane, an emerald, cream, burgundy, and "
+        "gold-chrome thousand-ton boarding bastion with a particle-beam bay and "
+        "four visible triple turrets.",
+        82.0,
+    ),
     95: (
         "assets/ships/ship-095-cook.webp",
         "Painted three-quarter view of Cook, a navy six-hundred-ton streamlined "
