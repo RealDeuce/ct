@@ -450,19 +450,14 @@ fn advance_encounter_until_progress(
 }
 
 fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity, request_id: &mut u64) {
-    let mut steps = 0_usize;
-    loop {
-        steps += 1;
-        assert!(
-            steps <= SETTLEMENT_STEP_LIMIT,
-            "terminal approach did not settle after {SETTLEMENT_STEP_LIMIT} state transitions"
-        );
+    let mut settlement_steps = 0_usize;
+    for _ in 0..SIMULATION_EVENT_LIMIT {
         let engine = Engine::open(data, BbsRegistry::default()).unwrap();
         let (epoch, _, _) = engine.issue_session(identity).unwrap();
         loop {
-            steps += 1;
+            settlement_steps += 1;
             assert!(
-                steps <= SETTLEMENT_STEP_LIMIT,
+                settlement_steps <= SETTLEMENT_STEP_LIMIT,
                 "terminal approach encounter did not settle after {SETTLEMENT_STEP_LIMIT} state transitions"
             );
             if let Some(encounter) = engine.pending_encounter(identity).unwrap() {
@@ -532,6 +527,7 @@ fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity, request_id:
             other => panic!("terminal approach entered an unexpected locus: {other:?}"),
         }
     }
+    panic!("terminal approach did not settle after {SIMULATION_EVENT_LIMIT} scheduled events");
 }
 
 fn settle_pending_arrival_encounter_with_engine(
@@ -1532,8 +1528,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     reconnected_door.send(b"\r");
     reconnected_door.wait_for_occurrences("Return to BBS", 2);
     reconnected_door.send_to_menu(b"j", "Task Ledger");
-    reconnected_door.send(b"q");
-    reconnected_door.wait_for_occurrences("Docked Operations", 3);
+    reconnected_door.send_to_menu(b"q", "Docked Operations");
     reconnected_door.wait_for_occurrences("Return to BBS", 3);
     reconnected_door.return_to_bbs();
     let reconnect_screen = reconnected_door.finish();
