@@ -8,6 +8,7 @@ import html
 import json
 import re
 import shutil
+import sys
 import tomllib
 from collections import defaultdict
 from html.parser import HTMLParser
@@ -17,11 +18,26 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "site"
+TOOLS = ROOT / "tools"
+if str(TOOLS) not in sys.path:
+    sys.path.insert(0, str(TOOLS))
+
+from ship_design import evaluate, load_toml  # noqa: E402
+from shipbuilding_rules import compose_shipbuilding_rules  # noqa: E402
+from small_craft_design import evaluate_small_craft  # noqa: E402
+
+
 CPP_HELP = ROOT / "client" / "src" / "door_help.cpp"
 HELP_HEADER = ROOT / "client" / "include" / "ct" / "door_help.hpp"
 PLAYER_GUIDE = ROOT / "docs" / "player-guide.md"
 SHIP_CATALOG = ROOT / "catalog" / "ships"
+SHIPBUILDING_RULES = ROOT / "catalog" / "shipbuilding"
 SHIPBUILDING_CORE = ROOT / "catalog" / "shipbuilding" / "ce-core.toml"
+SHIPBUILDING_SMALL = ROOT / "catalog" / "shipbuilding" / "ce-small-craft.toml"
+SHIPBUILDING_EXTENDED_SMALL = (
+    ROOT / "catalog" / "shipbuilding" / "af3-small-compatible.toml"
+)
+SHIP_TAG_REFERENCE = re.compile(r"\bship-[1-9][0-9]*\b")
 
 PUBLISHED_SHIP_ART = {
     1: (
@@ -1681,6 +1697,81 @@ def format_tons(millitons: int) -> str:
     return f"{value} ton{'s' if tons != 1 else ''}"
 
 
+def format_credits(credits: int) -> str:
+    return f"{credits:,} Cr"
+
+
+def evaluate_catalog_designs(
+    designs: dict[str, dict[str, object]],
+) -> dict[str, dict[str, object]]:
+    core = load_toml(SHIPBUILDING_CORE)
+    small = load_toml(SHIPBUILDING_SMALL)
+    extended_small = load_toml(SHIPBUILDING_EXTENDED_SMALL)
+    composed = compose_shipbuilding_rules(SHIPBUILDING_RULES)
+    rulesets = {
+        core["ruleset_id"]: core,
+        composed["ruleset_id"]: composed,
+    }
+    evaluated: dict[str, dict[str, object]] = {}
+    visiting: set[str] = set()
+
+    def evaluate_tag(tag: str) -> dict[str, object]:
+        if tag in evaluated:
+            return evaluated[tag]
+        if tag in visiting:
+            raise RuntimeError(f"cyclic carried-craft reference involving {tag}")
+        try:
+            design = designs[tag]
+        except KeyError as error:
+            raise RuntimeError(f"catalog references unpublished design {tag}") from error
+        visiting.add(tag)
+        for craft in design.get("carried_craft", []):
+            evaluate_tag(craft["tag"])
+        ruleset_id = design["ruleset_id"]
+        if ruleset_id == small["ruleset_id"]:
+            result = evaluate_small_craft(core, small, design)
+        elif ruleset_id == extended_small["ruleset_id"]:
+            result = evaluate_small_craft(
+                core,
+                small,
+                design,
+                extension=extended_small,
+                component_rules=composed,
+            )
+        else:
+            result = evaluate(
+                rulesets[ruleset_id],
+                design,
+                carried_craft_results=evaluated,
+            )
+        visiting.remove(tag)
+        evaluated[tag] = result
+        return result
+
+    for tag in designs:
+        evaluate_tag(tag)
+    return evaluated
+
+
+def linked_catalog_text(value: object, ship_pages: dict[str, str]) -> str:
+    text = str(value)
+    parts = []
+    position = 0
+    for match in SHIP_TAG_REFERENCE.finditer(text):
+        parts.append(html.escape(text[position:match.start()]))
+        tag = match.group(0)
+        page = ship_pages.get(tag)
+        if page is None:
+            parts.append(html.escape(tag))
+        else:
+            parts.append(
+                f'<a href="{html.escape(page, quote=True)}">{html.escape(tag)}</a>'
+            )
+        position = match.end()
+    parts.append(html.escape(text[position:]))
+    return "".join(parts)
+
+
 def parameterized_equipment_name(item: dict[str, object]) -> str:
     details = []
     if "beds" in item:
@@ -1709,11 +1800,25 @@ def catalog_records() -> list[dict[str, object]]:
         entry["id"]: entry["protection_per_layer"]
         for entry in shipbuilding["armor"]
     }
+    designs = {}
+    for catalog_id in PUBLISHED_SHIP_ART:
+        source = SHIP_CATALOG / f"ship-{catalog_id}.toml"
+        data = tomllib.loads(source.read_text(encoding="utf-8"))
+        designs[data["catalog"]["tag"]] = data
+    evaluated = evaluate_catalog_designs(designs)
+    ship_pages = {
+        data["catalog"]["tag"]: (
+            f"ship-{data['catalog']['catalog_id']:03}-"
+            f"{slug(data['catalog']['display_name'])}.html"
+        )
+        for data in designs.values()
+    }
     records: list[dict[str, object]] = []
     for catalog_id, (art_path, art_alt, length_m) in PUBLISHED_SHIP_ART.items():
         source = SHIP_CATALOG / f"ship-{catalog_id}.toml"
-        data = tomllib.loads(source.read_text(encoding="utf-8"))
+        data = designs[f"ship-{catalog_id}"]
         catalog = data["catalog"]
+        performance = evaluated[catalog["tag"]]
         if catalog["catalog_id"] != catalog_id:
             raise RuntimeError(f"catalog ID mismatch in {source}")
         if not (SITE / art_path).is_file():
@@ -1811,7 +1916,11 @@ def catalog_records() -> list[dict[str, object]]:
                 carried_name if quantity == 1 else f"{quantity} × {carried_name}"
             )
             equipment_entries.append(
-                {"name": carried_name, "quantity": quantity}
+                {
+                    "name": carried_name,
+                    "quantity": quantity,
+                    "ship_page": ship_pages[craft_tag],
+                }
             )
         for item in data.get("screens", []):
             quantity = int(item.get("quantity", 1))
@@ -1940,7 +2049,7 @@ def catalog_records() -> list[dict[str, object]]:
                 "secondary_roles": [display_term(value) for value in catalog["secondary_roles"]],
                 "mission_tags": [display_term(value) for value in catalog["mission_tags"]],
                 "ogc_designations": catalog["open_game_content_designations"],
-                "tons": int(hull_match.group(1)),
+                "tons": performance["hull_millitons"] // 1000,
                 "hull_id": data["hull"]["id"],
                 "configuration": display_term(data["hull"]["configuration"]),
                 "hull_options": hull_options,
@@ -1954,7 +2063,11 @@ def catalog_records() -> list[dict[str, object]]:
                 "external_load": format_tons(data.get("external_load_millitons", 0)),
                 "maneuver_drive": data["drives"]["maneuver"],
                 "power_plant": data["drives"]["power"],
-                "thrust_g": data.get("thrust_g"),
+                "thrust_g": performance["thrust_g"],
+                "jump_rating": performance.get("jump_rating", 0),
+                "construction_price_credits": performance[
+                    "construction_price_credits"
+                ],
                 "jump_drive": data["drives"].get("jump"),
                 "jump_distance": data["fuel"].get("jump_distance"),
                 "jump_count": data["fuel"].get("jump_count"),
@@ -1993,14 +2106,16 @@ def catalog_records() -> list[dict[str, object]]:
                 "art_path": art_path,
                 "art_alt": art_alt,
                 "length_m": length_m,
+                "ship_pages": ship_pages,
             }
         )
-    return sorted(records, key=lambda ship: (ship["family_id"], ship["catalog_id"]))
+    return sorted(records, key=lambda ship: ship["catalog_id"])
 
 
 def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
     if records is None:
         records = catalog_records()
+    records = sorted(records, key=lambda ship: ship["catalog_id"])
     index_links = []
     for ship in records:
         search_text = " ".join(
@@ -2025,15 +2140,27 @@ def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
         ).lower()
         index_links.append(
             f'<a href="{ship["page"]}" data-catalog-entry '
+            f'data-catalog-id="{ship["catalog_id"]}" '
             f'data-family="{ship["family_id"]}" data-path="{ship["path_id"]}" '
+            f'data-tonnage="{ship["tons"]}" data-jump="{ship["jump_rating"]}" '
+            f'data-thrust="{ship["thrust_g"]}" '
+            f'data-price="{ship["construction_price_credits"]}" '
             f'data-search="{html.escape(search_text, quote=True)}">'
             f'<span>{ship["catalog_id"]:03}</span><strong>{html.escape(ship["name"])}</strong>'
             f'<small>{html.escape(ship["family_name"])} family · {ship["tons"]} tons · '
-            f'{html.escape(ship["role"])}<br>{html.escape(ship["path_name"])}</small>'
+            f'{html.escape(ship["role"])}<br>'
+            f'{format_credits(ship["construction_price_credits"])} · '
+            f'{html.escape(ship["path_name"])}</small>'
             f'<b>Open full dossier →</b></a>'
         )
-    families = sorted({(ship["family_id"], ship["family_name"]) for ship in records})
-    paths = sorted({(ship["path_id"], ship["path_name"]) for ship in records})
+    families = sorted(
+        {(ship["family_id"], ship["family_name"]) for ship in records},
+        key=lambda item: item[1].casefold(),
+    )
+    paths = sorted(
+        {(ship["path_id"], ship["path_name"]) for ship in records},
+        key=lambda item: item[1].casefold(),
+    )
     family_options = "".join(
         f'<option value="{family_id}">{html.escape(family_name)}</option>'
         for family_id, family_name in families
@@ -2041,6 +2168,19 @@ def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
     path_options = "".join(
         f'<option value="{path_id}">{html.escape(path_name)}</option>'
         for path_id, path_name in paths
+    )
+    tonnages = sorted({ship["tons"] for ship in records})
+    jump_ratings = sorted({ship["jump_rating"] for ship in records})
+    thrust_ratings = sorted({ship["thrust_g"] for ship in records})
+    tonnage_options = "".join(
+        f'<option value="{value}">{value:,} tons</option>' for value in tonnages
+    )
+    jump_options = "".join(
+        f'<option value="{value}">{"No Jump" if value == 0 else f"J-{value}"}</option>'
+        for value in jump_ratings
+    )
+    thrust_options = "".join(
+        f'<option value="{value}">{value} g</option>' for value in thrust_ratings
     )
     body = f"""
 <header class="document-hero catalog-hero">
@@ -2059,6 +2199,19 @@ def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
     <label class="catalog-query" for="ship-query"><span>Search registry</span><input id="ship-query" type="search" autocomplete="off" placeholder="Name, role, yard, or visible fit…"></label>
     <label for="ship-family"><span>Family</span><select id="ship-family"><option value="">All issued families</option>{family_options}</select></label>
     <label for="ship-path"><span>Shipyard path</span><select id="ship-path"><option value="">All issued paths</option>{path_options}</select></label>
+    <label for="ship-tonnage-min"><span>Minimum tonnage</span><select id="ship-tonnage-min"><option value="">No minimum</option>{tonnage_options}</select></label>
+    <label for="ship-tonnage-max"><span>Maximum tonnage</span><select id="ship-tonnage-max"><option value="">No maximum</option>{tonnage_options}</select></label>
+    <label for="ship-jump-min"><span>Minimum Jump</span><select id="ship-jump-min"><option value="">No minimum</option>{jump_options}</select></label>
+    <label for="ship-jump-max"><span>Maximum Jump</span><select id="ship-jump-max"><option value="">No maximum</option>{jump_options}</select></label>
+    <label for="ship-thrust-min"><span>Minimum acceleration</span><select id="ship-thrust-min"><option value="">No minimum</option>{thrust_options}</select></label>
+    <label for="ship-thrust-max"><span>Maximum acceleration</span><select id="ship-thrust-max"><option value="">No maximum</option>{thrust_options}</select></label>
+    <fieldset class="catalog-sort"><legend>Primary sort key</legend><div>
+      <label><input type="radio" name="ship-sort" value="catalog" checked> Catalog ID</label>
+      <label><input type="radio" name="ship-sort" value="tonnage"> Displacement</label>
+      <label><input type="radio" name="ship-sort" value="price"> Price</label>
+      <label><input type="radio" name="ship-sort" value="thrust"> Acceleration</label>
+      <label><input type="radio" name="ship-sort" value="jump"> Jump range</label>
+    </div></fieldset>
     <p id="ship-results" role="status" aria-live="polite">Showing all {len(records)} issued entries.</p>
   </div>
   <section class="catalog-directory" aria-labelledby="catalog-index-title">
@@ -2100,7 +2253,12 @@ def assertion_value(key: str, value: object) -> str:
     return str(value)
 
 
-def source_ledger(value: object) -> str:
+def source_ledger(
+    value: object,
+    ship_pages: dict[str, str],
+    *,
+    link_ship_tag: bool = False,
+) -> str:
     if isinstance(value, dict):
         if not value:
             return '<span class="ledger-empty">None recorded</span>'
@@ -2108,7 +2266,9 @@ def source_ledger(value: object) -> str:
         for key, child in value.items():
             label = key.replace("_", " ").title()
             rows.append(
-                f"<div><dt>{html.escape(label)}</dt><dd>{source_ledger(child)}</dd></div>"
+                f"<div><dt>{html.escape(label)}</dt>"
+                f"<dd>{source_ledger(child, ship_pages, link_ship_tag=key == 'tag')}"
+                f"</dd></div>"
             )
         return f'<dl class="source-ledger">{"".join(rows)}</dl>'
     if isinstance(value, list):
@@ -2120,15 +2280,22 @@ def source_ledger(value: object) -> str:
             else "ledger-values"
         )
         return f'<ol class="{list_class}">' + "".join(
-            f"<li>{source_ledger(item)}</li>" for item in value
+            f"<li>{source_ledger(item, ship_pages, link_ship_tag=link_ship_tag)}</li>"
+            for item in value
         ) + "</ol>"
     if isinstance(value, bool):
         return "Yes" if value else "No"
+    if link_ship_tag:
+        return linked_catalog_text(value, ship_pages)
     return html.escape(str(value))
 
 
 def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) -> str:
-    paragraphs = "".join(f"<p>{html.escape(text)}</p>" for text in ship["description"])
+    ship_pages = ship["ship_pages"]
+    paragraphs = "".join(
+        f"<p>{linked_catalog_text(text, ship_pages)}</p>"
+        for text in ship["description"]
+    )
     weeks = ship["endurance"]
     family_members = [item for item in records if item["family_id"] == ship["family_id"]]
     member_links = "".join(
@@ -2153,10 +2320,18 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
         f'{"s" if entry["quantity"] != 1 else ""}</li>'
         for entry in ship["crew_entries"]
     ) or "<li>None recorded</li>"
-    equipment = "".join(
-        f'<li><strong>{entry["quantity"]}</strong> {html.escape(entry["name"])}</li>'
-        for entry in ship["equipment_entries"]
-    )
+    equipment_items = []
+    for entry in ship["equipment_entries"]:
+        equipment_name = html.escape(entry["name"])
+        if "ship_page" in entry:
+            equipment_name = (
+                f'<a href="{html.escape(entry["ship_page"], quote=True)}">'
+                f"{equipment_name}</a>"
+            )
+        equipment_items.append(
+            f'<li><strong>{entry["quantity"]}</strong> {equipment_name}</li>'
+        )
+    equipment = "".join(equipment_items)
     mount_items = []
     for entry in ship["mount_entries"]:
         mount_name = html.escape(entry["name"])
@@ -2223,7 +2398,7 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
     </dl>
     <div class="ship-detail-profile">
       <section><p class="section-index">Operational profile</p><h2>Recognition and use</h2><div class="ship-description">{paragraphs}</div></section>
-      <aside><p class="ship-fit"><span>Recognized fit</span>{html.escape(recognized_fit)}</p><p class="ship-yard">Yard pattern: <strong>{html.escape(ship['yard_name'])}</strong>.</p><div class="record-tags" aria-label="Mission tags">{''.join(f'<span>{html.escape(value)}</span>' for value in ship['mission_tags'])}</div></aside>
+      <aside><p class="ship-fit"><span>Recognized fit</span>{linked_catalog_text(recognized_fit, ship_pages)}</p><p class="ship-yard">Yard pattern: <strong>{html.escape(ship['yard_name'])}</strong>.</p><div class="record-tags" aria-label="Mission tags">{''.join(f'<span>{html.escape(value)}</span>' for value in ship['mission_tags'])}</div></aside>
     </div>
     <section class="ship-construction" aria-labelledby="construction-title">
       <header><p class="section-index">Complete record / Revision {ship['revision']}</p><h2 id="construction-title">Construction dossier</h2><p>All fields below are read from the active catalog record. “None” is explicit where the record contains no fitted item or option.</p></header>
@@ -2238,6 +2413,7 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
             ('Progression stage', ship['progression_stage']),
             ('Family', f'{ship["family_id"]:03} / {ship["family_name"]}'),
             ('Shipyard path', f'{ship["path_id"]:02} / {ship["path_name"]}'),
+            ('Construction price', format_credits(ship['construction_price_credits'])),
             ('Standard design', 'Yes' if ship['standard_design'] else 'No'),
         ])}</section>
         <section><h3>Hull and systems</h3>{record_list([
@@ -2261,11 +2437,11 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
         ])}</section>
         <section><h3>Drives and control</h3>{record_list([
             ('Maneuver drive', ship['maneuver_drive']),
-            ('Recorded thrust', f'{ship["thrust_g"]} g' if ship['thrust_g'] is not None else 'Derived from drive fit'),
+            ('Thrust', f'{ship["thrust_g"]} g'),
             ('Power plant', ship['power_plant']),
             ('Power options', joined_terms(ship['power_options'])),
             ('Jump drive', ship['jump_drive'] or 'None installed'),
-            ('Jump distance', ship['jump_distance'] if ship['jump_distance'] is not None else 'Not applicable'),
+            ('Jump rating', f'J-{ship["jump_rating"]}' if ship['jump_rating'] else 'None'),
             ('Jumps carried', ship['jump_count'] if ship['jump_count'] is not None else 'Not applicable'),
             ('Power endurance', f'{weeks} week{"s" if weeks != 1 else ""}'),
             ('Control', ship['control']),
@@ -2290,7 +2466,7 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
       {assertions}
       <details class="complete-ledger">
         <summary><span>Complete source ledger</span><small>Every field in the catalog record, including empty lists and construction assertions.</small></summary>
-        <div class="complete-ledger-body">{source_ledger(ship['raw_data'])}</div>
+        <div class="complete-ledger-body">{source_ledger(ship['raw_data'], ship_pages)}</div>
       </details>
     </section>
     <section class="ship-provenance"><div><p class="section-index">Record provenance</p><h2>Sources and designation</h2><p>Source record: <code>catalog/ships/ship-{ship['catalog_id']}.toml</code></p>{ogc}</div><ul>{source_ids}</ul></section>

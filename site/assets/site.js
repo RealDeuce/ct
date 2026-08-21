@@ -50,34 +50,81 @@
   if (shipQuery) {
     const familyFilter = document.querySelector('#ship-family');
     const pathFilter = document.querySelector('#ship-path');
+    const tonnageMin = document.querySelector('#ship-tonnage-min');
+    const tonnageMax = document.querySelector('#ship-tonnage-max');
+    const jumpMin = document.querySelector('#ship-jump-min');
+    const jumpMax = document.querySelector('#ship-jump-max');
+    const thrustMin = document.querySelector('#ship-thrust-min');
+    const thrustMax = document.querySelector('#ship-thrust-max');
+    const sortControls = [...document.querySelectorAll('input[name="ship-sort"]')];
+    const index = document.querySelector('#catalog-index');
     const entries = [...document.querySelectorAll('[data-catalog-entry]')];
     const status = document.querySelector('#ship-results');
     const empty = document.querySelector('#no-ship-results');
+    const rangeMatches = (value, minimum, maximum) => (
+      (!minimum.value || value >= Number(minimum.value))
+      && (!maximum.value || value <= Number(maximum.value))
+    );
+    const sortCatalog = () => {
+      const selected = sortControls.find((control) => control.checked)?.value || 'catalog';
+      const attribute = {
+        catalog: 'catalogId',
+        tonnage: 'tonnage',
+        price: 'price',
+        thrust: 'thrust',
+        jump: 'jump',
+      }[selected];
+      entries.sort((left, right) => (
+        Number(left.dataset[attribute]) - Number(right.dataset[attribute])
+        || Number(left.dataset.catalogId) - Number(right.dataset.catalogId)
+      ));
+      entries.forEach((entry) => index.append(entry));
+    };
     const filterCatalog = () => {
       const terms = shipQuery.value.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
       let matches = 0;
+      sortCatalog();
       entries.forEach((entry) => {
         const textMatches = terms.every((term) => entry.dataset.search.includes(term));
         const familyMatches = !familyFilter.value || entry.dataset.family === familyFilter.value;
         const pathMatches = !pathFilter.value || entry.dataset.path === pathFilter.value;
-        const visible = textMatches && familyMatches && pathMatches;
+        const tonnageMatches = rangeMatches(Number(entry.dataset.tonnage), tonnageMin, tonnageMax);
+        const jumpMatches = rangeMatches(Number(entry.dataset.jump), jumpMin, jumpMax);
+        const thrustMatches = rangeMatches(Number(entry.dataset.thrust), thrustMin, thrustMax);
+        const visible = textMatches && familyMatches && pathMatches
+          && tonnageMatches && jumpMatches && thrustMatches;
         entry.hidden = !visible;
         if (visible) matches += 1;
       });
       empty.hidden = matches !== 0;
-      const filtered = terms.length || familyFilter.value || pathFilter.value;
+      const filtered = terms.length || familyFilter.value || pathFilter.value
+        || tonnageMin.value || tonnageMax.value || jumpMin.value || jumpMax.value
+        || thrustMin.value || thrustMax.value;
       status.textContent = filtered
         ? `${matches} issued entr${matches === 1 ? 'y' : 'ies'} match current filters.`
         : `Showing all ${entries.length} issued entries.`;
     };
     shipQuery.addEventListener('input', filterCatalog);
-    familyFilter.addEventListener('change', filterCatalog);
-    pathFilter.addEventListener('change', filterCatalog);
+    [familyFilter, pathFilter, tonnageMin, tonnageMax, jumpMin, jumpMax,
+      thrustMin, thrustMax, ...sortControls].forEach((control) => {
+      control.addEventListener('change', filterCatalog);
+    });
+    window.addEventListener('pageshow', filterCatalog);
+    filterCatalog();
     activeSearch = shipQuery;
     clearActiveSearch = () => {
       shipQuery.value = '';
       familyFilter.value = '';
       pathFilter.value = '';
+      tonnageMin.value = '';
+      tonnageMax.value = '';
+      jumpMin.value = '';
+      jumpMax.value = '';
+      thrustMin.value = '';
+      thrustMax.value = '';
+      sortControls.forEach((control) => {
+        control.checked = control.value === 'catalog';
+      });
       filterCatalog();
     };
   }

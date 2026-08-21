@@ -349,7 +349,7 @@ main { position: relative; z-index: 1; }
   width: min(calc(100% - 2 * var(--gutter)), var(--max));
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(15rem, 1.5fr) minmax(10rem, .8fr) minmax(10rem, .8fr) auto;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   align-items: end;
   gap: 1px;
   padding: 1px;
@@ -357,8 +357,11 @@ main { position: relative; z-index: 1; }
   background: var(--line);
   box-shadow: 0 1rem 2.5rem rgba(0,0,0,.32);
 }
-.catalog-controls label { display: block; min-width: 0; padding: .7rem .85rem; background: #151b20; }
-.catalog-controls label > span {
+.catalog-controls > label { display: block; min-width: 0; padding: .7rem .85rem; background: #151b20; }
+.catalog-controls > .catalog-query,
+.catalog-controls > label[for="ship-family"],
+.catalog-controls > label[for="ship-path"] { grid-column: span 2; }
+.catalog-controls > label > span {
   display: block;
   margin-bottom: .25rem;
   color: var(--teal);
@@ -366,7 +369,7 @@ main { position: relative; z-index: 1; }
   letter-spacing: .1em;
   text-transform: uppercase;
 }
-.catalog-controls input, .catalog-controls select {
+.catalog-controls > label input, .catalog-controls > label select {
   width: 100%;
   min-width: 0;
   height: 2rem;
@@ -379,8 +382,26 @@ main { position: relative; z-index: 1; }
   font: 700 .78rem var(--display);
   text-transform: uppercase;
 }
-.catalog-controls select { color-scheme: dark; }
-.catalog-controls input::placeholder { color: #777f78; text-transform: none; }
+.catalog-controls > label select { color-scheme: dark; }
+.catalog-controls > label input::placeholder { color: #777f78; text-transform: none; }
+.catalog-sort {
+  grid-column: span 5;
+  min-width: 0;
+  margin: 0;
+  padding: .62rem .85rem .72rem;
+  border: 0;
+  background: #151b20;
+}
+.catalog-sort legend {
+  padding: 0;
+  color: var(--teal);
+  font: 700 .55rem var(--mono);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.catalog-sort > div { display: flex; flex-wrap: wrap; gap: .35rem 1rem; margin-top: .28rem; }
+.catalog-sort label { color: var(--ink); font: 700 .7rem var(--display); text-transform: uppercase; }
+.catalog-sort input { margin: 0 .2rem 0 0; accent-color: var(--amber); }
 .catalog-controls > p {
   min-width: 10rem;
   margin: 0;
@@ -452,6 +473,7 @@ main { position: relative; z-index: 1; }
   text-transform: uppercase;
 }
 .ship-fit span { display: block; margin-bottom: .12rem; color: var(--ink-soft); font: 600 .52rem var(--mono); letter-spacing: .1em; }
+.ship-fit a, .ship-manifest-grid a { color: var(--teal); }
 .ship-description p { margin: 0 0 1rem; color: #d1d4c4; }
 .ship-description p:last-child { margin-bottom: 0; }
 .ship-yard { margin: 1.5rem 0 0; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--ink-soft); font: .62rem/1.5 var(--mono); text-transform: uppercase; }
@@ -683,6 +705,10 @@ main { position: relative; z-index: 1; }
   .first-watch .text-link { grid-column: 1; }
   .resource-callout { grid-template-columns: 1fr; }
   .catalog-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .catalog-controls > .catalog-query { grid-column: span 2; }
+  .catalog-controls > label[for="ship-family"],
+  .catalog-controls > label[for="ship-path"] { grid-column: span 1; }
+  .catalog-sort { grid-column: span 2; }
   .catalog-controls > p { grid-column: 1 / -1; min-width: 0; padding: .75rem 1rem; }
   .catalog-directory > header { grid-template-columns: 1fr; }
   .catalog-directory > header > p:last-child { grid-column: 1; grid-row: auto; margin-top: 1rem; }
@@ -729,6 +755,10 @@ main { position: relative; z-index: 1; }
   .catalog-overview div:nth-child(2) { border-right: 0; }
   .catalog-overview div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
   .catalog-controls { position: static; width: calc(100% - 2 * var(--gutter)); grid-template-columns: 1fr; }
+  .catalog-controls > .catalog-query,
+  .catalog-controls > label[for="ship-family"],
+  .catalog-controls > label[for="ship-path"],
+  .catalog-sort { grid-column: 1; }
   .catalog-controls > p { grid-column: 1; }
   .catalog-directory { padding-top: 3.5rem; padding-bottom: 3.5rem; }
   .catalog-index { grid-template-columns: 1fr; }

@@ -192,7 +192,7 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(bellerophon["additional_passengers"], 0)
         self.assertEqual(bellerophon["maneuver_drive"], "sE")
         self.assertEqual(bellerophon["power_plant"], "sE")
-        self.assertIsNone(bellerophon["thrust_g"])
+        self.assertEqual(bellerophon["thrust_g"], 6)
         self.assertIn("Thrust 6", bellerophon["mission_tags"])
         self.assertEqual(bellerophon["endurance"], 1)
         self.assertEqual(bellerophon["cargo"], "1.925 tons")
@@ -1294,7 +1294,7 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(vidocq["jump_count"], 0)
         self.assertEqual(vidocq["maneuver_drive"], "F")
         self.assertEqual(vidocq["power_plant"], "F")
-        self.assertIsNone(vidocq["thrust_g"])
+        self.assertEqual(vidocq["thrust_g"], 6)
         self.assertIn("Six Gravity", vidocq["mission_tags"])
         self.assertEqual(vidocq["endurance"], 2)
         self.assertEqual(vidocq["cargo"], "32.1 tons")
@@ -3934,6 +3934,63 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIsNone(archimedes["jump_drive"])
         self.assertEqual(archimedes["airlocks"], 1)
         self.assertEqual(archimedes["length_m"], 8.4)
+
+    def test_all_records_expose_evaluator_derived_performance_and_price(self) -> None:
+        self.assertEqual(len(self.records), 213)
+        self.assertTrue(all(record["thrust_g"] > 0 for record in self.records.values()))
+        self.assertTrue(
+            all(
+                record["construction_price_credits"] > 0
+                for record in self.records.values()
+            )
+        )
+        self.assertEqual(self.records[1]["construction_price_credits"], 5_120_000)
+        self.assertEqual(self.records[25]["thrust_g"], 6)
+        self.assertEqual(self.records[90]["jump_rating"], 2)
+
+    def test_catalog_defaults_to_id_order_and_alphabetical_filter_options(self) -> None:
+        records = SITE_BUILD.catalog_records()
+        self.assertEqual(
+            [record["catalog_id"] for record in records],
+            list(range(1, 214)),
+        )
+        page = SITE_BUILD.ship_catalog_page(records)
+        self.assertLess(page.index(">Aegis</option>"), page.index(">Aeolus</option>"))
+        self.assertLess(
+            page.index(">Admiralty Line</option>"),
+            page.index(">Civic Survey</option>"),
+        )
+        self.assertIn('id="ship-tonnage-min"', page)
+        self.assertIn('id="ship-tonnage-max"', page)
+        self.assertIn('id="ship-jump-min"', page)
+        self.assertIn('id="ship-thrust-max"', page)
+        self.assertIn('name="ship-sort" value="catalog" checked', page)
+        self.assertIn('data-tonnage="10" data-jump="0" data-thrust="2"', page)
+        self.assertIn('data-price="5120000"', page)
+
+    def test_dossier_links_carried_craft_and_shows_derived_values(self) -> None:
+        records = SITE_BUILD.catalog_records()
+        by_id = {record["catalog_id"]: record for record in records}
+        page = SITE_BUILD.ship_detail_page(by_id[90], records)
+        self.assertIn(
+            '<a href="ship-007-caduceus.html">Carried Craft: Caduceus '
+            "(ship-7)</a>",
+            page,
+        )
+        self.assertIn('<a href="ship-007-caduceus.html">ship-7</a>', page)
+        self.assertIn("<dt>Construction price</dt><dd>406,095,000 Cr</dd>", page)
+        self.assertIn("<dt>Thrust</dt><dd>4 g</dd>", page)
+        self.assertIn("<dt>Jump rating</dt><dd>J-2</dd>", page)
+        self.assertNotIn("Derived from drive fit", page)
+
+        pym_page = SITE_BUILD.ship_detail_page(by_id[26], records)
+        self.assertNotIn('<a href="ship-100-duncan.html">ship-100</a>', pym_page)
+
+    def test_catalog_script_reapplies_filters_after_history_navigation(self) -> None:
+        script = (ROOT / "site" / "assets" / "site.js").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("window.addEventListener('pageshow', filterCatalog)", script)
 
 
 if __name__ == "__main__":
