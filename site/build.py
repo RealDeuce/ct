@@ -708,6 +708,13 @@ PUBLISHED_SHIP_ART = {
         "four visible weapon bays and five distributed triple turrets.",
         104.0,
     ),
+    111: (
+        "assets/ships/ship-111-fisher.webp",
+        "Painted three-quarter view of Fisher, a navy, warm-white, red, and "
+        "chrome eighteen-hundred-ton armored-anvil fleet cruiser with five "
+        "visible weapon bays and four distributed mixed turrets.",
+        100.0,
+    ),
     116: (
         "assets/ships/ship-116-citadel.webp",
         "Painted three-quarter view of Citadel, a red twenty-five-hundred-ton "

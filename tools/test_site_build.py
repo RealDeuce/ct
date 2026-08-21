@@ -3724,6 +3724,68 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(ship["length_m"], 104.0)
         self.assertEqual(ship["art_path"], "assets/ships/ship-110-themistocles.webp")
 
+    def test_fisher_exposes_fleet_cruiser_fit(self) -> None:
+        fisher = self.records[111]
+        self.assertEqual(fisher["family_id"], 111)
+        self.assertEqual(fisher["path_name"], "Admiralty Line")
+        self.assertEqual(fisher["tons"], 1800)
+        self.assertEqual(fisher["configuration"], "Standard")
+        self.assertEqual(fisher["tech_level"], 11)
+        self.assertFalse(fisher["standard_design"])
+        self.assertEqual(fisher["electronics"], "Advanced")
+        self.assertEqual(fisher["armor_points"], 8)
+        self.assertEqual(
+            fisher["bridge_options"],
+            ["Command Bridge", "Hardened Bridge", "Holographic Controls"],
+        )
+        self.assertEqual(fisher["computer"], "Model 3")
+        self.assertEqual(fisher["computer_options"], ["Bis", "Fib"])
+        self.assertEqual(fisher["jump_drive"], "P")
+        self.assertEqual(fisher["jump_distance"], 2)
+        self.assertEqual(fisher["jump_count"], 1)
+        self.assertEqual(fisher["maneuver_drive"], "T")
+        self.assertEqual(fisher["power_plant"], "Z")
+        self.assertEqual(fisher["assertions"]["thrust_g"], 4)
+        self.assertEqual(fisher["endurance"], 2)
+        self.assertEqual(fisher["cargo"], "36.7 tons")
+        self.assertEqual(fisher["crew"], 88)
+        self.assertIn("10 × Stateroom", fisher["equipment"])
+        self.assertIn("10 × Crew Berthing", fisher["equipment"])
+        self.assertIn("Fuel Scoop", fisher["equipment"])
+        self.assertIn("14 × Fuel Processor", fisher["equipment"])
+        self.assertIn("2 × Emergency Low Berth", fisher["equipment"])
+        self.assertIn("Medical Bay (3 beds)", fisher["equipment"])
+        self.assertIn("Repair Drones", fisher["equipment"])
+        self.assertIn("Full Hangar (80 tons contained)", fisher["equipment"])
+        self.assertIn("Carried Craft: Wayfarer Cargo (ship-187)", fisher["equipment"])
+        self.assertIn("Carried Craft: Proteus Surveyor (ship-188)", fisher["equipment"])
+        self.assertIn(
+            "9 × Triple Turret: Beam Laser · Missile Rack · Sandcaster",
+            fisher["armament"],
+        )
+        self.assertIn("4 × Meson Gun Bay", fisher["armament"])
+        self.assertIn("5 × Particle Beam Bay", fisher["armament"])
+        self.assertIn(
+            "18 × Point Defense Node Mount: Point Defense Laser",
+            fisher["armament"],
+        )
+        self.assertEqual(
+            fisher["ammunition"],
+            "108 × Standard Missiles · 180 × Sandcaster Canisters",
+        )
+        self.assertEqual(
+            fisher["structural_options"],
+            [
+                "Reinforced Structure (1 increment)",
+                "Armored Bulkheads (Bridge)",
+                "Armored Bulkheads (Drives)",
+            ],
+        )
+        self.assertEqual(fisher["magazine_options"], ["Improved Magazine"])
+        self.assertEqual(fisher["unused_fire_control_stations"], 0)
+        self.assertEqual(fisher["length_m"], 100.0)
+        self.assertEqual(fisher["art_path"], "assets/ships/ship-111-fisher.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
