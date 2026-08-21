@@ -655,6 +655,13 @@ PUBLISHED_SHIP_ART = {
         "command escort with a protected sensor brow and four weapon bays.",
         76.0,
     ),
+    103: (
+        "assets/ships/ship-103-marathon.webp",
+        "Painted three-quarter view of Marathon, a fire-red, orange, bone, and "
+        "stainless twelve-hundred-ton siege-ferry cruiser with six visible "
+        "distributed weapon stations and a closed three-berth hangar.",
+        88.0,
+    ),
     104: (
         "assets/ships/ship-104-enyo.webp",
         "Painted three-quarter view of Enyo, a red fourteen-hundred-ton assault "
