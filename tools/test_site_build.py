@@ -3309,6 +3309,62 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-087-revenant.webp",
         )
 
+    def test_fabius_exposes_fleet_replenishment_fit(self) -> None:
+        fabius = self.records[89]
+        self.assertEqual(fabius["family_id"], 89)
+        self.assertEqual(fabius["path_name"], "Admiralty Line")
+        self.assertEqual(fabius["tons"], 1000)
+        self.assertEqual(fabius["configuration"], "Standard")
+        self.assertEqual(fabius["tech_level"], 11)
+        self.assertFalse(fabius["standard_design"])
+        self.assertEqual(fabius["electronics"], "Advanced")
+        self.assertEqual(fabius["armor_points"], 4)
+        self.assertEqual(fabius["bridge_options"], ["Holographic Controls"])
+        self.assertEqual(fabius["computer"], "Model 3")
+        self.assertEqual(fabius["computer_options"], ["Bis"])
+        self.assertEqual(fabius["jump_drive"], "H")
+        self.assertEqual(fabius["jump_distance"], 2)
+        self.assertEqual(fabius["jump_count"], 1)
+        self.assertEqual(fabius["maneuver_drive"], "H")
+        self.assertEqual(fabius["power_plant"], "H")
+        self.assertEqual(fabius["endurance"], 2)
+        self.assertEqual(fabius["cargo"], "344.5 tons")
+        self.assertEqual(fabius["crew"], 49)
+        self.assertIn("5 × Fuel Processor", fabius["equipment"])
+        self.assertIn("Fuel Scoop", fabius["equipment"])
+        self.assertIn("2 × Workshop", fabius["equipment"])
+        self.assertIn(
+            "10 × Underway Replenishment System",
+            fabius["equipment"],
+        )
+        self.assertIn("Medical Bay (2 beds)", fabius["equipment"])
+        self.assertIn("Repair Drones", fabius["equipment"])
+        self.assertIn("Full Hangar (110 tons contained)", fabius["equipment"])
+        self.assertNotIn("Carried Craft:", fabius["equipment"])
+        self.assertIn(
+            "4 × Triple Turret: Beam Laser · Beam Laser · Beam Laser",
+            fabius["armament"],
+        )
+        self.assertIn(
+            "3 × Triple Turret: Missile Rack · Missile Rack · Missile Rack",
+            fabius["armament"],
+        )
+        self.assertIn(
+            "3 × Triple Turret: Sandcaster · Sandcaster · Sandcaster",
+            fabius["armament"],
+        )
+        self.assertIn(
+            "10 × Point Defense Node Mount: Point Defense Laser",
+            fabius["armament"],
+        )
+        self.assertEqual(
+            fabius["ammunition"],
+            "96 × Standard Missiles · 60 × Sandcaster Canisters",
+        )
+        self.assertEqual(fabius["unused_fire_control_stations"], 0)
+        self.assertEqual(fabius["length_m"], 78.0)
+        self.assertEqual(fabius["art_path"], "assets/ships/ship-089-fabius.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

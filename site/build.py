@@ -568,6 +568,13 @@ PUBLISHED_SHIP_ART = {
         "missile ship with six launch banks and an externally docked Jason.",
         72.0,
     ),
+    89: (
+        "assets/ships/ship-089-fabius.webp",
+        "Painted three-quarter view of Fabius, a navy, warm-white, red, and "
+        "bright-aluminum thousand-ton fleet replenishment ship with five visible "
+        "triple turrets and five stowed transfer stations.",
+        78.0,
+    ),
     90: (
         "assets/ships/ship-090-hawkwood.webp",
         "Painted three-quarter view of Hawkwood, an emerald five-hundred-fifty-ton "
