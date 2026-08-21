@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import re
@@ -38,6 +39,8 @@ SHIPBUILDING_EXTENDED_SMALL = (
     ROOT / "catalog" / "shipbuilding" / "af3-small-compatible.toml"
 )
 SHIP_TAG_REFERENCE = re.compile(r"\bship-[1-9][0-9]*\b")
+SITE_CSS_VERSION = hashlib.sha256((SITE / "assets" / "site.css").read_bytes()).hexdigest()[:12]
+SITE_JS_VERSION = hashlib.sha256((SITE / "assets" / "site.js").read_bytes()).hexdigest()[:12]
 
 PUBLISHED_SHIP_ART = {
     1: (
@@ -1561,8 +1564,8 @@ def page_shell(title: str, description: str, current: str, body: str) -> str:
   <meta name="theme-color" content="#171b20">
   <meta name="description" content="{html.escape(description, quote=True)}">
   <title>{html.escape(title)} · Cepheus Trader</title>
-  <link rel="stylesheet" href="assets/site.css">
-  <script src="assets/site.js" defer></script>
+  <link rel="stylesheet" href="assets/site.css?v={SITE_CSS_VERSION}">
+  <script src="assets/site.js?v={SITE_JS_VERSION}" defer></script>
 </head>
 <body data-page="{current}">
   <a class="skip-link" href="#main">Skip to content</a>

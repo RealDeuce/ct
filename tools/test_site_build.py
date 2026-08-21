@@ -3992,6 +3992,17 @@ class CatalogRecordTests(unittest.TestCase):
         )
         self.assertIn("window.addEventListener('pageshow', filterCatalog)", script)
 
+    def test_page_shell_fingerprints_css_and_javascript_assets(self) -> None:
+        page = SITE_BUILD.page_shell("Test", "Test", "home", "<p>Test</p>")
+        self.assertIn(
+            f'assets/site.css?v={SITE_BUILD.SITE_CSS_VERSION}',
+            page,
+        )
+        self.assertIn(
+            f'assets/site.js?v={SITE_BUILD.SITE_JS_VERSION}',
+            page,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
