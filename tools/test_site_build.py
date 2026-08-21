@@ -3025,6 +3025,56 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(bastion["length_m"], 42.0)
         self.assertEqual(bastion["art_path"], "assets/ships/ship-075-bastion.webp")
 
+    def test_nansen_exposes_long_range_scout_fit(self) -> None:
+        nansen = self.records[76]
+        self.assertEqual(nansen["family_id"], 76)
+        self.assertEqual(nansen["path_name"], "Civic Survey")
+        self.assertEqual(nansen["tons"], 500)
+        self.assertEqual(nansen["configuration"], "Streamlined")
+        self.assertEqual(nansen["tech_level"], 11)
+        self.assertFalse(nansen["standard_design"])
+        self.assertEqual(nansen["electronics"], "Advanced")
+        self.assertEqual(nansen["armor_points"], 4)
+        self.assertEqual(nansen["computer"], "Model 3")
+        self.assertEqual(nansen["computer_options"], ["Bis"])
+        self.assertEqual(nansen["jump_drive"], "E")
+        self.assertEqual(nansen["jump_distance"], 2)
+        self.assertEqual(nansen["jump_count"], 2)
+        self.assertEqual(nansen["maneuver_drive"], "H")
+        self.assertEqual(nansen["power_plant"], "H")
+        self.assertEqual(nansen["endurance"], 2)
+        self.assertEqual(nansen["cargo"], "30 tons")
+        self.assertEqual(nansen["crew"], 8)
+        self.assertIn("10 × Stateroom", nansen["equipment"])
+        self.assertIn("2 × Laboratory", nansen["equipment"])
+        self.assertIn("6 × Fuel Processor", nansen["equipment"])
+        self.assertIn("2 × Probe Drones", nansen["equipment"])
+        self.assertIn("6 × Low Berth", nansen["equipment"])
+        self.assertIn("2 × Emergency Low Berth", nansen["equipment"])
+        self.assertIn("Medical Bay (2 beds)", nansen["equipment"])
+        self.assertIn("Full Hangar (30 tons contained)", nansen["equipment"])
+        self.assertIn("Standard Hangar (14 tons contained)", nansen["equipment"])
+        self.assertIn("Carried Craft: Jason (ship-17)", nansen["equipment"])
+        self.assertIn(
+            "2 × Double Turret: Beam Laser · Beam Laser",
+            nansen["armament"],
+        )
+        self.assertIn(
+            "Double Turret: Sandcaster · Sandcaster",
+            nansen["armament"],
+        )
+        self.assertIn(
+            "Double Turret: Missile Rack · Missile Rack",
+            nansen["armament"],
+        )
+        self.assertEqual(
+            nansen["ammunition"],
+            "24 × Standard Missiles · 40 × Sandcaster Canisters",
+        )
+        self.assertEqual(nansen["unused_fire_control_stations"], 1)
+        self.assertEqual(nansen["length_m"], 68.0)
+        self.assertEqual(nansen["art_path"], "assets/ships/ship-076-nansen.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

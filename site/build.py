@@ -484,6 +484,13 @@ PUBLISHED_SHIP_ART = {
         "flank turret, and closed transfer-launch hangar.",
         42.0,
     ),
+    76: (
+        "assets/ships/ship-076-nansen.webp",
+        "Painted three-quarter view of Nansen, a warm-white, cyan, lime, and "
+        "chrome five-hundred-ton survey sounder with two flank turrets and two "
+        "separate closed expedition hangars.",
+        68.0,
+    ),
     78: (
         "assets/ships/ship-078-bonanza.webp",
         "Painted three-quarter view of Bonanza, an avocado eight-hundred-ton "
