@@ -395,6 +395,121 @@ int main() {
       "           adjudication");
    check(maximum_visible_width(hanging) < 40);
 
+   for(const auto columns : {size_t{40}, size_t{80}}) {
+      std::string fields;
+      ct::DoorPresentation field_presentation(
+         ct::DoorProfile::Iso646,
+         columns,
+         24,
+         [&fields](const std::string_view bytes) { fields.append(bytes); });
+      const auto label_column = field_presentation.labeled_field_column(
+         {"Service:", "Failure charge:", "Performing ship:"});
+      check(label_column == 16);
+      field_presentation.write_labeled_field(
+         "Service:", label_column,
+         {{"Freight contract", ct::DoorTextRole::Value}});
+      field_presentation.write_labeled_field(
+         "Failure charge:", label_column,
+         {{"Cr", ct::DoorTextRole::Label},
+          {"25000", ct::DoorTextRole::Number}});
+      field_presentation.write_labeled_field(
+         "Performing ship:", label_column,
+         {{"Far Horizon", ct::DoorTextRole::Identifier}});
+      check(
+         fields ==
+         "Service:          Freight contract\r\n"
+         "Failure charge:   Cr25000\r\n"
+         "Performing ship:  Far Horizon\r\n");
+      check(maximum_visible_width(fields) < columns);
+   }
+
+   std::string colored_field;
+   ct::DoorPresentation colored_field_presentation(
+      ct::DoorProfile::Iso646Color,
+      80,
+      24,
+      [&colored_field](const std::string_view bytes) {
+         colored_field.append(bytes);
+      });
+   colored_field_presentation.write_labeled_field(
+      "Payment:", 15,
+      {{"Cr", ct::DoorTextRole::Label},
+       {"18446744073709551615", ct::DoorTextRole::Number}});
+   check(
+      colored_field ==
+      "\x1b[36mPayment:\x1b[0m"
+      "\x1b[36m         \x1b[0m"
+      "\x1b[36mCr\x1b[0m"
+      "\x1b[1;33m18446744073709551615\x1b[0m"
+      "\x1b[0m\r\n\x1b[0m");
+
+   std::string long_field;
+   ct::DoorPresentation long_field_presentation(
+      ct::DoorProfile::Iso646,
+      40,
+      24,
+      [&long_field](const std::string_view bytes) { long_field.append(bytes); });
+   const std::string long_field_label =
+      "Extraordinarily Long Administrative Instrument Label:";
+   const auto long_field_column =
+      long_field_presentation.labeled_field_column({long_field_label});
+   check(long_field_column == 29);
+   long_field_presentation.write_labeled_field(
+      long_field_label,
+      long_field_column,
+      {{"Ready", ct::DoorTextRole::Success}});
+   check(
+      long_field ==
+      "Extraordinarily Long\r\n"
+      "Administrative Instrument\r\n"
+      "Label:                         Ready\r\n");
+   check(maximum_visible_width(long_field) < 40);
+
+   std::string encoded_fields;
+   ct::DoorPresentation encoded_field_presentation(
+      ct::DoorProfile::Iso646,
+      80,
+      24,
+      [&encoded_fields](const std::string_view bytes) {
+         encoded_fields.append(bytes);
+      });
+   check(encoded_field_presentation.labeled_field_column(
+            {"Hull:", "Reactor #1:"}) == 13);
+   ct::DoorPresentation cp437_field_presentation(
+      ct::DoorProfile::Cp437,
+      80,
+      24,
+      [&encoded_fields](const std::string_view bytes) {
+         encoded_fields.append(bytes);
+      });
+   check(cp437_field_presentation.labeled_field_column(
+            {"Hull:", "R\xc3\xa9" "acteur:"}) == 9);
+
+   std::string aborted_field;
+   unsigned field_abort_pauses = 0;
+   ct::DoorPresentation aborting_field_presentation(
+      ct::DoorProfile::Iso646,
+      40,
+      24,
+      [&aborted_field](const std::string_view bytes) {
+         aborted_field.append(bytes);
+      });
+   aborting_field_presentation.configure_paging(
+      23,
+      [&field_abort_pauses] {
+         ++field_abort_pauses;
+         return ct::DoorPresentation::PagePauseAction::Abort;
+      });
+   aborting_field_presentation.resume_paging();
+   check(!aborting_field_presentation.write_labeled_field(
+      "Terms:",
+      16,
+      {{"A value long enough to cross the first page boundary and abort",
+        ct::DoorTextRole::Identifier},
+       {"hidden", ct::DoorTextRole::Warning}}));
+   check(field_abort_pauses == 1);
+   check(aborted_field.find("hidden") == std::string::npos);
+
    std::string exact_margin;
    ct::DoorPresentation margin_presentation(
       ct::DoorProfile::Iso646,

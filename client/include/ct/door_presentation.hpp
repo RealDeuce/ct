@@ -34,6 +34,11 @@ enum class DoorTextRole {
    Warning,
 };
 
+struct DoorTextSpan {
+   std::string_view text;
+   DoorTextRole role = DoorTextRole::Normal;
+};
+
 DoorProfile parse_door_profile(std::string_view text);
 const char* door_profile_name(DoorProfile profile);
 DoorProfile door_profile_for_capabilities(bool ansi, bool eight_bit) noexcept;
@@ -98,6 +103,18 @@ public:
                       DoorTextRole role = DoorTextRole::Normal);
 
    size_t display_width(std::string_view text) const;
+   size_t labeled_field_column(
+      std::span<const std::string_view> labels) const;
+   size_t labeled_field_column(
+      std::initializer_list<std::string_view> labels) const;
+   bool write_labeled_field(
+      std::string_view label,
+      size_t label_width,
+      std::span<const DoorTextSpan> value);
+   bool write_labeled_field(
+      std::string_view label,
+      size_t label_width,
+      std::initializer_list<DoorTextSpan> value);
    size_t ship_subsystem_label_column(size_t widest_label,
                                       size_t widest_status) const;
    size_t ship_subsystem_row_lines(std::string_view label,

@@ -4433,6 +4433,48 @@ struct PickupSlack {
    uint64_t seconds;
 };
 
+struct PickupSlackDisplay {
+   std::string text;
+   ct::DoorTextRole role;
+};
+
+constexpr std::array<std::string_view, 21> task_instrument_labels{
+   "Task:",
+   "Service:",
+   "Terms:",
+   "Cargo:",
+   "Passengers:",
+   "Payment:",
+   "Collateral:",
+   "Failure charge:",
+   "Liability cap:",
+   "Late deduction:",
+   "Passenger grace:",
+   "Claim by:",
+   "Pickup slack:",
+   "Deliver by:",
+   "Standing:",
+   "Schedule:",
+   "Performing ship:",
+   "Pickup:",
+   "Deliver to:",
+   "Accepted:",
+   "Performances:",
+};
+
+size_t task_instrument_label_column()
+{
+   return output().labeled_field_column(task_instrument_labels);
+}
+
+void write_task_field(
+   const std::string_view label,
+   const size_t label_column,
+   const std::initializer_list<ct::DoorTextSpan> value)
+{
+   output().write_labeled_field(label, label_column, value);
+}
+
 PickupSlack pickup_slack(const ct::TaskOffer& offer,
                          const ct::TaskRouteAssessment& route)
 {
@@ -4452,22 +4494,26 @@ PickupSlack pickup_slack(const ct::TaskOffer& offer,
             };
 }
 
-void print_pickup_slack(const PickupSlack& slack)
+PickupSlackDisplay pickup_slack_display(const PickupSlack& slack)
 {
    if(!slack.available) {
-      door_error("no executable course");
-      return;
+      return {"no executable course", ct::DoorTextRole::Error};
    }
    const auto text = course_duration(slack.seconds);
    if(slack.late) {
-      door_error("late by %s", text.c_str());
+      return {"late by " + text, ct::DoorTextRole::Error};
    } else if(slack.seconds < 30 * 60) {
-      door_error("%s", text.c_str());
+      return {text, ct::DoorTextRole::Error};
    } else if(slack.seconds > 6 * 60 * 60) {
-      door_success("%s", text.c_str());
-   } else {
-      door_warning("%s", text.c_str());
+      return {text, ct::DoorTextRole::Success};
    }
+   return {text, ct::DoorTextRole::Warning};
+}
+
+void print_pickup_slack(const PickupSlack& slack)
+{
+   const auto display = pickup_slack_display(slack);
+   door_write(display.text, display.role);
 }
 
 std::vector<std::string> task_offer_unavailable_reasons(
@@ -4502,53 +4548,91 @@ void show_task_offer_detail(const ct::TaskOffer& offer,
    while(true) {
    od_clr_scr();
    door_heading("Signed Offer Instrument\n\r=======================\n\r\n\r");
-   door_label("Service:       ");
-   door_value("%s\n\r", task_kind_name(offer.kind));
-   door_label("Terms:         ");
-   door_identifier("%s\n\r", safe_field(offer.title).c_str());
+   const auto label_column = task_instrument_label_column();
+   write_task_field(
+      "Service:", label_column,
+      {{task_kind_name(offer.kind), ct::DoorTextRole::Value}});
+   const auto title = safe_field(offer.title);
+   write_task_field(
+      "Terms:", label_column,
+      {{title, ct::DoorTextRole::Identifier}});
    if(offer.quantity_millitons != 0) {
-      door_label("Cargo:         ");
-      print_millitons(offer.quantity_millitons);
-      od_printf("\n\r");
+      const auto cargo = ct::format_tonnage(offer.quantity_millitons) + " t";
+      write_task_field(
+         "Cargo:", label_column,
+         {{cargo, ct::DoorTextRole::Number}});
    }
    if(offer.passenger_count != 0) {
-      door_label("Passengers:    ");
-      door_number("%u\n\r", offer.passenger_count);
+      const auto passengers = std::to_string(offer.passenger_count);
+      write_task_field(
+         "Passengers:", label_column,
+         {{passengers, ct::DoorTextRole::Number}});
    }
-   door_label("Payment:       Cr");
-   door_number("%llu\n\r", static_cast<unsigned long long>(offer.payment_credits));
-   door_label("Collateral:    Cr");
-   door_number("%llu\n\r", static_cast<unsigned long long>(offer.collateral_credits));
-   door_label("Failure charge: Cr");
-   door_number("%llu\n\r", static_cast<unsigned long long>(offer.failure_penalty_credits));
-   door_label("Liability cap: Cr");
-   door_number("%llu\n\r", static_cast<unsigned long long>(offer.non_delivery_liability_credits));
+   const auto payment = std::to_string(offer.payment_credits);
+   write_task_field(
+      "Payment:", label_column,
+      {{"Cr", ct::DoorTextRole::Label}, {payment, ct::DoorTextRole::Number}});
+   const auto collateral = std::to_string(offer.collateral_credits);
+   write_task_field(
+      "Collateral:", label_column,
+      {{"Cr", ct::DoorTextRole::Label},
+       {collateral, ct::DoorTextRole::Number}});
+   const auto failure_charge = std::to_string(offer.failure_penalty_credits);
+   write_task_field(
+      "Failure charge:", label_column,
+      {{"Cr", ct::DoorTextRole::Label},
+       {failure_charge, ct::DoorTextRole::Number}});
+   const auto liability_cap =
+      std::to_string(offer.non_delivery_liability_credits);
+   write_task_field(
+      "Liability cap:", label_column,
+      {{"Cr", ct::DoorTextRole::Label},
+       {liability_cap, ct::DoorTextRole::Number}});
    if(offer.late_deduction_per_day_credits != 0) {
-      door_label("Late deduction: Cr");
-      door_number("%llu/day\n\r", static_cast<unsigned long long>(offer.late_deduction_per_day_credits));
+      const auto deduction =
+         std::to_string(offer.late_deduction_per_day_credits) + "/day";
+      write_task_field(
+         "Late deduction:", label_column,
+         {{"Cr", ct::DoorTextRole::Label},
+          {deduction, ct::DoorTextRole::Number}});
    }
    if(offer.passenger_grace_seconds != 0) {
-      door_label("Passenger grace: ");
-      door_number("%llu day(s)\n\r",
-                  static_cast<unsigned long long>(offer.passenger_grace_seconds / (24 * 60 * 60)));
+      const auto grace =
+         std::to_string(offer.passenger_grace_seconds / (24 * 60 * 60)) +
+         " day(s)";
+      write_task_field(
+         "Passenger grace:", label_column,
+         {{grace, ct::DoorTextRole::Number}});
    }
-   door_label("Claim by:      ");
-   door_number("%s\n\r", game_date(offer.expires_second).c_str());
-   door_label("Pickup slack:  ");
-   print_pickup_slack(slack);
-   od_printf("\n\r");
-   door_label("Deliver by:    ");
-   door_number("%s\n\r", game_date(offer.delivery_deadline_second).c_str());
-   door_label("Standing:      ");
-   door_value("%s", offer.legal ? "lawful" : "proscribed");
-   door_label(", ");
-   door_value("%s delivery\n\r", offer.partial_delivery_allowed ? "partial" : "complete");
+   const auto claim_by = game_date(offer.expires_second);
+   write_task_field(
+      "Claim by:", label_column,
+      {{claim_by, ct::DoorTextRole::Number}});
+   const auto pickup = pickup_slack_display(slack);
+   write_task_field(
+      "Pickup slack:", label_column,
+      {{pickup.text, pickup.role}});
+   const auto deliver_by = game_date(offer.delivery_deadline_second);
+   write_task_field(
+      "Deliver by:", label_column,
+      {{deliver_by, ct::DoorTextRole::Number}});
+   const std::string delivery =
+      offer.partial_delivery_allowed ? "partial delivery" : "complete delivery";
+   write_task_field(
+      "Standing:", label_column,
+      {{offer.legal ? "lawful" : "proscribed", ct::DoorTextRole::Value},
+       {", ", ct::DoorTextRole::Label},
+       {delivery, ct::DoorTextRole::Value}});
    if(offer.performance_count > 1) {
-      door_label("Schedule:      ");
-      door_number("%u deliveries", offer.performance_count);
-      door_label(" every ");
-      door_number("%llu days\n\r", static_cast<unsigned long long>(offer.recurrence_seconds /
-            (24 * 60 * 60)));
+      const auto deliveries =
+         std::to_string(offer.performance_count) + " deliveries";
+      const auto recurrence =
+         std::to_string(offer.recurrence_seconds / (24 * 60 * 60)) + " days";
+      write_task_field(
+         "Schedule:", label_column,
+         {{deliveries, ct::DoorTextRole::Number},
+          {" every ", ct::DoorTextRole::Label},
+          {recurrence, ct::DoorTextRole::Number}});
    }
    if(!unavailable_reasons.empty()) {
       door_warning("\n\rUnavailable to this captain:\n\r");
@@ -4577,51 +4661,90 @@ void show_task_detail(const ct::TaskRecord& task,
    while(true) {
       od_clr_scr();
       door_heading("Accepted Task Instrument\n\r========================\n\r\n\r");
-      door_label("Task:          #");
-      door_number("%llu\n\r", static_cast<unsigned long long>(task.task_id));
-      door_label("Service:       ");
-      door_value("%s\n\r", task_kind_name(task.offer.kind));
-      door_label("Terms:         ");
-      door_identifier("%s\n\r", safe_field(task.offer.title).c_str());
-      door_label("Standing:      ");
-      door_value("%s\n\r", task_state_name(task.state));
-      door_label("Performing ship: ");
-      door_identifier("%s\n\r", safe_field(ship_name).c_str());
-      door_label("Pickup:        ");
-      door_identifier("%s\n\r", safe_field(origin_name).c_str());
-      door_label("Deliver to:    ");
-      door_identifier("%s\n\r", safe_field(destination_name).c_str());
+      const auto label_column = task_instrument_label_column();
+      const auto task_id = std::to_string(task.task_id);
+      write_task_field(
+         "Task:", label_column,
+         {{"#", ct::DoorTextRole::Label},
+          {task_id, ct::DoorTextRole::Number}});
+      write_task_field(
+         "Service:", label_column,
+         {{task_kind_name(task.offer.kind), ct::DoorTextRole::Value}});
+      const auto title = safe_field(task.offer.title);
+      write_task_field(
+         "Terms:", label_column,
+         {{title, ct::DoorTextRole::Identifier}});
+      write_task_field(
+         "Standing:", label_column,
+         {{task_state_name(task.state), ct::DoorTextRole::Value}});
+      const auto performing_ship = safe_field(ship_name);
+      write_task_field(
+         "Performing ship:", label_column,
+         {{performing_ship, ct::DoorTextRole::Identifier}});
+      const auto pickup_name = safe_field(origin_name);
+      write_task_field(
+         "Pickup:", label_column,
+         {{pickup_name, ct::DoorTextRole::Identifier}});
+      const auto delivery_name = safe_field(destination_name);
+      write_task_field(
+         "Deliver to:", label_column,
+         {{delivery_name, ct::DoorTextRole::Identifier}});
       if(task.accepted_second != 0) {
-         door_label("Accepted:      ");
-         door_number("%s\n\r", game_date(task.accepted_second).c_str());
+         const auto accepted = game_date(task.accepted_second);
+         write_task_field(
+            "Accepted:", label_column,
+            {{accepted, ct::DoorTextRole::Number}});
       }
-      door_label("Deliver by:    ");
-      door_number("%s\n\r", game_date(task.offer.delivery_deadline_second).c_str());
+      const auto deliver_by = game_date(task.offer.delivery_deadline_second);
+      write_task_field(
+         "Deliver by:", label_column,
+         {{deliver_by, ct::DoorTextRole::Number}});
       if(task.offer.quantity_millitons != 0) {
-         door_label("Cargo:         ");
-         print_millitons(task.offer.quantity_millitons);
+         const auto cargo = ct::format_tonnage(task.offer.quantity_millitons) + " t";
          if(task.delivered_quantity_millitons != 0) {
-            door_label("; delivered ");
-            print_millitons(task.delivered_quantity_millitons);
+            const auto delivered =
+               ct::format_tonnage(task.delivered_quantity_millitons) + " t";
+            write_task_field(
+               "Cargo:", label_column,
+               {{cargo, ct::DoorTextRole::Number},
+                {"; delivered ", ct::DoorTextRole::Label},
+                {delivered, ct::DoorTextRole::Number}});
+         } else {
+            write_task_field(
+               "Cargo:", label_column,
+               {{cargo, ct::DoorTextRole::Number}});
          }
-         od_printf("\n\r");
       }
       if(task.offer.passenger_count != 0) {
-         door_label("Passengers:    ");
-         door_number("%u\n\r", task.offer.passenger_count);
+         const auto passengers = std::to_string(task.offer.passenger_count);
+         write_task_field(
+            "Passengers:", label_column,
+            {{passengers, ct::DoorTextRole::Number}});
       }
       if(task.offer.performance_count > 1) {
-         door_label("Performances:  ");
-         door_number("%u of %u\n\r", task.performances_completed,
-                     task.offer.performance_count);
+         const auto performances =
+            std::to_string(task.performances_completed) + " of " +
+            std::to_string(task.offer.performance_count);
+         write_task_field(
+            "Performances:", label_column,
+            {{performances, ct::DoorTextRole::Number}});
       }
-      door_label("Payment:       Cr");
-      door_number("%llu\n\r", static_cast<unsigned long long>(task.offer.payment_credits));
-      door_label("Collateral:    Cr");
-      door_number("%llu\n\r", static_cast<unsigned long long>(task.offer.collateral_credits));
-      door_label("Failure charge: Cr");
-      door_number("%llu\n\r", static_cast<unsigned long long>(
-         task.offer.failure_penalty_credits));
+      const auto payment = std::to_string(task.offer.payment_credits);
+      write_task_field(
+         "Payment:", label_column,
+         {{"Cr", ct::DoorTextRole::Label},
+          {payment, ct::DoorTextRole::Number}});
+      const auto collateral = std::to_string(task.offer.collateral_credits);
+      write_task_field(
+         "Collateral:", label_column,
+         {{"Cr", ct::DoorTextRole::Label},
+          {collateral, ct::DoorTextRole::Number}});
+      const auto failure_charge =
+         std::to_string(task.offer.failure_penalty_credits);
+      write_task_field(
+         "Failure charge:", label_column,
+         {{"Cr", ct::DoorTextRole::Label},
+          {failure_charge, ct::DoorTextRole::Number}});
       if(!task.status_text.empty()) {
          door_label("Current notice:\n\r");
          print_wrapped(task.status_text, "  ");

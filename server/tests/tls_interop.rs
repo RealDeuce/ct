@@ -74,6 +74,31 @@ fn numeric_field(input: &str, name: &str) -> u64 {
         .unwrap_or_else(|| panic!("missing numeric field {name:?} in {input:?}"))
 }
 
+fn assert_labeled_value_column(input: &str, heading: &str, labels: &[&str]) {
+    let plain = strip_ecma48(input);
+    let screen = &plain[plain
+        .rfind(heading)
+        .unwrap_or_else(|| panic!("missing screen heading {heading:?} in {plain:?}"))..];
+    let columns = labels
+        .iter()
+        .map(|label| {
+            let line = screen
+                .lines()
+                .find(|line| line.starts_with(label))
+                .unwrap_or_else(|| panic!("missing field {label:?} in {screen:?}"));
+            let suffix = &line[label.len()..];
+            label.len()
+                + suffix
+                    .find(|character: char| character != ' ' && character != '\r')
+                    .unwrap_or_else(|| panic!("missing value for field {label:?} in {line:?}"))
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        columns.iter().all(|column| *column == columns[0]),
+        "fields do not share one value column on {heading:?}: {columns:?}; screen: {screen:?}"
+    );
+}
+
 fn spawn_server(
     executable: &Path,
     game_address: &str,
@@ -1430,7 +1455,22 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     if showing_unavailable {
         docked_door.wait_for("Unavailable to this captain:");
     }
-    docked_door.wait_for("(Q) Task ledger");
+    let signed_offer_screen = docked_door.wait_for("(Q) Task ledger");
+    assert_labeled_value_column(
+        &signed_offer_screen,
+        "Signed Offer Instrument",
+        &[
+            "Service:",
+            "Payment:",
+            "Collateral:",
+            "Failure charge:",
+            "Liability cap:",
+            "Claim by:",
+            "Pickup slack:",
+            "Deliver by:",
+            "Standing:",
+        ],
+    );
     docked_door.send(b"q");
     docked_door.wait_for_occurrences("Task Ledger", 2);
     docked_door.send_through_page_prompt(b"a", "Offer (Q to cancel", "Offer (Q to cancel");
@@ -1444,7 +1484,23 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     docked_door.wait_for("Accepted Task Instrument");
     docked_door.wait_for("Pickup:");
     docked_door.wait_for("Deliver to:");
-    docked_door.wait_for("(Q) Task ledger");
+    let accepted_task_screen = docked_door.wait_for("(Q) Task ledger");
+    assert_labeled_value_column(
+        &accepted_task_screen,
+        "Accepted Task Instrument",
+        &[
+            "Task:",
+            "Service:",
+            "Standing:",
+            "Performing ship:",
+            "Pickup:",
+            "Deliver to:",
+            "Deliver by:",
+            "Payment:",
+            "Collateral:",
+            "Failure charge:",
+        ],
+    );
     docked_door.send(b"q");
     docked_door.wait_for_occurrences("Task Ledger", 4);
     docked_door.send_to_menu(b"q", "Docked Operations");

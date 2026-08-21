@@ -279,17 +279,18 @@ TextBreak text_break(const std::string_view text,
    return result;
 }
 
-// Width of the selector and its ". " separator, then the gap that keeps the
-// longest label from running into the status column.
+// Width of the selector and its ". " separator, then the gaps that keep a
+// label from running into its value.
 constexpr size_t subsystem_selector_columns = 3;
-constexpr size_t subsystem_gutter_columns = 2;
+constexpr size_t labeled_field_gutter_columns = 2;
+constexpr size_t labeled_field_minimum_value_columns = 8;
 
-// A subsystem label broken into the lines it occupies in the label column.
-// One decision, so a caller asking how tall the row will be cannot disagree
-// with what gets written.
-std::vector<std::string_view> subsystem_label_lines(std::string_view label,
-                                                    const size_t column_width,
-                                                    const DoorProfile profile) {
+// A label broken into the lines it occupies in a shared label column. One
+// decision keeps the generic record layout and the selectable subsystem rows
+// byte-for-byte consistent about encoded widths and word boundaries.
+std::vector<std::string_view> label_lines(std::string_view label,
+                                          const size_t column_width,
+                                          const DoorProfile profile) {
    std::vector<std::string_view> lines;
    while(!label.empty()) {
       const auto measured = text_break(label, column_width, profile);
@@ -920,6 +921,75 @@ size_t DoorPresentation::display_width(const std::string_view text) const {
    return encode_text(text, profile_).size();
 }
 
+size_t DoorPresentation::labeled_field_column(
+   const std::span<const std::string_view> labels) const
+{
+   size_t widest_label = 0;
+   for(const auto label : labels) {
+      widest_label = std::max(widest_label, display_width(label));
+   }
+   const size_t reserved =
+      labeled_field_gutter_columns + labeled_field_minimum_value_columns;
+   const size_t usable =
+      content_columns() > reserved ? content_columns() - reserved : 0;
+   return std::min(widest_label, usable);
+}
+
+size_t DoorPresentation::labeled_field_column(
+   const std::initializer_list<std::string_view> labels) const
+{
+   return labeled_field_column(
+      std::span<const std::string_view>(labels.begin(), labels.size()));
+}
+
+bool DoorPresentation::write_labeled_field(
+   const std::string_view label,
+   const size_t label_width,
+   const std::span<const DoorTextSpan> value)
+{
+   const size_t reserved =
+      labeled_field_gutter_columns + labeled_field_minimum_value_columns;
+   const size_t usable =
+      content_columns() > reserved ? content_columns() - reserved : 0;
+   const auto effective_width = std::min(label_width, usable);
+   const auto lines = label_lines(label, effective_width, profile_);
+   for(size_t index = 0; index < lines.size(); ++index) {
+      if(!write(lines[index], DoorTextRole::Label)) {
+         return false;
+      }
+      if(index + 1 == lines.size()) {
+         const auto line_cols = display_width(lines[index]);
+         const size_t pad =
+            effective_width > line_cols ? effective_width - line_cols : 0;
+         if(!write(std::string(pad + labeled_field_gutter_columns, ' '),
+                   DoorTextRole::Label)) {
+            return false;
+         }
+         const auto value_column = effective_width + labeled_field_gutter_columns;
+         for(const auto& span : value) {
+            if(!write_hanging(span.text, value_column, span.role)) {
+               return false;
+            }
+         }
+      }
+      if(!write("\n", DoorTextRole::Normal)) {
+         return false;
+      }
+   }
+   return true;
+}
+
+bool DoorPresentation::write_labeled_field(
+   const std::string_view label,
+   const size_t label_width,
+   const std::initializer_list<DoorTextSpan> value)
+{
+   return write_labeled_field(
+      label,
+      label_width,
+      std::span<const DoorTextSpan>(value.begin(), value.size()));
+}
+
 // The subsystem list layout rule, in full:
 //
 //   One label column for the whole list, wide enough for the widest label but
@@ -938,7 +1008,7 @@ size_t DoorPresentation::ship_subsystem_label_column(
    const size_t widest_status) const
 {
    const size_t reserved =
-      subsystem_selector_columns + subsystem_gutter_columns + widest_status;
+      subsystem_selector_columns + labeled_field_gutter_columns + widest_status;
    const size_t usable =
       content_columns() > reserved ? content_columns() - reserved : 0;
    return std::min(widest_label, usable);
@@ -951,7 +1021,7 @@ size_t DoorPresentation::ship_subsystem_row_lines(
 {
    const auto column_width =
       ship_subsystem_label_column(label_width, display_width(status));
-   return subsystem_label_lines(label, column_width, profile_).size();
+   return label_lines(label, column_width, profile_).size();
 }
 
 bool DoorPresentation::write_ship_subsystem_row(
@@ -969,7 +1039,7 @@ bool DoorPresentation::write_ship_subsystem_row(
    // list, so this only binds for a caller that skipped that step.
    const auto column_width =
       ship_subsystem_label_column(label_width, status_cols);
-   const auto lines = subsystem_label_lines(label, column_width, profile_);
+   const auto lines = label_lines(label, column_width, profile_);
    for(size_t index = 0; index < lines.size(); ++index) {
       if(index == 0) {
          if(!write(std::string(1, selector), DoorTextRole::Number) ||
@@ -987,7 +1057,7 @@ bool DoorPresentation::write_ship_subsystem_row(
          const auto line_cols = display_width(lines[index]);
          const size_t pad =
             column_width > line_cols ? column_width - line_cols : 0;
-         if(!write(std::string(pad + subsystem_gutter_columns, ' '),
+         if(!write(std::string(pad + labeled_field_gutter_columns, ' '),
                    DoorTextRole::Label) ||
             !write(status, status_role)) {
             return false;
