@@ -417,6 +417,13 @@ PUBLISHED_SHIP_ART = {
         "patrol ship with a boat hangar, two turrets, and particle-beam barbette.",
         50.0,
     ),
+    66: (
+        "assets/ships/ship-066-drake.webp",
+        "Painted three-quarter view of Drake, an aubergine, vermilion, mustard, "
+        "and black-chrome three-hundred-ton raider with a breaching tube, boat "
+        "hangar, and two visible turrets.",
+        58.0,
+    ),
     68: (
         "assets/ships/ship-068-silver.webp",
         "Painted three-quarter view of Silver, an aubergine four-hundred-ton "

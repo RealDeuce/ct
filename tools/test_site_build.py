@@ -2721,6 +2721,30 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(darwin["length_m"], 56.0)
         self.assertEqual(darwin["art_path"], "assets/ships/ship-064-darwin.webp")
 
+    def test_drake_exposes_raider_and_boarding_fit(self) -> None:
+        drake = self.records[66]
+        self.assertEqual(drake["family_id"], 66)
+        self.assertEqual(drake["tons"], 300)
+        self.assertEqual(drake["configuration"], "Streamlined")
+        self.assertEqual(drake["armor_points"], 4)
+        self.assertEqual(drake["jump_drive"], "C")
+        self.assertEqual(drake["maneuver_drive"], "F")
+        self.assertEqual(drake["power_plant"], "F")
+        self.assertEqual(drake["jump_distance"], 2)
+        self.assertEqual(drake["thrust_g"], 4)
+        self.assertEqual(drake["cargo"], "42.5 tons")
+        self.assertEqual(drake["crew"], 23)
+        self.assertIn("Breaching Tube", drake["equipment"])
+        self.assertIn("4 × Fuel Processor", drake["equipment"])
+        self.assertIn("Standard Hangar (30 tons contained)", drake["equipment"])
+        self.assertIn("Carried Craft: Wayfarer Boarding (ship-212)", drake["equipment"])
+        self.assertIn("Single Turret: Particle Beam", drake["armament"])
+        self.assertIn("Triple Turret: Beam Laser · Beam Laser · Sandcaster", drake["armament"])
+        self.assertIn("Triple Turret: Missile Rack · Missile Rack · Beam Laser", drake["armament"])
+        self.assertEqual(drake["ammunition"], "24 × Standard Missiles · 20 × Sandcaster Canisters")
+        self.assertEqual(drake["length_m"], 58.0)
+        self.assertEqual(drake["art_path"], "assets/ships/ship-066-drake.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
