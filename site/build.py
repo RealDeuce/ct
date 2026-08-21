@@ -470,6 +470,13 @@ PUBLISHED_SHIP_ART = {
         "meson bay and lower-flank turret.",
         48.0,
     ),
+    74: (
+        "assets/ships/ship-074-marque.webp",
+        "Painted three-quarter view of Marque, an emerald, cream, burgundy, and "
+        "gold-chrome four-hundred-ton escort brig with a particle barbette, "
+        "triple-beam turret, and closed boarding-boat hangar.",
+        61.0,
+    ),
     78: (
         "assets/ships/ship-078-bonanza.webp",
         "Painted three-quarter view of Bonanza, an avocado eight-hundred-ton "

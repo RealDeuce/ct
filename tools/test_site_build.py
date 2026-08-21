@@ -2920,6 +2920,57 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(aegis["length_m"], 48.0)
         self.assertEqual(aegis["art_path"], "assets/ships/ship-073-aegis.webp")
 
+    def test_marque_exposes_boarding_escort_brig_fit(self) -> None:
+        marque = self.records[74]
+        self.assertEqual(marque["family_id"], 74)
+        self.assertEqual(marque["path_name"], "Marque Marine")
+        self.assertEqual(marque["tons"], 400)
+        self.assertEqual(marque["configuration"], "Streamlined")
+        self.assertEqual(marque["tech_level"], 12)
+        self.assertFalse(marque["standard_design"])
+        self.assertEqual(marque["electronics"], "Advanced")
+        self.assertEqual(marque["armor_points"], 4)
+        self.assertEqual(marque["computer"], "Model 3")
+        self.assertEqual(marque["computer_options"], ["Bis", "Fib"])
+        self.assertEqual(marque["jump_drive"], "D")
+        self.assertEqual(marque["jump_distance"], 2)
+        self.assertEqual(marque["maneuver_drive"], "H")
+        self.assertEqual(marque["power_plant"], "H")
+        self.assertEqual(marque["thrust_g"], 4)
+        self.assertEqual(marque["endurance"], 3)
+        self.assertEqual(marque["cargo"], "16 tons")
+        self.assertEqual(marque["crew"], 25)
+        self.assertIn("5 × Stateroom", marque["equipment"])
+        self.assertIn("2 × Workshop", marque["equipment"])
+        self.assertIn("Medical Bay (2 beds)", marque["equipment"])
+        self.assertIn("Atv Hangar", marque["equipment"])
+        self.assertIn("Air Raft Hangar", marque["equipment"])
+        self.assertIn("Full Hangar (30 tons contained)", marque["equipment"])
+        self.assertIn("Carried Craft: Grapnel (ship-211)", marque["equipment"])
+        self.assertIn(
+            "Triple Turret: Beam Laser · Beam Laser · Beam Laser",
+            marque["armament"],
+        )
+        self.assertIn(
+            "2 × Triple Turret: Missile Rack · Missile Rack · Sandcaster",
+            marque["armament"],
+        )
+        self.assertIn("Particle Beam Barbette", marque["armament"])
+        self.assertIn(
+            "4 × Point Defense Node Mount: Point Defense Gatling Laser",
+            marque["armament"],
+        )
+        self.assertEqual(
+            marque["ammunition"],
+            "144 × Standard Missiles · 40 × Sandcaster Canisters",
+        )
+        self.assertEqual(marque["unused_fire_control_stations"], 0)
+        self.assertEqual(marque["assertions"]["hardpoints"], 4)
+        self.assertEqual(marque["assertions"]["hardpoints_used"], 4)
+        self.assertEqual(marque["assertions"]["hangar_capacity_millitons"], 30000)
+        self.assertEqual(marque["length_m"], 61.0)
+        self.assertEqual(marque["art_path"], "assets/ships/ship-074-marque.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
