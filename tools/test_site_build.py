@@ -2971,6 +2971,60 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(marque["length_m"], 61.0)
         self.assertEqual(marque["art_path"], "assets/ships/ship-074-marque.webp")
 
+    def test_bastion_exposes_system_defense_carrier_fit(self) -> None:
+        bastion = self.records[75]
+        self.assertEqual(bastion["family_id"], 75)
+        self.assertEqual(bastion["path_name"], "Redoubt")
+        self.assertEqual(bastion["tons"], 300)
+        self.assertEqual(bastion["configuration"], "Streamlined")
+        self.assertEqual(bastion["tech_level"], 11)
+        self.assertFalse(bastion["standard_design"])
+        self.assertEqual(
+            bastion["structural_options"],
+            ["Reinforced Structure (1 increment)"],
+        )
+        self.assertEqual(bastion["electronics"], "Advanced")
+        self.assertEqual(bastion["armor_points"], 8)
+        self.assertEqual(
+            bastion["bridge_options"],
+            ["Hardened Bridge", "Holographic Controls"],
+        )
+        self.assertEqual(bastion["computer"], "Model 3")
+        self.assertEqual(bastion["computer_options"], ["Bis"])
+        self.assertIsNone(bastion["jump_drive"])
+        self.assertEqual(bastion["maneuver_drive"], "J")
+        self.assertEqual(bastion["power_plant"], "J")
+        self.assertEqual(bastion["endurance"], 2)
+        self.assertEqual(bastion["cargo"], "55.5 tons")
+        self.assertEqual(bastion["crew"], 15)
+        self.assertIn("2 × Stateroom", bastion["equipment"])
+        self.assertIn("Armory", bastion["equipment"])
+        self.assertIn("2 × Fuel Processor", bastion["equipment"])
+        self.assertIn("Medical Bay (1 bed)", bastion["equipment"])
+        self.assertIn("Repair Drones", bastion["equipment"])
+        self.assertIn("Full Hangar (10 tons contained)", bastion["equipment"])
+        self.assertIn("Carried Craft: Charon (ship-158)", bastion["equipment"])
+        self.assertIn(
+            "Triple Turret: Beam Laser · Beam Laser · Sandcaster",
+            bastion["armament"],
+        )
+        self.assertIn(
+            "Triple Turret: Missile Rack · Missile Rack · Sandcaster",
+            bastion["armament"],
+        )
+        self.assertIn("Meson Gun Bay", bastion["armament"])
+        self.assertIn(
+            "3 × Point Defense Node Mount: Point Defense Laser",
+            bastion["armament"],
+        )
+        self.assertEqual(
+            bastion["ammunition"],
+            "72 × Standard Missiles · 60 × Sandcaster Canisters",
+        )
+        self.assertEqual(bastion["unused_fire_control_stations"], 0)
+        self.assertEqual(bastion["length_m"], 42.0)
+        self.assertEqual(bastion["art_path"], "assets/ships/ship-075-bastion.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

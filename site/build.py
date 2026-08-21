@@ -477,6 +477,13 @@ PUBLISHED_SHIP_ART = {
         "triple-beam turret, and closed boarding-boat hangar.",
         61.0,
     ),
+    75: (
+        "assets/ships/ship-075-bastion.webp",
+        "Painted three-quarter view of Bastion, a fire-red, bone, and stainless "
+        "three-hundred-ton system-defense carrier with a recessed meson bay, "
+        "flank turret, and closed transfer-launch hangar.",
+        42.0,
+    ),
     78: (
         "assets/ships/ship-078-bonanza.webp",
         "Painted three-quarter view of Bonanza, an avocado eight-hundred-ton "
