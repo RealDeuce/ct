@@ -3570,6 +3570,74 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(salamis["length_m"], 84.0)
         self.assertEqual(salamis["art_path"], "assets/ships/ship-106-salamis.webp")
 
+    def test_togo_exposes_intercept_destroyer_fit(self) -> None:
+        togo = self.records[108]
+        self.assertEqual(togo["family_id"], 108)
+        self.assertEqual(togo["path_name"], "Admiralty Line")
+        self.assertEqual(togo["tons"], 1200)
+        self.assertEqual(togo["configuration"], "Streamlined")
+        self.assertEqual(togo["tech_level"], 11)
+        self.assertFalse(togo["standard_design"])
+        self.assertEqual(togo["electronics"], "Advanced")
+        self.assertEqual(togo["armor_points"], 8)
+        self.assertEqual(togo["hull_options"], ["Radiation Shielding", "Self Sealing"])
+        self.assertEqual(
+            togo["bridge_options"],
+            ["Hardened Bridge", "Holographic Controls"],
+        )
+        self.assertEqual(togo["computer"], "Model 3")
+        self.assertEqual(togo["computer_options"], ["Bis", "Fib"])
+        self.assertEqual(togo["jump_drive"], "L")
+        self.assertEqual(togo["jump_distance"], 2)
+        self.assertEqual(togo["jump_count"], 1)
+        self.assertEqual(togo["maneuver_drive"], "T")
+        self.assertEqual(togo["power_plant"], "T")
+        self.assertEqual(togo["assertions"]["thrust_g"], 5)
+        self.assertEqual(togo["endurance"], 4)
+        self.assertEqual(togo["cargo"], "3.5 tons")
+        self.assertEqual(togo["crew"], 106)
+        self.assertIn("10 × Stateroom", togo["equipment"])
+        self.assertIn("12 × Crew Berthing", togo["equipment"])
+        self.assertIn("10 × Fuel Processor", togo["equipment"])
+        self.assertIn("2 × Armory", togo["equipment"])
+        self.assertIn("2 × Briefing Room", togo["equipment"])
+        self.assertIn("2 × Emergency Low Berth", togo["equipment"])
+        self.assertIn("Sensor Control Room", togo["equipment"])
+        self.assertIn("4 × Ships Brig", togo["equipment"])
+        self.assertIn("2 × Workshop", togo["equipment"])
+        self.assertIn("Medical Bay (3 beds)", togo["equipment"])
+        self.assertIn("Repair Drones", togo["equipment"])
+        self.assertIn("Full Hangar (50 tons contained)", togo["equipment"])
+        self.assertIn("Carried Craft: Wayfarer Cargo (ship-187)", togo["equipment"])
+        self.assertIn("Carried Craft: Caduceus (ship-189)", togo["equipment"])
+        self.assertIn(
+            "6 × Triple Turret: Beam Laser · Beam Laser · Beam Laser",
+            togo["armament"],
+        )
+        self.assertIn(
+            "2 × Triple Turret: Missile Rack · Missile Rack · Sandcaster",
+            togo["armament"],
+        )
+        self.assertIn("2 × Meson Gun Bay", togo["armament"])
+        self.assertIn("2 × Particle Beam Bay", togo["armament"])
+        self.assertIn(
+            "12 × Point Defense Node Mount: Point Defense Laser",
+            togo["armament"],
+        )
+        self.assertEqual(
+            togo["ammunition"],
+            "192 × Standard Missiles · 160 × Sandcaster Canisters",
+        )
+        self.assertEqual(togo["structural_options"], [
+            "Armored Bulkheads (Bridge)",
+            "Armored Bulkheads (Drives)",
+        ])
+        self.assertEqual(togo["power_options"], ["Emergency Power"])
+        self.assertEqual(togo["magazine_options"], ["Improved Magazine"])
+        self.assertEqual(togo["unused_fire_control_stations"], 0)
+        self.assertEqual(togo["length_m"], 92.0)
+        self.assertEqual(togo["art_path"], "assets/ships/ship-108-togo.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

@@ -687,6 +687,13 @@ PUBLISHED_SHIP_ART = {
         "close-structure destroyer with seven triple turrets and eight barbettes.",
         96.0,
     ),
+    108: (
+        "assets/ships/ship-108-togo.webp",
+        "Painted three-quarter view of Togo, a navy, warm-white, red, and "
+        "bright-aluminum twelve-hundred-ton streamlined intercept destroyer "
+        "with two visible weapon bays and four distributed triple turrets.",
+        92.0,
+    ),
     116: (
         "assets/ships/ship-116-citadel.webp",
         "Painted three-quarter view of Citadel, a red twenty-five-hundred-ton "
