@@ -2783,6 +2783,50 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(magellan["length_m"], 62.0)
         self.assertEqual(magellan["art_path"], "assets/ships/ship-067-magellan.webp")
 
+    def test_monitor_exposes_casemate_gunboat_fit(self) -> None:
+        monitor = self.records[70]
+        self.assertEqual(monitor["family_id"], 70)
+        self.assertEqual(monitor["tons"], 300)
+        self.assertEqual(monitor["configuration"], "Standard")
+        self.assertEqual(monitor["tech_level"], 10)
+        self.assertFalse(monitor["standard_design"])
+        self.assertEqual(monitor["hull_options"], ["Radiation Shielding"])
+        self.assertEqual(monitor["electronics"], "Basic Military")
+        self.assertEqual(monitor["armor_points"], 4)
+        self.assertEqual(monitor["control"], "Standard bridge")
+        self.assertEqual(monitor["bridge_options"], ["Hardened Bridge"])
+        self.assertIsNone(monitor["jump_drive"])
+        self.assertEqual(monitor["maneuver_drive"], "F")
+        self.assertEqual(monitor["power_plant"], "F")
+        self.assertEqual(monitor["endurance"], 4)
+        self.assertEqual(monitor["cargo"], "99.5 tons")
+        self.assertEqual(monitor["crew"], 14)
+        self.assertIn("14 × Escape Pod", monitor["equipment"])
+        self.assertIn("Emergency Low Berth", monitor["equipment"])
+        self.assertIn("Gymnasium", monitor["equipment"])
+        self.assertIn("Repair Drones", monitor["equipment"])
+        self.assertIn(
+            "Triple Turret: Beam Laser · Missile Rack · Sandcaster",
+            monitor["armament"],
+        )
+        self.assertIn("Railgun Barbette", monitor["armament"])
+        self.assertIn("Particle Beam Bay", monitor["armament"])
+        self.assertIn(
+            "2 × Point Defense Node Mount: Point Defense Minigun",
+            monitor["armament"],
+        )
+        self.assertIn(
+            "Point Defense Node Mount: Point Defense Laser",
+            monitor["armament"],
+        )
+        self.assertEqual(
+            monitor["ammunition"],
+            "36 × Standard Missiles · 20 × Sandcaster Canisters · 80 × Railgun Basics",
+        )
+        self.assertEqual(monitor["unused_fire_control_stations"], 0)
+        self.assertEqual(monitor["length_m"], 44.0)
+        self.assertEqual(monitor["art_path"], "assets/ships/ship-070-monitor.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

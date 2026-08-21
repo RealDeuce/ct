@@ -443,6 +443,13 @@ PUBLISHED_SHIP_ART = {
         "four-hundred-ton armed passenger ship with four triple turrets.",
         58.0,
     ),
+    70: (
+        "assets/ships/ship-070-monitor.webp",
+        "Painted three-quarter view of Monitor, a fire-red, orange, bone, and "
+        "stainless three-hundred-ton system gunboat with an architectural "
+        "particle-beam bay and mixed turret.",
+        44.0,
+    ),
     72: (
         "assets/ships/ship-072-smollett.webp",
         "Painted three-quarter view of Smollett, an emerald four-hundred-ton "
