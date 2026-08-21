@@ -701,6 +701,13 @@ PUBLISHED_SHIP_ART = {
         "hundred-ton meson bay and four other visible weapon stations.",
         78.0,
     ),
+    110: (
+        "assets/ships/ship-110-themistocles.webp",
+        "Painted three-quarter view of Themistocles, a navy, warm-white, red, "
+        "and chrome eighteen-hundred-ton armored-trireme command cruiser with "
+        "four visible weapon bays and five distributed triple turrets.",
+        104.0,
+    ),
     116: (
         "assets/ships/ship-116-citadel.webp",
         "Painted three-quarter view of Citadel, a red twenty-five-hundred-ton "

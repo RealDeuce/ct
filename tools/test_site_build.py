@@ -3699,6 +3699,31 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(yi["length_m"], 78.0)
         self.assertEqual(yi["art_path"], "assets/ships/ship-109-yi.webp")
 
+    def test_themistocles_exposes_command_cruiser_fit(self) -> None:
+        ship = self.records[110]
+        self.assertEqual(ship["family_id"], 110)
+        self.assertEqual(ship["path_name"], "Admiralty Line")
+        self.assertEqual((ship["tons"], ship["configuration"]), (1800, "Standard"))
+        self.assertEqual((ship["tech_level"], ship["armor_points"]), (11, 10))
+        self.assertEqual(ship["electronics"], "Basic Military")
+        self.assertEqual(ship["bridge_options"], ["Command Bridge", "Hardened Bridge", "Holographic Controls"])
+        self.assertEqual((ship["jump_drive"], ship["jump_distance"]), ("P", 2))
+        self.assertEqual((ship["maneuver_drive"], ship["power_plant"]), ("T", "T"))
+        self.assertEqual(ship["assertions"]["thrust_g"], 4)
+        self.assertEqual((ship["endurance"], ship["cargo"], ship["crew"]), (4, "2 tons", 88))
+        self.assertIn("88 × Escape Pod", ship["equipment"])
+        self.assertIn("Full Hangar (80 tons contained)", ship["equipment"])
+        self.assertIn("2 × Carried Craft: Wayfarer Cargo (ship-187)", ship["equipment"])
+        self.assertIn("Carried Craft: Caduceus (ship-189)", ship["equipment"])
+        self.assertIn("6 × Particle Beam Bay", ship["armament"])
+        self.assertIn("2 × Railgun Bay 50", ship["armament"])
+        self.assertIn("4 × Triple Turret: Beam Laser", ship["armament"])
+        self.assertIn("2 × Triple Turret: Missile Rack", ship["armament"])
+        self.assertIn("4 × Triple Turret: Sandcaster", ship["armament"])
+        self.assertIn("18 × Point Defense Node Mount", ship["armament"])
+        self.assertEqual(ship["length_m"], 104.0)
+        self.assertEqual(ship["art_path"], "assets/ships/ship-110-themistocles.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
