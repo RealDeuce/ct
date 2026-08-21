@@ -393,7 +393,8 @@ main { position: relative; z-index: 1; }
   background: #151b20;
 }
 .catalog-sort legend {
-  padding: 0;
+  padding: 0 .35rem 0 0;
+  background: #151b20;
   color: var(--teal);
   font: 700 .55rem var(--mono);
   letter-spacing: .1em;
