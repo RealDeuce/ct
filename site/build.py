@@ -555,6 +555,13 @@ PUBLISHED_SHIP_ART = {
         "modular freighter with cargo modules and a blanked docking interface.",
         72.0,
     ),
+    87: (
+        "assets/ships/ship-087-revenant.webp",
+        "Painted three-quarter view of Revenant, an aubergine, vermilion, mustard, "
+        "and black-chrome six-hundred-ton boarding-hook raider with three visible "
+        "flank weapons and a closed assault-cutter hangar.",
+        70.0,
+    ),
     88: (
         "assets/ships/ship-088-cyclops.webp",
         "Painted three-quarter view of Cyclops, a yellow and violet eight-hundred-ton "

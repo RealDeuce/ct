@@ -3255,6 +3255,60 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(caravan["length_m"], 74.0)
         self.assertEqual(caravan["art_path"], "assets/ships/ship-085-caravan.webp")
 
+    def test_revenant_exposes_heavy_boarding_raider_fit(self) -> None:
+        revenant = self.records[87]
+        self.assertEqual(revenant["family_id"], 87)
+        self.assertEqual(revenant["path_name"], "Rogue Tide")
+        self.assertEqual(revenant["tons"], 600)
+        self.assertEqual(revenant["configuration"], "Streamlined")
+        self.assertEqual(revenant["tech_level"], 11)
+        self.assertFalse(revenant["standard_design"])
+        self.assertEqual(revenant["electronics"], "Basic Civilian")
+        self.assertEqual(revenant["armor_points"], 4)
+        self.assertEqual(revenant["computer"], "Model 3")
+        self.assertEqual(revenant["computer_options"], ["Bis"])
+        self.assertEqual(revenant["jump_drive"], "H")
+        self.assertEqual(revenant["jump_distance"], 2)
+        self.assertEqual(revenant["jump_count"], 1)
+        self.assertEqual(revenant["maneuver_drive"], "M")
+        self.assertEqual(revenant["power_plant"], "M")
+        self.assertEqual(revenant["assertions"]["thrust_g"], 4)
+        self.assertEqual(revenant["endurance"], 2)
+        self.assertEqual(revenant["cargo"], "41.5 tons")
+        self.assertEqual(revenant["crew"], 67)
+        self.assertIn("50 × Barracks", revenant["equipment"])
+        self.assertIn("4 × Ships Brig", revenant["equipment"])
+        self.assertIn("6 × Fuel Processor", revenant["equipment"])
+        self.assertIn("12 × Low Berth", revenant["equipment"])
+        self.assertIn("Breaching Tube", revenant["equipment"])
+        self.assertIn("Medical Bay (2 beds)", revenant["equipment"])
+        self.assertIn("Repair Drones", revenant["equipment"])
+        self.assertIn("Full Hangar (50 tons contained)", revenant["equipment"])
+        self.assertIn("Carried Craft: Cutlass (ship-213)", revenant["equipment"])
+        self.assertIn(
+            "4 × Double Turret: Beam Laser · Beam Laser",
+            revenant["armament"],
+        )
+        self.assertIn(
+            "Double Turret: Missile Rack · Missile Rack",
+            revenant["armament"],
+        )
+        self.assertIn(
+            "Double Turret: Sandcaster · Sandcaster",
+            revenant["armament"],
+        )
+        self.assertNotIn("Point Defense", revenant["armament"])
+        self.assertEqual(
+            revenant["ammunition"],
+            "48 × Standard Missiles · 40 × Sandcaster Canisters",
+        )
+        self.assertEqual(revenant["unused_fire_control_stations"], 0)
+        self.assertEqual(revenant["length_m"], 70.0)
+        self.assertEqual(
+            revenant["art_path"],
+            "assets/ships/ship-087-revenant.webp",
+        )
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
