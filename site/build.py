@@ -424,6 +424,13 @@ PUBLISHED_SHIP_ART = {
         "hangar, and two visible turrets.",
         58.0,
     ),
+    67: (
+        "assets/ships/ship-067-magellan.webp",
+        "Painted three-quarter view of Magellan, a warm-white, cyan, lime, and "
+        "chrome four-hundred-ton exploration caravel with two visible turrets, "
+        "a large cargo shutter, and an observation quarterdeck.",
+        62.0,
+    ),
     68: (
         "assets/ships/ship-068-silver.webp",
         "Painted three-quarter view of Silver, an aubergine four-hundred-ton "

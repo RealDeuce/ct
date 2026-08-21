@@ -2745,6 +2745,44 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(drake["length_m"], 58.0)
         self.assertEqual(drake["art_path"], "assets/ships/ship-066-drake.webp")
 
+    def test_magellan_exposes_self_reliant_exploration_fit(self) -> None:
+        magellan = self.records[67]
+        self.assertEqual(magellan["family_id"], 67)
+        self.assertEqual(magellan["tons"], 400)
+        self.assertEqual(magellan["configuration"], "Streamlined")
+        self.assertEqual(magellan["tech_level"], 11)
+        self.assertFalse(magellan["standard_design"])
+        self.assertEqual(magellan["electronics"], "Basic Military")
+        self.assertEqual(magellan["armor_points"], 4)
+        self.assertEqual(magellan["control"], "Standard bridge")
+        self.assertEqual(magellan["jump_drive"], "D")
+        self.assertEqual(magellan["maneuver_drive"], "H")
+        self.assertEqual(magellan["power_plant"], "H")
+        self.assertEqual(magellan["jump_distance"], 2)
+        self.assertEqual(magellan["endurance"], 2)
+        self.assertEqual(magellan["cargo"], "127 tons")
+        self.assertEqual(magellan["crew"], 7)
+        self.assertIn("6 × Stateroom", magellan["equipment"])
+        self.assertIn("10 × Fuel Processor", magellan["equipment"])
+        self.assertIn("4 × Probe Drones", magellan["equipment"])
+        self.assertIn("Emergency Low Berth", magellan["equipment"])
+        self.assertIn("4 × Low Berth", magellan["equipment"])
+        self.assertIn("Medical Bay (1 bed)", magellan["equipment"])
+        self.assertIn("Repair Drones", magellan["equipment"])
+        self.assertIn("Standard Hangar (14 tons contained)", magellan["equipment"])
+        self.assertEqual(
+            magellan["armament"],
+            "2 × Double Turret: Beam Laser · Beam Laser · Double Turret: "
+            "Sandcaster · Sandcaster · Double Turret: Missile Rack · Missile Rack",
+        )
+        self.assertEqual(
+            magellan["ammunition"],
+            "24 × Standard Missiles · 40 × Sandcaster Canisters",
+        )
+        self.assertEqual(magellan["unused_fire_control_stations"], 0)
+        self.assertEqual(magellan["length_m"], 62.0)
+        self.assertEqual(magellan["art_path"], "assets/ships/ship-067-magellan.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
