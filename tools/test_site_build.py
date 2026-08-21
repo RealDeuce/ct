@@ -3638,6 +3638,67 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(togo["length_m"], 92.0)
         self.assertEqual(togo["art_path"], "assets/ships/ship-108-togo.webp")
 
+    def test_yi_exposes_streamlined_fleet_combatant_fit(self) -> None:
+        yi = self.records[109]
+        self.assertEqual(yi["family_id"], 109)
+        self.assertEqual(yi["path_name"], "Admiralty Line")
+        self.assertEqual(yi["tons"], 1000)
+        self.assertEqual(yi["configuration"], "Streamlined")
+        self.assertEqual(yi["tech_level"], 11)
+        self.assertFalse(yi["standard_design"])
+        self.assertEqual(yi["electronics"], "Advanced")
+        self.assertEqual(yi["armor_points"], 8)
+        self.assertEqual(yi["hull_options"], ["Radiation Shielding"])
+        self.assertEqual(yi["bridge_options"], ["Holographic Controls"])
+        self.assertEqual(yi["computer"], "Model 3")
+        self.assertEqual(yi["computer_options"], ["Bis", "Fib"])
+        self.assertEqual(yi["jump_drive"], "H")
+        self.assertEqual(yi["jump_distance"], 2)
+        self.assertEqual(yi["jump_count"], 1)
+        self.assertEqual(yi["maneuver_drive"], "P")
+        self.assertEqual(yi["power_plant"], "S")
+        self.assertEqual(yi["assertions"]["thrust_g"], 4)
+        self.assertEqual(yi["endurance"], 2)
+        self.assertEqual(yi["cargo"], "14.65 tons")
+        self.assertEqual(yi["crew"], 35)
+        self.assertIn("7 × Stateroom", yi["equipment"])
+        self.assertIn("4 × Crew Berthing", yi["equipment"])
+        self.assertIn("5 × Fuel Processor", yi["equipment"])
+        self.assertIn("Armory", yi["equipment"])
+        self.assertIn("Briefing Room", yi["equipment"])
+        self.assertIn("4 × Chapel Space", yi["equipment"])
+        self.assertIn("3 × Emergency Low Berth", yi["equipment"])
+        self.assertIn("Medical Bay (2 beds)", yi["equipment"])
+        self.assertIn("Repair Drones", yi["equipment"])
+        self.assertIn("Full Hangar (50 tons contained)", yi["equipment"])
+        self.assertIn("Carried Craft: Wayfarer Cargo (ship-187)", yi["equipment"])
+        self.assertIn("Carried Craft: Caduceus (ship-189)", yi["equipment"])
+        self.assertIn("2 × Single Turret: Particle Beam", yi["armament"])
+        self.assertIn(
+            "2 × Triple Turret: Beam Laser · Beam Laser · Beam Laser",
+            yi["armament"],
+        )
+        self.assertIn(
+            "2 × Triple Turret: Sandcaster · Sandcaster · Sandcaster",
+            yi["armament"],
+        )
+        self.assertIn("2 × Meson Gun Bay 100", yi["armament"])
+        self.assertIn("2 × Particle Beam Bay", yi["armament"])
+        self.assertIn(
+            "10 × Point Defense Node Mount: Point Defense Laser",
+            yi["armament"],
+        )
+        self.assertEqual(yi["ammunition"], "200 × Sandcaster Canisters")
+        self.assertEqual(yi["structural_options"], [
+            "Armored Bulkheads (Bridge)",
+            "Armored Bulkheads (Drives)",
+        ])
+        self.assertEqual(yi["power_options"], ["Emergency Power"])
+        self.assertEqual(yi["magazine_options"], ["Improved Magazine"])
+        self.assertEqual(yi["unused_fire_control_stations"], 0)
+        self.assertEqual(yi["length_m"], 78.0)
+        self.assertEqual(yi["art_path"], "assets/ships/ship-109-yi.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

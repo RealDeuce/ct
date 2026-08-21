@@ -694,6 +694,13 @@ PUBLISHED_SHIP_ART = {
         "with two visible weapon bays and four distributed triple turrets.",
         92.0,
     ),
+    109: (
+        "assets/ships/ship-109-yi.webp",
+        "Painted three-quarter view of Yi, a navy, warm-white, red, and "
+        "chrome thousand-ton streamlined shield-body combatant with one "
+        "hundred-ton meson bay and four other visible weapon stations.",
+        78.0,
+    ),
     116: (
         "assets/ships/ship-116-citadel.webp",
         "Painted three-quarter view of Citadel, a red twenty-five-hundred-ton "
