@@ -3119,6 +3119,54 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-077-sentinel.webp",
         )
 
+    def test_raleigh_exposes_armored_merchant_fit(self) -> None:
+        raleigh = self.records[81]
+        self.assertEqual(raleigh["family_id"], 81)
+        self.assertEqual(raleigh["path_name"], "Marque Marine")
+        self.assertEqual(raleigh["tons"], 500)
+        self.assertEqual(raleigh["configuration"], "Streamlined")
+        self.assertEqual(raleigh["tech_level"], 11)
+        self.assertFalse(raleigh["standard_design"])
+        self.assertEqual(
+            raleigh["hull_options"],
+            ["Radiation Shielding", "Self Sealing"],
+        )
+        self.assertEqual(raleigh["electronics"], "Basic Military")
+        self.assertEqual(raleigh["armor_points"], 8)
+        self.assertEqual(raleigh["computer"], "Model 3")
+        self.assertEqual(raleigh["computer_options"], ["Fib"])
+        self.assertEqual(raleigh["jump_drive"], "E")
+        self.assertEqual(raleigh["jump_distance"], 2)
+        self.assertEqual(raleigh["jump_count"], 1)
+        self.assertEqual(raleigh["maneuver_drive"], "E")
+        self.assertEqual(raleigh["power_plant"], "E")
+        self.assertEqual(raleigh["assertions"]["thrust_g"], 2)
+        self.assertEqual(raleigh["endurance"], 4)
+        self.assertEqual(raleigh["cargo"], "198 tons")
+        self.assertEqual(raleigh["crew"], 11)
+        self.assertIn("6 × Stateroom", raleigh["equipment"])
+        self.assertIn("6 × Fuel Processor", raleigh["equipment"])
+        self.assertIn("Armory", raleigh["equipment"])
+        self.assertIn("Office", raleigh["equipment"])
+        self.assertIn("Workshop", raleigh["equipment"])
+        self.assertIn("Medical Bay (1 bed)", raleigh["equipment"])
+        self.assertIn(
+            "3 × Triple Turret: Beam Laser · Beam Laser · Beam Laser",
+            raleigh["armament"],
+        )
+        self.assertIn(
+            "2 × Triple Turret: Beam Laser · Missile Rack · Sandcaster",
+            raleigh["armament"],
+        )
+        self.assertNotIn("Point Defense", raleigh["armament"])
+        self.assertEqual(
+            raleigh["ammunition"],
+            "24 × Standard Missiles · 40 × Sandcaster Canisters",
+        )
+        self.assertEqual(raleigh["unused_fire_control_stations"], 0)
+        self.assertEqual(raleigh["length_m"], 72.0)
+        self.assertEqual(raleigh["art_path"], "assets/ships/ship-081-raleigh.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

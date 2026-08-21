@@ -516,6 +516,13 @@ PUBLISHED_SHIP_ART = {
         "modular freighter carrying an externally docked Albatross pinnace.",
         72.0,
     ),
+    81: (
+        "assets/ships/ship-081-raleigh.webp",
+        "Painted three-quarter view of Raleigh, an emerald, cream, burgundy, and "
+        "gold-chrome five-hundred-ton cargo-sabre merchant with three visible "
+        "turrets and a vast closed freight shutter.",
+        72.0,
+    ),
     82: (
         "assets/ships/ship-082-odysseus.webp",
         "Painted three-quarter view of Odysseus, an emerald eight-hundred-ton "
