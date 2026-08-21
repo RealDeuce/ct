@@ -491,6 +491,13 @@ PUBLISHED_SHIP_ART = {
         "separate closed expedition hangars.",
         68.0,
     ),
+    77: (
+        "assets/ships/ship-077-sentinel.webp",
+        "Painted three-quarter view of Sentinel, a fire-red, bone, and stainless "
+        "three-hundred-ton orbital watchtower with a recessed meson bay and "
+        "port-quadrant particle barbette.",
+        38.0,
+    ),
     78: (
         "assets/ships/ship-078-bonanza.webp",
         "Painted three-quarter view of Bonanza, an avocado eight-hundred-ton "

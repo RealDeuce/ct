@@ -3075,6 +3075,50 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(nansen["length_m"], 68.0)
         self.assertEqual(nansen["art_path"], "assets/ships/ship-076-nansen.webp")
 
+    def test_sentinel_exposes_heavy_system_monitor_fit(self) -> None:
+        sentinel = self.records[77]
+        self.assertEqual(sentinel["family_id"], 77)
+        self.assertEqual(sentinel["path_name"], "Redoubt")
+        self.assertEqual(sentinel["tons"], 300)
+        self.assertEqual(sentinel["configuration"], "Standard")
+        self.assertEqual(sentinel["tech_level"], 11)
+        self.assertFalse(sentinel["standard_design"])
+        self.assertEqual(
+            sentinel["structural_options"],
+            ["Reinforced Structure (1 increment)"],
+        )
+        self.assertEqual(sentinel["electronics"], "Advanced")
+        self.assertEqual(sentinel["armor_points"], 11)
+        self.assertEqual(sentinel["bridge_options"], ["Hardened Bridge"])
+        self.assertEqual(sentinel["computer"], "Model 3")
+        self.assertEqual(sentinel["computer_options"], ["Bis"])
+        self.assertIsNone(sentinel["jump_drive"])
+        self.assertEqual(sentinel["maneuver_drive"], "H")
+        self.assertEqual(sentinel["power_plant"], "J")
+        self.assertEqual(sentinel["endurance"], 2)
+        self.assertEqual(sentinel["cargo"], "76.75 tons")
+        self.assertEqual(sentinel["crew"], 8)
+        self.assertIn("2 × Stateroom", sentinel["equipment"])
+        self.assertIn("Crew Berthing", sentinel["equipment"])
+        self.assertIn("Fuel Scoop", sentinel["equipment"])
+        self.assertIn("Fuel Processor", sentinel["equipment"])
+        self.assertIn("Emergency Low Berth", sentinel["equipment"])
+        self.assertIn("Repair Drones", sentinel["equipment"])
+        self.assertIn(
+            "Triple Turret: Beam Laser · Beam Laser · Sandcaster",
+            sentinel["armament"],
+        )
+        self.assertIn("Particle Beam Barbette", sentinel["armament"])
+        self.assertIn("Meson Gun Bay", sentinel["armament"])
+        self.assertNotIn("Point Defense", sentinel["armament"])
+        self.assertEqual(sentinel["ammunition"], "40 × Sandcaster Canisters")
+        self.assertEqual(sentinel["unused_fire_control_stations"], 0)
+        self.assertEqual(sentinel["length_m"], 38.0)
+        self.assertEqual(
+            sentinel["art_path"],
+            "assets/ships/ship-077-sentinel.webp",
+        )
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
