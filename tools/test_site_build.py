@@ -3505,6 +3505,71 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(marathon["length_m"], 88.0)
         self.assertEqual(marathon["art_path"], "assets/ships/ship-103-marathon.webp")
 
+    def test_salamis_exposes_line_destroyer_fit(self) -> None:
+        salamis = self.records[106]
+        self.assertEqual(salamis["family_id"], 106)
+        self.assertEqual(salamis["path_name"], "Admiralty Line")
+        self.assertEqual(salamis["tons"], 1000)
+        self.assertEqual(salamis["configuration"], "Standard")
+        self.assertEqual(salamis["tech_level"], 11)
+        self.assertFalse(salamis["standard_design"])
+        self.assertEqual(salamis["electronics"], "Advanced")
+        self.assertEqual(salamis["armor_points"], 8)
+        self.assertEqual(
+            salamis["bridge_options"],
+            ["Hardened Bridge", "Holographic Controls"],
+        )
+        self.assertEqual(salamis["computer"], "Model 3")
+        self.assertEqual(salamis["computer_options"], ["Bis", "Fib"])
+        self.assertEqual(salamis["jump_drive"], "K")
+        self.assertEqual(salamis["jump_distance"], 2)
+        self.assertEqual(salamis["jump_count"], 1)
+        self.assertEqual(salamis["maneuver_drive"], "S")
+        self.assertEqual(salamis["power_plant"], "S")
+        self.assertEqual(salamis["endurance"], 3)
+        self.assertEqual(salamis["cargo"], "87 tons")
+        self.assertEqual(salamis["crew"], 30)
+        self.assertIn("11 × Stateroom", salamis["equipment"])
+        self.assertIn("Crew Berthing", salamis["equipment"])
+        self.assertIn("Armory", salamis["equipment"])
+        self.assertIn("2 × Office", salamis["equipment"])
+        self.assertIn("2 × Briefing Room", salamis["equipment"])
+        self.assertIn("Fuel Scoop", salamis["equipment"])
+        self.assertIn("5 × Fuel Processor", salamis["equipment"])
+        self.assertIn("Probe Drones", salamis["equipment"])
+        self.assertIn("Workshop", salamis["equipment"])
+        self.assertIn("3 × Emergency Low Berth", salamis["equipment"])
+        self.assertIn("Medical Bay (2 beds)", salamis["equipment"])
+        self.assertIn("Repair Drones", salamis["equipment"])
+        self.assertIn("Full Hangar (50 tons contained)", salamis["equipment"])
+        self.assertIn("Carried Craft: Jason (ship-17)", salamis["equipment"])
+        self.assertIn("Carried Craft: Charon (ship-158)", salamis["equipment"])
+        self.assertIn(
+            "2 × Triple Turret: Beam Laser · Beam Laser · Beam Laser",
+            salamis["armament"],
+        )
+        self.assertIn(
+            "2 × Triple Turret: Missile Rack · Missile Rack · Missile Rack",
+            salamis["armament"],
+        )
+        self.assertIn(
+            "2 × Triple Turret: Sandcaster · Sandcaster · Sandcaster",
+            salamis["armament"],
+        )
+        self.assertIn("2 × Meson Gun Bay", salamis["armament"])
+        self.assertIn("2 × Particle Beam Bay", salamis["armament"])
+        self.assertIn(
+            "10 × Point Defense Node Mount: Point Defense Laser",
+            salamis["armament"],
+        )
+        self.assertEqual(
+            salamis["ammunition"],
+            "144 × Standard Missiles · 120 × Sandcaster Canisters",
+        )
+        self.assertEqual(salamis["unused_fire_control_stations"], 0)
+        self.assertEqual(salamis["length_m"], 84.0)
+        self.assertEqual(salamis["art_path"], "assets/ships/ship-106-salamis.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

@@ -674,6 +674,13 @@ PUBLISHED_SHIP_ART = {
         "carrier with six visible docked Triton escort boats.",
         94.0,
     ),
+    106: (
+        "assets/ships/ship-106-salamis.webp",
+        "Painted three-quarter view of Salamis, a navy, warm-white, red, and "
+        "bright-aluminum thousand-ton split-spear destroyer with two visible "
+        "weapon bays and three distributed triple turrets.",
+        84.0,
+    ),
     107: (
         "assets/ships/ship-107-corbett.webp",
         "Painted three-quarter view of Corbett, a navy fifteen-hundred-ton "
