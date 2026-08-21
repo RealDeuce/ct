@@ -2827,6 +2827,46 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(monitor["length_m"], 44.0)
         self.assertEqual(monitor["art_path"], "assets/ships/ship-070-monitor.webp")
 
+    def test_xanadu_exposes_luxury_resort_liner_fit(self) -> None:
+        xanadu = self.records[71]
+        self.assertEqual(xanadu["family_id"], 71)
+        self.assertEqual(xanadu["tons"], 400)
+        self.assertEqual(xanadu["configuration"], "Streamlined")
+        self.assertEqual(xanadu["tech_level"], 11)
+        self.assertFalse(xanadu["standard_design"])
+        self.assertEqual(xanadu["electronics"], "Basic Military")
+        self.assertEqual(xanadu["armor_points"], 0)
+        self.assertEqual(xanadu["control"], "Standard bridge")
+        self.assertEqual(xanadu["bridge_options"], ["Holographic Controls"])
+        self.assertEqual(xanadu["jump_drive"], "D")
+        self.assertEqual(xanadu["maneuver_drive"], "J")
+        self.assertEqual(xanadu["power_plant"], "J")
+        self.assertEqual(xanadu["jump_distance"], 2)
+        self.assertEqual(xanadu["endurance"], 2)
+        self.assertEqual(xanadu["cargo"], "69 tons")
+        self.assertEqual(xanadu["crew"], 8)
+        self.assertIn("19 × Stateroom", xanadu["equipment"])
+        self.assertIn("100 × Crew Recreation", xanadu["equipment"])
+        self.assertIn("6 × Garden Space", xanadu["equipment"])
+        self.assertIn("2 × Office", xanadu["equipment"])
+        self.assertIn("12 × Pool Or Spa Space", xanadu["equipment"])
+        self.assertIn("16 × Theater Seat", xanadu["equipment"])
+        self.assertIn("2 × Emergency Low Berth", xanadu["equipment"])
+        self.assertIn("Medical Bay (1 bed)", xanadu["equipment"])
+        self.assertIn("Repair Drones", xanadu["equipment"])
+        self.assertEqual(
+            xanadu["armament"],
+            "Triple Turret: Beam Laser · Sandcaster · Missile Rack · 4 × "
+            "Point Defense Node Mount: Point Defense Laser",
+        )
+        self.assertEqual(
+            xanadu["ammunition"],
+            "12 × Standard Missiles · 20 × Sandcaster Canisters",
+        )
+        self.assertEqual(xanadu["unused_fire_control_stations"], 3)
+        self.assertEqual(xanadu["length_m"], 65.0)
+        self.assertEqual(xanadu["art_path"], "assets/ships/ship-071-xanadu.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)

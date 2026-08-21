@@ -450,6 +450,13 @@ PUBLISHED_SHIP_ART = {
         "particle-beam bay and mixed turret.",
         44.0,
     ),
+    71: (
+        "assets/ships/ship-071-xanadu.webp",
+        "Painted three-quarter view of Xanadu, an ivory, royal-blue, vermilion, "
+        "and chrome four-hundred-ton luxury resort spindle with a conservatory, "
+        "panoramic lounge, spa bay, and discreet flank turret.",
+        65.0,
+    ),
     72: (
         "assets/ships/ship-072-smollett.webp",
         "Painted three-quarter view of Smollett, an emerald four-hundred-ton "
