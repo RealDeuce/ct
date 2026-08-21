@@ -736,6 +736,13 @@ PUBLISHED_SHIP_ART = {
         "visible weapon bays and four distributed triple turrets.",
         108.0,
     ),
+    115: (
+        "assets/ships/ship-115-midway.webp",
+        "Painted three-quarter view of Midway, a navy, warm-white, red, and "
+        "chrome two-thousand-ton close-structure gunboat carrier with three "
+        "visible red Monitor gunboats and distributed triple turrets.",
+        126.0,
+    ),
     116: (
         "assets/ships/ship-116-citadel.webp",
         "Painted three-quarter view of Citadel, a red twenty-five-hundred-ton "

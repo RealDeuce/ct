@@ -3885,6 +3885,38 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(ship["length_m"], 108.0)
         self.assertEqual(ship["art_path"], "assets/ships/ship-114-tsushima.webp")
 
+    def test_midway_exposes_loaded_gunboat_carrier_fit(self) -> None:
+        ship = self.records[115]
+        self.assertEqual(ship["family_id"], 115)
+        self.assertEqual(ship["path_name"], "Admiralty Line")
+        self.assertEqual((ship["tons"], ship["configuration"]), (2000, "Close Structure"))
+        self.assertEqual((ship["tech_level"], ship["armor_points"]), (10, 2))
+        self.assertFalse(ship["standard_design"])
+        self.assertEqual(ship["electronics"], "Basic Military")
+        self.assertEqual(ship["hull_options"], ["Radiation Shielding", "Self Sealing"])
+        self.assertEqual(ship["bridge_options"], ["Command Bridge", "Hardened Bridge", "Holographic Controls"])
+        self.assertEqual(ship["computer_options"], ["Fib"])
+        self.assertEqual((ship["jump_drive"], ship["jump_distance"]), ("Y", 2))
+        self.assertEqual((ship["maneuver_drive"], ship["power_plant"]), ("Y", "Y"))
+        self.assertEqual(ship["assertions"]["effective_displacement_millitons"], 3800000)
+        self.assertEqual(ship["assertions"]["thrust_g"], 2)
+        self.assertEqual((ship["endurance"], ship["cargo"], ship["crew"]), (2, "188.75 tons", 151))
+        self.assertIn("15 × Fuel Processor", ship["equipment"])
+        self.assertIn("Full Hangar (80 tons contained)", ship["equipment"])
+        self.assertIn("6 × Docking Clamp 300", ship["equipment"])
+        self.assertIn("6 × Carried Craft: Monitor (ship-70)", ship["equipment"])
+        self.assertIn("2 × Carried Craft: Archimedes (ship-124)", ship["equipment"])
+        self.assertIn("2 × Carried Craft: Wayfarer Cargo (ship-187)", ship["equipment"])
+        self.assertIn("5 × Triple Turret: Turret Railgun", ship["armament"])
+        self.assertIn("5 × Triple Turret: Beam Laser", ship["armament"])
+        self.assertIn("5 × Triple Turret: Missile Rack", ship["armament"])
+        self.assertIn("5 × Triple Turret: Sandcaster", ship["armament"])
+        self.assertIn("10 × Point Defense Node Mount: Point Defense Minigun", ship["armament"])
+        self.assertIn("10 × Point Defense Node Mount: Point Defense Laser", ship["armament"])
+        self.assertEqual(ship["unused_fire_control_stations"], 0)
+        self.assertEqual(ship["length_m"], 126.0)
+        self.assertEqual(ship["art_path"], "assets/ships/ship-115-midway.webp")
+
     def test_archimedes_is_the_unarmed_corbett_work_pod(self) -> None:
         archimedes = self.records[124]
         self.assertEqual(archimedes["family_id"], 124)
