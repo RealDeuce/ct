@@ -41,6 +41,28 @@ def require(pattern: str, relative: str, description: str) -> None:
         raise ValueError(f"{relative}: missing {description}")
 
 
+def validate_release_notes(version: str, text: str) -> list[str]:
+    """Return missing requirements for one versioned GitHub release body."""
+    errors: list[str] = []
+    if f"v{version}" not in text:
+        errors.append(f"release version v{version}")
+    if re.search(r"(?m)^## Compatibility notice\s*$", text) is None:
+        errors.append("Compatibility notice section")
+    if re.search(r"(?m)^## Highlights\s*$", text) is None:
+        errors.append("Highlights section")
+    if re.search(r"(?ms)^## Highlights\s*\n\s*-\s+\S", text) is None:
+        errors.append("at least one curated highlight")
+    if re.search(
+        r"(?m)^\*\*Full changelog:\*\* "
+        r"https://github\.com/RealDeuce/ct/compare/\S+\.\.\.v"
+        + re.escape(version)
+        + r"\s*$",
+        text,
+    ) is None:
+        errors.append("version-matched full changelog link")
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
     files = tracked_files()
@@ -93,6 +115,18 @@ def main() -> int:
         workflow_versions = read(".github/workflows/ci.yml")
         if f"--version {cargo_version}" not in workflow_versions:
             errors.append("GitHub package checks do not use the common product version")
+        release_notes_relative = f"docs/releases/v{cargo_version}.md"
+        try:
+            release_notes = read(release_notes_relative)
+        except OSError:
+            errors.append(f"missing curated release notes: {release_notes_relative}")
+        else:
+            for requirement in validate_release_notes(cargo_version, release_notes):
+                errors.append(f"{release_notes_relative}: missing {requirement}")
+        if 'docs/releases/${RELEASE_TAG}.md' not in workflow_versions:
+            errors.append("GitHub release publishing does not select versioned release notes")
+        if '--notes-file "$RELEASE_NOTES"' not in workflow_versions:
+            errors.append("GitHub release publishing does not use curated release notes")
     except (KeyError, OSError, tomllib.TOMLDecodeError, ValueError) as error:
         errors.append(str(error))
 

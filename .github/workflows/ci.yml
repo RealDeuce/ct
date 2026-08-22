@@ -561,6 +561,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           pattern: cepheus-trader-client-0.7.10-*
@@ -572,9 +573,20 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
-            gh release create "$RELEASE_TAG" --generate-notes \
+          RELEASE_NOTES="docs/releases/${RELEASE_TAG}.md"
+          if [[ ! -f "$RELEASE_NOTES" ]]; then
+            echo "Missing curated release notes: $RELEASE_NOTES" >&2
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --notes-file "$RELEASE_NOTES" \
               --title "Cepheus Trader $RELEASE_TAG"
+          else
+            gh release create "$RELEASE_TAG" \
+              --notes-file "$RELEASE_NOTES" \
+              --title "Cepheus Trader $RELEASE_TAG"
+          fi
           mapfile -d '' assets < <(
             find release-assets -maxdepth 1 -type f \
               \( -name 'cepheus-trader-client-0.7.10-*.tar.xz' \

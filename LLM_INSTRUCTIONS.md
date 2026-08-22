@@ -2165,6 +2165,16 @@ rules into the game.
 
 ## Development workflow
 
+Every product release preparation must add a tracked
+`docs/releases/v<version>.md` body for the exact product version. It must
+contain an evidence-based Compatibility notice, curated Highlights, and the
+exact previous-to-current Full changelog link. State unchanged compatibility
+counters explicitly, identify supported mixed-version client/server pairings
+and upgrade order, and describe any store migration or reinitialization. The
+tag workflow publishes this file verbatim and must fail rather than fall back
+to generic generated notes. Follow `docs/release-process.md` for the complete
+gate.
+
 For a non-trivial feature:
 
 If a required or desired compiler, build tool, system library, package, or
