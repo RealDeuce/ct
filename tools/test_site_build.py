@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import unittest
 from pathlib import Path
 
@@ -4101,6 +4102,98 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("one terminal marker", page)
         self.assertIn("Task delivery occurs when docking completes", page)
         self.assertIn("Warnings are numbered once below the route", page)
+
+    def test_game_rules_define_the_world_profile_terms_they_use(self) -> None:
+        page = SITE_BUILD.rules_page()
+        for section_id in (
+            "universal-world-profile",
+            "physical-world-codes",
+            "population-and-government",
+            "starport-class-and-baseline-services",
+            "technology-level",
+            "trade-codes",
+            "law-legality-and-services",
+        ):
+            with self.subTest(section_id=section_id):
+                self.assertIn(f'id="{section_id}"', page)
+        self.assertIn("A867945-C", page)
+        self.assertIn("Population Multiplier", page)
+        self.assertIn("Repair shop; yard up to 100,000 tons", page)
+        self.assertIn("The ordinary market tariff is 5% plus 0.5%", page)
+
+    def test_game_rules_publish_every_skill_and_mark_inactive_ones(self) -> None:
+        wire = (ROOT / "server" / "src" / "wire.rs").read_text(encoding="utf-8")
+        skill_count = re.search(r"pub const ALL: \[Self; (\d+)\]", wire)
+        self.assertIsNotNone(skill_count)
+
+        page = SITE_BUILD.rules_page()
+        start = page.index("The following skills exist on people")
+        end = page.index("One person assigned to concurrent actions", start)
+        skill_table = page[start:end]
+        self.assertEqual(skill_table.count("<tr>") - 1, int(skill_count.group(1)))
+        self.assertIn("no independent task currently uses it", skill_table)
+        self.assertIn("its DM is not yet applied to boarding rounds", skill_table)
+
+    def test_game_rules_publish_every_authoritative_commodity(self) -> None:
+        commerce = (ROOT / "server" / "src" / "commerce.rs").read_text(
+            encoding="utf-8"
+        )
+        common = re.search(
+            r"pub const COMMON_GOODS: \[CommodityDefinition; (\d+)\]", commerce
+        )
+        trade = re.search(
+            r"pub const TRADE_GOODS: \[CommodityDefinition; (\d+)\]", commerce
+        )
+        self.assertIsNotNone(common)
+        self.assertIsNotNone(trade)
+
+        page = SITE_BUILD.rules_page()
+        start = page.index('<h3 id="commodity-reference">')
+        end = page.index('<h3 id="research-and-reservations">', start)
+        commodity_table = page[start:end]
+        expected = int(common.group(1)) + int(trade.group(1))
+        self.assertEqual(commodity_table.count("<tr>") - 1, expected)
+        self.assertIn("Medical Laboratory Equipment", commodity_table)
+
+    def test_game_rules_expose_current_combat_action_limits(self) -> None:
+        combat = (ROOT / "server" / "src" / "combat.rs").read_text(encoding="utf-8")
+        self.assertIn(
+            "CrewAction::Hold | CrewAction::PrepareJump | CrewAction::ElectronicWarfare => {}",
+            combat,
+        )
+        page = SITE_BUILD.rules_page()
+        self.assertIn("apply no separate combat modifier", page)
+        self.assertIn("only Point Defense has a", page)
+        self.assertIn("resolved trigger effect", page)
+
+    def test_game_rules_match_jump_fuel_and_encounter_posture_rules(self) -> None:
+        store = (ROOT / "server" / "src" / "store.rs").read_text(encoding="utf-8")
+        jump_start = store.index("fn jump_fuel_for_distance")
+        jump_end = store.index("fn encounter_kind_for_policy", jump_start)
+        jump_rule = store[jump_start:jump_end]
+        self.assertIn("saturating_div(10)", jump_rule)
+        self.assertIn("jump_number_for_distance(distance_parsecs)", jump_rule)
+
+        page = SITE_BUILD.rules_page()
+        self.assertIn("0.1 x hull displacement tons x Jump number", page)
+        self.assertIn('id="encounter-posture-and-fallback"', page)
+        self.assertIn("The posture DM is +1 for Fight or Board", page)
+        self.assertIn("no outcome distinct from that non-surrender", page)
+
+    def test_game_rules_publish_nav_rank_and_prize_numbers(self) -> None:
+        careers = (ROOT / "server" / "src" / "careers.rs").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("pub const NAVAL_BOARD_DAYS: u64 = 180", careers)
+        self.assertIn("pub const NAVAL_BASE_MONTHLY_SALARY: u64 = 6_000", careers)
+        self.assertIn("name: \"Commodore\"", careers)
+        self.assertIn("minimum_points: 70", careers)
+
+        page = SITE_BUILD.rules_page()
+        self.assertIn("board every 180 game days", page)
+        self.assertIn("<td>Commodore</td>", page)
+        self.assertIn("<td>Cr14,000</td>", page)
+        self.assertIn("10%, 20%, or 30% for a privateer", page)
 
     def test_game_rules_address_players_instead_of_maintainers(self) -> None:
         page = SITE_BUILD.rules_page()

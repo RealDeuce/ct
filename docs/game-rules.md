@@ -55,9 +55,19 @@ simultaneous-action procedures.
 
 People use Strength (STR), Dexterity (DEX), Endurance (END), Intelligence
 (INT), Education (EDU), and Charisma (CHA). Cepheus Trader uses CHA in place of
-Social Standing. Rank, title, reputation,
-citizenship, authority, legal status, and relationships are separate records;
-CHA never grants them.
+Social Standing.
+
+| Characteristic | What it measures | Typical use in play |
+| --- | --- | --- |
+| STR | Physical force | Personal injury capacity, boarding, and physical work |
+| DEX | Coordination and reaction | Piloting, gunnery, and precise physical action |
+| END | Health and stamina | First damage track, healing, fatigue, and sustained work |
+| INT | Reasoning and adaptability | Electronic warfare, investigation, and judgment |
+| EDU | Learned knowledge | Astrogation, engineering, medicine, and formal procedure |
+| CHA | Personal presence and influence | Leadership, negotiation, hiring, and persuasion |
+
+Rank, title, reputation, citizenship, authority, legal status, and
+relationships are separate facts; CHA never grants them.
 
 | Characteristic | DM |
 | --- | ---: |
@@ -87,6 +97,57 @@ A trained skill contributes its level, including level 0. An untrained skill
 contributes -3. Jack of All Trades reduces only that untrained penalty, by its
 level to a maximum relief of 2; it does not add to a trained skill.
 
+Tasks named **Routine**, **Average**, **Difficult**, **Very Difficult**, and
+**Formidable** use effective targets 6, 8, 10, 12, and 14 respectively. A task
+can instead state its target directly. When a rule gives a time as 1D6 seconds,
+minutes, kiloseconds, hours, days, or weeks, roll once in that unit. A
+kilosecond is 1,000 seconds, or one vessel-combat turn.
+
+The following skills exist on people in Cepheus Trader. A specialization is a
+separate skill: Pilot (Spacecraft) does not grant Pilot (Small Craft), and one
+Engineer or Gunner specialty does not grant the others.
+
+| Skill | Current rule use |
+| --- | --- |
+| Admin | Task-dispute filings; command-role eligibility |
+| Advocate | Competes with Admin for the better Task-dispute filing Effect |
+| Astrogation | Jump plotting, Flight Plan watch coverage, and combat range actions |
+| Broker | Commodity quotes and non-online supplier or buyer research |
+| Carouse | Recorded and trainable; no independent task currently uses it |
+| Communications | Combat targeting and inspection; electronic-warfare assignment currently has no resolved effect |
+| Computer | Online supplier or buyer research |
+| Electronics | Recorded and trainable; traffic contact quality currently uses the ship's fitted Electronics DM instead |
+| Engineer (Jump Drive) | Jump initiation, operation, and drive work |
+| Engineer (Maneuver Drive) | Required Flight Plan watch coverage |
+| Engineer (Power) | Required Flight Plan watch coverage |
+| Engineer (Life Support) | Recorded and trainable; no independent task currently uses it |
+| Etiquette | Qualifies high- and middle-passage staffing; level does not change the check |
+| Gun Combat | Recorded and trainable; no personal-combat task is currently resolved |
+| Gunner (Turrets) | Turrets, barbettes, point defense, and sand |
+| Gunner (Capital Weapons) | Bay and other capital-scale weapons |
+| Gunner (Screens) | Screen-reaction assignment; those reactions currently have no resolved effect |
+| Investigate | Can supply the best skill level for an arrest search party |
+| Jack of All Trades | Relief of the untrained penalty only |
+| Leadership | Combat coordination and initiative actions |
+| Mechanic | Field recovery and combat damage control |
+| Medicine | First aid, surgery, recovery, and low-passage staffing |
+| Melee | Recorded and trainable; no personal-combat task is currently resolved |
+| Persuade | Recorded and trainable; no independent task currently uses it |
+| Pilot (Spacecraft) | Flight Plan watch coverage, hostile encounters, and combat piloting |
+| Pilot (Small Craft) | Recorded and trainable; no separate small-craft task currently uses it |
+| Recon | Can supply the best skill level for an arrest search party |
+| Stealth | Captain's concealment level against arriving warrant enforcement |
+| Streetwise | Can supply the best skill level for an arrest search party |
+| Tactics (Military) | Boarding actor assignment; its DM is not yet applied to boarding rounds |
+| Tactics (Naval) | Can be the captain's highest skill in a hostile arrival encounter |
+| Trade (Cargomaster) | Recorded and trainable; loading and custody currently use capacity and ledger checks |
+| Vacc Suit | Recorded and trainable; no EVA task is currently resolved |
+
+One person assigned to concurrent actions takes -2 on every task for each
+additional action when the combination is physically possible. Actions that
+must occur at the same instant from separate stations require separate people,
+a station team, or applicable automation.
+
 Once an action is committed, its roll is made once. Refreshing a screen,
 disconnecting, reconnecting, or retrying the same command cannot reroll it.
 Commands that spend money, consume supplies, move property, accept obligations,
@@ -112,12 +173,34 @@ creation, service, and recovery rules.
 
 ### Creating a command
 
-A new player distributes the displayed characteristic budget, selects skills
-from the offered slots, chooses one training target, selects a career offer,
-names and fits the ship, and reviews its named crew. The complete displayed
-budget must be spent, and every default shown during creation is legal. Captain,
-ship, crew, title, finance, and starting stores are created together only
-after final confirmation.
+A new captain has six characteristic scores from 2 through 12. Begin each at
+7 and distribute exactly 12 points among them; equivalently, the six final
+scores must total 54. A captain then selects three different skills at level
+2, six at level 1, and three at level 0. Jack of All Trades can be selected
+only at level 1 or 2. The captain also chooses one existing non-Jack skill as
+the initial training course.
+
+Every home polity offers one independent-trader command, one privateer
+command, and one naval command. The actual hull, fit, title, reserves,
+obligations, authority, and exit terms shown with an offer are part of that
+offer. A displayed endurance refit converts ten tons of cargo capacity into
+ten tons of permanent fuel capacity; it is offered only when the hull has ten
+tons available to convert.
+
+Initial crew roles are fixed by the chosen fitted ship. Each initial crew
+package assigns the characteristic array 10, 9, 8, 8, 7, and 6 to suit its
+role and contains two skills at level 2, four at level 1, and three at level
+0. The player names each person and selects one of that person's existing
+non-Jack skills for training; creation does not rewrite the role package.
+Captain, ship, crew, title, finance, and starting stores are created together
+only after final confirmation.
+
+Initial trader crew are salaried; initial privateer crew have the same monthly
+salary plus a 5% prize-share term; naval crew are institutionally supplied.
+The salary basis is Cr1,000 per represented position each accounting month.
+The recorded individual privateer share is not currently deducted or
+distributed by prize settlement; only the aggregate crew share of a Pirate
+cruise has a settlement effect.
 
 Named officers, leaders, and senior specialists have individual records.
 Large supporting establishments can be represented as position teams. A team
@@ -131,17 +214,52 @@ Assignments must cover the positions an operation requires. Injury, fatigue,
 absence, shore location, treatment, and inadequate team strength can reduce or
 remove a person's contribution.
 
-Off-watch personnel receive full rest. On-watch personnel heal at the active
-lifestyle rate; serious wounds improve naturally only during full rest.
-Fatigue applies a condition penalty and can make a person unconscious. First
-aid, surgery, inpatient care, and ordinary natural recovery are distinct and
-require their stated time, skill, and facility.
+Physical damage reduces current END first. Further damage is spread among the
+remaining nonzero STR, DEX, and END values. A person with any two of those
+three values at zero is unconscious; a person with all three at zero is dead.
+Someone below the normal value of all three physical characteristics is
+seriously wounded. Injury changes the characteristic used by a physical task,
+and any fatigue applies a further -2 condition DM. Fatigue 2 incapacitates the
+person.
+
+Recovery is checked once per game day. Full rest clears the coarse fatigue
+counter. A wounded person at full rest naturally restores **1D6 + current END
+DM** characteristic points; an active person restores **1 + current END DM**.
+A serious wound receives no natural recovery while active and, at full rest,
+restores only **current END DM**; a negative result can worsen the wound.
+Facility medical care restores **2 + current END DM + (facility Medical rating
+- 1)** points per day and costs Cr5,000 for each point actually restored.
+
+First aid is an Average EDU/Medicine task that must be attempted within one
+game hour of injury and only once for those wounds. Positive Effect restores
+that many characteristic points, doubled when aid begins within five minutes.
+Surgery is available only to a seriously wounded living patient at a Medical-3
+facility. It is an Average EDU/Medicine task with +1 equipment DM, takes 1D6
+hours, restores twice its positive Effect with a minimum of two points on
+success, and inflicts the negative Effect as damage on failure. It costs
+Cr5,000 per point restored. Inpatient care and shore leave can each be booked
+for one through 30 days.
 
 Crew service is physical and contractual. Wages fall due monthly. If available
 cash cannot cover the whole payroll, payment is divided proportionally rather
 than favoring the first roster entry. Individual arrears persist and reduce
-morale. Shore leave, recall, treatment, reassignment, and discharge occur at a
-real facility; a ship that departs does not carry someone left ashore.
+morale by 10 each unpaid month; clearing prior arrears restores 5 morale.
+
+Morale 60-100 is Steady, 40-59 Uneasy, 20-39 Disaffected, 1-19 Defiant, and 0
+Broken. Disaffected service applies -1 to discretionary crew tasks; Defiant or
+Broken service applies -2. A salaried or prize-share crewmember at a port has
+a daily **20 - morale** percent chance to quit when morale is below 20. Recorded
+wage arrears remain a service claim after departure.
+
+Loyalty and risk tolerance are separate 0-100 service records. They describe
+the person's relationship to the command and appetite for danger, but the
+current rules attach no independent task DM, desertion roll, or automation
+override to either value; morale and arrears supply the active modifiers above.
+
+Completed shore leave restores 5 morale; early recall costs 5 morale. Recall,
+treatment, reassignment, transfer, and discharge occur at a real shared
+facility; a ship that departs does not carry someone left ashore. A newly
+hired specialist's monthly salary is **Cr1,000 x (1 + skill level)^2**.
 
 ### Skill training
 
@@ -172,26 +290,281 @@ Trader's 3D universe and facility records.
 The map is three-dimensional and distances are measured in parsecs. There are
 no navigation hexes or subsectors. Each stellar component is a separate
 system and can contain stars, planets, moons, belts, gas giants, ports, and
-other operational loci. A primary world retains a Universal World Profile,
-trade codes, starport class, population, law, and technology data.
+other operational loci. One planet, moon, habitat, or belt is the system's
+**primary world** for interstellar records and commerce; it can be
+uninhabited. Other bodies can have their own settlements and facilities, but
+they do not replace the primary world's profile.
+
+A **polity** is the named interstellar authority associated with a system and
+its service institutions. It is separate from the primary world's Government
+code, which describes that world's broad internal form, and from the
+Chaos-Order and Trade-Combat orientations defined under traffic.
 
 Charts are observations. A captain knows only systems and details carried by
 the ship's records or received through survey and mail. Empty surveyed space
 is also knowledge: it prevents a resolved volume from being rerolled merely
 because another captain arrives later.
 
-### Technology, law, and services
+### Universal World Profile
+
+A **Universal World Profile**, or **UWP**, is the primary world's compact set
+of social and physical characteristics. Traditional compact notation puts the
+starport first, then six world codes, a hyphen, and Technology Level:
+
+**Starport-Size-Atmosphere-Hydrographics-Population-Government-Law-TL**
+**A867945-C**, for example, means a Class A port, Size 8, Atmosphere 6,
+Hydrographics 7, Population 9, Government 4, Law 5, and TL12. The separators
+between the first seven fields are omitted in an actual compact profile. Codes
+10 through 15 can be written A through F, but Cepheus Trader's screens
+ordinarily show labeled decimal values instead of requiring the captain to
+decode a single line.
+
+| Field | What the code establishes | Direct game relevance |
+| --- | --- | --- |
+| Starport | Broad capability of the primary port, from A to E or X | Baseline fuel, repair, medical, yard, market, and office availability |
+| Size | World diameter and approximate surface gravity, 0-10 | Helps determine atmosphere, water, population, TL, and trade codes |
+| Atmosphere | Pressure, composition, and habitability, 0-15 | Helps determine water, population, minimum TL, and trade codes |
+| Hydrographics | Surface water coverage, 0-10 | Helps determine population, minimum TL, and trade codes |
+| Population | Order of magnitude of inhabitants, 0-10 | Affects port class, government, traffic, markets, and trade codes |
+| Government | Broad form of local government, 0-15 | Affects Law Level and TL; authority itself is recorded separately |
+| Law | Restrictiveness and enforcement environment, 0-15 | Affects cargo legality, customs, tariffs, clearance, and enforcement |
+| TL | Local scientific and manufacturing capability | Limits locally manufactured ships, components, repairs, and other work |
+
+The profile is generated in dependency order. Size is **2D6-2**. Atmosphere is
+**2D6-7 + Size**; Hydrographics is **2D6-7 + Size** with penalties for hostile
+atmospheres; and Population is **2D6-2** with modifiers for Size, Atmosphere,
+and Hydrographics. Population then modifies Starport and Government,
+Government modifies Law, and the entire profile modifies TL. Values are
+limited to their stated code ranges. A Population-0 world also has Government
+0, Law 0, and TL0. Resolving or revisiting a system does not reroll its accepted
+profile.
+
+### Physical world codes
+
+Size is a diameter code, not a mass or a count of worlds. The gravity values
+are broad surface comparisons used to give the code physical meaning.
+
+| Size | Approximate diameter | Approximate gravity |
+| ---: | ---: | ---: |
+| 0 | 800 km or an asteroid body | Negligible |
+| 1 | 1,600 km | 0.05g |
+| 2 | 3,200 km | 0.15g |
+| 3 | 4,800 km | 0.25g |
+| 4 | 6,400 km | 0.35g |
+| 5 | 8,000 km | 0.45g |
+| 6 | 9,600 km | 0.70g |
+| 7 | 11,200 km | 0.90g |
+| 8 | 12,800 km | 1.00g |
+| 9 | 14,400 km | 1.25g |
+| 10 | 16,000 km | 1.40g |
+
+Atmosphere describes the conditions at the inhabited world's reference
+surface. Tainted air requires a filter; very thin air requires a respirator;
+exotic air requires an independent air supply; and vacuum, corrosive, or
+insidious conditions require a sealed suit. Planetary excursion and personal
+survival procedures are outside the current game, but these codes still
+determine population, technology minimums, and trade classifications.
+
+| Atmosphere | Meaning | Ordinary protection indicated |
+| ---: | --- | --- |
+| 0 | None | Sealed suit |
+| 1 | Trace | Sealed suit |
+| 2 | Very thin, tainted | Respirator and filter |
+| 3 | Very thin | Respirator |
+| 4 | Thin, tainted | Filter |
+| 5 | Thin | None |
+| 6 | Standard | None |
+| 7 | Standard, tainted | Filter |
+| 8 | Dense | None |
+| 9 | Dense, tainted | Filter |
+| 10 | Exotic | Independent air supply |
+| 11 | Corrosive | Sealed suit |
+| 12 | Insidious | Sealed suit; the environment also attacks equipment |
+| 13 | Dense at low altitude, breathable only in suitable highlands | Habitat-dependent |
+| 14 | Thin at altitude, breathable only in suitable lowlands | Habitat-dependent |
+| 15 | Unusual | Varies |
+
+Hydrographics measures the percentage of the surface covered by liquid. Code
+0 means 0%-5%; codes 1 through 9 mean 6%-15%, 16%-25%, and so on in ten-point
+bands; code 10 means 96%-100%. Size 0 and Size 1 worlds have Hydrographics 0.
+Atmospheres 0, 1, and 10-12 apply -4 to generation, while Atmosphere 14 applies
+-2.
+
+### Population and government
+
+Population is an order-of-magnitude code. It is not the number of people and
+does not describe how evenly they are distributed.
+
+| Population code | Broad population | Base order of magnitude |
+| ---: | --- | ---: |
+| 0 | Uninhabited | 0 |
+| 1 | A few people | 10 |
+| 2 | Hundreds | 100 |
+| 3 | Thousands | 1,000 |
+| 4 | Tens of thousands | 10,000 |
+| 5 | Hundreds of thousands | 100,000 |
+| 6 | Millions | 1,000,000 |
+| 7 | Tens of millions | 10,000,000 |
+| 8 | Hundreds of millions | 100,000,000 |
+| 9 | Billions | 1,000,000,000 |
+| 10 | Tens of billions | 10,000,000,000 |
+
+An inhabited primary world also has a Population Multiplier from 1 through
+10. Its estimated inhabitants are **Population Multiplier x 10 raised to the
+Population code**. Thus multiplier 4 and Population 8 mean about 400,000,000
+people. The multiplier is zero on an uninhabited world. The code, rather than
+that estimate, is used for traffic, trade-code, and profile calculations.
+
+Population generation receives -1 for Size 0-2, -2 for Atmosphere 10 or more,
++3 for Atmosphere 6, +1 for Atmosphere 5 or 8, and another -2 when
+Hydrographics is 0 and Atmosphere is below 3. The final code is limited to
+0-10.
+
+Government is a broad description of the primary world's governing system. It
+does not by itself grant a captain authority, allegiance, citizenship, rank,
+or immunity.
+
+| Government | Broad form |
+| ---: | --- |
+| 0 | None |
+| 1 | Company or corporation |
+| 2 | Participating democracy |
+| 3 | Self-perpetuating oligarchy |
+| 4 | Representative democracy |
+| 5 | Feudal technocracy |
+| 6 | Captive government |
+| 7 | Balkanized governments |
+| 8 | Civil-service bureaucracy |
+| 9 | Impersonal bureaucracy |
+| 10 | Charismatic dictator |
+| 11 | Non-charismatic leader |
+| 12 | Charismatic oligarchy |
+| 13 | Religious dictatorship |
+| 14 | Religious autocracy |
+| 15 | Totalitarian oligarchy |
+
+On an inhabited world, Government is **2D6-7 + Population**, limited to 0-15.
+Law is then **2D6-7 + Government**, also limited to 0-15. Government 0 forces
+Law 0.
+
+### Starport class and baseline services
+
+Starport class is generated from **2D6-7 + Population**: 2 or less is X, 3-4
+is E, 5-6 is D, 7-8 is C, 9-10 is B, and 11 or more is A. The class creates
+the primary facility's baseline, shown below. These are starting capabilities,
+not promises that capacity remains open: damage, occupation, missing stock,
+local events, and later development can change a particular facility.
+
+| Class | Broad quality | Fuel sold | Repair and yard baseline | Other baseline services |
+| --- | --- | --- | --- | --- |
+| A | Excellent | Refined and unrefined | Repair shop; yard up to 100,000 tons; medical 3 | Chandlery, ordnance, personnel, banking, inhabited-world authority office |
+| B | Good | Refined and unrefined | Repair shop; yard up to 20,000 tons; medical 3 | Chandlery, ordnance, personnel, banking, inhabited-world authority office |
+| C | Routine | Unrefined | Repair shop; yard up to 5,000 tons; medical 2 | Chandlery, ordnance, personnel, banking, inhabited-world authority office |
+| D | Poor | Unrefined | No repair shop or yard; medical 1 | Chandlery, banking, inhabited-world authority office |
+| E | Frontier | None | No repair shop or yard; medical 0 | Inhabited-world authority office only |
+| X | No operational primary port | None | None | None |
+
+The class also sets the amount of ordinary daily market stock before purchases
+consume it. Common-stock lots are 6D at A, 4D at B, 2D at C, 1D at D or E,
+and zero at X. Each common lot is 2D x 10 tons at A and 1D x 10 tons elsewhere.
+Other trade-stock lots are 4D at A, 3D at B, 2D at C, 1D at D or E, and zero
+at X; each commodity supplies its own lot-size roll.
+
+### Technology Level
 
 Technology Level measures local scientific and manufacturing capability. It
 does not guarantee a facility, stock, trained labor, authority, or parts.
 Imported equipment can exceed local TL, while a damaged or absent yard can
 make locally understood work unavailable.
 
-Law Level governs prohibited and restricted goods and contributes to customs
-and enforcement. During a compliant customs inspection, prohibited ordinary
-cargo is confiscated and a fine of 10% of its base value is collected, limited
-by the credits currently available. Restricted cargo remains aboard after a
+| TL | Broad local capability |
+| ---: | --- |
+| 0 | No technological base; uninhabited worlds have TL0 |
+| 1-3 | Primitive technology through early steam-powered industry |
+| 4-6 | Industrial technology through electrification, combustion, fission, and increasingly capable computers |
+| 7-8 | Reliable orbital flight, followed by practical travel within the stellar system |
+| 9 | Gravity technology and the first steps toward Jump; the lowest TL in the current vessel catalogue |
+| 10-11 | Early interstellar technology and increasingly autonomous computers |
+| 12-14 | Mature interstellar technology, planetary engineering, armor, computers, and weapons |
+| 15 or more | High stellar technology |
+
+For an inhabited world, TL begins with **1D6**. Apply +6 for Starport A, +4
+for B, +2 for C, and -4 for X. Apply +2 for Size 0-1 or +1 for Size 2-4; +1
+for Atmosphere 0-3 or 10-15; +1 for Hydrographics 0 or 9 or +2 for 10; +1
+for Population 1-5 or 9 or +2 for Population 10; and the Government modifier
++1 at 0 or 5, +2 at 7, or -2 at 13-14.
+
+Hostile environments impose minimums needed to sustain the recorded
+population: TL4 for Hydrographics 0 or 10 with Population 6 or more; TL5 for
+Atmosphere 4, 7, or 9; and TL7 for Atmosphere 0-3, Atmosphere 10-12, or an
+Atmosphere 13-14 world with Hydrographics 10. Use the rolled result or the
+applicable minimum, whichever is higher.
+
+### Trade codes
+
+Trade codes are classifications derived from the UWP, not additional random
+traits. A world can have several. Cepheus Trader uses the following codes in
+its commodity market:
+
+| Code | Classification | UWP requirement |
+| --- | --- | --- |
+| Ag | Agricultural | Atmosphere 4-9, Hydrographics 4-8, Population 5-7 |
+| As | Asteroid | Size 0, Atmosphere 0, Hydrographics 0 |
+| Fl | Fluid Oceans | Atmosphere 10+, Hydrographics 1+ |
+| Ga | Garden | Size 6-8, Atmosphere 5, 6, or 8, Hydrographics 5-7 |
+| Hi | High Population | Population 9+ |
+| Ht | High Technology | TL12+ |
+| Ic | Ice-Capped | Atmosphere 0-1, Hydrographics 1+ |
+| In | Industrial | Atmosphere 0-2, 4, 7, or 9 and Population 9+ |
+| Na | Non-Agricultural | Atmosphere 0-3, Hydrographics 0-3, Population 6+ |
+| Ni | Non-Industrial | Population 4-6 |
+| Po | Poor | Atmosphere 2-5, Hydrographics 0-3 |
+| Ri | Rich | Atmosphere 6 or 8, Population 6-8 |
+| Va | Vacuum | Atmosphere 0 |
+
+Each non-common commodity names up to two favorable purchase codes and two
+favorable sale codes. If several listed codes match the world, only the
+strongest applicable DM is added on each side of the negotiation. A code
+therefore changes the chance of reaching a purchase or sale outcome; it does
+not multiply the price by itself. Common Goods have no trade-code DM.
+
+### Law, legality, and services
+
+Law Level 0 means no general legal restrictions. Levels 1-3 are low law, 4-6
+medium law, 7-9 high law, and 10 or more extreme law. The number is used
+directly; the band is only a description. A higher Law Level increases the
+ordinary enforcement and customs environment, while a captain's actual
+authority still comes from government service, a commission, a warrant, a
+lawful order, or immediate necessity as described later in these rules.
+
+The commodity catalogue assigns a restriction threshold to seven controlled
+goods. At the threshold the good is **restricted**. Three Law Levels above the
+threshold it becomes **prohibited**.
+
+| Commodity | Restricted at | Prohibited at |
+| --- | ---: | ---: |
+| Personal Weapons and Armor | Law 2-4 | Law 5+ |
+| Military Supplies | Law 3-5 | Law 6+ |
+| Liquor and Other Intoxicants | Law 5-7 | Law 8+ |
+| Gambling Equipment | Law 6-8 | Law 9+ |
+| Live Animals | Law 7-9 | Law 10+ |
+| Pharmaceuticals | Law 8-10 | Law 11+ |
+| Cybernetics | Law 9-11 | Law 12+ |
+
+All other catalogued commodities are ordinarily legal regardless of Law
+Level. Local events, a warrant, task terms, or an authority order can still
+govern a particular lot. Law 8 or more also makes clearance a baseline
+requirement at the primary port. The ordinary market tariff is 5% plus 0.5%
+per Law Level.
+
+During a compliant customs inspection, prohibited ordinary cargo is
+confiscated and a fine of 10% of its base value is collected, limited by the
+credits currently available. Restricted cargo remains aboard after a
 compliant inspection unless another displayed rule or order says otherwise.
+Any unpaid part of the assessment becomes a warrant with a bounty equal to
+that balance. Refusing a lawful Inspection or Military encounter with any
+posture except Comply or Surrender begins vessel combat and files one
+Cr10,000, perfect-evidence refusal warrant in that system.
 
 Every port service comes from a persistent facility. A menu, map, or high TL
 does not create a bank, yard, hospital, authority office, fuel source, berth,
@@ -215,13 +588,38 @@ D66 and rerolling 66. Stock is finite, shared, and persistent for a system and
 day. Looking at the exchange does not reroll or reserve stock; buying consumes
 it.
 
-Quotes depend on the commodity base value, local trade codes, market events,
-tariffs, and the captain's Broker skill and CHA. Purchase negotiations use
-80%, 90%, 100%, or 120% of base price before local adjustments. Sale outcomes
-use base price plus 30%, 15%, 2%, or 0% before local adjustments. When the
-exchange both stocks and buys an item, its ordinary bid is capped below its
-ask, so immediate unloading cannot manufacture profit. A separately reserved
-private buyer can cross that public spread.
+The captain's ordinary purchase and sale negotiations each roll:
+
+**2D6 + Broker + CHA DM + strongest applicable trade-code DM - 2**
+
+Compare that total with 8 and use its Effect:
+
+| Effect | Purchase price before events and tariff | Sale price before events and tariff |
+| ---: | ---: | ---: |
+| 6 or more | 80% of base | 130% of base |
+| 0 through 5 | 90% of base | 115% of base |
+| -5 through -1 | 100% of base | 102% of base |
+| -6 or less | 120% of base | 100% of base |
+
+The local tariff is added to the purchase price and deducted from the sale
+price, with fractions rounded against the trader: purchases round up and
+sales round down. A shortage moves both price outcomes one tier higher; a
+surplus moves both one tier lower; a shipping disruption moves only purchases
+one tier higher; and a market recovery changes stock without shifting a price
+tier. When the exchange both stocks and buys an item, its ordinary bid is
+capped at least Cr1 below its ask, so immediate unloading cannot manufacture
+profit. A separately reserved private buyer can cross that public spread.
+
+| Event | Stock | Purchase tier | Sale tier | Duration |
+| --- | ---: | ---: | ---: | ---: |
+| Shortage | 50% | +1 | +1 | 7-21 days |
+| Surplus | 150% | -1 | -1 | 7-21 days |
+| Shipping disruption | 50% | +1 | 0 | 7-21 days |
+| Market recovery | 125% | 0 | 0 | 7-21 days |
+
+On each market day a system has a 1-in-37 chance to begin one such event for
+one catalogued commodity. Its agency notice must still reach a remote captain
+through ordinary mail.
 
 Price landmarks show the absolute universe-wide span for that commodity, not
 the odds of receiving a particular quote. Low purchase prices and high sale
@@ -233,18 +631,89 @@ has an owner, commodity, quantity, physical ship or facility, and provenance.
 Speculative cargo belongs to the captain's estate; freight belongs to its
 principal. Splitting a transaction cannot duplicate credits or cargo.
 
+Quantities are retained to 0.001 ton. A purchase's final total rounds up to a
+whole credit; a sale's final proceeds round down. Speculative cargo can be sold
+in its origin system, but the bid/ask rule normally makes that an immediate
+loss.
+
+### Commodity reference
+
+The following is the complete generic commodity catalogue. A lot expression
+such as `2D x 5 tons` means roll two dice and multiply their sum by five tons.
+The purchase and sale columns give the trade-code DMs used by the negotiation;
+only the strongest matching DM on each side applies. Common Goods use the
+starport-dependent lot rules given under Starport class and have no trade-code
+DM.
+
+| D66 | Commodity | Base Cr/ton | Trade lot | Purchase DMs | Sale DMs |
+| --- | --- | ---: | ---: | --- | --- |
+| Common | Basic Consumable Goods | 1,000 | Starport lot | -- | -- |
+| Common | Basic Electronics | 25,000 | Starport lot | -- | -- |
+| Common | Basic Machine Parts | 10,000 | Starport lot | -- | -- |
+| Common | Basic Manufactured Goods | 20,000 | Starport lot | -- | -- |
+| Common | Basic Raw Materials | 5,000 | Starport lot | -- | -- |
+| Common | Basic Unrefined Ore | 2,000 | Starport lot | -- | -- |
+| 11 | Electronics | 100,000 | 1D x 5 tons | Ht +1, In +2 | Ni +1, Po +1 |
+| 12 | Sporting Equipment | 5,500 | 2D x 5 tons | In +2, Ri +2 | Hi +2, Ni +2 |
+| 13 | Agricultural Equipment | 150,000 | 1D tons | In +2, Ri +1 | Ag +2, Ga +1 |
+| 14 | Animal Products | 1,500 | 4D x 5 tons | Ag +1, Ga +2 | Hi +1, Ri +2 |
+| 15 | Collectibles | 50,000 | 1D tons | In +1, Ri +2 | Hi +1, Ni +1 |
+| 16 | Computers and Handcomps | 150,000 | 2D tons | Ht +2, In +1 | Na +1, Ni +1 |
+| 21 | Crystals and Gems | 20,000 | 1D x 5 tons | Ni +2, Na +1 | In +1, Ri +1 |
+| 22 | Cybernetics | 250,000 | 1D x 5 tons | Ht +2, Ri +1 | Na +1, Ni +1 |
+| 23 | Food Service Equipment | 4,000 | 2D tons | In +2, Na +1 | Ag +1, Ni +1 |
+| 24 | Furniture | 5,000 | 4D tons | Ag +1, Ga +2 | Hi +1, Ri +2 |
+| 25 | Gambling Equipment | 4,000 | 1D tons | Hi +1, Ri +1 | Na +1, Ni +1 |
+| 26 | Vehicles | 160,000 | 1D tons | Ht +2, Ri +1 | Ni +2, Po +1 |
+| 31 | Grocery Products | 6,000 | 1D x 5 tons | Ag +3, Ga +2 | Hi +1, Ri +2 |
+| 32 | Household Appliances | 12,000 | 4D tons | Hi +2, In +3 | Na +1, Ni +2 |
+| 33 | Industrial Supplies | 75,000 | 2D tons | In +3, Ri +2 | Na +1, Ni +2 |
+| 34 | Liquor and Other Intoxicants | 15,000 | 1D x 5 tons | Ag +2, Ga +1 | In +1, Ri +2 |
+| 35 | Luxury Goods and Rarities | 150,000 | 1D tons | Ag +1, Ga +2 | In +1, Ri +2 |
+| 36 | Manufacturing Equipment | 750,000 | 1D x 5 tons | In +2, Ri +2 | Na +1, Ni +2 |
+| 41 | Medical Equipment | 50,000 | 1D x 5 tons | Ht +2, Ri +2 | Hi +1, In +2 |
+| 42 | Petrochemicals | 10,000 | 2D x 5 tons | Na +2, Ni +2 | Ag +1, In +2 |
+| 43 | Pharmaceuticals | 100,000 | 1D tons | Ht +3 | In +2, Ri +1 |
+| 44 | Polymers | 7,000 | 4D x 5 tons | In +2, Ri +1 | Ni +2, Va +1 |
+| 45 | Precious Metals | 50,000 | 1D tons | As +3, Ic +2 | In +1, Ri +2 |
+| 46 | Radioactive Ore | 1,000,000 | 1D tons | As +2, Ni +3 | In +2, Ht +1 |
+| 51 | Robots and Drones | 500,000 | 1D x 5 tons | Ht +3, In +2 | Ni +1, Ri +2 |
+| 52 | Scientific Equipment | 50,000 | 1D x 5 tons | Ht +3, Ri +2 | Hi +2, Ni +1 |
+| 53 | Survival Gear | 4,000 | 2D tons | Ga +2, Ri +2 | Fl +2, Va +1 |
+| 54 | Textiles | 3,000 | 3D x 5 tons | Ag +3, Ni +2 | Na +1, Ri +2 |
+| 55 | Construction Supplies | 20,000 | 2D x 5 tons | Ag +3, Ni +2 | In +2, Na +1 |
+| 56 | Raw Materials | 20,000 | 2D x 5 tons | As +2, Va +1 | In +2, Na +1 |
+| 61 | Live Animals | 25,000 | 5D x 5 tons | Ag +3, Ga +2 | Hi +1, In +2 |
+| 62 | Children's Toys | 5,000 | 2D x 5 tons | In +2, Ri +2 | Hi +2, Ni +1 |
+| 63 | Medical Laboratory Equipment | 50,000 | 1D x 5 tons | Ht +2, Ri +3 | In +2, Na +2 |
+| 64 | Military Supplies | 150,000 | 2D tons | Ht +3, In +2 | Hi +2, Ni +2 |
+| 65 | Personal Weapons and Armor | 30,000 | 2D tons | In +3, Ri +2 | Ni +2, Po +2 |
+
 ### Research and reservations
 
-Supplier or buyer research takes one to six game hours and assigns a named
-person and method. A hired local Broker costs Cr500, supplies Broker-2 for the
-search, and normally reports in one to three hours; the named crewmember
-remains liaison.
+Physical canvassing and online research take one to six game minutes. A black-
+market search takes six to 24 minutes and applies -1 to the task. A hired local
+Broker costs Cr500, supplies Broker-2, and reports in one to three minutes; the
+named crewmember remains liaison. Physical, black-market, and hired searches
+use CHA; online research uses INT and Computer. All other searches use Broker.
+The assigned crewmember must be fit and on watch.
+
+Research is an Average task. Effect below -5 produces no reliable lead.
+Otherwise a commodity-specific supplier or buyer search records confidence
+**70% + three times Effect**, limited to 40%-100%. Its quoted price and
+quantity range is the underlying result plus or minus **25 - Effect** percent,
+limited to a spread of 5%-30%. The finite lead quantity is the observed
+quantity multiplied by **100% + three times Effect**, with Effect limited to
+-5 through +10.
 
 A completed lead records a finite quantity, price range, source, observation
 date, confidence, expiry, and revision. Reserving it places 10% of estimated
 value in escrow. Release or expiry does not refund that opportunity payment.
-The reservation can therefore be lost, and old intelligence cannot be reused
-as infinite stock.
+An unreserved lead expires after seven game days. A reservation's displayed
+expiry is three game days after it is made. Reservations are for a positive
+whole-ton quantity no greater than the lead's finite quantity. The reservation
+can therefore be lost, and old intelligence cannot be reused as infinite
+stock.
 
 ### Carriage and tasks
 
@@ -255,11 +724,55 @@ and brokerage, then loads those exact offers if they remain valid. Freight is
 a titled physical lot; passengers occupy actual eligible accommodation; mail
 uses the declared route but never causes a voyage.
 
+Standing carriage pays by billed route hop. The current offer generator treats
+each edge in the operational route as one billed parsec even when its 3D
+length differs, and the displayed signed offer controls. A regular passenger
+needs one uncommitted passenger berth; low passage needs one low berth. High
+and middle passengers require someone aboard with Etiquette, and low
+passengers require someone aboard with Medicine.
+
+| Carriage | Gross rate |
+| --- | ---: |
+| Freight | Cr3,500 per ton per billed route hop |
+| High passage | Cr25,000 per passenger per billed route hop |
+| Middle passage | Cr10,000 per passenger per billed route hop |
+| Steerage | Cr5,000 per passenger per billed route hop |
+| Low passage | Cr2,000 per passenger for the passage |
+
+The ledger supports all four ordinary classes, but the current local offer
+generator emits Middle passage only. Charters use the High rate and couriers
+use their signed special rate; no ordinary generated offer presently emits
+High, Steerage, or Low passage.
+
+The departure preview is authoritative: it names the offers, occupied
+capacity, gross revenue, brokerage, and revision that commit will use. If an
+offer or its revision changes first, departure is rejected for a fresh
+preview instead of loading a different manifest. Each selected freight offer
+also charges a stable brokerage of Cr100-Cr300 per whole ton, derived from that
+offer; passage has no additional brokerage.
+
 Other offers become durable Tasks. Current types include freight, passage,
 purchase orders, forward sales, supply commitments, charters, couriers, and
 bounties. Each offer states closing time, origin, destination, performing
 capacity, collateral, payment, deadline, failure penalty, and whether partial
 performance is allowed.
+
+Generated offers are local work routed through nearby settled systems. Their
+normal delivery deadline is **14 days + 7 days per route hop** after issue.
+Freight offers are 5-30 tons and pay Cr3,500 per ton per hop; middle-passage
+offers carry 1-6 travelers at Cr10,000 each per hop. Purchase orders pay
+Cr6,000 per ton per hop, forward sales Cr7,000, and four-performance supply
+commitments Cr12,000. Charters pay high-passage rates, couriers Cr30,000 per
+hop, and combat bounties Cr50,000 per hop. Route scarcity and active local
+events can adjust the displayed payment, so the signed offer always controls.
+
+During an eligible passenger grace period, late payment deductions equal 10%
+of the offered payment for each started late day, never more than the payment.
+Ordinary passengers have three days of grace; charters and couriers have one.
+Other generated work has no late-delivery grace. Partial purchase,
+forward-sale, and supply terms pay the delivered fraction. Freight and
+passenger terms require the full consignment unless their signed offer
+expressly says otherwise.
 
 A local claim at its issuing office can be awarded immediately. A remote claim
 is a signed message that must physically reach that office. Capacity and
@@ -275,18 +788,76 @@ collateral return only when the remittance reaches the captain. Late,
 incomplete, cancelled, returned, defaulted, and disputed work follow the terms
 shown in the Task ledger; restart cannot duplicate payment or release.
 
+Before custody transfers, an unresolved claim may be withdrawn and an awarded
+task may be cancelled without performance liability. After loading, entrusted
+cargo or passengers can be returned only while docked at the origin. Default
+forfeits collateral and assesses the displayed failure penalty plus capped
+non-delivery liability, but never takes more liquid credits than are present.
+A dispute requires written grounds and remains an obligation while its sealed
+filing travels to the issuing office.
+
 ### Finance and title
 
 An independent trader purchase begins with 20% equity and 80% secured debt.
-Monthly principal is purchase price divided by 240, paid over a 480-month
-schedule; mandatory insurance is separate. A missed principal or insurance
-installment has one accounting month of grace before default action.
+Monthly principal is purchase price divided by 240, rounded up, and continues
+each accounting month until the recorded principal reaches zero; mandatory
+insurance is separate. A missed principal or insurance installment has one
+accounting month of grace before default action.
+
+For a non-naval command, annual mandatory insurance is **1.02% of purchase
+price, rounded up, + Cr15,000**; its monthly escrow is that amount divided by
+12, rounded up. Principal and
+insurance are paid together every 30 game days. Restricted operating credit
+may cover the insurance portion, but only liquid funds can reduce a trader's
+secured principal.
 
 Privateer vessels are sponsor-owned and naval vessels are institution-owned.
 Restricted operating credit pays authorized vessel expenses before liquid
 cash and can pay required insurance, but it does not pay secured principal,
 private trade, collateral, private messages, fines, or other personal costs.
 Command, possession, title, and debt are separate facts.
+
+| Recorded vessel title | Meaning |
+| --- | --- |
+| Owned With Lien | Privately registered ownership subject to secured principal |
+| Owned Clear | Privately registered ownership with no secured principal |
+| Sponsor Owned | A private sponsor owns the vessel and grants command under terms |
+| Institution Owned | A navy or other public institution owns the issued command |
+| Prize Custody | The captor possesses the vessel while title awaits settlement |
+| Stolen Registry | Possession has no recognized lawful title |
+| Court Impound | A court or lender controls the vessel pending disposition |
+
+A naval captain can forge a positive ship-expense receipt no greater than the
+available service balance, moving that amount to personal cash immediately.
+All false receipts remain for the next accounting audit. Let **A** be their
+total, **N** their count, and **E** the legitimate authorized expenses that
+month. Detection percent is:
+
+**ceil(((5 x bit-length(A)) + min(10 x (N - 1), 20)) x
+(50 + floor(100 x A / (A + E))) / 100)**
+
+The result is limited to 1%-90%. Here bit-length is 1 for Cr1, 2 for Cr2-3,
+3 for Cr4-7, and so on. A detected audit files a forgery warrant at the
+captain's origin with bounty **max(2 x A, Cr100)**; the warrant then propagates
+normally by mail. Legitimate expense totals and pending receipt totals reset
+at the accounting boundary.
+
+When a grace period expires, the lender files a private impound order at the
+captain's origin. It is enforceable elsewhere only after the signed message
+arrives. Posting one overdue installment clears the default and sets the next
+due date one accounting month later. An irrecoverable bankruptcy petition is
+available only while docked and in default: the fleet is liquidated, a named
+successor receives a replacement command in the original starter class under
+a new lien, and the captain's career, legal, and estate history remains.
+
+Ship and crew exchanges are finite daily port markets. Ship offers can draw
+from every active Jump-capable catalog design that local TL can support; an
+offer that another buyer claims disappears. A used ship retains its actual
+age, use, damage, and any latent construction quirk, so advertised condition
+is not a diagnosis. Purchase settles price, trade-in, title, lien, condition,
+ordinary cargo, and assigned crew atomically. A trade-in is refused while the
+old vessel holds active Tasks, entrusted cargo, or passengers. Keeping it
+leaves its obligations and physical stores aboard that hull.
 
 ## Ship operation and condition
 
@@ -308,6 +879,24 @@ their berth support instead. Ammunition belongs to installed compatible
 weapons and is removed when fired. Departure rejects a known shortage rather
 than creating supplies through a background charge.
 
+Fuel and cargo transactions use 0.001-ton units, but dockside fuel is bought
+in positive whole tons. Refined fuel costs Cr500 per ton and unrefined fuel
+Cr100 per ton where the port table permits it. A tank can contain both; the
+unrefined portion is tracked so the Jump penalty follows the fuel actually
+burned.
+
+New ships begin with 30 person-days of provisions for every awake-accommodation
+place and can store at most 180 per place. One person-day is consumed daily by
+each represented living crewmember and awake passenger. A dockside monthly
+package costs Cr2,000 per ordinary or compact stateroom, Cr3,000 per crew
+berth or barracks allocation, Cr5,000 per high-class stateroom, Cr100 per low
+berth, and Cr100 per emergency-berth place.
+
+Ordinary berthing costs Cr100 for the first six game days, then Cr100 for each
+additional started day. The accrued charge must be clear before departure or
+yard work. Restricted operating credit is used first for authorized ship
+services.
+
 ### Routine upkeep, wear, and warranty
 
 Routine maintenance is continuing onboard work charged every 30 game days at
@@ -316,15 +905,36 @@ degradation; it does not heal combat damage, reset age, conceal a known defect,
 or replace a destroyed component. If it cannot be paid, the normal neglect
 check applies and arrears remain visible.
 
+The monthly charge is purchase price divided by 12,000, rounded up. On a
+missed cycle roll **2D6 + consecutive missed cycles**. A total below 8 adds no
+damage; on 8 or more a further 1D6 applies one hit on 1-3, two on 4-5, or
+three on 6 to an eligible installation. Paying a later routine charge prevents
+that month's check but does not erase existing neglect hits.
+
 Installations separately record calendar age, operating time, Jump and
 maneuver cycles, and stressful skimming cycles. Hidden construction quirks can
 manifest only through relevant use. Once manifested, their symptoms are
 reported; routine upkeep does not erase them.
 
-A component can carry a five-year or 200-transit warranty reference. Gas-giant
-skimming voids the ordinary new-ship warranty. A qualifying manifested defect
-can be removed without charge by a capable facility while coverage remains;
-warranty expiry does not itself cause a failure.
+A new ship carries ordinary warranty until either five years or 200 transits.
+Gas-giant skimming voids it. A qualifying defect can be removed without charge
+by a capable facility while coverage remains; warranty expiry does not itself
+cause a failure. A newly replaced component records a five-year component
+warranty date; a reconditioned replacement records one year.
+
+At a paid monthly maintenance boundary while docked at an operational Class
+A-C repair shop, each covered quirk is independently detected and removed on
+4-in-6 if it has manifested or 1-in-6 if it is still latent. Warranty coverage
+requires both the five-year date and 200-transit limit to remain unexpired and
+must not have been voided.
+
+Age and transit use take whichever is further through the five-year/200-
+transit reference. The first 20% is a declining shakedown-risk period, the
+ordinary useful-life risk is 20 chances per million per accounting month, and
+wear-out rises after 180% of the reference. Each gas-skimming cycle also counts
+as a transit for wear. These probabilities govern hidden defect attachment;
+ordinary status checks reveal symptoms only after a relevant use manifests
+them.
 
 ### Damage, repair, refit, and replacement
 
@@ -333,8 +943,10 @@ different operations.
 
 - A battlefield repair temporarily covers a sustained combat result and
   expires when the encounter ends.
-- A proper repair removes eligible underlying damage with required skill,
-  facility, time, and supplies; it does not change age or service history.
+- A proper repair removes eligible underlying damage at a capable facility.
+  It takes one game day per sustained hit, has no parts charge beyond accrued
+  berth because routine upkeep covers ordinary repair items, and does not
+  change age or service history.
 - A refit overhauls the ship, takes four to six game weeks, and costs four
   monthly maintenance payments. It clears eligible wear penalties but does
   not replace destroyed installations.
@@ -350,6 +962,16 @@ or replacement.
 Automatic recovery works in dependency-aware order: life support, maneuver
 drive, Jump drive, then weapons. Hull containment, power, bridge, fuel, or
 control work needed by a higher priority belongs to that priority.
+
+Proper repair requires an operational repair shop able to support the ship's
+TL. Refit yard limits are Class C for hulls through 800 tons, Class B through
+2,000 tons, and Class A above that, subject also to the port's published yard
+capacity. Only one yard activity can be active at a time. A refit clears
+repairable physical damage, temporary patches, neglect damage, and minor
+latent quirks; it retains hull and component age, usage counters, destroyed
+installations, and deeper component faults. New and reconditioned replacement
+quotes use the actual catalog component and give only the replaced component
+a new installation record and component warranty.
 
 ## Flight, fuel, and Jump
 
@@ -402,25 +1024,29 @@ answer.
 ### Jump range and fuel
 
 A Jump drive rating is the maximum parsecs in one Jump. Any positive
-sub-parsec Jump counts as Jump-1. Required fuel is:
+sub-parsec Jump counts as Jump-1, and every fractional distance rounds up to
+its Jump number for fuel and tape price. Required fuel is:
 
-**Jump fuel tons = 0.1 x hull displacement tons x leg distance in parsecs**
+**Jump fuel tons = 0.1 x hull displacement tons x Jump number**
 
 Jump can begin or end only outside the union of the 100-diameter exclusion
 zones of relevant massive bodies. Maneuver flight between a port and the
 legal Jump locus uses the ship's real thrust, position, time, and fuel rules.
 
-An onboard plot is an Easy EDU/Astrogation task modified by Jump number and
-plot age. A fresh commercial course tape costs Cr1,000 per Jump number and is
-sold only at Class-D-or-better ports for populated destinations. Initiation is
-an Average EDU/Engineer (Jump) task taking 10-60 seconds. Its Effect contributes
-to the Jump success result. Drive damage, known bad plots, unrefined fuel, and
-other displayed conditions apply normally.
+An onboard plot is an EDU/Astrogation task against 8 with an equipment DM of
+**4 - Jump number** and takes 1D6 kiloseconds. A failed plot normally holds the
+plan for recalculation; the captain may instead give explicit authority to use
+it, which makes the Jump an automatic misjump. A fresh commercial course tape
+skips that task, costs Cr1,000 per Jump number, and is sold only at an
+operational Class-D-or-better origin for a populated destination. Initiation
+is an Average EDU/Engineer (Jump) task taking 1D6 x 10 seconds. Its Effect
+contributes to the Jump success result. Drive damage and unrefined fuel apply
+normally.
 
 The Jump success total is:
 
-**2D6 + initiation Effect - plot age in months - 2 per Jump-drive hit - 2 if
-any Jump fuel burned is unrefined**
+**2D6 + initiation Effect - 2 per Jump-drive hit - 2 if any Jump fuel burned
+is unrefined**
 
 | Success total | Result |
 | --- | --- |
@@ -465,8 +1091,9 @@ electronic information must be physically carried by a ship. A report is not
 known at its destination until its signal or carrier arrives.
 
 Maintained Jump-locus beacons exchange sealed route-eligible mailbags with
-departing and arriving vessels and can pay a local carriage stipend. Accepting
-a mailbag never chooses or changes the vessel's route. News, offers, warrants,
+departing and arriving vessels. A direct carried hop pays **Cr100 + Cr1 per
+envelope** on delivery. Accepting a mailbag never chooses or changes the
+vessel's route. News, offers, warrants,
 market reports, and institutional replies keep their event, observation,
 dispatch, and arrival times; later local facts do not rewrite an old message.
 
@@ -488,6 +1115,16 @@ at Earth. Its award is Cr218,000. Competing filings are decided when they
 physically reach the adjudicating office, and the public notice begins its own
 outward carriage only after judgment.
 
+A valid filing includes canonical 3D position and distinguishing stellar
+observations, authenticated captain and discovering-ship identities,
+observation and dispatch times with custody and route provenance, and survey
+evidence of an established population rather than a transient ship, camp,
+cache, or new player base. The first valid receipt committed at Earth's
+repository wins; discovery time, dispatch time, arrival at another Federation
+office, and the claimant's return do not reserve priority. A public report
+starts at the source. An encrypted direct filing remains private in transit;
+if it wins, Earth originates the authoritative public notice.
+
 ## Traffic and encounters
 
 **Rules lineage:** Cepheus Engine encounter checks and opposed crew tasks;
@@ -501,6 +1138,13 @@ loci, and Jump departure loci. Ordinary interplanetary space is sparse unless
 a ship's actual trajectory makes contact or interception possible. Jump space
 contains no ordinary encounters.
 
+Scheduled route traffic is observable for one game hour before through one
+hour after its route edge. Local persistent traffic is assigned 55% to ports,
+30% to Jump loci, and 15% to other bodies; deep-space ships are visible only
+when their real trajectories supply a contact solution. Traffic volume follows
+population, starport, connectivity, route demand, and vessels capable of the
+route rather than a fixed encounter table.
+
 At an arrival checkpoint with **N** eligible nearby traffic vessels, the
 standard one-in-six candidate check is combined as:
 
@@ -511,11 +1155,59 @@ solution. Refreshing the arrival screen does not make another independent
 traffic roll. Sparse traffic follows persistent route schedules rather than
 appearing once per visitor.
 
+For each local contact, sensors roll:
+
+**2D6 + ship Electronics DM + target size DM - 2 per uncovered sensor hit**
+
+Size DM is -1 below 100 tons, +0 from 100-999 tons, +1 from 1,000-4,999 tons,
+and +2 at 5,000 tons or more. A total of 10+ identifies the vessel at
+**80% + 5% per point above 10**, maximum 100%. A total of 6-9 gives an
+approximate size class and tonnage at **45% + 10% per point above 6**,
+maximum 75%. A lower total provides only its transponder at 25% confidence.
+Approximate data does not reveal the hidden catalog design.
+
+Each polity also has two public 0-100 orientations: **Trade-Combat** describes
+commercial versus martial priorities, and **Chaos-Order** describes loose
+versus controlled administration. Neither replaces the world's Law Level.
+For traffic enforcement, local security is:
+
+**(Chaos-Order + 10 x min(Law Level, 10)) / 2**
+
 Strongly ordered systems more often challenge arrivals with customs or naval
 pickets. Pirate pickets favor uncontrolled arrival and frontier-fuel loci and
 retreat as traffic and enforcement make them untenable. A pirate compares the
 observed target with its own capability and can abandon a plainly disastrous
 intercept.
+
+### Encounter posture and fallback
+
+An arrival encounter first asks for Fight, Flee, Comply, Surrender, or Board
+posture and a set of Surrender, Abandon, Jettison Cargo, and Break Off
+fallbacks. Filed Flight Plan policy supplies those choices at a Through
+checkpoint. The default policy flees hostile contacts with Surrender fallback,
+complies with inspections, reports distress, and does not divert to assist.
+
+Routine non-hostile contact resolves by identification or the rule belonging
+to its kind. Complying with an Inspection applies the customs rule above.
+Complying with a hostile demand releases the ship; Surrender immediately loses
+the command. Other hostile postures resolve each kilosecond with:
+
+**captain total = 2D6 + highest of Pilot (Spacecraft), Tactics (Naval), or
+Gunner (Turrets) level + posture DM + intervention DM**
+
+The posture DM is +1 for Fight or Board and +2 for Flee. The opponent rolls
+2D6+2. Beginning on turn two in a Law-6-or-higher system, a 1-in-4 delayed law
+intervention gives the captain +3 for that turn. The captain succeeds by
+beating the opponent by at least 2: Flee escapes, Board secures the hostile as
+a prize, and Fight disables it.
+
+Otherwise the ship takes **1 + one hit per three full points by which the
+opponent leads**, applied to Hull and then Structure, and another turn is
+queued unless a fallback resolves it. Jettison Cargo drops half of every
+cargo lot and ends the encounter. At the end of turn four, Surrender fallback
+loses the command; without it, the hostile breaks away. Abandon and Break Off
+can be ordered, but the current encounter revision gives them no outcome
+distinct from that non-surrender fourth-turn breakaway.
 
 ### Interception and response
 
@@ -529,6 +1221,16 @@ A responder must then fly a feasible intercept. If it arrives before combat
 ends, it joins at that time; otherwise it can reach only pursuit, rescue,
 arrest, salvage, or aftermath. Computer and absent-player ships evaluate the
 same delayed, uncertain evidence available to a captain, not hidden truth.
+
+An armed intercept is legally authorized only by a locally received warrant
+associated with that vessel or by an accepted Naval Order or Privateer
+Commission naming that exact traffic contact. An arrest purpose is unavailable
+without the local warrant. A pirate lead or commission identifies prey and
+terms but does not legalize the attack. Any other armed intercept or boarding
+demand adds 10 public heat, files a 75%-evidence warrant, and changes an
+Independent captain's force-career record to Pirate. A berthed or landed
+background contact cannot be attacked directly; a player vessel can instead
+be watched for departure at the shared locus.
 
 ## Vessel combat
 
@@ -573,6 +1275,31 @@ Launch Escape Craft, Offer or Accept Surrender, and Inspect Contact. The
 available reaction priorities are Dodge, Point Defense, Fire Sand, Trigger
 Nuclear Damper, and Trigger Meson Screen.
 
+Every conscious active crewmember assigned to at least one station has one
+action budget for the turn. Where an action calls for a task, its target is 8.
+The actor, characteristic, and skill assignments are:
+
+| Action | Task |
+| --- | --- |
+| Coordinate; Increase Initiative | CHA/Leadership |
+| Evasive Maneuvers; Line Up Shot; Break Pursuit | current DEX/Pilot (Spacecraft) |
+| Close Range; Open Range; Prepare Jump | EDU/Astrogation |
+| Sensor Targeting; Inspect Contact | EDU/Communications |
+| Electronic Warfare | INT/Communications |
+| Damage Control | EDU/Mechanic |
+| Attack with turret or small mount | current DEX/Gunner (Turrets) |
+| Attack with a bay | current DEX/Gunner (Capital) |
+| Board | INT/Tactics (Military) assignment; the current boarding rounds do not apply this DM |
+
+Close and Open Range move one band on success. Break Pursuit uses the same
+open-range result. Inspect Contact creates the inspection evidence required by
+an inspection order only on success. Board is legal only at Adjacent range.
+Launch Escape Craft abandons the command; surrender completes only when the
+opposing side accepts. **Electronic Warfare and Prepare Jump currently reserve
+and record their station actions but apply no separate combat modifier or
+Jump-progress benefit. Boarding begins normally, but its listed actor's
+INT/Tactics DM likewise does not change the opposed boarding totals.**
+
 Successful Evasive Maneuvers applies -1 to incoming attacks, or -2 with Effect
 6 or more. Successful Line Up Shot and Sensor Targeting each applies +1 to
 attacks, or +2 with Effect 6 or more. Coordinate applies +1 to targeting on
@@ -607,6 +1334,13 @@ and Effect 6 or more needs 6+. Missiles launched from Short through Long range
 arrive one turn later. Missiles from Very Long or Distant range arrive two
 turns later. Point defense is resolved on the impact turn and spends one
 reaction; a successful target-8 point-defense task destroys that missile.
+
+Reaction tasks use current DEX: Dodge uses Pilot (Spacecraft), Point Defense
+and Fire Sand use Gunner (Turrets), and damper or meson-screen triggers use
+Gunner (Screens). In the current combat revision, only Point Defense has a
+resolved trigger effect; the other four can be prioritized but do not yet
+alter an attack. A reaction is spent only when its implemented trigger is
+resolved.
 
 ### Default and automated control
 
@@ -693,9 +1427,10 @@ encounter unless properly repaired.
 
 Boarding can begin only at Adjacent range. Each boarding round resolves opposed
 2D6 totals with the current side bonus. Effect +6 captures the defender;
-Effect -6 drives off the attackers. Any other result removes one Structure,
-continues the boarding, and gives +2 on the next round to the side that won
-that round. Destruction at zero Structure still applies during boarding.
+Effect -6 drives off the attackers. Any other result removes one Structure
+from the defender, continues the boarding, and gives +2 on the next round to
+the side that won that round. Destruction at zero Structure still applies
+during boarding.
 
 ## Authority, careers, and force
 
@@ -710,22 +1445,108 @@ time. Authorities know only instruments and reports that have reached them.
 A warrant can therefore exist at one office while a distant captain or port
 has not yet received it.
 
+### Career status and naval service
+
+The four recorded force careers are Independent, Navy, Privateer, and Pirate.
+A change must be filed while docked against the current career revision. Navy
+requires an institution-owned issued command and no locally enforceable
+warrant. Privateer requires a privately registered, sponsor-owned, or financed
+vessel, a non-independent polity with Law 4+, and no locally enforceable
+warrant. Leaving Navy requires selecting a private vessel first. Entering
+Pirate while commanding an institution ship changes its registry to stolen,
+adds 50 public heat, and dispatches a mutiny-and-theft warrant.
+
+Public heat is a nonnegative record of conspicuous unlawful attention;
+underworld standing is a signed reputation record. They change only through
+the explicit events stated in this chapter and currently supply no general
+task DM of their own.
+
 Naval captains command public property under orders. Service funds are
 restricted, and rank or authority can be changed through service procedure.
+
+Naval service points make a captain eligible, but promotion occurs only at a
+board every 180 game days. Monthly salary follows the grade actually awarded,
+not merely the eligible grade.
+
+| Naval grade | Minimum points | Maximum issued command | Monthly salary |
+| --- | ---: | ---: | ---: |
+| Lieutenant | 0 | 400 tons | Cr6,000 |
+| Lieutenant Commander | 10 | 1,000 tons | Cr8,000 |
+| Commander | 25 | 3,000 tons | Cr10,000 |
+| Captain | 45 | No limit | Cr12,000 |
+| Commodore | 70 | No limit | Cr14,000 |
+
+An order rated difficulty 0-2 awards 1 service point, 3-5 awards 3, 6-8
+awards 6, and 9+ awards 10 after successful reporting.
+
+### Orders, commissions, and evidence
+
+Career opportunities refer to a traffic vessel already projected in the
+system; accepting one never creates a target. An offer expires two game days
+after that contact's scheduled traffic edge. Its objective is Patrol, Inspect,
+Escort, Intercept, Capture, or Seize Cargo, and each requires its own evidence:
+respectively a certified patrol log, signed sensor inspection, escort-release
+receipt, engagement log showing the target driven off, capture papers with
+custody, or seized inventory delivered to the issuing authority. Evidence for
+one objective does not satisfy another.
+
+The sealed operations report must physically reach the issuing authority
+before success, points, or reward settles. An escort must start while the
+protected contact is still at the named port locus and occupies the command
+for three combat turns. A seize-cargo report requires the captured vessel and
+some cargo to be physically present at the issuing authority.
+
 Privateers act under a sponsor's commission and prize terms. The commission's
 scope, expiry, targets, reporting duties, and exit terms bound its authority;
 force outside them is not legalized by the ship's armament.
+
+Privateer capture or cargo commissions pay a base Cr10,000 plus Cr50 per ton
+of the named target. Pirate commissions use Cr25,000 plus Cr50 per ton; an
+uncommissioned pirate lead has no base payment but uses the same Cr50-per-ton
+scale. The signed instrument controls if its displayed terms differ.
 
 Piracy can arise through free predation, accepted leads, or a pirate
 commission. It uses the same physical interception, combat, boarding, cargo,
 damage, prisoner, and evidence rules as every other career. A pirate result is
 not made safe or profitable by selecting a career label.
 
+A pirate cruise records a hunting system, end time, crew share, ship-fund
+share, and prohibited targets. The two shares may total no more than 100% and
+a cruise cannot begin at crew pressure 100 or more. Defaults are 50% to crew,
+20% to the ship fund, with hospital, rescue, and surrendering vessels
+prohibited. Each active month with a secured prize removes 20 pressure; a
+month without prey adds 10. Expiry without prey adds another 15 and loses one
+underworld standing. Fencing a pirate prize separately removes 25 pressure and
+gains one standing.
+
+### Prizes and warrants
+
 A captured ship or cargo becomes a prize claim only when real custody and
 required evidence exist. Adjudication, bounty settlement, impound, assessment,
 appeal, and notice happen at their named offices and propagate through the
 mail system. Paying an assessment or delivering a prisoner cannot instantly
 erase enforcement at an office that has not received the signed instrument.
+
+Prize realizable value is **gross catalog value x current condition percent**.
+The deterministic settlement share is 10%, 20%, or 30% for a privateer and
+5%, 10%, or 15% for Navy. A pirate fence pays 10%-30%, with lower Law able to
+improve the result. A secured lawful prize may take an operating advance of at
+most half its settlement; final payment deducts that advance. A privateer may
+sell after adjudication or keep the vessel by taking a lien for realizable
+value not covered by the awarded equity. A pirate may fence the vessel under
+the cruise crew share or pay the gap between gross and realizable value to
+launder its registry.
+
+An unlawful armed interception files a warrant with severity
+**1 + min(target value / Cr10,000,000, 9)**. Its bounty is **target value x
+evidence percent / 1,000**, so perfect evidence produces 10% of target value.
+The issuing system can act immediately; elsewhere the warrant is enforceable
+only after its signed message arrives. A captain can satisfy a locally received
+warrant by paying assessment and bond equal to half the bounty, minimum Cr1.
+That creates a second resolution message. An office that has received the
+warrant but not the resolution continues to enforce it. A hunter receives a
+bounty only by holding the named person aboard the hunting ship and delivering
+them while docked at an authority office.
 
 ## Ship and weapon reference
 
@@ -736,8 +1557,21 @@ they are not sample configurations.
 
 The weapon appendix below is the reference used in vessel combat. `--` means
 that a weapon cannot attack at that range. Damage is expressed as dice plus a
-fixed modifier. Traits identify rules such as beam defense, delayed missiles,
+fixed modifier. Traits identify rules such as beam eligibility, delayed missiles,
 radiation, meson penetration, bay mounts, and physical ammunition.
+
+| Weapon trait | Rule |
+| --- | --- |
+| Beam | Marks an energy attack as eligible for a Fire Sand reaction when that reaction gains a resolved effect |
+| Missile | Launches now and rolls impact after the range-dependent delay; Point Defense can destroy it |
+| Radiation | Adds one crew hit when damage penetrates armor |
+| Meson | Ignores armor and starts on the internal hit column |
+| Bay | Uses Gunner (Capital Weapons) rather than Gunner (Turrets) |
+| Ammunition | Consumes one compatible physical round per weapon fired |
+
+The appendix is generated from the same live catalogue used to resolve combat.
+It is therefore the controlling source for weapon range DMs, damage, traits,
+and ammunition names rather than an illustrative equipment list.
 
 ### Hidden information
 
