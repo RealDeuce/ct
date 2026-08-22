@@ -2300,6 +2300,35 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
         for text in ship["description"]
     )
     weeks = ship["endurance"]
+    catalog_entries = sorted(records, key=lambda item: item["catalog_id"])
+    catalog_position = next(
+        position
+        for position, item in enumerate(catalog_entries)
+        if item["catalog_id"] == ship["catalog_id"]
+    )
+    previous_catalog_entry = catalog_entries[
+        (catalog_position - 1) % len(catalog_entries)
+    ]
+    next_catalog_entry = catalog_entries[
+        (catalog_position + 1) % len(catalog_entries)
+    ]
+    plate_previous_link = (
+        '<a class="ship-plate-navigation ship-plate-previous" rel="prev" '
+        f'href="{previous_catalog_entry["page"]}" '
+        f'aria-label="Previous catalog entry '
+        f'{previous_catalog_entry["catalog_id"]:03}: '
+        f'{html.escape(previous_catalog_entry["name"], quote=True)}">'
+        '<span aria-hidden="true">←</span>'
+        f'<span>{previous_catalog_entry["catalog_id"]:03}</span></a>'
+    )
+    plate_next_link = (
+        '<a class="ship-plate-navigation ship-plate-next" rel="next" '
+        f'href="{next_catalog_entry["page"]}" '
+        f'aria-label="Next catalog entry {next_catalog_entry["catalog_id"]:03}: '
+        f'{html.escape(next_catalog_entry["name"], quote=True)}">'
+        f'<span>{next_catalog_entry["catalog_id"]:03}</span>'
+        '<span aria-hidden="true">→</span></a>'
+    )
     family_members = [item for item in records if item["family_id"] == ship["family_id"]]
     member_links = "".join(
         f'<a href="{item["page"]}"{f" aria-current=\"page\"" if item is ship else ""}>'
@@ -2309,12 +2338,12 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
     )
     position = family_members.index(ship)
     previous_link = (
-        f'<a rel="prev" href="{family_members[position - 1]["page"]}">← '
+        f'<a href="{family_members[position - 1]["page"]}">← '
         f'{html.escape(family_members[position - 1]["name"])}</a>'
         if position > 0 else "<span></span>"
     )
     next_link = (
-        f'<a rel="next" href="{family_members[position + 1]["page"]}">'
+        f'<a href="{family_members[position + 1]["page"]}">'
         f'{html.escape(family_members[position + 1]["name"])} →</a>'
         if position + 1 < len(family_members) else "<span></span>"
     )
@@ -2388,7 +2417,11 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
   </header>
   <div class="ship-detail-main">
     <figure class="ship-detail-plate">
-      <img src="{ship['art_path']}" alt="{html.escape(ship['art_alt'], quote=True)}" width="1536" height="1024">
+      <div class="ship-detail-plate-image">
+        <img src="{ship['art_path']}" alt="{html.escape(ship['art_alt'], quote=True)}" width="1536" height="1024">
+        {plate_previous_link}
+        {plate_next_link}
+      </div>
       <figcaption><span>{ship['tag']} / Canonical recognition plate</span><span class="ship-scale">{ship['length_m']:g} m overall</span></figcaption>
     </figure>
     <dl class="ship-detail-summary">

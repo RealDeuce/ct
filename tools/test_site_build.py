@@ -3986,6 +3986,40 @@ class CatalogRecordTests(unittest.TestCase):
         pym_page = SITE_BUILD.ship_detail_page(by_id[26], records)
         self.assertNotIn('<a href="ship-100-duncan.html">ship-100</a>', pym_page)
 
+    def test_dossier_plate_navigation_follows_catalog_order_and_wraps(self) -> None:
+        records = SITE_BUILD.catalog_records()
+        by_id = {record["catalog_id"]: record for record in records}
+
+        middle_page = SITE_BUILD.ship_detail_page(by_id[90], records)
+        self.assertNotEqual(by_id[89]["family_id"], by_id[90]["family_id"])
+        self.assertNotEqual(by_id[91]["family_id"], by_id[90]["family_id"])
+        self.assertIn(
+            '<a class="ship-plate-navigation ship-plate-previous" rel="prev" '
+            f'href="{by_id[89]["page"]}" '
+            f'aria-label="Previous catalog entry 089: {by_id[89]["name"]}">',
+            middle_page,
+        )
+        self.assertIn(
+            '<a class="ship-plate-navigation ship-plate-next" rel="next" '
+            f'href="{by_id[91]["page"]}" '
+            f'aria-label="Next catalog entry 091: {by_id[91]["name"]}">',
+            middle_page,
+        )
+
+        first_page = SITE_BUILD.ship_detail_page(by_id[1], records)
+        self.assertIn(
+            f'rel="prev" href="{by_id[213]["page"]}" '
+            f'aria-label="Previous catalog entry 213: {by_id[213]["name"]}"',
+            first_page,
+        )
+
+        last_page = SITE_BUILD.ship_detail_page(by_id[213], records)
+        self.assertIn(
+            f'rel="next" href="{by_id[1]["page"]}" '
+            f'aria-label="Next catalog entry 001: {by_id[1]["name"]}"',
+            last_page,
+        )
+
     def test_catalog_script_reapplies_filters_after_history_navigation(self) -> None:
         script = (ROOT / "site" / "assets" / "site.js").read_text(
             encoding="utf-8"

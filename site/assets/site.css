@@ -540,7 +540,31 @@ main { position: relative; z-index: 1; }
   background: var(--space-deep);
 }
 .ship-detail-plate { min-width: 0; margin: 0; border: 1px solid var(--line); border-top: 7px solid var(--path-accent); background: #0c1114; overflow: hidden; }
+.ship-detail-plate-image { position: relative; }
 .ship-detail-plate img { display: block; width: 100%; max-width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: cover; }
+.ship-plate-navigation {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  gap: .25rem;
+  width: clamp(3.25rem, 7vw, 4.75rem);
+  min-height: clamp(3.5rem, 8vw, 5rem);
+  padding: .5rem .35rem;
+  border: solid var(--path-accent);
+  background: rgba(9,12,16,.9);
+  color: var(--ink);
+  font: 800 clamp(.58rem, 1.25vw, .72rem) var(--mono);
+  letter-spacing: .04em;
+  text-decoration: none;
+  transform: translateY(-50%);
+}
+.ship-plate-previous { left: 0; border-width: 1px 1px 1px 0; }
+.ship-plate-next { right: 0; border-width: 1px 0 1px 1px; }
+.ship-plate-navigation:hover { background: var(--panel); color: var(--amber); }
+.ship-plate-navigation:focus-visible { outline: 3px solid var(--amber); outline-offset: -5px; }
 .ship-detail-plate figcaption { display: flex; justify-content: space-between; gap: 1rem; padding: .7rem 1rem; border-top: 1px solid var(--line); color: var(--ink-soft); font: 600 .58rem var(--mono); letter-spacing: .08em; text-transform: uppercase; }
 .ship-detail-summary {
   display: grid;
@@ -807,7 +831,7 @@ main { position: relative; z-index: 1; }
   .ship-detail-hero { width: 100%; }
   .ship-construction { padding: 1rem; background: white; }
   .complete-ledger-body { display: block; }
-  .family-navigation, .dossier-pagination { display: none; }
+  .ship-plate-navigation, .family-navigation, .dossier-pagination { display: none; }
   a { color: #111; text-decoration: none; }
 }
 
