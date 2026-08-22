@@ -227,6 +227,46 @@ say that the corresponding station or service is unavailable, not discuss
 unimplemented code. Treat every newly added or materially changed door screen
 as requiring an in-world-language review.
 
+### Player-facing rules synchronization
+
+[`docs/game-rules.md`](docs/game-rules.md) is the player-facing rules subset
+published as `rules.html`. Any change to code or rule-bearing data that alters
+what a player can do, how an outcome is calculated, or what persists in the
+universe must update this rulebook in the same change. This includes added,
+removed, or renamed actions; dice and D66 procedures; targets and modifiers;
+prices, payments, penalties, and deadlines; eligibility and capacity rules;
+travel, encounter, combat, damage, recovery, and automation behavior; and the
+information a player or offline captain can know. A refactor with no observable
+rules effect does not require new rules prose, but must not leave existing prose
+describing an implementation that no longer exists.
+
+Write the rulebook for players, not maintainers. State the rule and its visible
+consequences directly. Do not include bug-report instructions, implementation
+status, code paths, database or protocol details, test strategy, generated-data
+plumbing, or advice about which artifact should be corrected after a mismatch.
+Do not document a planned feature as though it is available. The rulebook may
+explain persistence, ordering, hidden information, and automated control when
+those facts affect player decisions, but it must do so in game terms.
+
+The rulebook is a used-rules subset, not a dump of every available source. Full
+Cepheus Engine SRD text may remain in the repository, but publish only the CE
+rules that Cepheus Trader actually uses. Before any rule text derived from a
+non-CE source is committed to the distributable rulebook, remove Product
+Identity and restate the mechanic in setting-neutral Cepheus Trader language.
+Keep exact source titles and required notices in provenance and OGL Section 15,
+not in the player rules. Never use raw third-party prose or a third-party PDF as
+a site input.
+
+Prefer links or generated tables when another public artifact already owns
+authoritative player-visible data. In particular, ship statistics belong in
+the Ship Catalog and the vessel-combat weapon appendix comes from
+`catalog/combat-rules.toml`. When the rulebook changes, extend
+`tools/test_site_build.py` for material terminology, structure, source-data, or
+Product Identity safeguards; rebuild the site; and run the relevant game-rule
+tests as well as the site tests. A rule-affecting change is incomplete while
+the implementation, rule-bearing data, player-facing rulebook, generated site,
+and applicable OGL/provenance records disagree.
+
 Every door prompt must provide a visible way to return to the immediately
 preceding screen before a state-changing command is submitted. Use `Q` where
 it does not collide with a menu selection, another explicit printable key
