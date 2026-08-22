@@ -4086,6 +4086,22 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn('id="vessel-combat"', page)
         self.assertIn('id="authority-careers-and-force"', page)
 
+    def test_game_rules_distinguish_summed_2d6_from_d66_table_codes(self) -> None:
+        page = SITE_BUILD.rules_page()
+        self.assertIn("<strong>2D6</strong> means roll two ordinary", page)
+        self.assertIn("a total from 2 through 12", page)
+        self.assertIn("<strong>D66</strong> means roll two distinguishable", page)
+        self.assertIn("result 25, not 7", page)
+        self.assertIn("<th>2D6 total</th>", page)
+
+    def test_game_rules_address_players_instead_of_maintainers(self) -> None:
+        page = SITE_BUILD.rules_page()
+        self.assertNotIn("report the mismatch", page)
+        self.assertNotIn("the manual is the public contract", page)
+        self.assertNotIn("whenever the implementation changes", page)
+        self.assertNotIn("The implemented joint-order actions", page)
+        self.assertNotIn("Generation seeds", page)
+
     def test_game_rules_exclude_third_party_product_identity_terms(self) -> None:
         page = SITE_BUILD.rules_page()
         product_identity_terms = (

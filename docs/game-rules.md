@@ -1,19 +1,17 @@
 # Cepheus Trader game rules
 
-This is the player-facing rules subset for Cepheus Trader. It describes the
-procedures that can decide a captain's position, obligations, resources, crew,
-ship, travel, encounters, and legal standing in the current game. It is a
-rules manual, not a guide to menus; the Player Reference explains how to issue
-commands through the door.
+This rulebook describes how a captain's position, obligations, resources,
+crew, ship, travel, encounters, and legal standing are resolved in Cepheus
+Trader. It explains the game rules rather than the menus; the Player Reference
+explains how to issue commands through the door.
 
-Rules from the Cepheus Engine System Reference Document are included only when
-Cepheus Trader uses them. Adopted third-party Open Game Content is restated in
+Rules from the Cepheus Engine System Reference Document are included when they
+apply to play. Adopted third-party Open Game Content is restated in
 setting-neutral terms and folded into the applicable chapters. Cepheus Trader
-procedures identify the places where a persistent shared simulation needs a
-more specific rule.
+adds specific rules where its persistent shared universe requires them.
 Character careers, psionics, referee procedures, personal equipment lists,
-planetary adventures, and other tabletop rules that the game does not resolve
-are intentionally absent.
+planetary adventures, and other tabletop systems that are not used in play are
+not part of this rulebook.
 
 All original text and game mechanics on this page are Open Game Content under
 the Open Game License version 1.0a. Upstream Product Identity remains excluded.
@@ -29,7 +27,12 @@ identity.
 
 The rules use these common terms:
 
-- **2D6** means roll two ordinary six-sided dice and add them.
+- **2D6** means roll two ordinary six-sided dice and add them, producing a
+  total from 2 through 12.
+- **D66** means roll two distinguishable six-sided dice and read the first as
+  the tens digit and the second as the units digit, producing one of the 36
+  table codes from 11 through 66. It is a lookup code, not a sum: a first-die
+  2 and second-die 5 is result 25, not 7.
 - A **DM** is a dice modifier. Add all applicable DMs before comparing a
   result with its target.
 - **Effect** is the final task total minus the target number. Zero or greater
@@ -84,7 +87,7 @@ A trained skill contributes its level, including level 0. An untrained skill
 contributes -3. Jack of All Trades reduces only that untrained penalty, by its
 level to a maximum relief of 2; it does not add to a trained skill.
 
-The server rolls once for the committed action. Refreshing a screen,
+Once an action is committed, its roll is made once. Refreshing a screen,
 disconnecting, reconnecting, or retrying the same command cannot reroll it.
 Commands that spend money, consume supplies, move property, accept obligations,
 or change standing commit atomically: either the complete result occurs once,
@@ -97,9 +100,9 @@ running: four game weeks pass per real day. Server downtime is frozen game
 time. Logging off does not pause travel, deadlines, upkeep, payroll, training,
 traffic, or another captain's actions.
 
-Events enter one ordered simulation queue. No player action can overtake an
-earlier accepted input. A later command that was prepared from an older
-revision is rejected instead of being silently applied to changed state.
+Events resolve in the order they are accepted. No player action can overtake
+an earlier accepted action. A command prepared from an older revision is
+rejected if the relevant state has changed.
 
 ## Captains, crew, and training
 
@@ -112,7 +115,7 @@ creation, service, and recovery rules.
 A new player distributes the displayed characteristic budget, selects skills
 from the offered slots, chooses one training target, selects a career offer,
 names and fits the ship, and reviews its named crew. The complete displayed
-budget must be spent, and every server-provided default is legal. Captain,
+budget must be spent, and every default shown during creation is legal. Captain,
 ship, crew, title, finance, and starting stores are created together only
 after final confirmation.
 
@@ -187,9 +190,8 @@ make locally understood work unavailable.
 Law Level governs prohibited and restricted goods and contributes to customs
 and enforcement. During a compliant customs inspection, prohibited ordinary
 cargo is confiscated and a fine of 10% of its base value is collected, limited
-by the credits currently available. Restricted cargo remains aboard at the
-current rules boundary; later permit and declaration procedures cannot be
-assumed in advance.
+by the credits currently available. Restricted cargo remains aboard after a
+compliant inspection unless another displayed rule or order says otherwise.
 
 Every port service comes from a persistent facility. A menu, map, or high TL
 does not create a bank, yard, hospital, authority office, fuel source, berth,
@@ -205,10 +207,13 @@ ports, and customs; Cepheus Trader persistent-market rules.
 
 ### Markets and negotiation
 
-The commodity catalogue contains the six Common Goods and 35 generic results
-from the adopted merchant trade table. Stock is finite, shared, and persistent
-for a system and day. Looking at the exchange does not reroll or reserve stock;
-buying consumes it.
+The commodity catalogue contains the six Common Goods and 35 generic D66
+results from the adopted merchant trade table. Result 66 is reserved for
+unusual, individually recorded objects rather than generic stock. Each day's
+market selects uniformly among the 35 generic results, equivalent to rolling
+D66 and rerolling 66. Stock is finite, shared, and persistent for a system and
+day. Looking at the exchange does not reroll or reserve stock; buying consumes
+it.
 
 Quotes depend on the commodity base value, local trade codes, market events,
 tariffs, and the captain's Broker skill and CHA. Purchase negotiations use
@@ -374,8 +379,9 @@ and continuous deceleration afterward. For a stationary endpoint estimate:
 **travel time in seconds = 2 x square root of (distance in meters / acceleration
 in meters per second squared)**
 
-The live solver uses persisted orbital positions and the vessel's acceleration,
-so a moving destination and a later departure can change the answer.
+Flight time uses the orbital positions at departure and the vessel's actual
+acceleration, so a moving destination or later departure can change the
+answer.
 
 ### Jump range and fuel
 
@@ -513,8 +519,8 @@ same delayed, uncertain evidence available to a captain, not hidden truth.
 **Rules lineage:** Cepheus Engine space-combat turns, actions, reactions,
 range, attacks, missiles, damage, and boarding; admitted third-party Open Game
 Content for weapons, large crews, naval operations, privateering, and piracy;
-Cepheus Trader simultaneous joint orders and offline control. The exact
-catalog-driven weapon table follows this manual.
+Cepheus Trader simultaneous joint orders and offline control. The complete
+weapon table follows this chapter.
 
 ### Turns, initiative, and orders
 
@@ -544,11 +550,11 @@ Average Leadership task.
 | 9-12 | 3 |
 | 13 or more | 4 |
 
-The implemented joint-order actions are Hold, Coordinate, Increase Initiative,
+The available joint-order actions are Hold, Coordinate, Increase Initiative,
 Evasive Maneuvers, Line Up Shot, close or open range, Break Pursuit, Sensor
 Targeting, Electronic Warfare, Damage Control, Attack, Board, Prepare Jump,
 Launch Escape Craft, Offer or Accept Surrender, and Inspect Contact. The
-implemented reaction priorities are Dodge, Point Defense, Fire Sand, Trigger
+available reaction priorities are Dodge, Point Defense, Fire Sand, Trigger
 Nuclear Damper, and Trigger Meson Screen.
 
 Successful Evasive Maneuvers applies -1 to incoming attacks, or -2 with Effect
@@ -600,11 +606,11 @@ chance meets the threshold, it pursues the objective; otherwise it attempts a
 real withdrawal. If escape becomes infeasible, it can choose surrender or
 abandonment only when that is the best modeled survival result.
 
-The controller sees only the captain's censored combat view. It evaluates at
-most 64 candidate joint orders, takes the best eight into 256 deterministic
-three-round rollouts each, and records its input revision, estimate, branch,
-and selected order. A missing order uses this controller; disconnecting does
-not freeze combat or reveal hidden enemy state.
+The controller knows only what the captain could know. It considers up to 64
+legal joint orders, then tests the strongest eight against 256 three-round
+projections apiece before choosing. If no order is submitted, the controller
+acts for the ship; disconnecting does not freeze combat or reveal hidden enemy
+state.
 
 ### Damage, capture, and loss
 
@@ -647,7 +653,7 @@ remains, then the internal column. Craft below 100 tons use the small-craft
 column while Hull remains, then resolve internal hits. Meson hits always use
 internal resolution.
 
-| 2D6 | External vessel | Internal vessel | Small craft |
+| 2D6 total | External vessel | Internal vessel | Small craft |
 | ---: | --- | --- | --- |
 | 2 | Hull | Structure | Hull |
 | 3 | Sensors | Power plant | Power plant |
@@ -705,27 +711,21 @@ appeal, and notice happen at their named offices and propagate through the
 mail system. Paying an assessment or delivering a prisoner cannot instantly
 erase enforcement at an office that has not received the signed instrument.
 
-## Rules data and scope
+## Ship and weapon reference
 
-The [Ship Catalog](ships.html) publishes each admitted vessel's exact hull,
-drives, fuel, accommodation, equipment, weapons, ammunition, software,
-performance, price, source ledger, and construction assertions. Those
-dossiers are part of this rules subset rather than sample fiction.
+The [Ship Catalog](ships.html) gives each available vessel's hull, drives,
+fuel, accommodation, equipment, weapons, ammunition, software, performance,
+and price. Those listed statistics and fittings govern the vessel in play;
+they are not sample configurations.
 
-The weapon appendix below is generated from the same Open Game Content data
-used by vessel combat. `--` means that a weapon cannot attack at that range.
-Damage is expressed as dice plus a fixed modifier. Traits identify rules such
-as beam defense, delayed missiles, radiation, meson penetration, bay mounts,
-and physical ammunition.
+The weapon appendix below is the reference used in vessel combat. `--` means
+that a weapon cannot attack at that range. Damage is expressed as dice plus a
+fixed modifier. Traits identify rules such as beam defense, delayed missiles,
+radiation, meson penetration, bay mounts, and physical ammunition.
 
-Generation seeds, unrevealed contacts, hidden defects, undiscovered systems,
-unarrived messages, and other secret state are not player knowledge. Their
-procedures are fixed and replayable by the server, but publishing a secret
-value before observation would change the game rule it is meant to support.
-The manual therefore presents the procedures and player-visible inputs and
-outcomes, not a live universe's concealed rolls or seeds.
+### Hidden information
 
-If this manual and a displayed server result disagree, preserve the result and
-report the mismatch. The server remains authoritative for the running
-universe; the manual is the public contract that should be corrected whenever
-the implementation changes.
+Unrevealed contacts, hidden defects, undiscovered systems, unarrived messages,
+and other hidden facts are not player knowledge. They become known only
+through the observations, discoveries, messages, and other means described in
+these rules.
