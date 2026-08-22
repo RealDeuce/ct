@@ -695,6 +695,8 @@ const char* travel_stage_name(const ct::TravelStage stage)
 const char* ship_activity_name(const ct::ShipActivityKind kind)
 {
    switch(kind) {
+   case ct::ShipActivityKind::Construction:
+      return "New construction";
    case ct::ShipActivityKind::Refit:
       return "Refit";
    case ct::ShipActivityKind::Refurbishment:
@@ -4034,12 +4036,17 @@ void show_fleet_manager(
          door_label(" / ");
          print_millitons(ship.cargo_capacity_millitons);
          od_printf("\n\r");
+         const bool delivered = ship.location.rfind("Under construction", 0) != 0;
          std::vector<std::string_view> options;
-         if(!ship.active) {
+         if(!ship.active && ship.can_assume_command) {
             options.emplace_back("[C] Assume command");
+         }
+         if(!ship.active && delivered) {
             options.emplace_back("[A] Assign captain");
          }
-         options.emplace_back("[T] Transfer stores");
+         if(delivered) {
+            options.emplace_back("[T] Transfer stores");
+         }
          options.emplace_back("[Enter] Refresh");
          options.emplace_back("[Q] Roster");
          options.emplace_back("[?] Help");
@@ -4062,7 +4069,7 @@ void show_fleet_manager(
          if(key == 'q' || key == 'Q') {
             break;
          }
-         if((key == 'c' || key == 'C') && !ship.active) {
+         if((key == 'c' || key == 'C') && !ship.active && ship.can_assume_command) {
             try {
                fleet = ct::set_active_ship(
                           connection,
@@ -4076,7 +4083,7 @@ void show_fleet_manager(
                door_error("%s\n\r", safe_field(error.what()).c_str());
                wait_for_enter();
             }
-         } else if((key == 'a' || key == 'A') && !ship.active) {
+         } else if((key == 'a' || key == 'A') && !ship.active && delivered) {
             auto crew = ct::get_crew_management(
                            connection,
                            session_epoch,
@@ -4112,7 +4119,7 @@ void show_fleet_manager(
                   wait_for_enter();
                }
             }
-         } else if(key == 't' || key == 'T') {
+         } else if((key == 't' || key == 'T') && delivered) {
             transfer_fleet_stores(
                connection, session_epoch, random, request_id, fleet, index);
             break;
@@ -4228,7 +4235,7 @@ void show_ship_manager(
       print_millitons(snapshot.current_fuel_millitons);
       door_label(" / ");
       print_millitons(snapshot.fuel_capacity_millitons);
-      door_label("  Jump use: ");
+      door_label("  Jump reserve: ");
       print_millitons(snapshot.jump_fuel_millitons);
       od_printf("\n\r");
       door_label("Cargo capacity: ");
@@ -5425,6 +5432,7 @@ void run_shipyard_market(ct::TlsConnection& connection, const uint64_t epoch,
       }
       door_option_prompt({
          "[B] Buy with trade-in",
+         "[C] Commission catalog design",
          "[Enter] Refresh",
          "[Q] Port",
          "[?] Help",
@@ -5443,6 +5451,88 @@ void run_shipyard_market(ct::TlsConnection& connection, const uint64_t epoch,
                ct::purchase_ship(connection, epoch, market.offers[*selected - 1].offer_id, true,
                                  random_command_id(random), request_id++);
                door_success("Title transfer completed.\n\r");
+               wait_for_enter();
+               return;
+            } catch(const std::exception& error) {
+               door_error("%s\n\r", safe_field(error.what()).c_str());
+               wait_for_enter();
+            }
+         }
+      }
+      if(key == 'c' || key == 'C') {
+         if(market.commissionable_designs.empty()) {
+            door_information("This port has no construction yard capable of an admitted starship design.\n\r");
+            wait_for_enter();
+            continue;
+         }
+         constexpr size_t page_size = 7;
+         size_t page = 0;
+         while(true) {
+            const auto page_count =
+               (market.commissionable_designs.size() + page_size - 1) / page_size;
+            const auto first = page * page_size;
+            const auto last = std::min(first + page_size, market.commissionable_designs.size());
+            od_clr_scr();
+            door_heading("New-Build Catalog\n\r=================\n\r\n\r");
+            for(size_t index = first; index < last; ++index) {
+               const auto& design = market.commissionable_designs[index];
+               door_number("%zu", index - first + 1);
+               door_label(". ");
+               door_identifier("%s", safe_field(design.class_name).c_str());
+               door_label(" TL");
+               door_number("%u", design.tech_level);
+               door_label(" J");
+               door_number("%u", design.jump_rating);
+               door_label(" ");
+               print_millitons(design.displacement_millitons);
+               door_label("\n\r   cargo ");
+               print_millitons(design.cargo_capacity_millitons);
+               door_label("  deposit Cr");
+               door_number("%llu", static_cast<unsigned long long>(design.deposit_credits));
+               door_label("  build ");
+               door_number("%llu weeks\n\r",
+                  static_cast<unsigned long long>(design.construction_seconds / 604800));
+            }
+            door_option_prompt({
+               "[O] Order a design",
+               "[<]/[>] Page",
+               "[Q] Brokerage",
+               "[?] Help",
+            });
+            const auto catalog_key = od_get_key(TRUE);
+            if(catalog_key == 'q' || catalog_key == 'Q') {
+               break;
+            }
+            if(catalog_key == '>' && page + 1 < page_count) {
+               ++page;
+               continue;
+            }
+            if(catalog_key == '<' && page > 0) {
+               --page;
+               continue;
+            }
+            if(catalog_key != 'o' && catalog_key != 'O') {
+               continue;
+            }
+            const auto selected = input_number(
+               "Design", 1, static_cast<unsigned>(last - first));
+            if(!selected) {
+               continue;
+            }
+            const auto& design = market.commissionable_designs[first + *selected - 1];
+            door_prompt(
+               "\n\rCommission %s for Cr%llu deposit and %llu weeks? [y/N]: ",
+               safe_field(design.class_name).c_str(),
+               static_cast<unsigned long long>(design.deposit_credits),
+               static_cast<unsigned long long>(design.construction_seconds / 604800));
+            const auto confirmation = od_get_key(TRUE);
+            if(confirmation != 'y' && confirmation != 'Y') {
+               continue;
+            }
+            try {
+               ct::commission_ship(connection, epoch, design.catalog_id,
+                                   random_command_id(random), request_id++);
+               door_success("Construction contract placed. The hull is now listed in Fleet.\n\r");
                wait_for_enter();
                return;
             } catch(const std::exception& error) {
@@ -8749,8 +8839,8 @@ ct::FlightPlanStep purchase_fuel_step(
 bool replace_proposal_with_course(
    ct::FlightPlanProposal& proposal,
    const ct::CoursePlan& course,
-   const ct::KnownDestinations& destinations,
    const ct::TravelStatus& travel,
+   const uint64_t displacement_millitons,
    const ct::GeneratedPlanAuthority generated_authority)
 {
    if(!course.available || course.waypoints.size() < 2) {
@@ -8773,9 +8863,7 @@ bool replace_proposal_with_course(
    if(!configure_jump_navigation(navigation_probe)) {
       return false;
    }
-   const auto jump_one_fuel = destinations.jump_rating == 0
-                              ? 0
-                              : travel.jump_fuel_millitons / destinations.jump_rating;
+   const auto jump_one_fuel = displacement_millitons / 10;
    if(jump_one_fuel == 0) {
       door_warning("The ship's Jump fuel allocation is unavailable.\n\r");
       wait_for_enter();
@@ -8843,6 +8931,8 @@ FlightPlanEditorResult run_flight_plan_editor(
                                 connection, session_epoch, random_command_id(random), request_id++);
    const auto travel = ct::get_travel_status(
                           connection, session_epoch, random_command_id(random), request_id++);
+   const auto ship = ct::get_ship_status(
+                        connection, session_epoch, random_command_id(random), request_id++);
    ct::FlightPlanProposal proposal{
       .expected_plan_revision = current_plan.revision,
       .steps = current_plan.steps,
@@ -8952,7 +9042,8 @@ FlightPlanEditorResult run_flight_plan_editor(
             }
             const auto& course = choice == 'F' ? plot.fastest : plot.cheapest;
             replace_proposal_with_course(
-               proposal, course, destinations, travel, ordinary_route_authority);
+               proposal, course, travel,
+               ship.displacement_millitons, ordinary_route_authority);
          } catch(const std::exception& error) {
             door_error("%s\n\r", safe_field(error.what()).c_str());
             wait_for_enter();
@@ -8983,7 +9074,8 @@ FlightPlanEditorResult run_flight_plan_editor(
             od_printf("\n\r");
             if(choice == 'I') {
                replace_proposal_with_course(
-                  proposal, course, destinations, travel, task_route_authority);
+                  proposal, course, travel,
+                  ship.displacement_millitons, task_route_authority);
             }
          } catch(const std::exception& error) {
             door_error("%s\n\r", safe_field(error.what()).c_str());
@@ -9769,7 +9861,7 @@ void show_travel_screen(
    door_label(")\n\r");
    door_label("Fuel:        ");
    door_number("%.1f t", status.current_fuel_millitons / 1000.0);
-   door_label("  Jump use ");
+   door_label("  Jump reserve ");
    door_number("%.1f t\n\r", status.jump_fuel_millitons / 1000.0);
    door_information(
       "\n\rCrew, ship, task, message, and Known Universe management remain "

@@ -5,7 +5,7 @@
 
 schema_version = 1
 catalog_revision = 1
-family_count = 113
+family_count = 114
 open_game_content_designations = [
   "The complete original family grouping and anonymous family identifiers are Open Game Content.",
 ]
@@ -714,3 +714,9 @@ family_id = 213
 tag = "family-213"
 grouping_basis = "independent-design"
 member_tags = ["ship-213"]
+
+[[family]]
+family_id = 214
+tag = "family-214"
+grouping_basis = "independent-design"
+member_tags = ["ship-214"]

@@ -12,7 +12,7 @@ use crate::ct_rpc_capnp::{
 };
 use crate::i18n::DisplayFormatting;
 
-pub const PROTOCOL_VERSION: u16 = 7;
+pub const PROTOCOL_VERSION: u16 = 8;
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 pub const COMMAND_ID_BYTES: usize = 16;
 pub const MAX_NAME_BYTES: usize = 128;
@@ -746,6 +746,7 @@ pub struct ShipActivityStatus {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ShipActivityKind {
+    Construction,
     Refit,
     Refurbishment { component_count: u16 },
     ProperRepair { subsystem_id: u16 },
@@ -1329,6 +1330,23 @@ pub struct ShipMarket {
     pub current_ship_trade_in_credits: u64,
     pub outstanding_lien_credits: u64,
     pub offers: Vec<ShipMarketOffer>,
+    pub commissionable_designs: Vec<ShipCommissionDesign>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ShipCommissionDesign {
+    pub catalog_id: u32,
+    pub class_name: String,
+    pub tech_level: u8,
+    pub price_credits: u64,
+    pub deposit_credits: u64,
+    pub construction_seconds: u64,
+    pub displacement_millitons: u64,
+    pub jump_rating: u8,
+    pub fuel_capacity_millitons: u64,
+    pub jump_fuel_millitons: u64,
+    pub cargo_capacity_millitons: u64,
+    pub minimum_crew: u16,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2208,6 +2226,9 @@ pub enum Command {
         offer_id: u64,
         trade_in_current_ship: bool,
     },
+    CommissionShip {
+        catalog_id: u32,
+    },
     GetCrewMarket,
     HireCrew {
         candidate_id: u64,
@@ -2353,6 +2374,7 @@ impl Command {
             Self::AcceptTaskOffer { .. }
             | Self::SetCarriageDeclaration(_)
             | Self::PurchaseShip { .. }
+            | Self::CommissionShip { .. }
             | Self::HireCrew { .. }
             | Self::BeginMarketSearch { .. }
             | Self::CancelWorkAssignment { .. } => CommandPersistence::Transaction,
@@ -2911,6 +2933,9 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
                 trade_in_current_ship: purchase.get_trade_in_current_ship(),
             }
         }
+        request::CommissionShip(commission) => Command::CommissionShip {
+            catalog_id: commission?.get_catalog_id(),
+        },
         request::GetCrewMarket(()) => Command::GetCrewMarket,
         request::HireCrew(hire) => Command::HireCrew {
             candidate_id: hire?.get_candidate_id(),
@@ -3896,6 +3921,9 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
             purchase.set_offer_id(offer_id);
             purchase.set_trade_in_current_ship(trade_in_current_ship);
         }
+        Command::CommissionShip { catalog_id } => {
+            builder.init_commission_ship().set_catalog_id(catalog_id)
+        }
         Command::GetCrewMarket => builder.set_get_crew_market(()),
         Command::HireCrew { candidate_id } => {
             builder.init_hire_crew().set_candidate_id(candidate_id)
@@ -4757,6 +4785,7 @@ fn set_ship_status(
         activity.set_has_source_body(source.source_body_id.is_some());
         activity.set_source_body_id(source.source_body_id.unwrap_or(0));
         match source.kind {
+            ShipActivityKind::Construction => activity.set_construction(()),
             ShipActivityKind::Refit => activity.set_refit(()),
             ShipActivityKind::Refurbishment { component_count } => {
                 activity.set_refurbishment(component_count)
@@ -5401,7 +5430,7 @@ fn set_ship_market(
     builder.set_outstanding_lien_credits(market.outstanding_lien_credits);
     let count =
         u32::try_from(market.offers.len()).map_err(|_| WireError::Expected("fewer ship offers"))?;
-    let mut offers = builder.init_offers(count);
+    let mut offers = builder.reborrow().init_offers(count);
     for (index, offer) in market.offers.iter().enumerate() {
         let mut item = offers.reborrow().get(index as u32);
         item.set_offer_id(offer.offer_id);
@@ -5415,6 +5444,24 @@ fn set_ship_market(
         item.set_cargo_capacity_millitons(offer.cargo_capacity_millitons);
         item.set_jump_rating(offer.jump_rating);
         item.set_minimum_crew(offer.minimum_crew);
+    }
+    let count = u32::try_from(market.commissionable_designs.len())
+        .map_err(|_| WireError::Expected("fewer commissionable ship designs"))?;
+    let mut designs = builder.init_commissionable_designs(count);
+    for (index, design) in market.commissionable_designs.iter().enumerate() {
+        let mut item = designs.reborrow().get(index as u32);
+        item.set_catalog_id(design.catalog_id);
+        item.set_class_name(&design.class_name);
+        item.set_tech_level(design.tech_level);
+        item.set_price_credits(design.price_credits);
+        item.set_deposit_credits(design.deposit_credits);
+        item.set_construction_seconds(design.construction_seconds);
+        item.set_displacement_millitons(design.displacement_millitons);
+        item.set_jump_rating(design.jump_rating);
+        item.set_fuel_capacity_millitons(design.fuel_capacity_millitons);
+        item.set_jump_fuel_millitons(design.jump_fuel_millitons);
+        item.set_cargo_capacity_millitons(design.cargo_capacity_millitons);
+        item.set_minimum_crew(design.minimum_crew);
     }
     Ok(())
 }
@@ -7222,6 +7269,12 @@ mod tests {
                     },
                     muted: true,
                 },
+            },
+            CommandRequest {
+                request_id: 33,
+                session_epoch: 23,
+                command_id: [0xb5; COMMAND_ID_BYTES],
+                command: Command::CommissionShip { catalog_id: 214 },
             },
         ] {
             let frame = encode_request(&expected).unwrap();

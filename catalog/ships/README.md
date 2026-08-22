@@ -30,8 +30,8 @@ receiving the parent's standard-design discount a second time. Validation
 orders entries by carried-craft dependency, so permanent catalog ID order
 does not constrain which craft a ship may carry.
 
-`families.toml` is the authoritative PI-free family grouping. It contains 113
-anonymous families: 39 shared lineages and 74 singleton designs. Every ship
+`families.toml` is the authoritative PI-free family grouping. It contains 114
+anonymous families: 39 shared lineages and 75 singleton designs. Every ship
 record repeats its family ID, and validation rejects missing, duplicate,
 unknown, or inconsistent membership. The reviewed grouping rationale is in
 `../../docs/ship-family-grouping.md`.
@@ -44,7 +44,7 @@ gaps. Exact adjacent-path backfill choices are a later explicit relationship,
 not something inferred from tonnage.
 
 `names.toml` assigns the canonical Open Game Content names for all nine paths
-and manufacturers, 113 families, and 213 fitted designs. It also gives each
+and manufacturers, 114 families, and 214 fitted designs. It also gives each
 path a six-stage naming sequence. Every ship repeats its canonical display
 name, and validation requires exact agreement. The convention and principal
 family examples are documented in `../../docs/ship-catalog-naming.md`.

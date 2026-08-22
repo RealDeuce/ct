@@ -2,7 +2,7 @@
 
 *Status: current, 2026-07-27*
 
-The active 213-design catalog is grouped into 113 stable-numbered design
+The active 214-design catalog is grouped into 114 stable-numbered design
 families.
 The authoritative machine-readable relationship is
 [`catalog/ships/families.toml`](../catalog/ships/families.toml), and every
@@ -101,7 +101,7 @@ The remaining 74 families currently contain one design each:
 `family-193`, `family-194`, `family-195`, `family-196`, `family-197`,
 `family-198`, `family-199`, `family-200`, `family-201`, `family-202`,
 `family-203`, `family-204`, `family-205`, `family-206`, `family-207`,
-`family-208`, `family-210`, `family-211`, and `family-213`.
+`family-208`, `family-210`, `family-211`, `family-213`, and `family-214`.
 
 ## Related Catalog Data
 

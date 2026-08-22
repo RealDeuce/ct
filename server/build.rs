@@ -145,6 +145,8 @@ fn generate_ship_source_catalog() {
         let name = text(section, "display_name").expect("runtime ship display_name");
         let tl = scalar(section, "tech_level").expect("runtime ship tech_level");
         let price = scalar(section, "construction_price_credits").expect("runtime ship price");
+        let construction_weeks =
+            scalar(section, "construction_weeks").expect("runtime ship construction time");
         let displacement =
             scalar(section, "displacement_millitons").expect("runtime ship displacement");
         let jump = scalar(section, "jump_rating").expect("runtime ship jump rating");
@@ -163,7 +165,7 @@ fn generate_ship_source_catalog() {
         let monthly_life_support = scalar(section, "monthly_life_support_credits")
             .expect("runtime ship monthly life support credits");
         generated.push_str(&format!(
-            "    RuntimeShip {{ catalog_id: {id}, class_name: {name:?}, tech_level: {tl}, price_credits: {price}, displacement_millitons: {displacement}, jump_rating: {jump}, thrust_g: {thrust}, fuel_millitons: {fuel}, jump_fuel_millitons: {jump_fuel}, cargo_millitons: {cargo}, minimum_crew: {crew}, passenger_accommodation_berths: {passenger_berths}, provision_capacity_persons: {provision_capacity}, low_berths: {low_berths}, monthly_life_support_credits: {monthly_life_support} }},\n"
+            "    RuntimeShip {{ catalog_id: {id}, class_name: {name:?}, tech_level: {tl}, price_credits: {price}, construction_weeks: {construction_weeks}, displacement_millitons: {displacement}, jump_rating: {jump}, thrust_g: {thrust}, fuel_millitons: {fuel}, jump_fuel_millitons: {jump_fuel}, cargo_millitons: {cargo}, minimum_crew: {crew}, passenger_accommodation_berths: {passenger_berths}, provision_capacity_persons: {provision_capacity}, low_berths: {low_berths}, monthly_life_support_credits: {monthly_life_support} }},\n"
         ));
     }
     generated.push_str("];\n");

@@ -400,6 +400,7 @@ struct ShipProvisionStatus {
 };
 
 enum class ShipActivityKind {
+   Construction,
    Refit,
    Refurbishment,
    ProperRepair,
@@ -1018,11 +1019,26 @@ struct ShipMarketOffer {
    uint8_t jump_rating;
    uint16_t minimum_crew;
 };
+struct ShipCommissionDesign {
+   uint32_t catalog_id;
+   std::string class_name;
+   uint8_t tech_level;
+   uint64_t price_credits;
+   uint64_t deposit_credits;
+   uint64_t construction_seconds;
+   uint64_t displacement_millitons;
+   uint8_t jump_rating;
+   uint64_t fuel_capacity_millitons;
+   uint64_t jump_fuel_millitons;
+   uint64_t cargo_capacity_millitons;
+   uint16_t minimum_crew;
+};
 struct ShipMarket {
    uint64_t generated_day;
    uint64_t current_ship_trade_in_credits;
    uint64_t outstanding_lien_credits;
    std::vector<ShipMarketOffer> offers;
+   std::vector<ShipCommissionDesign> commissionable_designs;
    PlayerPhase phase;
 };
 struct CrewCandidate {
@@ -2099,6 +2115,8 @@ MarketKnowledge get_market_knowledge(TlsConnection&, uint64_t, const std::array<
 ShipMarket get_ship_market(TlsConnection&, uint64_t, const std::array<uint8_t, 16>&, uint64_t);
 ShipMarket purchase_ship(TlsConnection&, uint64_t, uint64_t, bool, const std::array<uint8_t, 16>&,
                          uint64_t);
+ShipMarket commission_ship(TlsConnection&, uint64_t, uint32_t, const std::array<uint8_t, 16>&,
+                           uint64_t);
 CrewMarket get_crew_market(TlsConnection&, uint64_t, const std::array<uint8_t, 16>&, uint64_t);
 CrewMarket hire_crew(TlsConnection&, uint64_t, uint64_t, const std::array<uint8_t, 16>&, uint64_t);
 FleetSnapshot get_fleet(TlsConnection&, uint64_t, const std::array<uint8_t, 16>&, uint64_t);

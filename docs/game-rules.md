@@ -865,6 +865,14 @@ ordinary cargo, and assigned crew atomically. A trade-in is refused while the
 old vessel holds active Tasks, entrusted cargo, or passengers. Keeping it
 leaves its obligations and physical stores aboard that hull.
 
+An operational construction yard also offers every admitted catalog design
+whose displacement and component TL fit that facility. A new
+commission takes a 20% deposit, finances the remaining 80%, and places the
+named but undelivered hull in Fleet for the catalog construction time. It
+cannot accept a captain, stores, or active command before delivery. Warranty,
+maintenance, berth aging, and monthly finance dates begin when construction
+completes, not when the contract is signed.
+
 ## Ship operation and condition
 
 **Rules lineage:** Cepheus Engine ship operation, fuel, maintenance, and

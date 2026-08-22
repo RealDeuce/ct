@@ -102,9 +102,12 @@ pub struct ShipMarketCatalogEntry {
     pub catalog_id: u32,
     pub class_name: String,
     pub price_credits: u64,
+    pub construction_weeks: u32,
     pub cargo_capacity_millitons: u64,
     pub displacement_millitons: u64,
     pub jump_rating: u8,
+    pub fuel_capacity_millitons: u64,
+    pub jump_fuel_millitons: u64,
     pub minimum_crew: u16,
     pub tech_level: u8,
 }
@@ -114,6 +117,7 @@ struct RuntimeShip {
     class_name: &'static str,
     tech_level: u8,
     price_credits: u64,
+    construction_weeks: u32,
     displacement_millitons: u64,
     jump_rating: u8,
     thrust_g: u8,
@@ -605,9 +609,12 @@ pub fn ship_market_catalog() -> Vec<ShipMarketCatalogEntry> {
             catalog_id: runtime.catalog_id,
             class_name: runtime.class_name.to_owned(),
             price_credits: runtime.price_credits,
+            construction_weeks: runtime.construction_weeks,
             cargo_capacity_millitons: runtime.cargo_millitons,
             displacement_millitons: runtime.displacement_millitons,
             jump_rating: runtime.jump_rating,
+            fuel_capacity_millitons: runtime.fuel_millitons,
+            jump_fuel_millitons: runtime.jump_fuel_millitons,
             minimum_crew: runtime.minimum_crew,
             tech_level: runtime.tech_level,
         })
@@ -1618,6 +1625,32 @@ mod tests {
                 .iter()
                 .any(|offer| offer.ship == entry.catalog_id)
         }));
+    }
+
+    #[test]
+    fn leavitt_is_a_tl11_two_jump_pathfinder_with_a_liveable_crew_fit() {
+        let entry = ship_market_catalog()
+            .into_iter()
+            .find(|entry| entry.catalog_id == 214)
+            .unwrap();
+        assert_eq!(entry.class_name, "Leavitt");
+        assert_eq!(entry.tech_level, 11);
+        assert_eq!(entry.displacement_millitons, 200_000);
+        assert_eq!(entry.jump_rating, 3);
+        assert_eq!(entry.fuel_capacity_millitons, 132_000);
+        assert_eq!(entry.jump_fuel_millitons, 120_000);
+        assert_eq!(entry.cargo_capacity_millitons, 5_000);
+        assert_eq!(entry.minimum_crew, 4);
+        assert_eq!(entry.construction_weeks, 44);
+
+        let status = ship_status_spec(214).unwrap();
+        assert_eq!(status.life_support_capacity_persons, 6);
+        assert!(status.has_fuel_scoop);
+        assert_eq!(status.fuel_processing_millitons_per_day, 120_000);
+        let combat = ship_combat_spec(214).unwrap();
+        assert!(combat.ammunition.is_empty());
+        assert_eq!(combat.weapons.len(), 1);
+        assert_eq!(combat.weapons[0].weapons, vec!["beam-laser"]);
     }
 
     #[test]

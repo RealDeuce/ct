@@ -1,0 +1,113 @@
+# Original compact long-range scout commissioned to make Jump-3 exploration
+# available without requiring technology above the established starting region.
+
+schema_version = 1
+design_id = "ct-leavitt-pathfinder"
+revision = 1
+ruleset_id = "ce-srd-2016.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = true
+electronics = "basic-civilian"
+unused_fire_control_stations = 1
+cargo_millitons = 5000
+
+[catalog]
+catalog_id = 214
+tag = "ship-214"
+family_id = 214
+upgrade_path_id = 3
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Leavitt"
+primary_role = "long-range-pathfinder"
+secondary_roles = ["survey", "courier", "exploration"]
+mission_tags = ["jump-3", "two-jump-endurance", "fuel-processing", "beam-laser", "atmospheric"]
+open_game_content_designations = [
+  "The complete original catalog entry and construction data are Open Game Content.",
+]
+description_paragraphs = [
+  "The Leavitt is the smallest hull that can mount an exact Jump-3 drive under the admitted construction rules. It carries enough fuel for two consecutive three-parsec jumps, four weeks of power-plant endurance, a scoop, and processors able to refine one jump load in twelve hours.",
+  "Five crew positions and three standard staterooms support a captain, pilot, navigator, engineer, and gunner without double duty. A single beam laser consumes no ammunition, while the remaining five-ton hold carries expedition stores, survey cargo, or compact speculative freight. The streamlined lifting body and distinct aft engineering section permit atmospheric operations from frontier ports.",
+]
+
+[hull]
+id = "ship-200"
+configuration = "streamlined"
+
+[drives]
+jump = "C"
+maneuver = "A"
+power = "C"
+
+[fuel]
+jump_distance = 3
+jump_count = 2
+power_plant_weeks = 4
+
+[computer]
+id = "model-3"
+options = []
+
+[[software]]
+id = "jump-control"
+level = 3
+
+[[software]]
+id = "fire-control"
+level = 1
+
+[[equipment]]
+id = "stateroom"
+quantity = 3
+
+[[equipment]]
+id = "fuel-processor"
+quantity = 6
+
+[[mounts]]
+id = "single-turret"
+weapons = ["beam-laser"]
+
+[[crew]]
+role = "command"
+quantity = 1
+
+[[crew]]
+role = "pilot"
+quantity = 1
+
+[[crew]]
+role = "navigator"
+quantity = 1
+
+[[crew]]
+role = "engineer"
+quantity = 1
+
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+
+[assertions]
+hull_millitons = 200000
+accounted_displacement_millitons = 200000
+hull_points = 4
+structure_points = 4
+armor_points = 0
+jump_rating = 3
+thrust_g = 1
+fuel_millitons = 132000
+jump_fuel_millitons = 120000
+power_fuel_millitons = 12000
+hardpoints = 2
+hardpoints_used = 1
+fire_control_millitons = 2000
+minimum_crew = 4
+crew = 5
+construction_weeks = 44
+pre_discount_price_credits = 75150000
+discount_credits = 7515000
+architect_fee_credits = 0
+construction_price_credits = 67635000

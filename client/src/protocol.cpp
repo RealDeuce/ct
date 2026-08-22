@@ -21,7 +21,7 @@ namespace ct
 namespace
 {
 
-constexpr uint16_t PROTOCOL_VERSION = 7;
+constexpr uint16_t PROTOCOL_VERSION = 8;
 constexpr size_t MAX_FRAME_BYTES = 1024 * 1024;
 
 void send_frame(TlsConnection& connection, const kj::ArrayPtr<const kj::byte> message)
@@ -498,7 +498,9 @@ std::optional<ShipActivityStatus> decode_ship_activity(
       ? std::optional<uint32_t>(source.getSourceBodyId())
       : std::nullopt,
    };
-   if(source.isRefit()) {
+   if(source.isConstruction()) {
+      result.kind = ShipActivityKind::Construction;
+   } else if(source.isRefit()) {
       result.kind = ShipActivityKind::Refit;
    } else if(source.isRefurbishment()) {
       result.kind = ShipActivityKind::Refurbishment;
@@ -2715,6 +2717,7 @@ ShipMarket decode_ship_market(const rpc::Response::Reader response)
       .current_ship_trade_in_credits = source.getCurrentShipTradeInCredits(),
       .outstanding_lien_credits = source.getOutstandingLienCredits(),
       .offers = {},
+      .commissionable_designs = {},
       .phase = decode_response_phase(response.getPhase()),
    };
    for(const auto offer : source.getOffers()) {
@@ -2730,6 +2733,22 @@ ShipMarket decode_ship_market(const rpc::Response::Reader response)
          .cargo_capacity_millitons = offer.getCargoCapacityMillitons(),
          .jump_rating = offer.getJumpRating(),
          .minimum_crew = offer.getMinimumCrew(),
+      });
+   }
+   for(const auto design : source.getCommissionableDesigns()) {
+      result.commissionable_designs.push_back({
+         .catalog_id = design.getCatalogId(),
+         .class_name = design.getClassName().cStr(),
+         .tech_level = design.getTechLevel(),
+         .price_credits = design.getPriceCredits(),
+         .deposit_credits = design.getDepositCredits(),
+         .construction_seconds = design.getConstructionSeconds(),
+         .displacement_millitons = design.getDisplacementMillitons(),
+         .jump_rating = design.getJumpRating(),
+         .fuel_capacity_millitons = design.getFuelCapacityMillitons(),
+         .jump_fuel_millitons = design.getJumpFuelMillitons(),
+         .cargo_capacity_millitons = design.getCargoCapacityMillitons(),
+         .minimum_crew = design.getMinimumCrew(),
       });
    }
    return result;
@@ -2757,6 +2776,20 @@ ShipMarket purchase_ship(TlsConnection& connection, const uint64_t epoch, const 
    auto purchase = request.initPurchaseShip();
    purchase.setOfferId(offer_id);
    purchase.setTradeInCurrentShip(trade_in);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_ship_market(checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+ShipMarket commission_ship(TlsConnection& connection, const uint64_t epoch,
+                           const uint32_t catalog_id, const std::array<uint8_t, 16>& id,
+                           const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   request.initCommissionShip().setCatalogId(catalog_id);
    send_frame(connection, capnp::messageToFlatArray(message).asBytes());
    auto words = receive_response(connection, epoch, request_id);
    capnp::FlatArrayMessageReader reader(words);

@@ -15,7 +15,7 @@ from check_repository import validate_release_notes  # noqa: E402
 
 VALID_NOTES = """## Compatibility notice
 
-Cepheus Trader v0.7.10 retains CT-RPC 7.
+Cepheus Trader v0.7.10 advances to CT-RPC 8.
 
 ## Highlights
 

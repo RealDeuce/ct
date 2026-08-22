@@ -167,6 +167,7 @@ struct Request {
     abandonPlayer @72 :AbandonPlayerRequest;
     suggestTaskCourse @73 :Void;
     cureFinanceDefault @74 :Void;
+    commissionShip @75 :CommissionShipRequest;
   }
 }
 
@@ -745,6 +746,7 @@ struct ShipActivityStatus {
     refurbishment @11 :UInt16;    # number of replaced/reconditioned components
     escortDuty @12 :UInt64;       # operations-order identifier
     fieldRecovery @13 :UInt16;    # subsystem ID under crew field repair
+    construction @14 :Void;
   }
 }
 
@@ -1295,11 +1297,31 @@ struct ShipMarket {
   currentShipTradeInCredits @1 :UInt64;
   outstandingLienCredits @2 :UInt64;
   offers @3 :List(ShipMarketOffer);
+  commissionableDesigns @4 :List(ShipCommissionDesign);
+}
+
+struct ShipCommissionDesign {
+  catalogId @0 :UInt32;
+  className @1 :Text;
+  techLevel @2 :UInt8;
+  priceCredits @3 :UInt64;
+  depositCredits @4 :UInt64;
+  constructionSeconds @5 :UInt64;
+  displacementMillitons @6 :UInt64;
+  jumpRating @7 :UInt8;
+  fuelCapacityMillitons @8 :UInt64;
+  jumpFuelMillitons @9 :UInt64;
+  cargoCapacityMillitons @10 :UInt64;
+  minimumCrew @11 :UInt16;
 }
 
 struct PurchaseShipRequest {
   offerId @0 :UInt64;
   tradeInCurrentShip @1 :Bool;
+}
+
+struct CommissionShipRequest {
+  catalogId @0 :UInt32;
 }
 
 struct CrewCandidate {

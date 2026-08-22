@@ -770,6 +770,7 @@ pub struct PostCombatRecoveryPlan {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ShipActivityKind {
+    Construction,
     Refit,
     ProperRepair {
         subsystem_id: u16,
@@ -4904,6 +4905,15 @@ impl Store {
                     message,
                 },
             },
+            Command::CommissionShip { catalog_id } => {
+                match self.commission_ship_in(txn, &queued.identity, catalog_id)? {
+                    RuleResult::Applied(v) => OutcomeKind::ShipMarket(v),
+                    RuleResult::Rejected(message) => OutcomeKind::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message,
+                    },
+                }
+            }
             Command::GetCrewMarket => {
                 OutcomeKind::CrewMarket(self.crew_market_in(txn, &queued.identity)?)
             }
@@ -14221,6 +14231,7 @@ impl Store {
             active_activity: ship.activity.as_ref().map(|activity| ShipActivityStatus {
                 activity_id: activity.activity_id,
                 kind: match activity.kind {
+                    ShipActivityKind::Construction => WireShipActivityKind::Construction,
                     ShipActivityKind::Refit => WireShipActivityKind::Refit,
                     ShipActivityKind::ProperRepair { subsystem_id } => {
                         WireShipActivityKind::ProperRepair { subsystem_id }
@@ -18471,7 +18482,14 @@ impl Store {
                 .map(decode_stellar_system)
                 .transpose()?
                 .map_or_else(|| "Uncharted space".to_owned(), |system| system.name);
+            let under_construction = matches!(
+                ship.activity.as_ref().map(|activity| &activity.kind),
+                Some(ShipActivityKind::Construction)
+            );
             let location = match ship.location {
+                ShipLocationRecord::Docked { .. } if under_construction => {
+                    "Under construction".to_owned()
+                }
                 ShipLocationRecord::Docked { .. } => "In berth".to_owned(),
                 ShipLocationRecord::InFlight(_) => "Under way".to_owned(),
                 ShipLocationRecord::Holding { .. } => "Holding station".to_owned(),
@@ -18520,7 +18538,8 @@ impl Store {
                 commanding_person_name,
                 standing_order: ship.standing_order,
                 can_assume_command: *ship_id == player.ship_id
-                    || matches!(ship.location, ShipLocationRecord::Docked { .. })
+                    || !under_construction
+                        && matches!(ship.location, ShipLocationRecord::Docked { .. })
                         && !matches!(
                             finance.title,
                             crate::wire::ShipTitleKind::PrizeCustody
@@ -18588,6 +18607,14 @@ impl Store {
             .map(decode_ship_record)
             .transpose()?
             .ok_or(StoreError::Corrupt("selected vessel is missing"))?;
+        if matches!(
+            new_ship.activity.as_ref().map(|activity| &activity.kind),
+            Some(ShipActivityKind::Construction)
+        ) {
+            return Ok(RuleResult::Rejected(
+                "the selected vessel is still under construction".into(),
+            ));
+        }
         let same_berth = matches!(
             (old_ship.location, new_ship.location),
             (
@@ -18723,6 +18750,14 @@ impl Store {
             .map(decode_ship_record)
             .transpose()?
             .ok_or(StoreError::Corrupt("selected vessel is missing"))?;
+        if matches!(
+            ship.activity.as_ref().map(|activity| &activity.kind),
+            Some(ShipActivityKind::Construction)
+        ) {
+            return Ok(RuleResult::Rejected(
+                "a captain cannot be assigned before delivery".into(),
+            ));
+        }
         service.ship_id = ship_id;
         service.assigned_slot_ids.clear();
         ship.commanding_person_id = person_id;
@@ -18783,6 +18818,16 @@ impl Store {
             .map(decode_ship_record)
             .transpose()?
             .ok_or(StoreError::Corrupt("destination vessel is missing"))?;
+        if [&source, &destination].into_iter().any(|ship| {
+            matches!(
+                ship.activity.as_ref().map(|activity| &activity.kind),
+                Some(ShipActivityKind::Construction)
+            )
+        }) {
+            return Ok(RuleResult::Rejected(
+                "stores cannot move through an undelivered hull".into(),
+            ));
+        }
         let co_located = source.system_id == destination.system_id
             && match (source.location, destination.location) {
                 (
@@ -19283,9 +19328,9 @@ impl Store {
         identity: &PlayerIdentity,
     ) -> Result<crate::wire::ShipMarket, StoreError> {
         let (_, ship) = self.player_and_ship_in(txn, identity)?;
-        if !matches!(ship.location, ShipLocationRecord::Docked { .. }) {
+        let ShipLocationRecord::Docked { facility_id, .. } = ship.location else {
             return Err(StoreError::Corrupt("ship market requested while underway"));
-        }
+        };
         let day = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0)
             / crate::simulation::SECONDS_PER_DAY;
         let current = creation::ship_status_spec(ship.catalog_id)
@@ -19314,6 +19359,12 @@ impl Store {
             .transpose()?
             .ok_or(StoreError::Corrupt("ship-market system missing"))?;
         let world = self.primary_world_in(txn, &system)?;
+        let facility = self
+            .facilities
+            .get(txn, &facility_id)?
+            .map(decode_facility)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("ship-market facility missing"))?;
         let mut catalog = creation::ship_market_catalog()
             .into_iter()
             .filter(|entry| entry.tech_level <= world.tech_level)
@@ -19363,11 +19414,43 @@ impl Store {
                 unclaimed.push(offer);
             }
         }
+        let mut commissionable_designs = creation::ship_market_catalog()
+            .into_iter()
+            .filter(|entry| {
+                facility.operational
+                    && facility.repair_shop
+                    && entry.tech_level <= facility.maximum_component_tech_level
+                    && entry.displacement_millitons <= facility.maximum_yard_hull_millitons
+            })
+            .map(|entry| crate::wire::ShipCommissionDesign {
+                catalog_id: entry.catalog_id,
+                class_name: entry.class_name,
+                tech_level: entry.tech_level,
+                price_credits: entry.price_credits,
+                deposit_credits: entry.price_credits / 5,
+                construction_seconds: u64::from(entry.construction_weeks)
+                    .saturating_mul(crate::ship_condition::SECONDS_PER_WEEK),
+                displacement_millitons: entry.displacement_millitons,
+                jump_rating: entry.jump_rating,
+                fuel_capacity_millitons: entry.fuel_capacity_millitons,
+                jump_fuel_millitons: entry.jump_fuel_millitons,
+                cargo_capacity_millitons: entry.cargo_capacity_millitons,
+                minimum_crew: entry.minimum_crew,
+            })
+            .collect::<Vec<_>>();
+        commissionable_designs.sort_by(|a, b| {
+            b.jump_rating.cmp(&a.jump_rating).then(
+                a.class_name
+                    .cmp(&b.class_name)
+                    .then(a.catalog_id.cmp(&b.catalog_id)),
+            )
+        });
         Ok(crate::wire::ShipMarket {
             generated_day: day,
             current_ship_trade_in_credits: trade_in,
             outstanding_lien_credits: lien,
             offers: unclaimed,
+            commissionable_designs,
         })
     }
 
@@ -19903,6 +19986,164 @@ impl Store {
         )?;
         self.market_claims
             .put(txn, &market_claim_key(1, offer_id), &[1])?;
+        Ok(RuleResult::Applied(self.ship_market_in(txn, identity)?))
+    }
+
+    fn commission_ship_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        catalog_id: u32,
+    ) -> Result<RuleResult<crate::wire::ShipMarket>, StoreError> {
+        let (mut player, commanded_ship) = self.player_and_ship_in(txn, identity)?;
+        let ShipLocationRecord::Docked {
+            world_id,
+            facility_id,
+            ..
+        } = commanded_ship.location
+        else {
+            return Ok(RuleResult::Rejected(
+                "a ship commission must be placed at a dockyard".into(),
+            ));
+        };
+        let facility = self
+            .facilities
+            .get(txn, &facility_id)?
+            .map(decode_facility)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("commissioning facility is missing"))?;
+        let Some(design) = creation::ship_market_catalog()
+            .into_iter()
+            .find(|entry| entry.catalog_id == catalog_id)
+        else {
+            return Ok(RuleResult::Rejected(
+                "that design is not in the admitted starship catalog".into(),
+            ));
+        };
+        if !facility.operational || !facility.repair_shop {
+            return Ok(RuleResult::Rejected(
+                "this port does not operate a construction yard".into(),
+            ));
+        }
+        if design.displacement_millitons > facility.maximum_yard_hull_millitons {
+            return Ok(RuleResult::Rejected(format!(
+                "this yard cannot construct a {}-ton hull",
+                design.displacement_millitons / 1_000
+            )));
+        }
+        if design.tech_level > facility.maximum_component_tech_level {
+            return Ok(RuleResult::Rejected(format!(
+                "this yard supports components through TL{}; {} requires TL{}",
+                facility.maximum_component_tech_level, design.class_name, design.tech_level
+            )));
+        }
+        let deposit = design.price_credits / 5;
+        if player.credits < deposit {
+            return Ok(RuleResult::Rejected(format!(
+                "the construction contract requires a Cr{deposit} deposit"
+            )));
+        }
+        let spec = creation::ship_status_spec(catalog_id)
+            .ok_or(StoreError::Corrupt("commissioned ship status data missing"))?;
+        let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        let due = current
+            .checked_add(
+                u64::from(design.construction_weeks)
+                    .saturating_mul(crate::ship_condition::SECONDS_PER_WEEK),
+            )
+            .ok_or(StoreError::Corrupt("ship construction time overflow"))?;
+        let ship_id = take_id_range(self.meta, txn, META_NEXT_SHIP_ID, 1)?;
+        let activity_id = crate::ship_condition::mix64(
+            ship_id ^ current ^ u64::from(catalog_id) ^ 0x434f_4e53_5452_5543,
+        );
+        let finance = FinanceRecord {
+            title: crate::wire::ShipTitleKind::OwnedWithLien,
+            restricted_credits: 0,
+            original_hull_price_credits: design.price_credits,
+            principal_credits: design.price_credits.saturating_mul(4) / 5,
+            monthly_payment_credits: design.price_credits.div_ceil(240),
+            monthly_insurance_escrow_credits: design
+                .price_credits
+                .saturating_mul(102)
+                .div_ceil(10_000)
+                .saturating_add(15_000)
+                .div_ceil(12),
+            next_payment_due_second: due
+                .saturating_add(crate::ship_condition::ACCOUNTING_MONTH_SECONDS),
+            paid_through_second: due,
+            in_default: false,
+            impound_order_known_locally: false,
+            impound_message_id: 0,
+            authorized_expense_credits: 0,
+            forged_receipt_credits: 0,
+            forged_receipt_count: 0,
+            forged_receipt_bbs_id: 0,
+            forged_receipt_player_id: 0,
+        };
+        let ship = ShipRecord {
+            revision: 1,
+            ship_id,
+            catalog_id,
+            catalog_revision: creation::ship_catalog_revision(catalog_id).ok_or(
+                StoreError::Corrupt("commissioned ship catalog revision missing"),
+            )?,
+            name: crate::traffic::registered_ship_name(ship_id, catalog_id),
+            career: commanded_ship.career,
+            command: identity.clone(),
+            commanding_person_id: 0,
+            standing_order: crate::wire::ManagedShipOrderKind::Hold,
+            system_id: commanded_ship.system_id,
+            current_fuel_millitons: 0,
+            unrefined_fuel_millitons: 0,
+            fuel_capacity_bonus_millitons: 0,
+            cargo_capacity_penalty_millitons: 0,
+            location: ShipLocationRecord::Docked {
+                world_id,
+                facility_id,
+                arrived_second: current,
+            },
+            cargo: Vec::new(),
+            passengers: Vec::new(),
+            ammunition: new_ship_ammunition(catalog_id),
+            provisions: new_ship_provisions(&spec, due),
+            subsystems: new_ship_subsystems(&spec, due)?,
+            maintenance: new_ship_maintenance(&spec, due)?,
+            latent_quirks: Vec::new(),
+            activity: Some(ShipActivityRecord {
+                activity_id,
+                kind: ShipActivityKind::Construction,
+                started_second: current,
+                due_second: due,
+                cost_credits: design.price_credits,
+                site: ShipActivitySite::Dockyard {
+                    system_id: commanded_ship.system_id,
+                    world_id,
+                    facility_id,
+                },
+            }),
+            mail_custody: None,
+            combat_policy: commanded_ship.combat_policy,
+            recovery_plan: None,
+            service_ledger: Vec::new(),
+        };
+        player.credits -= deposit;
+        player.debt_credits = player
+            .debt_credits
+            .saturating_add(finance.principal_credits);
+        player.managed_ship_ids.push(ship_id);
+        player.fleet_revision = player.fleet_revision.saturating_add(1);
+        self.ships.put(txn, &ship_id, &encode_ship_record(&ship)?)?;
+        self.finances.put(
+            txn,
+            &ship_finance_key(ship_id),
+            &encode_finance_record(&finance),
+        )?;
+        self.players.put(
+            txn,
+            &encode_identity(identity),
+            &encode_player_record(&player),
+        )?;
+        self.schedule_ship_activity_in(txn, ship_id, due)?;
         Ok(RuleResult::Applied(self.ship_market_in(txn, identity)?))
     }
 
@@ -27279,6 +27520,43 @@ impl Store {
             );
         let mut continue_automatic_recovery = was_automatic_recovery;
         match &activity.kind {
+            ShipActivityKind::Construction => {
+                let spec = creation::ship_status_spec(ship.catalog_id).ok_or(
+                    StoreError::Corrupt("constructed ship catalog data is missing"),
+                )?;
+                ship.current_fuel_millitons = spec.fuel_capacity_millitons;
+                ship.unrefined_fuel_millitons = 0;
+                let ShipLocationRecord::Docked {
+                    world_id,
+                    facility_id,
+                    ..
+                } = ship.location
+                else {
+                    return Err(StoreError::Corrupt(
+                        "completed construction is not at its dockyard",
+                    ));
+                };
+                ship.location = ShipLocationRecord::Docked {
+                    world_id,
+                    facility_id,
+                    arrived_second: due_second,
+                };
+                self.schedule_ship_condition_in(
+                    txn,
+                    ship.ship_id,
+                    ship.maintenance.next_accounting_second,
+                )?;
+                let identity_key = encode_identity(&command);
+                let mut player = self
+                    .players
+                    .get(txn, &identity_key)?
+                    .map(decode_player_record)
+                    .transpose()?
+                    .ok_or(StoreError::Corrupt("constructed ship owner is missing"))?;
+                player.fleet_revision = player.fleet_revision.saturating_add(1);
+                self.players
+                    .put(txn, &identity_key, &encode_player_record(&player))?;
+            }
             ShipActivityKind::Refit => {
                 ship.maintenance.last_refit_second = due_second;
                 ship.maintenance.completed_refits =
@@ -27501,6 +27779,7 @@ impl Store {
             service_id: activity.activity_id,
             completed_second: due_second,
             kind: match activity.kind {
+                ShipActivityKind::Construction => "New construction",
                 ShipActivityKind::Refit => "Refit",
                 ShipActivityKind::ProperRepair { .. } => "Proper repair",
                 ShipActivityKind::GasGiantSkim { .. } => "Gas-giant skimming",
@@ -30293,7 +30572,16 @@ impl SeedRole {
 
     fn accepts(self, world: &World) -> bool {
         match self {
-            Self::Capital => world.is_inhabited() && world.tech_level == 12,
+            Self::Capital => {
+                world.is_inhabited()
+                    && world.tech_level == 12
+                    && matches!(
+                        world.starport,
+                        crate::universe::Starport::A
+                            | crate::universe::Starport::B
+                            | crate::universe::Starport::C
+                    )
+            }
             Self::AgriculturalCompanion => {
                 world.is_inhabited() && world.tech_level <= 12 && world.is_agricultural()
             }
@@ -32447,6 +32735,10 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
             bytes.extend_from_slice(&offer_id.to_be_bytes());
             bytes.push(u8::from(trade_in_current_ship));
         }
+        Command::CommissionShip { catalog_id } => {
+            bytes.push(82);
+            bytes.extend_from_slice(&catalog_id.to_be_bytes());
+        }
         Command::GetCrewMarket => bytes.push(43),
         Command::HireCrew { candidate_id } => {
             bytes.push(44);
@@ -32941,6 +33233,9 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
         42 => Command::PurchaseShip {
             offer_id: decoder.u64()?,
             trade_in_current_ship: decoder.u8()? != 0,
+        },
+        82 => Command::CommissionShip {
+            catalog_id: decoder.u32()?,
         },
         43 => Command::GetCrewMarket,
         44 => Command::HireCrew {
@@ -33999,9 +34294,27 @@ fn encode_ship_market_into(
         bytes.push(o.jump_rating);
         bytes.extend_from_slice(&o.minimum_crew.to_be_bytes());
     }
+    bytes.extend_from_slice(&(m.commissionable_designs.len() as u32).to_be_bytes());
+    for design in &m.commissionable_designs {
+        bytes.extend_from_slice(&design.catalog_id.to_be_bytes());
+        encode_text(bytes, &design.class_name)?;
+        bytes.push(design.tech_level);
+        bytes.extend_from_slice(&design.price_credits.to_be_bytes());
+        bytes.extend_from_slice(&design.deposit_credits.to_be_bytes());
+        bytes.extend_from_slice(&design.construction_seconds.to_be_bytes());
+        bytes.extend_from_slice(&design.displacement_millitons.to_be_bytes());
+        bytes.push(design.jump_rating);
+        bytes.extend_from_slice(&design.fuel_capacity_millitons.to_be_bytes());
+        bytes.extend_from_slice(&design.jump_fuel_millitons.to_be_bytes());
+        bytes.extend_from_slice(&design.cargo_capacity_millitons.to_be_bytes());
+        bytes.extend_from_slice(&design.minimum_crew.to_be_bytes());
+    }
     Ok(())
 }
-fn decode_ship_market(d: &mut Decoder<'_>) -> Result<crate::wire::ShipMarket, StoreError> {
+fn decode_ship_market(
+    d: &mut Decoder<'_>,
+    version: u8,
+) -> Result<crate::wire::ShipMarket, StoreError> {
     let generated_day = d.u64()?;
     let current_ship_trade_in_credits = d.u64()?;
     let outstanding_lien_credits = d.u64()?;
@@ -34022,11 +34335,33 @@ fn decode_ship_market(d: &mut Decoder<'_>) -> Result<crate::wire::ShipMarket, St
             minimum_crew: d.u16()?,
         });
     }
+    let mut commissionable_designs = Vec::new();
+    if version >= 15 {
+        let count = d.u32()?;
+        commissionable_designs.reserve(count as usize);
+        for _ in 0..count {
+            commissionable_designs.push(crate::wire::ShipCommissionDesign {
+                catalog_id: d.u32()?,
+                class_name: d.text()?,
+                tech_level: d.u8()?,
+                price_credits: d.u64()?,
+                deposit_credits: d.u64()?,
+                construction_seconds: d.u64()?,
+                displacement_millitons: d.u64()?,
+                jump_rating: d.u8()?,
+                fuel_capacity_millitons: d.u64()?,
+                jump_fuel_millitons: d.u64()?,
+                cargo_capacity_millitons: d.u64()?,
+                minimum_crew: d.u16()?,
+            });
+        }
+    }
     Ok(crate::wire::ShipMarket {
         generated_day,
         current_ship_trade_in_credits,
         outstanding_lien_credits,
         offers,
+        commissionable_designs,
     })
 }
 fn encode_crew_market_into(
@@ -34526,7 +34861,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(14);
+    bytes.push(15);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -34790,6 +35125,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 12
         && version != 13
         && version != 14
+        && version != 15
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -34894,7 +35230,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         24 => OutcomeKind::TaskLedger(decode_task_ledger(&mut decoder)?),
         25 => OutcomeKind::Finance(decode_finance(&mut decoder)?),
         26 => OutcomeKind::MarketKnowledge(decode_market_knowledge(&mut decoder)?),
-        27 => OutcomeKind::ShipMarket(decode_ship_market(&mut decoder)?),
+        27 => OutcomeKind::ShipMarket(decode_ship_market(&mut decoder, version)?),
         28 => OutcomeKind::CrewMarket(decode_crew_market(&mut decoder)?),
         29 => OutcomeKind::Combat(decode_combat_snapshot_record(&mut decoder)?),
         30 => {
@@ -36860,6 +37196,7 @@ fn encode_ship_record(record: &ShipRecord) -> Result<Vec<u8>, StoreError> {
             bytes.push(1);
             bytes.extend_from_slice(&activity.activity_id.to_be_bytes());
             bytes.push(match &activity.kind {
+                ShipActivityKind::Construction => 7,
                 ShipActivityKind::Refit => 0,
                 ShipActivityKind::GasGiantSkim { .. } => 1,
                 ShipActivityKind::WildernessWater { .. } => 2,
@@ -37203,6 +37540,7 @@ fn decode_ship_record(bytes: &[u8]) -> Result<ShipRecord, StoreError> {
                     person_id: decoder.u64()?,
                     successful: decoder.u8()? != 0,
                 },
+                7 => ShipActivityKind::Construction,
                 _ => return Err(StoreError::Corrupt("unknown ship activity kind")),
             },
             started_second: decoder.u64()?,
@@ -38090,6 +38428,7 @@ fn encode_ship_status_into(
             bytes.push(1);
             bytes.extend_from_slice(&activity.activity_id.to_be_bytes());
             bytes.push(match activity.kind {
+                WireShipActivityKind::Construction => 7,
                 WireShipActivityKind::Refit => 0,
                 WireShipActivityKind::Refurbishment { .. } => 4,
                 WireShipActivityKind::ProperRepair { .. } => 1,
@@ -38099,6 +38438,7 @@ fn encode_ship_status_into(
                 WireShipActivityKind::FieldRecovery { .. } => 6,
             });
             match activity.kind {
+                WireShipActivityKind::Construction => {}
                 WireShipActivityKind::Refit => {}
                 WireShipActivityKind::Refurbishment { component_count } => {
                     bytes.extend_from_slice(&component_count.to_be_bytes());
@@ -38235,6 +38575,7 @@ fn decode_ship_status(decoder: &mut Decoder<'_>) -> Result<ShipStatusSnapshot, S
                 6 => WireShipActivityKind::FieldRecovery {
                     subsystem_id: decoder.u16()?,
                 },
+                7 => WireShipActivityKind::Construction,
                 _ => return Err(StoreError::Corrupt("unknown cached ship activity kind")),
             };
             let started_second = decoder.u64()?;
@@ -41445,6 +41786,149 @@ mod tests {
         assert!(store.process_next().unwrap().is_none());
     }
 
+    #[test]
+    fn commissioned_ship_persists_as_unavailable_until_timed_delivery() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut txn = store.env.write_txn().unwrap();
+        let (mut player, commanded_ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        let ShipLocationRecord::Docked { facility_id, .. } = commanded_ship.location else {
+            panic!("fixture ship is not docked");
+        };
+        let mut facility = store
+            .facilities
+            .get(&txn, &facility_id)
+            .unwrap()
+            .map(decode_facility)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        facility.operational = true;
+        facility.repair_shop = true;
+        facility.maximum_yard_hull_millitons = 200_000;
+        facility.maximum_component_tech_level = 12;
+        store
+            .facilities
+            .put(&mut txn, &facility_id, &encode_facility(&facility).unwrap())
+            .unwrap();
+        player.credits = 20_000_000;
+        store
+            .players
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_player_record(&player),
+            )
+            .unwrap();
+
+        let market = store.ship_market_in(&txn, &identity()).unwrap();
+        let leavitt = market
+            .commissionable_designs
+            .iter()
+            .find(|design| design.catalog_id == 214)
+            .unwrap();
+        assert_eq!(leavitt.tech_level, 11);
+        assert_eq!(leavitt.deposit_credits, 13_527_000);
+        assert_eq!(
+            leavitt.construction_seconds,
+            44 * crate::ship_condition::SECONDS_PER_WEEK
+        );
+        assert!(matches!(
+            store
+                .commission_ship_in(&mut txn, &identity(), 214)
+                .unwrap(),
+            RuleResult::Applied(_)
+        ));
+        let player = decode_player_record(
+            store
+                .players
+                .get(&txn, &encode_identity(&identity()))
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(player.credits, 6_473_000);
+        assert_eq!(player.managed_ship_ids.len(), 2);
+        let ship_id = *player
+            .managed_ship_ids
+            .iter()
+            .find(|ship_id| **ship_id != commanded_ship.ship_id)
+            .unwrap();
+        let commissioned =
+            decode_ship_record(store.ships.get(&txn, &ship_id).unwrap().unwrap()).unwrap();
+        let activity = commissioned.activity.as_ref().unwrap();
+        assert!(matches!(activity.kind, ShipActivityKind::Construction));
+        assert_eq!(commissioned.current_fuel_millitons, 0);
+        let due_second = activity.due_second;
+        let finance = decode_finance_record(
+            store
+                .finances
+                .get(&txn, &ship_finance_key(ship_id))
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(finance.principal_credits, 54_108_000);
+        assert_eq!(finance.paid_through_second, due_second);
+        assert_eq!(
+            finance.next_payment_due_second,
+            due_second + crate::ship_condition::ACCOUNTING_MONTH_SECONDS
+        );
+        let fleet = store.fleet_snapshot_in(&txn, &identity()).unwrap();
+        let summary = fleet
+            .ships
+            .iter()
+            .find(|ship| ship.ship_id == ship_id)
+            .unwrap();
+        assert_eq!(summary.location, "Under construction");
+        assert!(!summary.can_assume_command);
+        assert!(matches!(
+            store
+                .set_active_ship_in(&mut txn, &identity(), fleet.revision, ship_id)
+                .unwrap(),
+            RuleResult::Rejected(_)
+        ));
+        txn.commit().unwrap();
+        drop(store);
+
+        let store = Store::open(dir.path()).unwrap();
+        let mut txn = store.env.write_txn().unwrap();
+        let before = decode_ship_record(store.ships.get(&txn, &ship_id).unwrap().unwrap()).unwrap();
+        assert!(matches!(
+            before.activity.as_ref().map(|activity| &activity.kind),
+            Some(ShipActivityKind::Construction)
+        ));
+        store
+            .process_ship_activity_in(&mut txn, due_second, ship_id)
+            .unwrap();
+        let delivered =
+            decode_ship_record(store.ships.get(&txn, &ship_id).unwrap().unwrap()).unwrap();
+        assert!(delivered.activity.is_none());
+        assert_eq!(delivered.current_fuel_millitons, 132_000);
+        let full_jump_fuel = jump_fuel_for_distance(200_000, 3.0);
+        assert_eq!(full_jump_fuel, 60_000);
+        assert!(delivered.current_fuel_millitons >= full_jump_fuel * 2);
+        assert!(delivered.provisions.person_days_remaining > 0);
+        assert!(
+            store
+                .ship_condition_events
+                .iter(&txn)
+                .unwrap()
+                .filter_map(Result::ok)
+                .any(|(key, value)| decode_scheduled_object(key, value)
+                    .is_ok_and(|(_, _, scheduled_ship_id)| scheduled_ship_id == ship_id))
+        );
+        let fleet = store.fleet_snapshot_in(&txn, &identity()).unwrap();
+        let summary = fleet
+            .ships
+            .iter()
+            .find(|ship| ship.ship_id == ship_id)
+            .unwrap();
+        assert_eq!(summary.location, "In berth");
+        txn.commit().unwrap();
+    }
+
     fn make_fixture_naval_command(store: &Store, restricted_credits: u64) -> ShipRecord {
         let mut txn = store.env.write_txn().unwrap();
         let (mut player, ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
@@ -44072,6 +44556,12 @@ mod tests {
                 .find(|world| world.id == home.capital_world_id)
                 .unwrap();
             assert_eq!(capital.tech_level, 12);
+            assert!(matches!(
+                capital.starport,
+                crate::universe::Starport::A
+                    | crate::universe::Starport::B
+                    | crate::universe::Starport::C
+            ));
             assert_eq!(capital.name, "Dark Star BBS");
             for system_id in home
                 .cluster_system_ids

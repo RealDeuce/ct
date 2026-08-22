@@ -188,7 +188,7 @@ later; this transaction is available in flight through the impound message's
 Finance action.
 
 Ship and crew exchanges are finite, seed/day-derived port markets. Ship offers
-draw from all 134 active Jump-capable starships in the validated catalog, not
+draw from all 135 active Jump-capable starships in the validated catalog, not
 merely the 27 starting offers, and respect the local world's TL. Claimed
 offers disappear. Ship purchase settles the old lien and trade-in, creates
 the new title and financing, moves ordinary cargo and crew, and schedules

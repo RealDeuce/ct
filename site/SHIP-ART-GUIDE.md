@@ -54,15 +54,15 @@ The active catalog contains:
 
 | Property | Count |
 | --- | ---: |
-| Fitted designs | 213 |
-| Design families | 113 |
+| Fitted designs | 214 |
+| Design families | 114 |
 | Shared multi-design lineages | 39 families / 139 designs |
-| Singleton families | 74 |
+| Singleton families | 75 |
 | Families spanning more than one shipyard path | 21 |
 | Small craft, 10-95 tons | 62 |
 | Ships, 100 tons or more, without Jump | 17 |
-| Jump-capable starships | 134 |
-| Streamlined / standard / distributed / close-structure hulls | 126 / 75 / 10 / 2 |
+| Jump-capable starships | 135 |
+| Streamlined / standard / distributed / close-structure hulls | 127 / 75 / 10 / 2 |
 | Designs with turret mounts | 164 |
 | Designs with barbettes | 23 |
 | Designs with weapon bays | 32 |
@@ -77,7 +77,7 @@ The displacement range is 10 to 5,000 tons:
 | Displacement band | Designs | Visual reading |
 | --- | ---: | --- |
 | 10-95 tons | 62 | Human-scale launches, fighters, cutters, and boats |
-| 100-299 tons | 30 | Compact independent ships; doors, gear, and windows remain prominent |
+| 100-299 tons | 31 | Compact independent ships; doors, gear, and windows remain prominent |
 | 300-599 tons | 59 | The most common merchant, patrol, and raider scale |
 | 600-999 tons | 22 | Large working ships; hangars and major systems shape the hull |
 | 1,000-1,999 tons | 25 | Multi-deck commands and serious combatants |
@@ -570,7 +570,7 @@ appropriate yard fit and livery.
 | Endeavour (147) | 147-150, 190 | P1/P4 | One 300-ton modular merchant platform; survey fit changes instruments, not hull |
 | Franklin (169) | 169-175 | P1/P2/P3 | Two generations of one light-trader lineage; document which landmarks evolve between generations |
 
-The 74 singleton families still require a family anchor. They receive their
+The 75 singleton families still require a family anchor. They receive their
 native path language, but they must not borrow the silhouette of another
 singleton merely because tonnage and role match.
 

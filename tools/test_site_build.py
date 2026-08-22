@@ -2402,6 +2402,27 @@ class CatalogRecordTests(unittest.TestCase):
             "assets/ships/ship-213-cutlass.webp",
         )
 
+    def test_leavitt_is_the_tl11_two_jump_pathfinder(self) -> None:
+        leavitt = self.records[214]
+        self.assertEqual(leavitt["family_id"], 214)
+        self.assertEqual(leavitt["tons"], 200)
+        self.assertEqual(leavitt["configuration"], "Streamlined")
+        self.assertEqual(leavitt["tech_level"], 11)
+        self.assertEqual(leavitt["jump_rating"], 3)
+        self.assertEqual(leavitt["jump_drive"], "C")
+        self.assertEqual(leavitt["power_plant"], "C")
+        self.assertEqual(leavitt["jump_count"], 2)
+        self.assertEqual(leavitt["endurance"], 4)
+        self.assertEqual(leavitt["assertions"]["fuel_millitons"], 132_000)
+        self.assertEqual(leavitt["cargo"], "5 tons")
+        self.assertEqual(leavitt["crew"], 5)
+        self.assertIn("Single Turret: Beam Laser", leavitt["armament"])
+        self.assertEqual(leavitt["length_m"], 43.0)
+        self.assertEqual(
+            leavitt["art_path"],
+            "assets/ships/ship-214-leavitt.webp",
+        )
+
     def test_myrmidon_exposes_armored_strike_boat_fit(self) -> None:
         myrmidon = self.records[29]
         self.assertEqual(myrmidon["family_id"], 29)
@@ -3937,7 +3958,7 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(archimedes["length_m"], 8.4)
 
     def test_all_records_expose_evaluator_derived_performance_and_price(self) -> None:
-        self.assertEqual(len(self.records), 213)
+        self.assertEqual(len(self.records), 214)
         self.assertTrue(all(record["thrust_g"] > 0 for record in self.records.values()))
         self.assertTrue(
             all(
@@ -3953,7 +3974,7 @@ class CatalogRecordTests(unittest.TestCase):
         records = SITE_BUILD.catalog_records()
         self.assertEqual(
             [record["catalog_id"] for record in records],
-            list(range(1, 214)),
+            list(range(1, 215)),
         )
         page = SITE_BUILD.ship_catalog_page(records)
         self.assertLess(page.index(">Aegis</option>"), page.index(">Aeolus</option>"))
@@ -4017,12 +4038,12 @@ class CatalogRecordTests(unittest.TestCase):
 
         first_page = SITE_BUILD.ship_detail_page(by_id[1], records)
         self.assertIn(
-            f'rel="prev" href="{by_id[213]["page"]}" '
-            f'aria-label="Previous catalog entry 213: {by_id[213]["name"]}"',
+            f'rel="prev" href="{by_id[214]["page"]}" '
+            f'aria-label="Previous catalog entry 214: {by_id[214]["name"]}"',
             first_page,
         )
 
-        last_page = SITE_BUILD.ship_detail_page(by_id[213], records)
+        last_page = SITE_BUILD.ship_detail_page(by_id[214], records)
         self.assertIn(
             f'rel="next" href="{by_id[1]["page"]}" '
             f'aria-label="Next catalog entry 001: {by_id[1]["name"]}"',

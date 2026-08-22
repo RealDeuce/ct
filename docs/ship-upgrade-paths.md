@@ -23,7 +23,7 @@ Family and path membership are independent:
   with that particular fit; and
 - variants from one family may be native to different paths.
 
-Twenty-one of the current 113 families span more than one path. Repeated
+Twenty-one of the current 114 families span more than one path. Repeated
 copies of the same fit remain in the same native path; cross-path membership
 is reserved for actual variants with materially different purposes.
 

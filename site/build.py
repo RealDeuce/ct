@@ -1374,6 +1374,13 @@ PUBLISHED_SHIP_ART = {
         "and blackened-chrome fifty-ton assault cutter with a fixed beam laser.",
         22.0,
     ),
+    214: (
+        "assets/ships/ship-214-leavitt.webp",
+        "Painted three-quarter view of Leavitt, an avocado, ochre, brick-red, "
+        "and polished-aluminum 200-ton lifting-body pathfinder with short wings, "
+        "one beam turret, and a separate cylindrical engineering stern.",
+        43.0,
+    ),
 }
 
 CATEGORY_NAMES = {
@@ -2204,7 +2211,7 @@ def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
     <div><dt>Dossiers issued</dt><dd>{len(records):02}</dd></div>
     <div><dt>Distinct plates</dt><dd>{len({ship['art_path'] for ship in records}):02}</dd></div>
     <div><dt>Complete families</dt><dd>{len(families):02}</dd></div>
-    <div><dt>Catalog designs</dt><dd>213</dd></div>
+    <div><dt>Catalog designs</dt><dd>214</dd></div>
   </dl>
 </header>
 <div class="catalog-registry">
@@ -2231,7 +2238,7 @@ def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
     <header><p class="section-index">Registry finder</p><h2 id="catalog-index-title">Issued dossiers</h2><p>This register stays compact for rapid filtering. Open a vessel to see its complete recognition plate, operational profile, construction record, crew, equipment, and provenance.</p></header>
     <nav class="catalog-index" id="catalog-index" aria-label="Issued ship plates">{''.join(index_links)}</nav>
     <div id="no-ship-results" class="no-results" hidden><strong>No issued plate matches.</strong><p>Clear a filter or try a broader registry term.</p></div>
-    <p class="catalog-source"><span>Registry note</span> Only vessels with an approved family plate appear here. The active construction catalog currently contains 213 designs.</p>
+    <p class="catalog-source"><span>Registry note</span> Only vessels with an approved family plate appear here. The active construction catalog currently contains 214 designs.</p>
   </section>
 </div>
 """

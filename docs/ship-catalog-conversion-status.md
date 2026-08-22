@@ -3,8 +3,8 @@
 The Clement/Earth conversion is complete. All 191 identities from the private
 `Ships.ods` coverage inventory are present as active, PI-free, rule-derived
 catalog entries. Tags `ship-1` through `ship-191` permanently preserve the
-inventory row mapping. The 22 supplemental/core designs occupy `ship-192`
-through `ship-213`.
+inventory row mapping. The 23 supplemental/core and original designs occupy
+`ship-192` through `ship-214`.
 
 The spreadsheet remains an external coverage and provenance aid. Active
 entries are static bills of materials evaluated from `catalog/shipbuilding/`;
@@ -18,14 +18,14 @@ they are not generated from specification prose.
 | Admitted reserved rows | 191 |
 | Reserved rows remaining | 0 |
 | Admitted supplemental/core designs | 22 |
-| Total active catalog entries | 213 |
-| Design families | 113 |
+| Total active catalog entries | 214 |
+| Design families | 114 |
 | Multi-design shared lineages | 39 |
 | Singleton design families | 74 |
 | Native upgrade paths | 9 |
 | Canonically named paths/manufacturers | 9 |
-| Canonically named families | 113 |
-| Canonically named fitted designs | 213 |
+| Canonically named families | 114 |
+| Canonically named fitted designs | 214 |
 
 `catalog/ships/index.toml` revision 45 is the authoritative inventory.
 `catalog/ships/families.toml` revision 1 is the authoritative family grouping.

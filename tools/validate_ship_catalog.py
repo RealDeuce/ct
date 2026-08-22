@@ -883,6 +883,7 @@ def validate(
                     f"display_name = {json.dumps(metadata['display_name'])}",
                     f"tech_level = {design['tech_level']}",
                     f"construction_price_credits = {result['construction_price_credits']}",
+                    f"construction_weeks = {result['construction_weeks']}",
                     f"displacement_millitons = {result['hull_millitons']}",
                     f"jump_rating = {result['jump_rating']}",
                     f"thrust_g = {result['thrust_g']}",

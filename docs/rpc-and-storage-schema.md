@@ -1,6 +1,6 @@
 # RPC and Storage Schema
 
-*Current implementation: player CT-RPC 7, sysop/admin protocols 2, storage format 1, and record codecs 1.*
+*Current implementation: player CT-RPC 8, sysop/admin protocols 2, storage format 1, and record codecs 1.*
 
 ## Authority boundary
 
@@ -21,7 +21,7 @@ explain state, but it is never the machine-readable discriminator.
 
 ## Current protocol
 
-CT-RPC 7 is the only accepted player protocol. The sysop and administrator
+CT-RPC 8 is the only accepted player protocol. The sysop and administrator
 protocols likewise accept only version 2. Each TLS connection begins with a
 hello carrying one BCP 47 language tag. The server validates the tag and
 returns the selected supported tag. Bare `en` selects the server's `en-US`
@@ -173,10 +173,11 @@ engine inputs and use the same ingress sequence as every other mutation.
 `FlightPlanStep.terminal` and `FlightPlanWarning.stepIndices` are additive
 CT-RPC fields. The flight-plan proposal and snapshot record codecs use version
 2; version-1 Terminal authority decodes as Hold plus a terminal marker. Outcome
-codec version 14 preserves warning step references while older outcomes decode
-with no references. A pre-field proposal with no explicit terminal bit is
-normalized at the wire boundary by marking its last step, so CT-RPC remains at
-version 7. No universe-wide storage migration is required.
+codec version 15 preserves warning step references and adds the capable-yard
+commission catalog; older outcomes decode with no commission designs. A
+pre-field proposal with no explicit terminal bit is normalized at the wire
+boundary by marking its last step. CT-RPC 8 adds durable ship commissions and
+construction activity. No universe-wide storage migration is required.
 
 ## Persistence contract during development
 

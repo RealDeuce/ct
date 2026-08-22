@@ -190,8 +190,10 @@ world below TL9 can have a working port but no locally eligible ships for sale.
   charter, courier, service, or other local offers.
 - `F` — **Fuel and Supplies:** buy available fuel, provisions, and ammunition,
   or arrange a supported wilderness-fuel expedition.
-- `Y` — **Shipyard:** inspect ships for sale and buy one by trading in the
-  current vessel where the title and finances permit it.
+- `Y` — **Shipyard:** inspect ships for sale, trade in the current vessel where
+  title and finances permit it, or commission an admitted catalog design that
+  the local yard can construct. A commission takes a deposit and appears in
+  Fleet until its real construction time ends.
 - `P` — **Personnel:** hire available crew and open roster actions such as
   assignment, leave, recall, treatment, or discharge.
 - `B` — **Banking and Accounts:** inspect debt, insurance, assistance, and
