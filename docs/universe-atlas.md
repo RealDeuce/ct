@@ -42,7 +42,7 @@ server/target/release/cepheus-trader-universe-site \
 The default visibility is `universally-known`. The exporter includes only
 systems whose public mapping broadcast has completed across every currently
 applicable system. That state is monotonic: a system does not disappear from a
-later public snapshot. The initial 35-system Federation is universally known
+later public snapshot. The initial 43-system Federation is universally known
 at game second zero.
 
 An operator-only snapshot can deliberately bypass that filter:
@@ -59,7 +59,7 @@ player has made public. It should not be published at a player-visible URL.
 The chosen scope is embedded in `universe.json` and displayed prominently in
 the viewer. On a storage-format-1 database that predates publication tracking,
 omniscient mode still exports every stored system. The conservative
-universally-known compatibility view exports the fixed 35-system baseline
+universally-known compatibility view exports the fixed 43-system baseline
 until the current server has backfilled the publication index.
 
 For a documentation site or a new universe without a database, generate the

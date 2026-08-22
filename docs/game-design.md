@@ -81,7 +81,7 @@ repair, weeks-long refits, catalog-priced component replacement, port
 unrefined fuel, and timed named-body wilderness or gas-giant fueling. These
 share the ordered scheduler and survive restart. Latent quirks remain hidden;
 reported symptoms appear only after relevant use manifests them.
-The reset creates the 35 stellar-component systems from Sol through Tau Ceti
+The reset creates the 43 stellar-component systems in the fixed CNS5 hull
 as Federation space and Earth at TL13; its full Jump-2 audit is in
 [`initial-federation.md`](initial-federation.md). The authoritative
 implementation order is [`ROADMAP.md`](../ROADMAP.md).

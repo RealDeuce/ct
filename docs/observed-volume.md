@@ -84,10 +84,11 @@ are committed. Chunk record encoding rejects empty, duplicate, overlapping,
 truncated, or trailing layer data.
 
 The fixed initial CNS5 volume uses distribution and sampler version 1.
-Every cell intersecting the sphere from Sol through Tau Ceti is resolved by
-that fixed-catalog layer, preventing later generation from inserting another
-component into the initial observed neighborhood. A destructive universe
-reinitialization clears all coverage chunks and recreates this layer.
+Every cell with positive-volume intersection with the convex hull of the
+43-system starting catalogue is resolved by that fixed-catalog layer,
+preventing later generation from inserting another component into the initial
+observed neighborhood. A destructive universe reinitialization clears all
+coverage chunks and recreates this layer.
 
 ## Oracle result
 

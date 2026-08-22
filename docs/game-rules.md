@@ -300,6 +300,12 @@ its service institutions. It is separate from the primary world's Government
 code, which describes that world's broad internal form, and from the
 Chaos-Order and Trade-Combat orientations defined under traffic.
 
+Every newly founded BBS home polity is internally connected by Jump-2 legs
+and joins the existing system-to-system Jump-2 network that reaches Sol. Its
+capital therefore has a Jump-2 route to Sol through already established
+systems and its own cluster. Founding a new polity does not move or regenerate
+older systems or historical clusters.
+
 Charts are observations. A captain knows only systems and details carried by
 the ship's records or received through survey and mail. Empty surveyed space
 is also knowledge: it prevents a resolved volume from being rerolled merely

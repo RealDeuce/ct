@@ -14,11 +14,14 @@ state. It preserves BBS enrollment, BBS credentials, and sysop-selected BBS
 configuration because those are installation and control-plane state.
 Connected player sessions are disconnected after the reset commits.
 
-Initialization creates the Federation polity, the 35 stellar-component
-systems from Sol through Tau Ceti, and Earth at TL13. Every initial system is
-a Federation member and receives an independently generated cryptographic
-seed for later planetary-system generation. Only Earth is materialized as a
-world by this slice.
+Initialization creates the Federation polity, 43 stellar-component systems,
+and Earth at TL13. The catalogue contains the complete distance-ordered CNS5
+prefix from Sol through Tau Ceti plus every known component inside the convex
+hull formed by that prefix and the five J-2 bridge groupings YZ Ceti, Ross 614,
+Gliese 1, 40 Eridani, and Gliese 205. Every initial system is a Federation
+member and receives an independently generated cryptographic seed for later
+planetary-system generation. Only Earth is materialized as a world by this
+slice.
 
 ## Astrometric model
 
@@ -33,8 +36,8 @@ parallax are transformed into heliocentric Galactic Cartesian coordinates:
 - all three coordinates and distances are in parsecs.
 
 A game system represents one stellar component because each component may
-have its own generated planetary system. This gives 35 systems rather than
-22 gravitational groupings. When CNS5 supplies only a combined position for
+have its own generated planetary system. This gives 43 systems rather than
+27 gravitational groupings. When CNS5 supplies only a combined position for
 a close multiple, its components initially share that interstellar-map
 position. Local orbital separation belongs to the later generated
 planetary-system model. Component positions with separate CNS5 astrometry use
@@ -55,6 +58,8 @@ The component split is:
 | Struve 2398 | Struve 2398 A, Struve 2398 B |
 | Groombridge 34 | Groombridge 34 A, Groombridge 34 B |
 | Epsilon Indi | Epsilon Indi A, Epsilon Indi Ba, Epsilon Indi Bb |
+| Ross 614 | Ross 614 A, Ross 614 B |
+| 40 Eridani | 40 Eridani A, 40 Eridani B, 40 Eridani C |
 
 Luhman 16 A/B and Epsilon Indi Ba/Bb are brown dwarfs.
 WISE 0855-0714 is a sub-brown-dwarf object and is retained as a system for
@@ -81,22 +86,22 @@ position.
 | 8 | WISE 0855-0714 | Luhman 16 A (1.876), Luhman 16 B (1.876), Wolf 359 (1.353), Sirius A (1.443), Sirius B (1.443), Procyon A (1.663), Procyon B (1.663) |
 | 9 | Wolf 359 | WISE 0855-0714 (1.353), Lalande 21185 (1.247), Ross 128 (1.196) |
 | 10 | Lalande 21185 | Wolf 359 (1.247) |
-| 11 | Sirius A | WISE 0855-0714 (1.443), Sirius B (<0.001), Procyon A (1.613), Procyon B (1.613) |
-| 12 | Sirius B | WISE 0855-0714 (1.443), Sirius A (<0.001), Procyon A (1.614), Procyon B (1.614) |
-| 13 | Luyten 726-8 A | Luyten 726-8 B (<0.001), Epsilon Eridani (1.559), Tau Ceti (0.956) |
-| 14 | Luyten 726-8 B | Luyten 726-8 A (<0.001), Epsilon Eridani (1.559), Tau Ceti (0.956) |
+| 11 | Sirius A | WISE 0855-0714 (1.443), Sirius B (<0.001), Procyon A (1.613), Procyon B (1.613), Ross 614 A (1.705), Ross 614 B (1.705) |
+| 12 | Sirius B | WISE 0855-0714 (1.443), Sirius A (<0.001), Procyon A (1.614), Procyon B (1.614), Ross 614 A (1.705), Ross 614 B (1.705) |
+| 13 | Luyten 726-8 A | Luyten 726-8 B (<0.001), Epsilon Eridani (1.559), Tau Ceti (0.956), YZ Ceti (1.073) |
+| 14 | Luyten 726-8 B | Luyten 726-8 A (<0.001), Epsilon Eridani (1.559), Tau Ceti (0.956), YZ Ceti (1.073) |
 | 15 | Ross 154 | Barnard's Star (1.702) |
 | 16 | Ross 248 | 61 Cygni A (1.712), 61 Cygni B (1.711), Groombridge 34 A (0.556), Groombridge 34 B (0.557) |
-| 17 | Epsilon Eridani | Luyten 726-8 A (1.559), Luyten 726-8 B (1.559), Tau Ceti (1.675) |
-| 18 | Lacaille 9352 | EZ Aquarii A (1.251), EZ Aquarii B (1.251), EZ Aquarii C (1.251), Epsilon Indi A (1.448), Epsilon Indi Ba (1.445), Epsilon Indi Bb (1.445) |
+| 17 | Epsilon Eridani | Luyten 726-8 A (1.559), Luyten 726-8 B (1.559), Tau Ceti (1.675), 40 Eridani A (1.938), 40 Eridani B (1.939), 40 Eridani C (1.939) |
+| 18 | Lacaille 9352 | EZ Aquarii A (1.251), EZ Aquarii B (1.251), EZ Aquarii C (1.251), Epsilon Indi A (1.448), Epsilon Indi Ba (1.445), Epsilon Indi Bb (1.445), Gliese 1 (1.322) |
 | 19 | Ross 128 | Wolf 359 (1.196) |
 | 20 | EZ Aquarii A | Lacaille 9352 (1.251), EZ Aquarii B (<0.001), EZ Aquarii C (<0.001) |
 | 21 | EZ Aquarii B | Lacaille 9352 (1.251), EZ Aquarii A (<0.001), EZ Aquarii C (<0.001) |
 | 22 | EZ Aquarii C | Lacaille 9352 (1.251), EZ Aquarii A (<0.001), EZ Aquarii B (<0.001) |
 | 23 | 61 Cygni A | Ross 248 (1.712), 61 Cygni B (0.001), Struve 2398 A (1.865), Struve 2398 B (1.865) |
 | 24 | 61 Cygni B | Ross 248 (1.711), 61 Cygni A (0.001), Struve 2398 A (1.866), Struve 2398 B (1.865) |
-| 25 | Procyon A | WISE 0855-0714 (1.663), Sirius A (1.613), Sirius B (1.614), Procyon B (<0.001), DX Cancri (1.518) |
-| 26 | Procyon B | WISE 0855-0714 (1.663), Sirius A (1.613), Sirius B (1.614), Procyon A (<0.001), DX Cancri (1.518) |
+| 25 | Procyon A | WISE 0855-0714 (1.663), Sirius A (1.613), Sirius B (1.614), Procyon B (<0.001), DX Cancri (1.518), Ross 614 A (1.412), Ross 614 B (1.412) |
+| 26 | Procyon B | WISE 0855-0714 (1.663), Sirius A (1.613), Sirius B (1.614), Procyon A (<0.001), DX Cancri (1.518), Ross 614 A (1.412), Ross 614 B (1.412) |
 | 27 | Struve 2398 A | 61 Cygni A (1.865), 61 Cygni B (1.866), Struve 2398 B (<0.001) |
 | 28 | Struve 2398 B | 61 Cygni A (1.865), 61 Cygni B (1.865), Struve 2398 A (<0.001) |
 | 29 | Groombridge 34 A | Ross 248 (0.556), Groombridge 34 B (0.001) |
@@ -105,12 +110,28 @@ position.
 | 32 | Epsilon Indi A | Lacaille 9352 (1.448), Epsilon Indi Ba (0.007), Epsilon Indi Bb (0.007) |
 | 33 | Epsilon Indi Ba | Lacaille 9352 (1.445), Epsilon Indi A (0.007), Epsilon Indi Bb (<0.001) |
 | 34 | Epsilon Indi Bb | Lacaille 9352 (1.445), Epsilon Indi A (0.007), Epsilon Indi Ba (<0.001) |
-| 35 | Tau Ceti | Luyten 726-8 A (0.956), Luyten 726-8 B (0.956), Epsilon Eridani (1.675) |
+| 35 | Tau Ceti | Luyten 726-8 A (0.956), Luyten 726-8 B (0.956), Epsilon Eridani (1.675), YZ Ceti (0.494) |
+| 36 | YZ Ceti | Luyten 726-8 A (1.073), Luyten 726-8 B (1.073), Tau Ceti (0.494), Gliese 1 (1.860) |
+| 37 | Ross 614 A | Sirius A (1.705), Sirius B (1.705), Procyon A (1.412), Procyon B (1.412), Ross 614 B (<0.001), Gliese 205 (1.995) |
+| 38 | Ross 614 B | Sirius A (1.705), Sirius B (1.705), Procyon A (1.412), Procyon B (1.412), Ross 614 A (<0.001), Gliese 205 (1.995) |
+| 39 | Gliese 1 | Lacaille 9352 (1.322), YZ Ceti (1.860) |
+| 40 | 40 Eridani A | Epsilon Eridani (1.938), 40 Eridani B (0.002), 40 Eridani C (0.002), Gliese 205 (1.928) |
+| 41 | 40 Eridani B | Epsilon Eridani (1.939), 40 Eridani A (0.002), 40 Eridani C (<0.001), Gliese 205 (1.926) |
+| 42 | 40 Eridani C | Epsilon Eridani (1.939), 40 Eridani A (0.002), 40 Eridani B (<0.001), Gliese 205 (1.926) |
+| 43 | Gliese 205 | Ross 614 A (1.995), Ross 614 B (1.995), 40 Eridani A (1.928), 40 Eridani B (1.926), 40 Eridani C (1.926) |
 
-There are 65 undirected component-to-component pairs within Jump-2 range.
+There are 90 undirected component-to-component pairs within Jump-2 range.
 This is a geometric range audit, not yet a rule that requires or permits a
 Jump transition between extremely close companions; that boundary belongs to
 the later navigation and local-orbital model.
+
+The graph has exactly two Jump-2 components. Sol and 35 other component
+systems form the main network. Ross 248, 61 Cygni A/B, Struve 2398 A/B, and
+Groombridge 34 A/B form a seven-system island. Its closest crossing to the
+main network is Barnard's Star to 61 Cygni B at 2.858 parsecs, so ordinary
+Jump-3 ships can reach the fully catalogued island. New BBS polity generation
+does not use that island as an inward gateway; its growth is reserved for
+player exploration and later publication.
 
 Direct-neighbor geometry is not a hard limit on staged travel. Standard Jump
 drives may target empty-space volumes, so a double-tanked Jump-1 ship can

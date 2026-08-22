@@ -24,8 +24,8 @@ use crate::commerce::{
 use crate::coverage::{
     COVERAGE_BITMAP_BYTES, COVERAGE_CELLS_PER_CHUNK, CellBitmap, CoverageChunk,
     CoverageChunkCoordinate, CoverageGeometryError, CoverageLayer, MappingCoverage,
-    jump_arrival_footprint_masks, point_cell, settlement_sphere_footprint_masks,
-    sphere_footprint_masks,
+    convex_polyhedron_footprint_masks, jump_arrival_footprint_masks, point_cell,
+    settlement_sphere_footprint_masks, sphere_footprint_masks,
 };
 use crate::creation;
 use crate::crypto::{CryptoError, SeedStream};
@@ -45,8 +45,9 @@ use crate::simulation::{
     SimulationReport, SimulationSystem,
 };
 use crate::universe::{
-    FEDERATION_POLITY_ID, INITIAL_GENERATION_VERSION, INITIAL_SYSTEMS, Polity, SOL_SYSTEM_ID,
-    STELLAR_DISTRIBUTION_VERSION, StellarSystem, UniverseInitialization, World,
+    FEDERATION_POLITY_ID, INITIAL_CATALOG_HULL_EDGES, INITIAL_CATALOG_HULL_FACE_NORMALS,
+    INITIAL_CATALOG_HULL_VERTICES, INITIAL_GENERATION_VERSION, INITIAL_SYSTEMS, Polity,
+    SOL_SYSTEM_ID, STELLAR_DISTRIBUTION_VERSION, StellarSystem, UniverseInitialization, World,
     generate_primary_world, sol_centered_stellar_density_upper_bound,
     stellar_component_density_per_cubic_parsec,
 };
@@ -24101,16 +24102,15 @@ impl Store {
         self.unique_cargo
             .put(&mut txn, &pie.object_id, &encode_unique_cargo(&pie)?)?;
 
-        // The fixed CNS5 catalog establishes the initial observed volume
-        // through Tau Ceti. Coverage cells are atomic, so cells with any
-        // positive-volume intersection with that sphere are resolved by the
-        // fixed-catalog layer rather than rerolled by later frontier work.
-        let tau_ceti_radius = 1000.0
-            / INITIAL_SYSTEMS
-                .last()
-                .ok_or(StoreError::Corrupt("empty initial system catalog"))?
-                .parallax_mas;
-        let initial_coverage = sphere_footprint_masks([0.0; 3], tau_ceti_radius)?;
+        // The fixed CNS5 catalog establishes the convex observed volume whose
+        // vertices are the starting systems. Coverage cells are atomic, so
+        // cells with any positive-volume intersection with that hull are
+        // resolved by the fixed-catalog layer rather than rerolled later.
+        let initial_coverage = convex_polyhedron_footprint_masks(
+            INITIAL_CATALOG_HULL_VERTICES,
+            INITIAL_CATALOG_HULL_FACE_NORMALS,
+            INITIAL_CATALOG_HULL_EDGES,
+        )?;
         let (_, initial_coverage_cells) = self.apply_coverage_bits_in(
             &mut txn,
             0,
@@ -40293,6 +40293,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use crate::bbs_polity::BBS_POLITY_TOTAL_SEEDED_SYSTEMS;
 
     #[test]
     fn absolute_market_ranges_are_not_captain_specific() {
@@ -43667,8 +43668,8 @@ mod tests {
                 .unwrap();
             assert_eq!(replay, first);
             assert_eq!(first.polity_count, 1);
-            assert_eq!(first.system_count, 35);
-            assert_eq!(first.world_count, 35);
+            assert_eq!(first.system_count, INITIAL_SYSTEMS.len() as u32);
+            assert_eq!(first.world_count, INITIAL_SYSTEMS.len() as u32);
             assert_eq!(
                 store.polities().unwrap(),
                 vec![Polity {
@@ -43707,7 +43708,10 @@ mod tests {
             first
         };
         let reopened = Store::open(dir.path()).unwrap();
-        assert_eq!(reopened.stellar_systems().unwrap().len(), 35);
+        assert_eq!(
+            reopened.stellar_systems().unwrap().len(),
+            INITIAL_SYSTEMS.len()
+        );
         assert_eq!(reopened.worlds().unwrap()[0].tech_level, 13);
         assert_eq!(
             reopened
@@ -43839,7 +43843,7 @@ mod tests {
     }
 
     #[test]
-    fn initial_catalog_coverage_reduces_the_sol_arrival_boundary() {
+    fn initial_catalog_hull_resolves_every_fixed_system_and_reduces_arrival_boundary() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
         store
@@ -43850,13 +43854,24 @@ mod tests {
                 &[],
             )
             .unwrap();
+        let coverage_txn = store.env.read_txn().unwrap();
+        for initial in INITIAL_SYSTEMS {
+            assert!(
+                store
+                    .point_is_resolved_in(&coverage_txn, initial.position_parsecs)
+                    .unwrap(),
+                "{} must lie in a resolved initial-hull cell",
+                initial.name
+            );
+        }
+        drop(coverage_txn);
         let MappingCoverage::NeedsMaterialization {
             coverage_revision,
             footprint_cells,
             missing_cells,
         } = store.mapping_coverage([0.0; 3]).unwrap()
         else {
-            panic!("Tau Ceti coverage unexpectedly fills a six-parsec sphere");
+            panic!("initial catalogue hull unexpectedly fills a six-parsec sphere");
         };
         let missing_count = missing_cells
             .values()
@@ -43932,8 +43947,11 @@ mod tests {
             .unwrap();
         assert_eq!(initialized.committed_sequence, 5);
         assert_eq!(initialized.polity_count, 2);
-        assert_eq!(initialized.system_count, 46);
-        assert_eq!(initialized.world_count, 46);
+        assert_eq!(
+            initialized.system_count,
+            (INITIAL_SYSTEMS.len() + BBS_POLITY_TOTAL_SEEDED_SYSTEMS) as u32
+        );
+        assert_eq!(initialized.world_count, initialized.system_count);
         let home = store.bbs_home(credential.bbs_id).unwrap().unwrap();
         assert_eq!(home.placement_seed, [0x31; 32]);
         assert_eq!(home.cluster_system_ids.len(), BBS_POLITY_SYSTEM_COUNT);
@@ -44025,9 +44043,19 @@ mod tests {
                     .naming_profile_id,
                 polity_profile([0x91; 32]).unwrap()
             );
-            assert_eq!(store.stellar_systems().unwrap().len(), 46);
-            assert_eq!(store.worlds().unwrap().len(), 46);
-            assert_eq!(store.simulation_systems().unwrap().len(), 46);
+            let expected_systems = INITIAL_SYSTEMS.len() + BBS_POLITY_TOTAL_SEEDED_SYSTEMS;
+            assert_eq!(store.stellar_systems().unwrap().len(), expected_systems);
+            assert_eq!(store.worlds().unwrap().len(), expected_systems);
+            assert_eq!(store.simulation_systems().unwrap().len(), expected_systems);
+            assert!(
+                crate::simulation::shortest_route(
+                    &store.simulation_systems().unwrap(),
+                    home.capital_system_id,
+                    SOL_SYSTEM_ID,
+                )
+                .is_some(),
+                "a newly materialized BBS capital must have a J-2 path to Sol"
+            );
 
             let systems = store.stellar_systems().unwrap();
             let worlds = store.worlds().unwrap();
@@ -44179,7 +44207,10 @@ mod tests {
 
         let reopened = Store::open(dir.path()).unwrap();
         assert_eq!(reopened.bbs_home(1).unwrap(), Some(expected_home));
-        assert_eq!(reopened.simulation_systems().unwrap().len(), 46);
+        assert_eq!(
+            reopened.simulation_systems().unwrap().len(),
+            INITIAL_SYSTEMS.len() + BBS_POLITY_TOTAL_SEEDED_SYSTEMS
+        );
     }
 
     #[test]
@@ -44364,10 +44395,21 @@ mod tests {
         ];
         assert_ne!(homes[0].capital_system_id, homes[1].capital_system_id);
         let systems = store.stellar_systems().unwrap();
+        let simulation_systems = store.simulation_systems().unwrap();
         assert_eq!(store.polities().unwrap().len(), 3);
-        assert_eq!(systems.len(), 57);
-        assert_eq!(store.worlds().unwrap().len(), 57);
+        let expected_systems = INITIAL_SYSTEMS.len() + 2 * BBS_POLITY_TOTAL_SEEDED_SYSTEMS;
+        assert_eq!(systems.len(), expected_systems);
+        assert_eq!(store.worlds().unwrap().len(), expected_systems);
         for home in homes {
+            assert!(
+                crate::simulation::shortest_route(
+                    &simulation_systems,
+                    home.capital_system_id,
+                    SOL_SYSTEM_ID,
+                )
+                .is_some(),
+                "every newly materialized BBS capital must remain on Sol's J-2 network"
+            );
             let mut gateways = 0;
             for member_id in home.cluster_system_ids {
                 let member = systems
@@ -48405,7 +48447,7 @@ mod tests {
                 > 0
         );
         // Exercise the same two-stage scheduler contract without advancing the
-        // entire 35-system simulation fixture through several game weeks.
+        // entire fixed-system simulation fixture through several game weeks.
         let mut txn = store.env.write_txn().unwrap();
         let (key, due_second, event_id, assignment_id) =
             first_simple_event(store.work_assignment_events, &txn)

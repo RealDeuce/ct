@@ -195,6 +195,8 @@ pub enum CoverageGeometryError {
     InvalidRadius,
     #[error("coverage coordinates are outside the supported Galactic range")]
     CoordinateOutOfRange,
+    #[error("coverage polyhedron must have finite 3D vertices, face normals, and edges")]
+    InvalidPolyhedron,
 }
 
 fn scaled_cell_floor(value: f64) -> Result<i64, CoverageGeometryError> {
@@ -298,6 +300,156 @@ pub fn sphere_footprint_masks(
             for cell_z in minimum[2]..=maximum[2] {
                 let dz = axis_distance_to_cell(center_parsecs[2], cell_z);
                 if dx * dx + dy * dy + dz * dz >= radius_squared {
+                    continue;
+                }
+                let (chunk, bit_index) = chunk_and_local(cell_x, cell_y, cell_z);
+                chunks.entry(chunk).or_default().set(bit_index);
+            }
+        }
+    }
+    Ok(chunks)
+}
+
+fn dot(left: [f64; 3], right: [f64; 3]) -> f64 {
+    left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
+fn cross(left: [f64; 3], right: [f64; 3]) -> [f64; 3] {
+    [
+        left[1] * right[2] - left[2] * right[1],
+        left[2] * right[0] - left[0] * right[2],
+        left[0] * right[1] - left[1] * right[0],
+    ]
+}
+
+fn add_projection_axis(axes: &mut Vec<[f64; 3]>, axis: [f64; 3]) {
+    let magnitude_squared = dot(axis, axis);
+    if magnitude_squared <= 1.0e-24 {
+        return;
+    }
+    let magnitude = magnitude_squared.sqrt();
+    let normalized = axis.map(|coordinate| coordinate / magnitude);
+    if axes
+        .iter()
+        .any(|existing| dot(*existing, normalized).abs() >= 1.0 - 1.0e-10)
+    {
+        return;
+    }
+    axes.push(normalized);
+}
+
+/// Return every resolution cell with positive-volume intersection with a
+/// closed convex polyhedron.
+///
+/// The caller supplies its vertices, outward face normals, and undirected
+/// edges. Intersection uses the complete separating-axis set for an
+/// axis-aligned cell and a convex polyhedron: the three cell axes, every face
+/// normal, and every cross product of a cell axis with a polyhedron edge.
+pub fn convex_polyhedron_footprint_masks(
+    vertices: &[[f64; 3]],
+    face_normals: &[[f64; 3]],
+    edges: &[[usize; 2]],
+) -> Result<BTreeMap<CoverageChunkCoordinate, CellBitmap>, CoverageGeometryError> {
+    if vertices.len() < 4
+        || face_normals.len() < 4
+        || edges.len() < 6
+        || vertices
+            .iter()
+            .chain(face_normals)
+            .flatten()
+            .any(|coordinate| !coordinate.is_finite())
+        || edges
+            .iter()
+            .any(|edge| edge[0] >= vertices.len() || edge[1] >= vertices.len())
+    {
+        return Err(CoverageGeometryError::InvalidPolyhedron);
+    }
+
+    let cell_axes = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let mut axes = Vec::new();
+    for axis in cell_axes {
+        add_projection_axis(&mut axes, axis);
+    }
+    for normal in face_normals {
+        add_projection_axis(&mut axes, *normal);
+    }
+    for edge in edges {
+        let direction = [
+            vertices[edge[1]][0] - vertices[edge[0]][0],
+            vertices[edge[1]][1] - vertices[edge[0]][1],
+            vertices[edge[1]][2] - vertices[edge[0]][2],
+        ];
+        for cell_axis in cell_axes {
+            add_projection_axis(&mut axes, cross(direction, cell_axis));
+        }
+    }
+    if axes.len() < 3 {
+        return Err(CoverageGeometryError::InvalidPolyhedron);
+    }
+
+    let projections = axes
+        .iter()
+        .map(|axis| {
+            vertices.iter().fold(
+                (f64::INFINITY, f64::NEG_INFINITY),
+                |(minimum, maximum), vertex| {
+                    let projection = dot(*vertex, *axis);
+                    (minimum.min(projection), maximum.max(projection))
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+    if projections
+        .iter()
+        .any(|(minimum, maximum)| maximum - minimum <= 1.0e-10)
+    {
+        return Err(CoverageGeometryError::InvalidPolyhedron);
+    }
+
+    let bounds = vertices.iter().fold(
+        ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]),
+        |(mut minimum, mut maximum), vertex| {
+            for axis in 0..3 {
+                minimum[axis] = minimum[axis].min(vertex[axis]);
+                maximum[axis] = maximum[axis].max(vertex[axis]);
+            }
+            (minimum, maximum)
+        },
+    );
+    let minimum = [
+        scaled_cell_floor(bounds.0[0])?,
+        scaled_cell_floor(bounds.0[1])?,
+        scaled_cell_floor(bounds.0[2])?,
+    ];
+    let maximum = [
+        scaled_cell_upper(bounds.1[0])?,
+        scaled_cell_upper(bounds.1[1])?,
+        scaled_cell_upper(bounds.1[2])?,
+    ];
+
+    const PROJECTION_EPSILON: f64 = 1.0e-12;
+    let cell_half_edge = COVERAGE_CELL_EDGE_PARSECS / 2.0;
+    let mut chunks = BTreeMap::<CoverageChunkCoordinate, CellBitmap>::new();
+    for cell_x in minimum[0]..=maximum[0] {
+        for cell_y in minimum[1]..=maximum[1] {
+            for cell_z in minimum[2]..=maximum[2] {
+                let center = [
+                    (cell_x as f64 + 0.5) * COVERAGE_CELL_EDGE_PARSECS,
+                    (cell_y as f64 + 0.5) * COVERAGE_CELL_EDGE_PARSECS,
+                    (cell_z as f64 + 0.5) * COVERAGE_CELL_EDGE_PARSECS,
+                ];
+                let separated =
+                    axes.iter()
+                        .zip(&projections)
+                        .any(|(axis, (hull_minimum, hull_maximum))| {
+                            let center_projection = dot(center, *axis);
+                            let cell_radius =
+                                cell_half_edge * (axis[0].abs() + axis[1].abs() + axis[2].abs());
+                            center_projection + cell_radius <= hull_minimum + PROJECTION_EPSILON
+                                || center_projection - cell_radius
+                                    >= hull_maximum - PROJECTION_EPSILON
+                        });
+                if separated {
                     continue;
                 }
                 let (chunk, bit_index) = chunk_and_local(cell_x, cell_y, cell_z);
@@ -468,6 +620,44 @@ mod tests {
         let ordinary = sphere_footprint_masks([1.25, -2.0, 0.5], 6.0).unwrap();
         let settlement = settlement_sphere_footprint_masks([1.25, -2.0, 0.5], 6.0).unwrap();
         assert_eq!(settlement, ordinary);
+    }
+
+    #[test]
+    fn convex_polyhedron_footprint_uses_the_hull_not_its_bounding_box() {
+        let vertices = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+        let normals = [
+            [-1.0, 0.0, 0.0],
+            [0.0, -1.0, 0.0],
+            [0.0, 0.0, -1.0],
+            [1.0, 1.0, 1.0],
+        ];
+        let edges = [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]];
+        let footprint = convex_polyhedron_footprint_masks(&vertices, &normals, &edges).unwrap();
+        let (inside_chunk, inside_bit) = point_cell([0.1, 0.1, 0.1]).unwrap();
+        let (outside_chunk, outside_bit) = point_cell([0.8, 0.8, 0.8]).unwrap();
+        assert!(footprint[&inside_chunk].contains(inside_bit));
+        assert!(
+            footprint
+                .get(&outside_chunk)
+                .is_none_or(|cells| !cells.contains(outside_bit))
+        );
+    }
+
+    #[test]
+    fn invalid_convex_polyhedron_indices_are_rejected() {
+        assert_eq!(
+            convex_polyhedron_footprint_masks(
+                &[[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                &[[-1.0, 0.0, 0.0]; 4],
+                &[[0, 4]; 6],
+            ),
+            Err(CoverageGeometryError::InvalidPolyhedron)
+        );
     }
 
     #[test]

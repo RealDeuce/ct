@@ -337,7 +337,7 @@ mod tests {
         assert!(json.contains("\"x\":\"coreward\""));
         assert!(json.contains("Alpha Centauri A"));
         assert!(!json.contains("seed"));
-        assert_eq!(snapshot.systems.len(), 35);
+        assert_eq!(snapshot.systems.len(), INITIAL_SYSTEMS.len());
     }
 
     #[test]

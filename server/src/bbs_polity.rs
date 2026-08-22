@@ -1,10 +1,13 @@
 //! Conditioned placement geometry for BBS polities.
 
+use std::collections::{HashMap, HashSet, VecDeque};
+
 use crate::universe::{
-    StellarSystem, galactic_cylindrical_position, stellar_component_density_per_cubic_parsec,
+    SOL_SYSTEM_ID, StellarSystem, galactic_cylindrical_position,
+    stellar_component_density_per_cubic_parsec,
 };
 
-pub const BBS_POLITY_GENERATION_VERSION: u16 = 1;
+pub const BBS_POLITY_GENERATION_VERSION: u16 = 2;
 pub const BBS_COVERAGE_SAMPLER_VERSION: u16 = 1;
 pub const BBS_POLITY_SYSTEM_COUNT: usize = 10;
 pub const BBS_POLITY_TOTAL_SEEDED_SYSTEMS: usize = BBS_POLITY_SYSTEM_COUNT + 1;
@@ -179,7 +182,60 @@ fn internally_jump_two_connected(positions: &[[f64; 3]; BBS_POLITY_SYSTEM_COUNT]
     visited.into_iter().all(|value| value)
 }
 
-fn geometrically_eligible(site: &mut BbsPolitySite, existing: &[StellarSystem]) -> bool {
+fn jump_two_reachable_from_sol(existing: &[StellarSystem]) -> HashSet<u64> {
+    let bucket_coordinate = |position: [f64; 3]| {
+        (
+            (position[0] / 2.0).floor() as i64,
+            (position[1] / 2.0).floor() as i64,
+            (position[2] / 2.0).floor() as i64,
+        )
+    };
+    let mut buckets = HashMap::<(i64, i64, i64), Vec<usize>>::new();
+    for (index, system) in existing.iter().enumerate() {
+        buckets
+            .entry(bucket_coordinate(system.position_parsecs))
+            .or_default()
+            .push(index);
+    }
+
+    let Some(sol_index) = existing
+        .iter()
+        .position(|system| system.id == SOL_SYSTEM_ID)
+    else {
+        return HashSet::new();
+    };
+    let mut reachable = HashSet::from([SOL_SYSTEM_ID]);
+    let mut frontier = VecDeque::from([sol_index]);
+    while let Some(index) = frontier.pop_front() {
+        let position = existing[index].position_parsecs;
+        let (bx, by, bz) = bucket_coordinate(position);
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                for dz in -1..=1 {
+                    let Some(neighbors) = buckets.get(&(bx + dx, by + dy, bz + dz)) else {
+                        continue;
+                    };
+                    for &neighbor in neighbors {
+                        let system = &existing[neighbor];
+                        if !reachable.contains(&system.id)
+                            && distance_squared(position, system.position_parsecs) <= 4.0 + 1e-9
+                        {
+                            reachable.insert(system.id);
+                            frontier.push_back(neighbor);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    reachable
+}
+
+fn geometrically_eligible(
+    site: &mut BbsPolitySite,
+    existing: &[StellarSystem],
+    sol_reachable: &HashSet<u64>,
+) -> bool {
     if !internally_jump_two_connected(&site.cluster_positions_parsecs) {
         return false;
     }
@@ -224,14 +280,10 @@ fn geometrically_eligible(site: &mut BbsPolitySite, existing: &[StellarSystem]) 
         .abs();
 
     let mut gateway_crossings = 0_u8;
-    let mut existing_gateway = false;
+    let mut sol_gateway = false;
     for cluster in site.cluster_positions_parsecs {
-        for external in existing
-            .iter()
-            .map(|system| system.position_parsecs)
-            .chain(std::iter::once(site.frontier_stub_position_parsecs))
-        {
-            let squared = distance_squared(cluster, external);
+        for external in existing {
+            let squared = distance_squared(cluster, external.position_parsecs);
             if squared < 0.25_f64.powi(2) {
                 return false;
             }
@@ -243,13 +295,26 @@ fn geometrically_eligible(site: &mut BbsPolitySite, existing: &[StellarSystem]) 
                     Some(value) => value,
                     None => return false,
                 };
-                if external != site.frontier_stub_position_parsecs {
-                    existing_gateway = true;
+                if sol_reachable.contains(&external.id) {
+                    sol_gateway = true;
                 }
             }
         }
+        let squared = distance_squared(cluster, site.frontier_stub_position_parsecs);
+        if squared < 0.25_f64.powi(2) {
+            return false;
+        }
+        if squared <= 9.0 + 1e-9 {
+            if squared > 4.0 + 1e-9 {
+                return false;
+            }
+            gateway_crossings = match gateway_crossings.checked_add(1) {
+                Some(value) => value,
+                None => return false,
+            };
+        }
     }
-    if !existing_gateway || !(1..=3).contains(&gateway_crossings) {
+    if !sol_gateway || !(1..=3).contains(&gateway_crossings) {
         return false;
     }
     site.gateway_crossings = gateway_crossings;
@@ -270,11 +335,12 @@ fn geometrically_eligible(site: &mut BbsPolitySite, existing: &[StellarSystem]) 
 
 pub fn candidate_sites(existing: &[StellarSystem]) -> Vec<BbsPolitySite> {
     let directions = primitive_directions();
+    let sol_reachable = jump_two_reachable_from_sol(existing);
     let mut candidates = Vec::new();
     for anchor in existing {
         for direction in &directions {
             let mut site = template_at(anchor, *direction);
-            if geometrically_eligible(&mut site, existing) {
+            if geometrically_eligible(&mut site, existing, &sol_reachable) {
                 candidates.push(site);
             }
         }
@@ -301,8 +367,9 @@ mod tests {
     #[test]
     fn canonical_template_has_capital_routes_and_two_gateways() {
         let existing = vec![system(1, [0.0; 3], 1)];
+        let sol_reachable = jump_two_reachable_from_sol(&existing);
         let mut site = template_at(&existing[0], [1.0, 0.0, 0.0]);
-        assert!(geometrically_eligible(&mut site, &existing));
+        assert!(geometrically_eligible(&mut site, &existing, &sol_reachable));
         assert_eq!(site.gateway_crossings, 2);
         assert!(internally_jump_two_connected(
             &site.cluster_positions_parsecs
@@ -318,8 +385,46 @@ mod tests {
     #[test]
     fn an_undesigned_jump_three_crossing_rejects_a_site() {
         let existing = vec![system(1, [0.0; 3], 1), system(2, [1.0, 2.5, 0.0], 1)];
+        let sol_reachable = jump_two_reachable_from_sol(&existing);
         let mut site = template_at(&existing[0], [1.0, 0.0, 0.0]);
-        assert!(!geometrically_eligible(&mut site, &existing));
+        assert!(!geometrically_eligible(
+            &mut site,
+            &existing,
+            &sol_reachable
+        ));
+    }
+
+    #[test]
+    fn gateway_into_a_disconnected_existing_component_rejects_a_site() {
+        let existing = vec![
+            system(SOL_SYSTEM_ID, [-2.25, 0.0, 0.0], 1),
+            system(2, [0.0; 3], 1),
+        ];
+        let sol_reachable = jump_two_reachable_from_sol(&existing);
+        assert_eq!(sol_reachable, HashSet::from([SOL_SYSTEM_ID]));
+
+        let mut site = template_at(&existing[1], [1.0, 0.0, 0.0]);
+        assert!(!geometrically_eligible(
+            &mut site,
+            &existing,
+            &sol_reachable
+        ));
+    }
+
+    #[test]
+    fn sol_component_follows_successive_jump_two_legs() {
+        let existing = vec![
+            system(SOL_SYSTEM_ID, [0.0, 0.0, 0.0], 1),
+            system(2, [2.0, 0.0, 0.0], 1),
+            system(3, [4.0, 0.0, 0.0], 1),
+            system(4, [6.0, 0.0, 0.0], 2),
+            system(5, [9.0, 0.0, 0.0], 1),
+        ];
+
+        assert_eq!(
+            jump_two_reachable_from_sol(&existing),
+            HashSet::from([SOL_SYSTEM_ID, 2, 3, 4])
+        );
     }
 
     #[test]

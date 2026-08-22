@@ -81,7 +81,7 @@ The completed foundation includes:
   idempotency, recovery, and independent connection transmit/receive work;
 - protected administrator, BBS, and sysop credentials, including installation
   bootstrap and revision-checked sysop configuration;
-- destructive initial-universe initialization, the 35-system Federation,
+- destructive initial-universe initialization, the 43-system Federation,
   seeded celestial-system derivation, BBS polity placement, and the observed-
   volume oracle;
 - normalized shipbuilding rules, the active OGC ship catalog, design families,

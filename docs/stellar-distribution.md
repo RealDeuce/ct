@@ -50,7 +50,7 @@ Version 1 uses:
 | Thick-disk midplane fraction | 0.06 | Relative weight of the extended component |
 
 The local density is the sum of the CNS5 stellar density, 0.0799 pc⁻³, and
-brown-dwarf density, 0.0107 pc⁻³. The initial 35-component Federation remains
+brown-dwarf density, 0.0107 pc⁻³. The initial 43-component Federation remains
 an explicit observed local realization and is not used to renormalize the
 large-scale distribution.
 

@@ -2475,7 +2475,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     );
     let initialization_output = String::from_utf8_lossy(&universe_initializer.stdout);
     assert!(initialization_output.starts_with("universe-id="));
-    assert!(initialization_output.contains(" polities=2 systems=46 worlds=46\n"));
+    assert!(initialization_output.contains(" polities=2 systems=54 worlds=54\n"));
     let reset_committed = initialization_output
         .split(" committed=")
         .nth(1)
