@@ -108,6 +108,7 @@ by the [release process](docs/release-process.md).
 - [Milestone 7 field-alpha audit](docs/milestone-7-audit.md)
 - [Protocol and storage model](docs/rpc-and-storage-schema.md)
 - [Door presentation and OpenDoors boundaries](docs/door-presentation.md)
+- [Speculative windowed TUI UX concept](docs/speculative-windowed-tui.md)
 - [Implementation guidance](LLM_INSTRUCTIONS.md)
 
 ## Licensing
