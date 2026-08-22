@@ -34,7 +34,7 @@ For an alpha release:
 
 1. make the default-branch pipeline green;
 2. confirm `python3 tools/check_repository.py` succeeds on the tag commit;
-3. create the protected annotated tag `v<version>` (for example, `v0.7.9`);
+3. create the protected annotated tag `v<version>` (for example, `v0.7.10`);
 4. let each native runner configure with `CT_PORTABLE_CLIENT=ON` and an exact
    GitHub release URL;
 5. unpack and inspect every archive, run native `--version` probes, and inspect
