@@ -28,6 +28,7 @@ pub mod ct_sysop_capnp {
 
 pub mod admin_psk;
 pub mod admin_wire;
+pub mod atlas;
 pub mod bbs_polity;
 pub mod careers;
 pub mod celestial;

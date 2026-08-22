@@ -40,8 +40,9 @@ use crate::place_names::{
     profile as place_name_profile, regional_profile, unique_system_name, world_name,
 };
 use crate::simulation::{
-    CarrierLeg, ProcessedEvent, QueuedSimulationEvent, STANDARD_JUMP_SECONDS, ScheduledEventHead,
-    SimulationDatabases, SimulationError, SimulationEventKind, SimulationReport, SimulationSystem,
+    BroadcastCompletion, CarrierLeg, ProcessedEvent, QueuedSimulationEvent, STANDARD_JUMP_SECONDS,
+    ScheduledEventHead, SimulationDatabases, SimulationError, SimulationEventKind,
+    SimulationReport, SimulationSystem,
 };
 use crate::universe::{
     FEDERATION_POLITY_ID, INITIAL_GENERATION_VERSION, INITIAL_SYSTEMS, Polity, SOL_SYSTEM_ID,
@@ -94,6 +95,7 @@ const META_NEXT_CHECKPOINT_ID: &str = "next-checkpoint-id";
 const META_NEXT_ENCOUNTER_ID: &str = "next-encounter-id";
 const META_NEXT_RADIO_TRANSMISSION_ID: &str = "next-radio-transmission-id";
 const META_NEXT_RADIO_RECEPTION_ID: &str = "next-radio-reception-id";
+const META_PENDING_SYSTEM_PUBLICATIONS: &str = "pending-system-publications";
 const META_GAME_SECOND: &str = "game-second";
 const META_CLOCK_FORMAT_VERSION: &str = "clock-format-version";
 const META_CLOCK_RATE_GAME_SECONDS: &str = "clock-rate-game-seconds";
@@ -897,6 +899,21 @@ struct PlayerSystemMappingRecord {
     state: SystemMappingState,
     dispatch_message_id: Option<u64>,
     changed_second: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SystemPublicationState {
+    Pending,
+    UniversallyKnown,
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct SystemPublicationRecord {
+    pub message_id: u64,
+    pub dispatched_second: u64,
+    pub completed_second: u64,
+    pub state: SystemPublicationState,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2835,6 +2852,50 @@ fn reconcile_radio_identifier_metadata_in(
     Ok(())
 }
 
+fn reconcile_initial_system_publications_in(
+    meta: Database<Str, Bytes>,
+    systems: UniverseDatabase,
+    publications: UniverseDatabase,
+    txn: &mut heed::RwTxn<'_>,
+) -> Result<(), StoreError> {
+    // The atlas publication index was introduced while storage format 1 was
+    // still current. Backfill only the fixed Federation baseline; later
+    // materialized systems require an actual completed publication notice.
+    if meta.get(txn, META_UNIVERSE_ID)?.is_none() {
+        return Ok(());
+    }
+    for initial in INITIAL_SYSTEMS {
+        if systems.get(txn, &initial.id)?.is_some() && publications.get(txn, &initial.id)?.is_none()
+        {
+            publications.put(
+                txn,
+                &initial.id,
+                &encode_system_publication(&SystemPublicationRecord {
+                    message_id: 0,
+                    dispatched_second: 0,
+                    completed_second: 0,
+                    state: SystemPublicationState::UniversallyKnown,
+                }),
+            )?;
+        }
+    }
+    let pending =
+        publications
+            .iter(txn)?
+            .try_fold(0_u64, |count, entry| -> Result<u64, StoreError> {
+                let (_, encoded) = entry?;
+                if decode_system_publication(encoded)?.state == SystemPublicationState::Pending {
+                    count
+                        .checked_add(1)
+                        .ok_or(StoreError::Corrupt("pending publication count overflow"))
+                } else {
+                    Ok(count)
+                }
+            })?;
+    put_meta_u64(meta, txn, META_PENDING_SYSTEM_PUBLICATIONS, pending)?;
+    Ok(())
+}
+
 fn new_ship_maintenance(
     spec: &creation::ShipStatusSpec,
     current_game_second: u64,
@@ -2987,6 +3048,7 @@ pub struct Store {
     player_message_state: Database<Bytes, Bytes>,
     player_feed_cursors: Database<Bytes, Bytes>,
     player_system_mappings: Database<Bytes, Bytes>,
+    system_publications: UniverseDatabase,
     discovery_claims: UniverseDatabase,
     flight_plans: Database<Bytes, Bytes>,
     checkpoints: Database<Bytes, Bytes>,
@@ -3092,6 +3154,7 @@ impl Store {
         let player_feed_cursors = env.create_database(&mut txn, Some("player-feed-cursors"))?;
         let player_system_mappings =
             env.create_database(&mut txn, Some("player-system-mappings"))?;
+        let system_publications = env.create_database(&mut txn, Some("system-publications"))?;
         let discovery_claims = env.create_database(&mut txn, Some("discovery-claims"))?;
         let flight_plans = env.create_database(&mut txn, Some("flight-plans"))?;
         let checkpoints = env.create_database(&mut txn, Some("arrival-checkpoints"))?;
@@ -3136,6 +3199,7 @@ impl Store {
             radio_receptions,
             &mut txn,
         )?;
+        reconcile_initial_system_publications_in(meta, systems, system_publications, &mut txn)?;
         reconcile_accommodation_capacity_in(ships, meta, &mut txn)?;
         txn.commit()?;
         Ok(Self {
@@ -3190,6 +3254,7 @@ impl Store {
             player_message_state,
             player_feed_cursors,
             player_system_mappings,
+            system_publications,
             discovery_claims,
             flight_plans,
             checkpoints,
@@ -3703,6 +3768,9 @@ impl Store {
                         processed.system_id,
                         processed.due_second,
                     )?;
+                }
+                if processed.kind != SimulationEventKind::SystemDay {
+                    self.refresh_system_publications_in(&mut txn, processed.due_second)?;
                 }
                 let journal = encode_simulation_event_journal(&processed);
                 scheduled_event = Some(processed);
@@ -14867,6 +14935,123 @@ impl Store {
         })
     }
 
+    fn begin_system_publication_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        system_id: u64,
+        message_id: u64,
+        dispatched_second: u64,
+    ) -> Result<(), StoreError> {
+        let existing = self
+            .system_publications
+            .get(txn, &system_id)?
+            .map(decode_system_publication)
+            .transpose()?;
+        if existing.is_some_and(|record| record.state == SystemPublicationState::UniversallyKnown) {
+            return Ok(());
+        }
+        if !existing.is_some_and(|record| record.state == SystemPublicationState::Pending) {
+            let pending = get_meta_u64(self.meta, txn, META_PENDING_SYSTEM_PUBLICATIONS)?
+                .unwrap_or(0)
+                .checked_add(1)
+                .ok_or(StoreError::Corrupt("pending publication count overflow"))?;
+            put_meta_u64(self.meta, txn, META_PENDING_SYSTEM_PUBLICATIONS, pending)?;
+        }
+        self.system_publications.put(
+            txn,
+            &system_id,
+            &encode_system_publication(&SystemPublicationRecord {
+                message_id,
+                dispatched_second,
+                completed_second: 0,
+                state: SystemPublicationState::Pending,
+            }),
+        )?;
+        self.refresh_system_publications_in(txn, dispatched_second)
+    }
+
+    fn refresh_system_publications_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        current_second: u64,
+    ) -> Result<(), StoreError> {
+        let mut pending_count =
+            get_meta_u64(self.meta, txn, META_PENDING_SYSTEM_PUBLICATIONS)?.unwrap_or(0);
+        if pending_count == 0 {
+            return Ok(());
+        }
+        let pending = self
+            .system_publications
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((system_id, encoded)) => match decode_system_publication(encoded) {
+                    Ok(record) if record.state == SystemPublicationState::Pending => {
+                        Some(Ok((system_id, record)))
+                    }
+                    Ok(_) => None,
+                    Err(error) => Some(Err(error)),
+                },
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for (system_id, mut record) in pending {
+            record.state = match self
+                .simulation
+                .broadcast_completion(txn, record.message_id)?
+            {
+                BroadcastCompletion::Pending => continue,
+                BroadcastCompletion::Complete => {
+                    record.completed_second = current_second;
+                    SystemPublicationState::UniversallyKnown
+                }
+                BroadcastCompletion::Failed => SystemPublicationState::Failed,
+            };
+            self.system_publications
+                .put(txn, &system_id, &encode_system_publication(&record))?;
+            pending_count = pending_count
+                .checked_sub(1)
+                .ok_or(StoreError::Corrupt("pending publication count underflow"))?;
+        }
+        put_meta_u64(
+            self.meta,
+            txn,
+            META_PENDING_SYSTEM_PUBLICATIONS,
+            pending_count,
+        )?;
+        Ok(())
+    }
+
+    fn extend_pending_system_publications_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        destination_system_ids: &[u64],
+        current_second: u64,
+    ) -> Result<(), StoreError> {
+        let messages = self
+            .system_publications
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((_, encoded)) => match decode_system_publication(encoded) {
+                    Ok(record) if record.state == SystemPublicationState::Pending => {
+                        Some(Ok(record.message_id))
+                    }
+                    Ok(_) => None,
+                    Err(error) => Some(Err(error)),
+                },
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for message_id in messages {
+            self.simulation.extend_message_destinations(
+                txn,
+                current_second,
+                message_id,
+                destination_system_ids,
+            )?;
+        }
+        Ok(())
+    }
+
     fn set_system_mapping_disclosure_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
@@ -14948,6 +15133,7 @@ impl Store {
                     ),
                     &destinations,
                 )?;
+                self.begin_system_publication_in(txn, system_id, message_id, now)?;
                 (SystemMappingState::PublicDispatched, Some(message_id))
             }
             SystemMappingChoice::DirectEarth => {
@@ -23655,8 +23841,13 @@ impl Store {
                     .ok_or(StoreError::Corrupt("system identifier overflow"))?;
             }
             put_meta_u64(self.meta, txn, META_NEXT_SYSTEM_ID, next_system_id)?;
+            let added_system_ids = added_simulation_systems
+                .iter()
+                .map(|system| system.system_id)
+                .collect::<Vec<_>>();
             self.simulation
                 .add_systems(txn, added_simulation_systems, current_second)?;
+            self.extend_pending_system_publications_in(txn, &added_system_ids, current_second)?;
 
             let coverage_revision =
                 get_meta_u64(self.meta, txn, META_COVERAGE_REVISION)?.unwrap_or(0);
@@ -23782,6 +23973,7 @@ impl Store {
         self.player_message_state.clear(&mut txn)?;
         self.player_feed_cursors.clear(&mut txn)?;
         self.player_system_mappings.clear(&mut txn)?;
+        self.system_publications.clear(&mut txn)?;
         self.discovery_claims.clear(&mut txn)?;
         self.flight_plans.clear(&mut txn)?;
         self.checkpoints.clear(&mut txn)?;
@@ -23858,6 +24050,16 @@ impl Store {
             };
             self.systems
                 .put(&mut txn, &system.id, &encode_stellar_system(&system)?)?;
+            self.system_publications.put(
+                &mut txn,
+                &system.id,
+                &encode_system_publication(&SystemPublicationRecord {
+                    message_id: 0,
+                    dispatched_second: 0,
+                    completed_second: 0,
+                    state: SystemPublicationState::UniversallyKnown,
+                }),
+            )?;
             self.put_primary_facility_in(&mut txn, &system)?;
         }
         put_meta_u64(
@@ -24002,6 +24204,7 @@ impl Store {
             &encode_universe_initialization_journal(&initialization),
         )?;
         self.meta.put(&mut txn, META_UNIVERSE_ID, &universe_id)?;
+        put_meta_u64(self.meta, &mut txn, META_PENDING_SYSTEM_PUBLICATIONS, 0)?;
         let session_floor = get_meta_u64(self.meta, &txn, META_NEXT_EPOCH)?.unwrap_or(1);
         put_meta_u64(self.meta, &mut txn, META_SESSION_EPOCH_FLOOR, session_floor)?;
         put_meta_u64(self.meta, &mut txn, META_NEXT_INGRESS, next_sequence)?;
@@ -26561,7 +26764,7 @@ impl Store {
                     .ok_or(StoreError::Corrupt("discovery award balance overflow"))?;
                 self.finances
                     .put(txn, &finance_key, &encode_finance_record(&finance))?;
-                self.simulation.dispatch_message(
+                let (publication_message_id, _) = self.simulation.dispatch_message(
                     txn,
                     due_second,
                     SOL_SYSTEM_ID,
@@ -26577,6 +26780,12 @@ impl Store {
                         FEDERATION_DISCOVERY_AWARD_CREDITS,
                     ),
                     &broadcast_destinations,
+                )?;
+                self.begin_system_publication_in(
+                    txn,
+                    system.id,
+                    publication_message_id,
+                    due_second,
                 )?;
                 if let Some(home) = self
                     .bbs_homes
@@ -29162,16 +29371,17 @@ impl Store {
         let mut system_ids = home.cluster_system_ids.to_vec();
         system_ids.push(home.frontier_stub_system_id);
         let mut systems = Vec::with_capacity(system_ids.len());
-        for system_id in system_ids {
+        for system_id in &system_ids {
             let encoded = self
                 .systems
-                .get(txn, &system_id)?
+                .get(txn, system_id)?
                 .ok_or(StoreError::Corrupt("materialized BBS system is missing"))?;
             let system = decode_stellar_system(encoded)?;
             systems.push(simulation_system_from_stellar(system)?);
         }
         let current_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
         self.simulation.add_systems(txn, systems, current_second)?;
+        self.extend_pending_system_publications_in(txn, &system_ids, current_second)?;
         Ok(())
     }
 
@@ -30695,6 +30905,44 @@ fn decode_player_system_mapping(bytes: &[u8]) -> Result<PlayerSystemMappingRecor
             id => Some(id),
         },
         changed_second: decoder.u64()?,
+    };
+    decoder.finish()?;
+    Ok(record)
+}
+
+fn encode_system_publication(record: &SystemPublicationRecord) -> Vec<u8> {
+    let mut bytes = vec![
+        1,
+        match record.state {
+            SystemPublicationState::Pending => 0,
+            SystemPublicationState::UniversallyKnown => 1,
+            SystemPublicationState::Failed => 2,
+        },
+    ];
+    bytes.extend_from_slice(&record.message_id.to_be_bytes());
+    bytes.extend_from_slice(&record.dispatched_second.to_be_bytes());
+    bytes.extend_from_slice(&record.completed_second.to_be_bytes());
+    bytes
+}
+
+pub(crate) fn decode_system_publication(
+    bytes: &[u8],
+) -> Result<SystemPublicationRecord, StoreError> {
+    let mut decoder = Decoder::new(bytes);
+    if decoder.u8()? != 1 {
+        return Err(StoreError::Corrupt("unsupported system-publication record"));
+    }
+    let state = match decoder.u8()? {
+        0 => SystemPublicationState::Pending,
+        1 => SystemPublicationState::UniversallyKnown,
+        2 => SystemPublicationState::Failed,
+        _ => return Err(StoreError::Corrupt("unknown system-publication state")),
+    };
+    let record = SystemPublicationRecord {
+        message_id: decoder.u64()?,
+        dispatched_second: decoder.u64()?,
+        completed_second: decoder.u64()?,
+        state,
     };
     decoder.finish()?;
     Ok(record)
@@ -39679,7 +39927,7 @@ fn encode_stellar_system(system: &StellarSystem) -> Result<Vec<u8>, StoreError> 
     Ok(bytes)
 }
 
-fn decode_stellar_system(bytes: &[u8]) -> Result<StellarSystem, StoreError> {
+pub(crate) fn decode_stellar_system(bytes: &[u8]) -> Result<StellarSystem, StoreError> {
     let mut decoder = Decoder::new(bytes);
     if decoder.u8()? != 1 {
         return Err(StoreError::Corrupt(
@@ -41058,6 +41306,40 @@ mod tests {
         (0..INITIAL_SYSTEMS.len())
             .map(|index| [offset.wrapping_add(index as u8); 32])
             .collect()
+    }
+
+    #[test]
+    fn reopening_an_older_universe_backfills_fixed_system_publications() {
+        let directory = TempDir::new().unwrap();
+        {
+            let store = Store::open(directory.path()).unwrap();
+            store
+                .initialize_universe(
+                    &[0xb0; COMMAND_ID_BYTES],
+                    *b"CT-PUB-MIGRATE1!",
+                    &initial_seeds(180),
+                    &[],
+                )
+                .unwrap();
+            let mut txn = store.env.write_txn().unwrap();
+            store.system_publications.clear(&mut txn).unwrap();
+            txn.commit().unwrap();
+        }
+
+        let store = Store::open(directory.path()).unwrap();
+        let txn = store.env.read_txn().unwrap();
+        for initial in INITIAL_SYSTEMS {
+            let publication = store
+                .system_publications
+                .get(&txn, &initial.id)
+                .unwrap()
+                .map(decode_system_publication)
+                .transpose()
+                .unwrap()
+                .unwrap();
+            assert_eq!(publication.state, SystemPublicationState::UniversallyKnown);
+            assert_eq!(publication.completed_second, 0);
+        }
     }
 
     fn initialize_player_fixture(store: &Store) -> u64 {

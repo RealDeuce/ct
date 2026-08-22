@@ -153,6 +153,13 @@ pub enum EnvelopeStatus {
     Expired = 3,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BroadcastCompletion {
+    Pending,
+    Complete,
+    Failed,
+}
+
 impl EnvelopeStatus {
     fn from_u8(value: u8) -> Result<Self, SimulationError> {
         Ok(match value {
@@ -1100,6 +1107,91 @@ impl SimulationDatabases {
                 .ok_or(SimulationError::Corrupt("message envelope count overflow"))?;
         }
         Ok((message_id, envelope_count))
+    }
+
+    /// Add newly applicable systems to a broadcast that is still in flight.
+    /// Existing destinations are retained exactly once.
+    pub fn extend_message_destinations(
+        &self,
+        txn: &mut RwTxn<'_>,
+        now: u64,
+        message_id: u64,
+        destination_system_ids: &[u64],
+    ) -> Result<u64, SimulationError> {
+        let message = self.get_message(txn, message_id)?;
+        if now >= message.expires_second {
+            return Ok(0);
+        }
+        let systems = self.systems(txn)?;
+        let existing = self
+            .records
+            .prefix_iter(txn, &[RECORD_ENVELOPE])?
+            .map(|entry| {
+                let (key, bytes) = entry?;
+                decode_envelope(key_id(key)?, bytes)
+            })
+            .collect::<Result<Vec<_>, SimulationError>>()?
+            .into_iter()
+            .filter(|envelope| envelope.message_id == message_id)
+            .map(|envelope| envelope.destination_system_id)
+            .collect::<std::collections::HashSet<_>>();
+        let mut destinations = destination_system_ids.to_vec();
+        destinations.sort_unstable();
+        destinations.dedup();
+        let mut created = 0_u64;
+        for destination_system_id in destinations {
+            if destination_system_id == message.origin_system_id
+                || existing.contains(&destination_system_id)
+                || shortest_route(&systems, message.origin_system_id, destination_system_id)
+                    .is_none()
+            {
+                continue;
+            }
+            let envelope_id = self.take_id(txn, META_NEXT_ENVELOPE)?;
+            let envelope = DeliveryEnvelope {
+                envelope_id,
+                message_id,
+                destination_system_id,
+                route: vec![message.origin_system_id, destination_system_id],
+                route_index: 0,
+                status: EnvelopeStatus::Waiting,
+            };
+            self.put_envelope(txn, &envelope)?;
+            self.queue_envelope(txn, &envelope)?;
+            created = created
+                .checked_add(1)
+                .ok_or(SimulationError::Corrupt("message envelope count overflow"))?;
+        }
+        Ok(created)
+    }
+
+    pub fn broadcast_completion(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        message_id: u64,
+    ) -> Result<BroadcastCompletion, SimulationError> {
+        self.get_message(txn, message_id)?;
+        let mut pending = false;
+        let mut failed = false;
+        for entry in self.records.prefix_iter(txn, &[RECORD_ENVELOPE])? {
+            let (key, bytes) = entry?;
+            let envelope = decode_envelope(key_id(key)?, bytes)?;
+            if envelope.message_id != message_id {
+                continue;
+            }
+            match envelope.status {
+                EnvelopeStatus::Waiting | EnvelopeStatus::InTransit => pending = true,
+                EnvelopeStatus::Expired => failed = true,
+                EnvelopeStatus::Delivered => {}
+            }
+        }
+        Ok(if failed {
+            BroadcastCompletion::Failed
+        } else if pending {
+            BroadcastCompletion::Pending
+        } else {
+            BroadcastCompletion::Complete
+        })
     }
 
     pub fn route_exists(
@@ -2929,6 +3021,10 @@ mod tests {
             )
             .unwrap();
         assert_eq!(envelopes, 2);
+        assert_eq!(
+            simulation.broadcast_completion(&txn, message_id).unwrap(),
+            BroadcastCompletion::Pending
+        );
         let waiting = simulation.report(&txn, 0).unwrap();
         assert_eq!(waiting.traffic_ships, 0);
         assert_eq!(waiting.envelopes_waiting, 2);
@@ -2989,6 +3085,10 @@ mod tests {
         let report = simulation.report(&txn, final_arrival).unwrap();
         assert_eq!(report.envelopes_delivered, 1);
         assert_eq!(report.envelopes_waiting, 1);
+        assert_eq!(
+            simulation.broadcast_completion(&txn, message_id).unwrap(),
+            BroadcastCompletion::Pending
+        );
 
         // The first ship stops at system 3. The system-4 envelope nevertheless
         // rode both useful legs, then waits for unrelated onward traffic.
@@ -3021,7 +3121,63 @@ mod tests {
         );
         let final_report = simulation.report(&txn, onward_arrival).unwrap();
         assert_eq!(final_report.envelopes_delivered, 2);
+        assert_eq!(
+            simulation.broadcast_completion(&txn, message_id).unwrap(),
+            BroadcastCompletion::Complete
+        );
         assert_eq!(simulation.audit_mail_custody(&txn).unwrap(), 3);
         txn.commit().unwrap();
+    }
+
+    #[test]
+    fn an_in_flight_broadcast_adds_each_new_destination_once() {
+        let directory = TempDir::new().unwrap();
+        // SAFETY: this test owns the temporary directory and opens it once.
+        let env = unsafe {
+            EnvOpenOptions::new()
+                .map_size(16 * 1024 * 1024)
+                .max_dbs(4)
+                .open(directory.path())
+                .unwrap()
+        };
+        let mut txn = env.write_txn().unwrap();
+        let simulation = SimulationDatabases::create(&env, &mut txn).unwrap();
+        simulation
+            .initialize(&mut txn, vec![test_system(1, 0.0), test_system(2, 1.5)])
+            .unwrap();
+        let (message_id, envelope_count) = simulation
+            .dispatch_message(
+                &mut txn,
+                0,
+                1,
+                MessageClass::PublicService,
+                MessageImportance::Notable,
+                "Public chart",
+                "A chart notice still propagating.",
+                &[2],
+            )
+            .unwrap();
+        assert_eq!(envelope_count, 1);
+        simulation
+            .add_systems(&mut txn, vec![test_system(3, 3.0)], 1)
+            .unwrap();
+        assert_eq!(
+            simulation
+                .extend_message_destinations(&mut txn, 1, message_id, &[2, 3, 3])
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            simulation
+                .extend_message_destinations(&mut txn, 1, message_id, &[2, 3])
+                .unwrap(),
+            0
+        );
+        let report = simulation.report(&txn, 1).unwrap();
+        assert_eq!(report.envelopes_waiting, 2);
+        assert_eq!(
+            simulation.broadcast_completion(&txn, message_id).unwrap(),
+            BroadcastCompletion::Pending
+        );
     }
 }

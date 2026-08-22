@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'">
+  <title>Cepheus Trader Universe Atlas</title>
+  <link rel="stylesheet" href="atlas.css">
+</head>
+<body>
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">CEPHEUS TRADER // NAVIGATION ARCHIVE</p>
+      <h1>Universe Atlas</h1>
+    </div>
+    <div id="scope" class="scope" aria-live="polite">Loading snapshot…</div>
+  </header>
+
+  <main class="atlas-shell">
+    <section class="viewport" aria-label="Three-dimensional universe map">
+      <canvas id="starmap" tabindex="0">
+        The universe map requires a browser with Canvas support.
+      </canvas>
+      <div class="axis-key" aria-hidden="true">
+        <span class="axis-x">X coreward</span>
+        <span class="axis-y">Y spinward</span>
+        <span class="axis-z">Z north</span>
+      </div>
+      <p id="map-status" class="map-status" role="status">Reading universe.json…</p>
+      <div class="map-help">
+        Drag to orbit · Shift-drag to pan · Wheel to zoom · Arrow keys to orbit
+      </div>
+    </section>
+
+    <aside class="panel" aria-label="Atlas controls and system details">
+      <form id="search-form" class="search" role="search">
+        <label for="search">Find a system</label>
+        <div class="search-row">
+          <input id="search" name="search" type="search" list="system-names"
+                 autocomplete="off" placeholder="Earth or Sol">
+          <button type="submit">Locate</button>
+        </div>
+        <datalist id="system-names"></datalist>
+      </form>
+
+      <section class="route-planner" aria-labelledby="route-title">
+        <p class="eyebrow">ROUTE COMPUTER</p>
+        <h2 id="route-title">Plot a course</h2>
+        <form id="route-form">
+          <label for="route-origin">Origin</label>
+          <input id="route-origin" type="search" list="system-names"
+                 autocomplete="off" placeholder="System or primary world">
+          <label for="route-destination">Destination</label>
+          <input id="route-destination" type="search" list="system-names"
+                 autocomplete="off" placeholder="System or primary world">
+          <div class="route-actions">
+            <button type="submit">Plot</button>
+            <button id="pick-route" class="secondary" type="button" aria-pressed="false">Pick on map</button>
+            <button id="swap-route" class="secondary" type="button">Swap</button>
+            <button id="clear-route" class="secondary" type="button">Clear</button>
+          </div>
+        </form>
+        <p id="route-status" class="route-status" aria-live="polite">
+          Enter endpoints or pick two systems on the map.
+        </p>
+        <ol id="route-path" class="route-path" aria-label="Plotted route"></ol>
+      </section>
+
+      <div class="control-grid">
+        <label for="jump-range">Jump range</label>
+        <output id="jump-range-value" for="jump-range">2.0 pc</output>
+        <input id="jump-range" type="range" min="0.5" max="6" step="0.5" value="2">
+
+        <label for="point-size">Point size</label>
+        <output id="point-size-value" for="point-size">2 px</output>
+        <input id="point-size" type="range" min="1" max="5" step="0.5" value="2">
+      </div>
+
+      <button id="reset-view" class="secondary wide" type="button">Reset view</button>
+
+      <section class="details" aria-labelledby="details-title">
+        <p class="eyebrow">SELECTED SYSTEM</p>
+        <h2 id="details-title">None</h2>
+        <dl>
+          <div><dt>Primary world</dt><dd id="detail-world">—</dd></div>
+          <div><dt>Coordinates</dt><dd id="detail-position">—</dd></div>
+          <div><dt>Starport</dt><dd id="detail-starport">—</dd></div>
+          <div><dt>Population</dt><dd id="detail-population">—</dd></div>
+          <div><dt>Tech level</dt><dd id="detail-tech">—</dd></div>
+          <div><dt>Polity</dt><dd id="detail-polity">—</dd></div>
+          <div><dt>Jump neighbors</dt><dd id="detail-neighbors">—</dd></div>
+          <div><dt>Universally known</dt><dd id="detail-known">—</dd></div>
+        </dl>
+      </section>
+
+      <section class="legend" aria-labelledby="legend-title">
+        <h2 id="legend-title">Starport</h2>
+        <div><i class="port port-a"></i>A/B</div>
+        <div><i class="port port-c"></i>C/D</div>
+        <div><i class="port port-e"></i>E/X</div>
+        <div><i class="port port-u"></i>Uncatalogued</div>
+      </section>
+    </aside>
+  </main>
+
+  <noscript><p class="fatal">This interactive atlas requires JavaScript.</p></noscript>
+  <script src="atlas-routes.js" defer></script>
+  <script src="atlas.js" defer></script>
+</body>
+</html>

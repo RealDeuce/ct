@@ -73,6 +73,16 @@ still accounted for by the background mail system.
 
 ## Universal Broadcast Completion
 
+The server currently implements this lifecycle narrowly for authenticated
+public system-mapping announcements. A separate monotonic publication index
+tracks each mapped system while its public-service envelopes are in flight and
+marks the system universally known when every applicable envelope has been
+delivered. The initial Federation systems start at that completed checkpoint,
+and systems materialized while a mapping notice is pending join its live
+destination set. The public universe atlas uses this index as its disclosure
+boundary. General universal-message archive checkpointing and completed-row
+cleanup described below remain future mail-service work.
+
 Messages explicitly admitted to a universal broadcast service have a
 monotonic `universally_seen` state. Here, **seen** means available in every
 applicable system or institutional public repository; it does not mean that

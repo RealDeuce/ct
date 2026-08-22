@@ -10,6 +10,10 @@ build = "build.rs"
 name = "cepheus-trader-universe-tour"
 path = "src/bin/universe_tour.rs"
 
+[[bin]]
+name = "cepheus-trader-universe-site"
+path = "src/bin/universe_site.rs"
+
 [dependencies]
 capnp = "0.26.2"
 fluent-bundle = "0.16.0"

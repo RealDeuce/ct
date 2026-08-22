@@ -104,6 +104,7 @@ by the [release process](docs/release-process.md).
 - [Player guide](docs/player-guide.md)
 - [Guided First Watch design](docs/guided-first-watch.md)
 - [BBS sysop installation and operations](docs/sysop-guide.md)
+- [Operator-hosted interactive universe atlas](docs/universe-atlas.md)
 - [Game design and implementation overview](docs/game-design.md)
 - [Milestone 7 field-alpha audit](docs/milestone-7-audit.md)
 - [Protocol and storage model](docs/rpc-and-storage-schema.md)
