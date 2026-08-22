@@ -4078,6 +4078,53 @@ class CatalogRecordTests(unittest.TestCase):
             page,
         )
 
+    def test_game_rules_are_primary_navigation_and_link_the_local_ogl(self) -> None:
+        page = SITE_BUILD.rules_page()
+        self.assertIn('<a href="rules.html" aria-current="page">Game Rules</a>', page)
+        self.assertIn('href="open-game-license.html">Open Game License</a>', page)
+        self.assertIn('id="core-resolution"', page)
+        self.assertIn('id="vessel-combat"', page)
+        self.assertIn('id="authority-careers-and-force"', page)
+
+    def test_game_rules_exclude_third_party_product_identity_terms(self) -> None:
+        page = SITE_BUILD.rules_page()
+        product_identity_terms = (
+            "Clement Sector",
+            "Anderson and Felix",
+            "Anderson &amp; Felix",
+            "Port of Entry",
+            "Bounded Fortune",
+            "Hub Federation",
+            "Skull and Crossbones",
+            "Zimm",
+        )
+        for term in product_identity_terms:
+            with self.subTest(term=term):
+                self.assertNotIn(term, page)
+
+    def test_weapon_appendix_comes_from_authoritative_combat_data(self) -> None:
+        page = SITE_BUILD.rules_page()
+        combat_rules = SITE_BUILD.tomllib.loads(
+            SITE_BUILD.COMBAT_RULES.read_text(encoding="utf-8")
+        )
+        appendix = page[page.index('<div class="table-scroll rules-weapon-table">') :]
+        appendix = appendix[: appendix.index("</table>")]
+        self.assertEqual(
+            appendix.count("<tr>") - 1,
+            len(combat_rules["weapon"]),
+        )
+        self.assertIn("Particle Beam Bay 100", page)
+        self.assertIn("Live rules data", page)
+        self.assertIn("revision 1", page)
+
+    def test_site_publishes_complete_ogl_with_preserved_section_numbers(self) -> None:
+        page = SITE_BUILD.open_game_license_page()
+        self.assertIn("OPEN GAME LICENSE Version 1.0a", page)
+        self.assertIn("<li>Copy of this License: You MUST include", page)
+        self.assertEqual(page.count("<ol>"), 1)
+        self.assertIn("Clement Sector Third Edition, Copyright 2021", page)
+        self.assertIn("Cepheus Trader, Copyright 2026", page)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -31,6 +31,9 @@ from small_craft_design import evaluate_small_craft  # noqa: E402
 CPP_HELP = ROOT / "client" / "src" / "door_help.cpp"
 HELP_HEADER = ROOT / "client" / "include" / "ct" / "door_help.hpp"
 PLAYER_GUIDE = ROOT / "docs" / "player-guide.md"
+GAME_RULES = ROOT / "docs" / "game-rules.md"
+OPEN_GAME_LICENSE = ROOT / "OPEN_GAME_LICENSE.md"
+COMBAT_RULES = ROOT / "catalog" / "combat-rules.toml"
 SHIP_CATALOG = ROOT / "catalog" / "ships"
 SHIPBUILDING_RULES = ROOT / "catalog" / "shipbuilding"
 SHIPBUILDING_CORE = ROOT / "catalog" / "shipbuilding" / "ce-core.toml"
@@ -1507,7 +1510,12 @@ def markdown_document(markdown: str) -> tuple[str, list[tuple[int, str, str]]]:
         if list_match:
             ordered = list_match.group("marker") != "-"
             tag = "ol" if ordered else "ul"
-            rendered.append(f"<{tag}>")
+            start = ""
+            if ordered:
+                number = int(list_match.group("marker").rstrip("."))
+                if number != 1:
+                    start = f' start="{number}"'
+            rendered.append(f"<{tag}{start}>")
             while index < len(lines):
                 item = re.match(r"^(?:-|\d+\.)\s+(.+)$", lines[index])
                 if not item:
@@ -1551,6 +1559,7 @@ def page_shell(title: str, description: str, current: str, body: str) -> str:
     for key, label, href in (
         ("home", "Home", "index.html"),
         ("catalog", "Ship Catalog", "ships.html"),
+        ("rules", "Game Rules", "rules.html"),
         ("reference", "Player Reference", "reference.html"),
         ("help", "Beginner Help", "beginner-help.html"),
     ):
@@ -1584,7 +1593,7 @@ def page_shell(title: str, description: str, current: str, body: str) -> str:
     <div class="footer-links">
       <a href="https://github.com/RealDeuce/ct">Source</a>
       <a href="https://github.com/RealDeuce/ct/issues">Report an issue</a>
-      <a href="https://github.com/RealDeuce/ct/blob/main/OPEN_GAME_LICENSE.md">Game license</a>
+      <a href="open-game-license.html">Game license</a>
     </div>
   </footer>
 </body>
@@ -1672,6 +1681,7 @@ def landing_page() -> str:
 <section class="resource-callout" aria-labelledby="resources-title">
   <div><p class="section-index">05 / Captain's library</p><h2 id="resources-title">The manual travels with you.</h2></div>
   <a href="ships.html"><strong>Ship Catalog</strong><span>Recognition plates and mechanical summaries for documented vessel families.</span><b aria-hidden="true">↗</b></a>
+  <a href="rules.html"><strong>Game Rules</strong><span>The complete player-facing rules subset, including adopted and setting-neutral Open Game Content.</span><b aria-hidden="true">↗</b></a>
   <a href="reference.html"><strong>Player Reference</strong><span>Complete controls, systems, operations, travel, combat, and practical advice.</span><b aria-hidden="true">↗</b></a>
   <a href="beginner-help.html"><strong>Beginner Help</strong><span>The same conceptual help available from every <kbd>?</kbd> prompt in the door.</span><b aria-hidden="true">↗</b></a>
 </section>
@@ -2554,6 +2564,116 @@ def reference_page() -> str:
     )
 
 
+def combat_weapon_table() -> str:
+    rules = tomllib.loads(COMBAT_RULES.read_text(encoding="utf-8"))
+    ranges = (
+        "Adjacent",
+        "Close",
+        "Short",
+        "Medium",
+        "Long",
+        "Very long",
+        "Distant",
+    )
+    rows = []
+    for weapon in rules["weapon"]:
+        dice = int(weapon["dice"])
+        modifier = int(weapon["modifier"])
+        damage = f"{dice}D"
+        if modifier:
+            damage += f"{modifier:+d}"
+        range_cells = []
+        for value in weapon["difficulty_dm"]:
+            range_cells.append("--" if value == -99 else f"{value:+d}")
+        ammunition = weapon.get("ammunition", "--")
+        cells = [
+            display_term(weapon["id"]),
+            damage,
+            *range_cells,
+            ", ".join(display_term(trait) for trait in weapon["traits"]),
+            display_term(ammunition) if ammunition != "--" else ammunition,
+        ]
+        rows.append(
+            "<tr>"
+            + "".join(f"<td>{html.escape(cell)}</td>" for cell in cells)
+            + "</tr>"
+        )
+    headers = ("Weapon", "Damage", *ranges, "Traits", "Ammunition")
+    return f"""
+<h2 id="vessel-weapon-reference">Vessel weapon reference<a class="heading-anchor" href="#vessel-weapon-reference" aria-label="Link to this section">#</a></h2>
+<div class="source-note"><span>Live rules data</span> Generated from catalog/combat-rules.toml, revision {rules['revision']}.</div>
+<div class="table-scroll rules-weapon-table"><table>
+  <thead><tr>{''.join(f'<th>{html.escape(header)}</th>' for header in headers)}</tr></thead>
+  <tbody>{''.join(rows)}</tbody>
+</table></div>
+"""
+
+
+def rules_page() -> str:
+    content, headings = markdown_document(GAME_RULES.read_text(encoding="utf-8"))
+    headings.append((2, "Vessel weapon reference", "vessel-weapon-reference"))
+    toc = []
+    for level, title, identifier in headings:
+        css = "toc-sub" if level == 3 else "toc-main"
+        toc.append(f'<a class="{css}" href="#{identifier}">{html.escape(title)}</a>')
+    body = f"""
+<header class="document-hero rules-hero">
+  <p class="eyebrow">Captain's library // SRD-CT</p>
+  <h1>Game Rules</h1>
+  <p>The complete rules subset used by Cepheus Trader: core resolution, people, trade, ships, travel, information, encounters, combat, and authority.</p>
+</header>
+<div class="document-layout rules-layout">
+  <aside class="document-toc" aria-label="Game rules contents">
+    <div class="toc-title">Rules index</div>
+    <nav>{''.join(toc)}</nav>
+  </aside>
+  <article class="prose document-content rules-content">
+    <div class="source-note"><span>Open Game Content</span> Curated from the rules actually used by the game; omitted tabletop systems are out of scope.</div>
+    {content}
+    {combat_weapon_table()}
+  </article>
+</div>
+"""
+    return page_shell(
+        "Game Rules",
+        "The complete player-facing Cepheus Trader rules subset, including adopted and setting-neutral Open Game Content.",
+        "rules",
+        body,
+    )
+
+
+def open_game_license_page() -> str:
+    source = OPEN_GAME_LICENSE.read_text(encoding="utf-8").replace(
+        "[LICENSE.md](LICENSE.md)",
+        "[repository licensing designation](https://github.com/RealDeuce/ct/blob/main/LICENSE.md)",
+    )
+    content, headings = markdown_document(source)
+    toc = []
+    for level, title, identifier in headings:
+        css = "toc-sub" if level == 3 else "toc-main"
+        toc.append(f'<a class="{css}" href="#{identifier}">{html.escape(title)}</a>')
+    body = f"""
+<header class="document-hero license-hero">
+  <p class="eyebrow">Captain's library // OGL-1.0A</p>
+  <h1>Open Game License</h1>
+  <p>Cepheus Trader's Open Game Content designation, the complete license text, and consolidated copyright notices.</p>
+</header>
+<div class="document-layout license-layout">
+  <aside class="document-toc" aria-label="Open Game License contents">
+    <div class="toc-title">License index</div>
+    <nav>{''.join(toc)}</nav>
+  </aside>
+  <article class="prose document-content license-content">{content}</article>
+</div>
+"""
+    return page_shell(
+        "Open Game License",
+        "Open Game Content designation, Open Game License version 1.0a, and consolidated Section 15 notices for Cepheus Trader.",
+        "rules",
+        body,
+    )
+
+
 def help_paragraphs(body: str) -> str:
     return "".join(
         f"<p>{html.escape(paragraph)}</p>"
@@ -2677,8 +2797,10 @@ def build(output: Path) -> None:
     pages = {
         "index.html": landing_page(),
         "ships.html": ship_catalog_page(ships),
+        "rules.html": rules_page(),
         "reference.html": reference_page(),
         "beginner-help.html": beginner_help_page(topics),
+        "open-game-license.html": open_game_license_page(),
     }
     pages.update({ship["page"]: ship_detail_page(ship, ships) for ship in ships})
     for name, content in pages.items():

@@ -6,15 +6,26 @@ recorded in [the website design direction](DESIGN.md).
 The [ship catalog art guide](SHIP-ART-GUIDE.md) records the audited family,
 shipyard, component, scale, and image-production rules for exterior plates.
 
-The build has three authoritative content inputs:
+The build has five authoritative content inputs:
 
 - `docs/player-guide.md` becomes the Player Reference.
+- `docs/game-rules.md` becomes the curated Game Rules subset, with the live
+  vessel weapon appendix generated from `catalog/combat-rules.toml`.
 - Beginner bodies in `client/src/door_help.cpp` become searchable Beginner
   Help, checked against `DoorHelpTopic` in `client/include/ct/door_help.hpp`.
 - Published records under `catalog/ships/` become the filtered Ship Catalog
   index and complete per-vessel dossiers; canonical plates are served from
   `site/assets/ships/`, while production manifests and masters remain under
   `site/ship-art/`.
+- `OPEN_GAME_LICENSE.md` becomes the self-contained site license and
+  consolidated Section 15 notice.
+
+The rules input may reproduce the admitted Cepheus Engine SRD text. Material
+adapted from any other source must enter `docs/game-rules.md` only after its
+Product Identity has been removed and its mechanics have been restated in
+setting-neutral Cepheus Trader language. Do not make source PDFs or raw
+third-party prose site inputs. Exact source titles remain in the provenance
+record and consolidated Section 15 notice where licensing requires them.
 
 Build and validate the site locally with:
 
