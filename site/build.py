@@ -2419,8 +2419,12 @@ def ship_detail_page(ship: dict[str, object], records: list[dict[str, object]]) 
     <figure class="ship-detail-plate">
       <div class="ship-detail-plate-image">
         <img src="{ship['art_path']}" alt="{html.escape(ship['art_alt'], quote=True)}" width="1536" height="1024">
-        {plate_previous_link}
-        {plate_next_link}
+        <div class="ship-plate-navigation-zone ship-plate-previous-zone">
+          {plate_previous_link}
+        </div>
+        <div class="ship-plate-navigation-zone ship-plate-next-zone">
+          {plate_next_link}
+        </div>
       </div>
       <figcaption><span>{ship['tag']} / Canonical recognition plate</span><span class="ship-scale">{ship['length_m']:g} m overall</span></figcaption>
     </figure>

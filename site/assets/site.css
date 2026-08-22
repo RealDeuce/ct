@@ -382,7 +382,14 @@ main { position: relative; z-index: 1; }
   font: 700 .78rem var(--display);
   text-transform: uppercase;
 }
-.catalog-controls > label select { color-scheme: dark; }
+.catalog-controls > label select {
+  color-scheme: dark;
+  background-color: #151b20;
+}
+.catalog-controls > label select option {
+  background-color: #151b20;
+  color: var(--ink);
+}
 .catalog-controls > label input::placeholder { color: #777f78; text-transform: none; }
 .catalog-sort {
   grid-column: span 5;
@@ -542,10 +549,18 @@ main { position: relative; z-index: 1; }
 .ship-detail-plate { min-width: 0; margin: 0; border: 1px solid var(--line); border-top: 7px solid var(--path-accent); background: #0c1114; overflow: hidden; }
 .ship-detail-plate-image { position: relative; }
 .ship-detail-plate img { display: block; width: 100%; max-width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: cover; }
-.ship-plate-navigation {
+.ship-plate-navigation-zone {
   position: absolute;
-  top: 50%;
+  top: 0;
+  bottom: 0;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  width: 25%;
+}
+.ship-plate-previous-zone { left: 0; justify-content: flex-start; }
+.ship-plate-next-zone { right: 0; justify-content: flex-end; }
+.ship-plate-navigation {
   display: flex;
   align-items: center;
   justify-content: space-evenly;
@@ -559,10 +574,16 @@ main { position: relative; z-index: 1; }
   font: 800 clamp(.58rem, 1.25vw, .72rem) var(--mono);
   letter-spacing: .04em;
   text-decoration: none;
-  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
 }
-.ship-plate-previous { left: 0; border-width: 1px 1px 1px 0; }
-.ship-plate-next { right: 0; border-width: 1px 0 1px 1px; }
+.ship-plate-previous { border-width: 1px 1px 1px 0; }
+.ship-plate-next { border-width: 1px 0 1px 1px; }
+.ship-plate-navigation-zone:hover .ship-plate-navigation,
+.ship-plate-navigation-zone:focus-within .ship-plate-navigation {
+  opacity: 1;
+  pointer-events: auto;
+}
 .ship-plate-navigation:hover { background: var(--panel); color: var(--amber); }
 .ship-plate-navigation:focus-visible { outline: 3px solid var(--amber); outline-offset: -5px; }
 .ship-detail-plate figcaption { display: flex; justify-content: space-between; gap: 1rem; padding: .7rem 1rem; border-top: 1px solid var(--line); color: var(--ink-soft); font: 600 .58rem var(--mono); letter-spacing: .08em; text-transform: uppercase; }
@@ -817,6 +838,10 @@ main { position: relative; z-index: 1; }
   .footer-links { flex-wrap: wrap; }
 }
 
+@media (hover: none) {
+  .ship-plate-navigation { opacity: 1; pointer-events: auto; }
+}
+
 @media print {
   :root { color-scheme: light; }
   body { background: white; color: #111; }
@@ -831,7 +856,7 @@ main { position: relative; z-index: 1; }
   .ship-detail-hero { width: 100%; }
   .ship-construction { padding: 1rem; background: white; }
   .complete-ledger-body { display: block; }
-  .ship-plate-navigation, .family-navigation, .dossier-pagination { display: none; }
+  .ship-plate-navigation-zone, .family-navigation, .dossier-pagination { display: none; }
   a { color: #111; text-decoration: none; }
 }
 

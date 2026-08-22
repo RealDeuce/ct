@@ -3991,6 +3991,14 @@ class CatalogRecordTests(unittest.TestCase):
         by_id = {record["catalog_id"]: record for record in records}
 
         middle_page = SITE_BUILD.ship_detail_page(by_id[90], records)
+        self.assertIn(
+            '<div class="ship-plate-navigation-zone ship-plate-previous-zone">',
+            middle_page,
+        )
+        self.assertIn(
+            '<div class="ship-plate-navigation-zone ship-plate-next-zone">',
+            middle_page,
+        )
         self.assertNotEqual(by_id[89]["family_id"], by_id[90]["family_id"])
         self.assertNotEqual(by_id[91]["family_id"], by_id[90]["family_id"])
         self.assertIn(
@@ -4020,11 +4028,44 @@ class CatalogRecordTests(unittest.TestCase):
             last_page,
         )
 
+    def test_dossier_plate_navigation_uses_accessible_hover_zones(self) -> None:
+        stylesheet = (ROOT / "site" / "assets" / "site.css").read_text(
+            encoding="utf-8"
+        )
+        zone_selector = ".ship-plate-navigation-zone {"
+        zone_start = stylesheet.index(zone_selector)
+        zone_end = stylesheet.index("}", zone_start)
+        self.assertIn("width: 25%", stylesheet[zone_start:zone_end])
+        self.assertIn(
+            ".ship-plate-navigation-zone:hover .ship-plate-navigation,",
+            stylesheet,
+        )
+        self.assertIn(
+            ".ship-plate-navigation-zone:focus-within .ship-plate-navigation",
+            stylesheet,
+        )
+        self.assertIn(
+            "@media (hover: none) {\n  .ship-plate-navigation "
+            "{ opacity: 1; pointer-events: auto; }",
+            stylesheet,
+        )
+
     def test_catalog_script_reapplies_filters_after_history_navigation(self) -> None:
         script = (ROOT / "site" / "assets" / "site.js").read_text(
             encoding="utf-8"
         )
         self.assertIn("window.addEventListener('pageshow', filterCatalog)", script)
+
+    def test_catalog_select_options_have_an_explicit_dark_palette(self) -> None:
+        stylesheet = (ROOT / "site" / "assets" / "site.css").read_text(
+            encoding="utf-8"
+        )
+        selector = ".catalog-controls > label select option {"
+        rule_start = stylesheet.index(selector)
+        rule_end = stylesheet.index("}", rule_start)
+        option_rule = stylesheet[rule_start:rule_end]
+        self.assertIn("background-color: #151b20", option_rule)
+        self.assertIn("color: var(--ink)", option_rule)
 
     def test_page_shell_fingerprints_css_and_javascript_assets(self) -> None:
         page = SITE_BUILD.page_shell("Test", "Test", "home", "<p>Test</p>")
