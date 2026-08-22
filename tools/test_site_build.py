@@ -4094,6 +4094,14 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("result 25, not 7", page)
         self.assertIn("<th>2D6 total</th>", page)
 
+    def test_game_rules_separate_checkpoint_authority_from_plan_completion(self) -> None:
+        page = SITE_BUILD.rules_page()
+        self.assertIn("<strong>Hold</strong> authority", page)
+        self.assertIn("<strong>Through</strong> authority", page)
+        self.assertIn("one terminal marker", page)
+        self.assertIn("Task delivery occurs when docking completes", page)
+        self.assertIn("Warnings are numbered once below the route", page)
+
     def test_game_rules_address_players_instead_of_maintainers(self) -> None:
         page = SITE_BUILD.rules_page()
         self.assertNotIn("report the mismatch", page)

@@ -155,27 +155,36 @@ port. Each boundary is independently scheduled, so contact checks can attach
 to the correct locus without inferring direction from a Boolean.
 
 `FlightPlanSnapshot` is stored separately from the ship's current physical
-leg. It owns ordered typed waypoints, bounded actions, hold/terminal/through
-authority, encounter policy, revision, current step, state, and suspension
+leg. It owns ordered typed waypoints, bounded actions, hold/through checkpoint
+authority, a separate last-step terminal marker, encounter policy, revision, current step, state, and suspension
 reason. An outbound revision may replace the not-yet-started Jump destination
 without replacing the port-to-locus leg. Once the Jump begins, that physical
 leg is immutable until its next checkpoint. Cargo and sealed mail remain on
 the ship and generate preview warnings; replanning never edits obligations.
 
 Arrival does not directly rewrite an approaching ship as docked. It creates a
-durable checkpoint at the exact port locus. Terminal authority waits for an
-acknowledgement; through authority uses standing policy. Contact candidates
+durable checkpoint at the exact port locus. Hold authority waits for an
+acknowledgement; Through authority uses standing policy. The terminal bit only
+ends the plan after the step. Contact candidates
 come from the deterministic traffic window, while actual background carriers
 remain persisted in the simulator. Encounter turns are their own scheduled
 engine inputs and use the same ingress sequence as every other mutation.
 
+`FlightPlanStep.terminal` and `FlightPlanWarning.stepIndices` are additive
+CT-RPC fields. The flight-plan proposal and snapshot record codecs use version
+2; version-1 Terminal authority decodes as Hold plus a terminal marker. Outcome
+codec version 14 preserves warning step references while older outcomes decode
+with no references. A pre-field proposal with no explicit terminal bit is
+normalized at the wire boundary by marking its last step, so CT-RPC remains at
+version 7. No universe-wide storage migration is required.
+
 ## Persistence contract during development
 
-The repository has not been deployed. The server therefore accepts exactly
-storage format 1 and exactly version 1 of every record codec. It
-does not migrate, synthesize, or reinterpret earlier development formats.
-Opening any other manifest version fails with an instruction to reinitialize
-the game store.
+The repository has not been deployed. The server accepts storage manifest
+format 1 and the current version of each record codec, plus only the explicit
+legacy readers documented for that codec. It does not perform an implicit
+universe-wide migration. Opening any unsupported manifest or record version
+fails with an instruction to reinitialize the game store.
 
 Record versions remain explicit corruption guards and make byte-level audit
 straightforward; they are not promises of backward readability. When the game

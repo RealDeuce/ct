@@ -137,6 +137,36 @@ void write_version_three_registry(const std::filesystem::path& path) {
 #endif
 }
 
+void write_version_four_registry(const std::filesystem::path& path) {
+   std::vector<uint8_t> bytes{'C', 'T', 'I', 'D', 'M', 'A', 'P', 0};
+   append_u16(bytes, 4);
+   append_u16(bytes, 0);
+   append_u32(bytes, 17);
+   append_u32(bytes, 2);
+   append_u32(bytes, 1);
+   bytes.push_back(0);
+   bytes.push_back(1);
+   bytes.push_back(0);
+   bytes.push_back(1);
+   bytes.push_back(1);
+   bytes.push_back(static_cast<uint8_t>(ct::FirstWatchDisposition::Hidden));
+   append_u16(bytes, ct::FIRST_WATCH_PRESENTATION_VERSION);
+   append_u32(bytes, 3);
+   append_u16(bytes, 7);
+   append_u32(bytes, 1);
+   append_u32(bytes, 45);
+   bytes.insert(bytes.end(), {'V', '4', ' ', 'U', 's', 'e', 'r'});
+   const auto digest = ct::sha256(bytes);
+   bytes.insert(bytes.end(), digest.begin(), digest.end());
+   std::ofstream output(path, std::ios::binary);
+   output.write(reinterpret_cast<const char*>(bytes.data()),
+                static_cast<std::streamsize>(bytes.size()));
+   output.close();
+#ifndef _WIN32
+   chmod(path.c_str(), S_IRUSR | S_IWUSR);
+#endif
+}
+
 void corrupt_first_watch_disposition(const std::filesystem::path& path) {
    std::ifstream input(path, std::ios::binary);
    std::vector<uint8_t> bytes{
@@ -240,6 +270,8 @@ int main() {
    check(legacy.page_pauses);
    check(legacy.first_watch.disposition ==
          ct::FirstWatchDisposition::NotOffered);
+   check(legacy.task_route_authority == ct::GeneratedPlanAuthority::Automatic);
+   check(legacy.ordinary_route_authority == ct::GeneratedPlanAuthority::Automatic);
    ct::mark_player_orientation_shown(legacy_path.string(), 17, 1);
    check(ct::resolve_player_identity(legacy_path.string(), 17, "Legacy", 42)
             .orientation_shown);
@@ -261,6 +293,17 @@ int main() {
    check(version_three.first_watch.disposition ==
          ct::FirstWatchDisposition::NotOffered);
 
+   const auto version_four_path = scratch.path / "version-four.bin";
+   write_version_four_registry(version_four_path);
+   const auto version_four =
+      ct::resolve_player_identity(version_four_path.string(), 17, "V4 User", 45);
+   check(version_four.first_watch.disposition ==
+         ct::FirstWatchDisposition::Hidden);
+   check(version_four.task_route_authority ==
+         ct::GeneratedPlanAuthority::Automatic);
+   check(version_four.ordinary_route_authority ==
+         ct::GeneratedPlanAuthority::Automatic);
+
    const auto path = (scratch.path / "players.bin").string();
    ct::create_player_identity_registry(path, 17);
 #ifdef _WIN32
@@ -281,6 +324,8 @@ int main() {
    check(first.first_watch.presentation_version ==
          ct::FIRST_WATCH_PRESENTATION_VERSION);
    check(first.first_watch.seen == 0);
+   check(first.task_route_authority == ct::GeneratedPlanAuthority::Automatic);
+   check(first.ordinary_route_authority == ct::GeneratedPlanAuthority::Automatic);
 #ifdef _WIN32
    std::vector<uint8_t> administrator_owner;
    if(set_administrators_owner(
@@ -333,6 +378,13 @@ int main() {
    updated = ct::resolve_player_identity(path, 17, "Jane Doe", 42);
    check(updated.first_watch.disposition == ct::FirstWatchDisposition::Hidden);
    check(updated.first_watch.seen == 0x80000001u);
+   ct::set_player_generated_plan_authorities(
+      path, 17, first.player_id,
+      ct::GeneratedPlanAuthority::Hold,
+      ct::GeneratedPlanAuthority::Automatic);
+   updated = ct::resolve_player_identity(path, 17, "Jane Doe", 42);
+   check(updated.task_route_authority == ct::GeneratedPlanAuthority::Hold);
+   check(updated.ordinary_route_authority == ct::GeneratedPlanAuthority::Automatic);
 
    corrupt_first_watch_disposition(path);
    updated = ct::resolve_player_identity(path, 17, "Jane Doe", 42);
@@ -340,6 +392,9 @@ int main() {
          ct::FirstWatchDisposition::NotOffered);
    check(updated.first_watch.seen == 0);
    check(updated.first_watch_preferences_recovered);
+   check(updated.task_route_authority == ct::GeneratedPlanAuthority::Hold);
+   check(updated.ordinary_route_authority ==
+         ct::GeneratedPlanAuthority::Automatic);
    ct::rename_player_identity(path, 17, first.player_id, "Jane Smith");
    ct::reindex_player_identity(path, 17, first.player_id, 43);
    check(ct::resolve_player_identity(path, 17, "Jane Smith", 43).player_id ==

@@ -361,17 +361,33 @@ not used.
 ### Flight plans
 
 A Flight Plan is the ship's executable route, separate from Tasks and Known
-Universe. Each step names a destination and whether the captain has authorized
-a terminal stop, a hold for attention, or unattended continuation. Filing a
-plan commits only the reviewed revision. Completed steps and accepted custody
-cannot be undone by editing later steps.
+Universe. Each checkpoint has either **Hold** authority, which waits for the
+captain's arrival watch, or **Through** authority, which may resolve contacts
+under standing orders and continue while the captain is away. Separately, one
+terminal marker is always attached to the last step and ends the plan after
+that step completes. Filing commits only the reviewed revision. Completed
+steps and accepted custody cannot be undone by editing later steps.
+
+Generated task routes and ordinary routes default to Through at every
+checkpoint, including the terminal step, so they can complete while the
+captain is away. Player Preferences can change either route type to generate
+Hold checkpoints instead. The setting affects future proposals, not filed
+plans; Hold must therefore be chosen explicitly either as that preference or
+in the editor.
 
 A plan can include port purchases, wilderness water or ice collection,
 gas-giant skimming, Jump loci, known systems, surveyed coordinates, and
 imported plotted courses. Preview calculates known time, fuel, purchases, and
-obligation warnings. If a required service, source, payment, or course is no
+obligation warnings. Warnings are numbered once below the route and referenced
+beside every affected step. If a required service, source, payment, or course is no
 longer valid when reached, the plan holds instead of silently substituting
 another one.
+
+Task delivery occurs when docking completes, not when an arrival checkpoint
+becomes ready. Preview marks a task deadline in red when projected docking is
+late. It also marks a timely Hold checkpoint when the captain must take arrival
+watch before the deadline. If the captain waits, the task can default even
+though the ship reached its checkpoint earlier.
 
 Ordinary interplanetary transfer uses continuous acceleration to the midpoint
 and continuous deceleration afterward. For a stationary endpoint estimate:

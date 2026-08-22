@@ -383,6 +383,7 @@ void encode_proposal(rpc::FlightPlanProposal::Builder target, const FlightPlanPr
       auto item = steps[i];
       encode_flight_locus(item.initLocus(), step.locus);
       item.setAuthority(static_cast<rpc::WaypointAuthority>(step.authority));
+      item.setTerminal(step.terminal);
       auto action = item.initAction();
       switch(step.action.kind) {
       case FlightPlanActionKind::Hold:
@@ -426,10 +427,15 @@ void encode_proposal(rpc::FlightPlanProposal::Builder target, const FlightPlanPr
 
 FlightPlanStep decode_plan_step(rpc::FlightPlanStep::Reader source)
 {
+   const auto wire_authority = source.getAuthority();
    FlightPlanStep result{
       .locus = decode_flight_locus(source.getLocus()),
-      .authority = static_cast<WaypointAuthority>(source.getAuthority()),
+      .authority = wire_authority == rpc::WaypointAuthority::THROUGH
+                   ? WaypointAuthority::Through
+                   : WaypointAuthority::Hold,
       .action = {},
+      .terminal = source.getTerminal() ||
+                  wire_authority == rpc::WaypointAuthority::TERMINAL,
    };
    auto action = source.getAction();
    if(action.isJump()) {
@@ -3072,10 +3078,15 @@ FlightPlanPreview preview_flight_plan(
    const auto hash = source.getPreviewHash();
    result.preview_hash.assign(hash.begin(), hash.end());
    for(const auto warning : source.getWarnings()) {
-      result.warnings.push_back({
+      ct::FlightPlanWarning decoded{
          .code = warning.getCode().cStr(),
          .message = warning.getMessage().cStr(),
-      });
+         .step_indices = {},
+      };
+      for(const auto step_index : warning.getStepIndices()) {
+         decoded.step_indices.push_back(step_index);
+      }
+      result.warnings.push_back(std::move(decoded));
    }
    for(const auto offer : source.getCarriageOffers()) {
       result.carriage_offers.push_back(decode_task_offer(offer));

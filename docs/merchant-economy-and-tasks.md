@@ -97,6 +97,10 @@ speculative cargo remains player-owned. Tasks move independently through
 accepted, sourcing/loading, in-transit, settlement, completed, and defaulted
 states. A deadline is a concrete scheduled work item admitted through the
 same ordered queue as player commands and every other simulator action.
+Delivery is completed by docking at the destination, not by reaching an
+arrival checkpoint. A Hold checkpoint therefore requires arrival watch before
+the task deadline; a Through checkpoint may dock under standing orders while
+the captain is away. Flight-plan preview identifies that distinction.
 
 Task-ledger offer listings carry contextual availability reasons. The player
 client hides unavailable offers by default, reports the hidden count, and can

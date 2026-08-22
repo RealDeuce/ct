@@ -12,6 +12,11 @@ enum class HelpLevel : uint8_t {
    Expert,
 };
 
+enum class GeneratedPlanAuthority : uint8_t {
+   Automatic,
+   Hold,
+};
+
 enum class FirstWatchDisposition : uint8_t {
    NotOffered,
    Active,
@@ -37,6 +42,8 @@ struct LocalPlayerIdentity {
    bool page_pauses;
    FirstWatchPreferenceState first_watch;
    bool first_watch_preferences_recovered;
+   GeneratedPlanAuthority task_route_authority = GeneratedPlanAuthority::Automatic;
+   GeneratedPlanAuthority ordinary_route_authority = GeneratedPlanAuthority::Automatic;
 };
 
 void create_player_identity_registry(const std::string& path, uint32_t bbs_id);
@@ -83,5 +90,12 @@ void set_player_first_watch_state(const std::string& path,
                                   uint32_t bbs_id,
                                   uint32_t player_id,
                                   FirstWatchPreferenceState state);
+
+void set_player_generated_plan_authorities(
+   const std::string& path,
+   uint32_t bbs_id,
+   uint32_t player_id,
+   GeneratedPlanAuthority task_route_authority,
+   GeneratedPlanAuthority ordinary_route_authority);
 
 }  // namespace ct

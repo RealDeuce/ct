@@ -55,13 +55,13 @@ other known consequences before submission. Only movement and checkpoints
 already processed by the engine are immutable; queue ordering decides whether
 a replan beats a due checkpoint.
 
-The interface distinguishes course calculation from authority. A plotted line
-does not permit offline operations. The captain explicitly selects hold,
-continue while connected, or continue through named waypoints under standing
-encounter policy. The final arrival of the authorized path waits until the
-player is connected; only explicitly authorized through-points can generate
-offline encounters. If the player is already connected when arrival becomes
-due, it proceeds normally.
+The interface distinguishes course calculation, checkpoint authority, and plan
+completion. Hold waits for arrival watch; Through permits standing encounter
+policy and continuation while the captain is away. A separate terminal marker
+belongs to the last step and ends the plan after that step completes. It does
+not determine whether a contact waits for the captain. Generated task and
+ordinary routes default to Through throughout, with separate BBS-local
+preferences able to generate Hold checkpoints instead.
 
 ## Destinations and Preauthorized Actions
 
@@ -199,9 +199,10 @@ The due-time scheduler then commits three transitions independently:
 3. the approach completes at a durable arrival checkpoint at the synthesized
    primary-world starport facility.
 
-A terminal checkpoint holds until the captain takes the arrival watch, even
-if the maneuver therefore takes longer. An explicitly authorized through
-checkpoint applies standing policy offline. The CE contact baseline is one
+A Hold checkpoint waits until the captain takes arrival watch, even if the
+maneuver therefore takes longer. A Through checkpoint applies standing policy
+offline. Either may also be the terminal step: the terminal marker ends the
+plan after the checkpoint's selected authority has completed. The CE contact baseline is one
 chance in six per candidate and is scaled over the deterministic ±60-minute
 local traffic pool as `1 - (5/6)^N`; empty space has no comparable arbitrary
 roll. Routine traffic, control, inspection, distress, derelict, hazard,

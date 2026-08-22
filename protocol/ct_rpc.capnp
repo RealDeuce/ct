@@ -1429,6 +1429,7 @@ struct FlightPlanStep {
   locus @0 :FlightLocus;
   authority @1 :WaypointAuthority;
   action @2 :FlightPlanAction;
+  terminal @3 :Bool;
 }
 
 enum EncounterPosture {
@@ -1469,6 +1470,7 @@ struct CommitFlightPlanRequest {
 struct FlightPlanWarning {
   code @0 :Text;
   message @1 :Text;
+  stepIndices @2 :List(UInt16);
 }
 
 struct FlightPlanPreview {

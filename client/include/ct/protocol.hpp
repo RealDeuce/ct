@@ -1117,9 +1117,8 @@ struct TravelStatus {
 };
 
 enum class WaypointAuthority {
-   Hold,
-   Terminal,
-   Through,
+   Hold = 0,
+   Through = 2,
 };
 
 enum class FlightPlanActionKind {
@@ -1175,6 +1174,7 @@ struct FlightPlanStep {
    FlightLocus locus;
    WaypointAuthority authority;
    FlightPlanAction action;
+   bool terminal = false;
 };
 struct EncounterPolicy {
    EncounterPosture hostile_posture = EncounterPosture::Flee;
@@ -1191,6 +1191,7 @@ struct FlightPlanProposal {
 struct FlightPlanWarning {
    std::string code;
    std::string message;
+   std::vector<uint16_t> step_indices;
 };
 struct FlightPlanPreview {
    FlightPlanProposal proposal;

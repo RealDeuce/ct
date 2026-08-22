@@ -1443,7 +1443,6 @@ pub enum TravelStage {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WaypointAuthority {
     Hold,
-    Terminal,
     Through,
 }
 
@@ -1489,6 +1488,7 @@ pub struct FlightPlanStep {
     pub locus: FlightLocus,
     pub authority: WaypointAuthority,
     pub action: FlightPlanAction,
+    pub terminal: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1547,6 +1547,7 @@ pub struct CommitFlightPlanRequest {
 pub struct FlightPlanWarning {
     pub code: String,
     pub message: String,
+    pub step_indices: Vec<u16>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2541,15 +2542,19 @@ fn decode_encounter_policy(
 fn decode_flight_plan_proposal(
     reader: crate::ct_rpc_capnp::flight_plan_proposal::Reader<'_>,
 ) -> Result<FlightPlanProposal, WireError> {
-    let steps = reader
+    let mut steps = reader
         .get_steps()?
         .iter()
         .map(|step| {
             let locus = decode_flight_locus(step.get_locus()?)?;
-            let authority = match step.get_authority()? {
-                crate::ct_rpc_capnp::WaypointAuthority::Hold => WaypointAuthority::Hold,
-                crate::ct_rpc_capnp::WaypointAuthority::Terminal => WaypointAuthority::Terminal,
-                crate::ct_rpc_capnp::WaypointAuthority::Through => WaypointAuthority::Through,
+            let (authority, terminal) = match step.get_authority()? {
+                crate::ct_rpc_capnp::WaypointAuthority::Hold => {
+                    (WaypointAuthority::Hold, step.get_terminal())
+                }
+                crate::ct_rpc_capnp::WaypointAuthority::Terminal => (WaypointAuthority::Hold, true),
+                crate::ct_rpc_capnp::WaypointAuthority::Through => {
+                    (WaypointAuthority::Through, step.get_terminal())
+                }
             };
             let action = match step.get_action()?.which()? {
                 crate::ct_rpc_capnp::flight_plan_action::Hold(()) => FlightPlanAction::Hold,
@@ -2618,9 +2623,15 @@ fn decode_flight_plan_proposal(
                 locus,
                 authority,
                 action,
+                terminal,
             })
         })
         .collect::<Result<Vec<_>, WireError>>()?;
+    if !steps.is_empty() && !steps.iter().any(|step| step.terminal) {
+        // Pre-terminal-bit clients used either the legacy Terminal enum or
+        // simply ended the list. Preserve the latter shape at the wire edge.
+        steps.last_mut().expect("non-empty steps").terminal = true;
+    }
     Ok(FlightPlanProposal {
         expected_plan_revision: reader.get_expected_plan_revision(),
         steps,
@@ -5767,9 +5778,9 @@ fn set_flight_plan_step(
     set_flight_locus(builder.reborrow().init_locus(), step.locus);
     builder.set_authority(match step.authority {
         WaypointAuthority::Hold => crate::ct_rpc_capnp::WaypointAuthority::Hold,
-        WaypointAuthority::Terminal => crate::ct_rpc_capnp::WaypointAuthority::Terminal,
         WaypointAuthority::Through => crate::ct_rpc_capnp::WaypointAuthority::Through,
     });
+    builder.set_terminal(step.terminal);
     set_flight_plan_action(builder.init_action(), &step.action);
 }
 
@@ -5829,6 +5840,12 @@ fn set_flight_plan_preview(
         let mut item = warnings.reborrow().get(index as u32);
         item.set_code(&warning.code);
         item.set_message(&warning.message);
+        let step_count = u32::try_from(warning.step_indices.len())
+            .map_err(|_| WireError::Expected("fewer warning step references"))?;
+        let mut step_indices = item.init_step_indices(step_count);
+        for (step_index, value) in warning.step_indices.iter().enumerate() {
+            step_indices.set(step_index as u32, *value);
+        }
     }
     let offer_count = u32::try_from(preview.carriage_offers.len())
         .map_err(|_| WireError::Expected("fewer carriage offers"))?;
@@ -7225,6 +7242,7 @@ mod tests {
                         navigation: JumpNavigationMethod::CommercialTape,
                         proceed_on_known_bad_plot: true,
                     },
+                    terminal: false,
                 },
                 FlightPlanStep {
                     locus: FlightLocus::Port {
@@ -7232,11 +7250,12 @@ mod tests {
                         world_id: 2,
                         facility_id: 3,
                     },
-                    authority: WaypointAuthority::Terminal,
+                    authority: WaypointAuthority::Hold,
                     action: FlightPlanAction::Dock {
                         world_id: 2,
                         facility_id: 3,
                     },
+                    terminal: true,
                 },
             ],
             policy: EncounterPolicy {
@@ -7272,6 +7291,20 @@ mod tests {
                 request
             );
         }
+
+        let mut legacy_proposal = proposal;
+        legacy_proposal.steps.last_mut().unwrap().terminal = false;
+        let legacy_request = CommandRequest {
+            request_id: 10,
+            session_epoch: 9,
+            command_id: [11; COMMAND_ID_BYTES],
+            command: Command::PreviewFlightPlan(legacy_proposal),
+        };
+        let decoded = decode_request(&encode_request(&legacy_request).unwrap()).unwrap();
+        let Command::PreviewFlightPlan(decoded_proposal) = decoded.command else {
+            panic!("expected flight-plan preview request");
+        };
+        assert!(decoded_proposal.steps.last().unwrap().terminal);
     }
 
     #[test]

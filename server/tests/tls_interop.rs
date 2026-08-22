@@ -1602,6 +1602,12 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     preference_door.send_to_menu(b"u", "Captain's Command Console");
     preference_door.send_to_menu(b"p", "Player Preferences");
     preference_door.wait_for("Page pauses:  Enabled");
+    preference_door.wait_for("Task routes:  Automatic");
+    preference_door.wait_for("Other routes: Automatic");
+    preference_door.send_to_menu(b"g", "Generated Flight Plans");
+    preference_door.send_to_menu(b"t", "Task routes:     Hold");
+    preference_door.send_to_menu(b"q", "Player Preferences");
+    preference_door.wait_for("Task routes:  Hold");
     preference_door.send(b"h");
     preference_door.wait_for("Default Help Level");
     preference_door.wait_for("(X) Expert");
@@ -1640,6 +1646,10 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     persisted_preference_door.send_to_menu(b"u", "Captain's Command Console");
     persisted_preference_door.send_to_menu(b"p", "Player Preferences");
     persisted_preference_door.wait_for("Page pauses:  Disabled");
+    persisted_preference_door.wait_for("Task routes:  Hold");
+    persisted_preference_door.send_to_menu(b"g", "Generated Flight Plans");
+    persisted_preference_door.send_to_menu(b"t", "Task routes:     Automatic");
+    persisted_preference_door.send_to_menu(b"q", "Player Preferences");
     persisted_preference_door.send_to_menu(b"p", "Automatic Page Pauses");
     persisted_preference_door.send_to_menu(b"e", "Page pauses:  Enabled");
     persisted_preference_door.send_to_menu(b"q", "Captain's Command Console");
@@ -2060,6 +2070,14 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "The flight plan has been filed.",
     ] {
         assert!(voyage_screen.contains(expected), "{voyage_screen:?}");
+    }
+    let voyage_semantic = normalized_display_text(&voyage_screen);
+    for expected in [
+        "terminal",
+        "(1) Warning:",
+        "Contacts may resolve under standing orders",
+    ] {
+        assert!(voyage_semantic.contains(expected), "{voyage_screen:?}");
     }
 
     // LMDB has one authoritative writer at a time. Stop the network server

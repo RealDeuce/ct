@@ -5173,6 +5173,18 @@ impl Store {
                 "a flight plan must contain between one and 64 waypoints".into(),
             ));
         }
+        let terminal_steps = proposal
+            .steps
+            .iter()
+            .enumerate()
+            .filter(|(_, step)| step.terminal)
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        if terminal_steps.len() != 1 || terminal_steps[0] + 1 != proposal.steps.len() {
+            return Ok(RuleResult::Rejected(
+                "a flight plan must have one terminal waypoint, and it must be last".into(),
+            ));
+        }
         let (player, ship) = self.player_and_ship_in(txn, identity)?;
         let spec = creation::ship_status_spec(ship.catalog_id)
             .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
@@ -5318,30 +5330,28 @@ impl Store {
                         warnings.push(FlightPlanWarning {
                             code: "COURSE_TAPE_COST".into(),
                             message: format!(
-                                "Waypoint {} buys a fresh course tape for Cr{}.",
-                                index + 1,
+                                "A fresh course tape costs Cr{}.",
                                 1_000_u64
                                     .saturating_mul(u64::from(jump_number_for_distance(distance)))
                             ),
+                            step_indices: vec![index as u16],
                         });
                     }
                     if proceed_on_known_bad_plot {
                         warnings.push(FlightPlanWarning {
                             code: "KNOWN_BAD_PLOT_AUTHORITY".into(),
-                            message: format!(
-                                "Waypoint {} authorizes firing on a failed plot; CE makes that an automatic misjump.",
-                                index + 1
-                            ),
+                            message: "Firing on a failed plot is authorized; CE makes that an automatic misjump."
+                                .into(),
+                            step_indices: vec![index as u16],
                         });
                     }
                     fuel_millitons = fuel_millitons.saturating_add(leg_fuel);
                     if available_fuel_millitons < leg_fuel {
                         warnings.push(FlightPlanWarning {
                             code: "INSUFFICIENT_CARRIED_FUEL".into(),
-                            message: format!(
-                                "Waypoint {} cannot begin with the fuel projected to be aboard.",
-                                index + 1
-                            ),
+                            message: "This step cannot begin with the fuel projected to be aboard."
+                                .into(),
+                            step_indices: vec![index as u16],
                         });
                         available_fuel_millitons = 0;
                     } else {
@@ -5413,30 +5423,28 @@ impl Store {
                         warnings.push(FlightPlanWarning {
                             code: "COURSE_TAPE_COST".into(),
                             message: format!(
-                                "Waypoint {} buys a fresh coordinate course tape for Cr{}.",
-                                index + 1,
+                                "A fresh coordinate course tape costs Cr{}.",
                                 1_000_u64
                                     .saturating_mul(u64::from(jump_number_for_distance(distance)))
                             ),
+                            step_indices: vec![index as u16],
                         });
                     }
                     if proceed_on_known_bad_plot {
                         warnings.push(FlightPlanWarning {
                             code: "KNOWN_BAD_PLOT_AUTHORITY".into(),
-                            message: format!(
-                                "Waypoint {} authorizes firing on a failed plot; CE makes that an automatic misjump.",
-                                index + 1
-                            ),
+                            message: "Firing on a failed plot is authorized; CE makes that an automatic misjump."
+                                .into(),
+                            step_indices: vec![index as u16],
                         });
                     }
                     fuel_millitons = fuel_millitons.saturating_add(leg_fuel);
                     if available_fuel_millitons < leg_fuel {
                         warnings.push(FlightPlanWarning {
                             code: "INSUFFICIENT_CARRIED_FUEL".into(),
-                            message: format!(
-                                "Waypoint {} cannot begin with the fuel projected to be aboard.",
-                                index + 1
-                            ),
+                            message: "This step cannot begin with the fuel projected to be aboard."
+                                .into(),
+                            step_indices: vec![index as u16],
                         });
                         available_fuel_millitons = 0;
                     } else {
@@ -5522,10 +5530,9 @@ impl Store {
                             if operation == FuelOperation::BuyUnrefined {
                                 warnings.push(FlightPlanWarning {
                                     code: "UNREFINED_JUMP_FUEL".into(),
-                                    message: format!(
-                                        "Waypoint {} buys unrefined fuel; any Jump burning it carries the normal misjump penalty.",
-                                        index + 1
-                                    ),
+                                    message: "Unrefined fuel is purchased; any Jump burning it carries the normal misjump penalty."
+                                        .into(),
+                                    step_indices: vec![index as u16],
                                 });
                             }
                         }
@@ -5627,39 +5634,33 @@ impl Store {
                         );
                     }
                     at_primary_port = true;
-                    docked_arrivals
-                        .entry(system_id)
-                        .or_insert_with(|| game_second.saturating_add(elapsed_seconds));
+                    docked_arrivals.entry(system_id).or_insert_with(|| {
+                        (
+                            game_second.saturating_add(elapsed_seconds),
+                            index as u16,
+                            step.authority,
+                        )
+                    });
                 }
                 FlightPlanAction::Hold => {}
             }
             if step.authority == WaypointAuthority::Through {
-                unattended_waypoints.push(index + 1);
+                unattended_waypoints.push(index as u16);
             }
         }
         if !unattended_waypoints.is_empty() {
-            let waypoints = unattended_waypoints
-                .iter()
-                .map(usize::to_string)
-                .collect::<Vec<_>>()
-                .join(", ");
             warnings.push(FlightPlanWarning {
                 code: "UNATTENDED_CHECKPOINT".into(),
-                message: format!(
-                    "{} {waypoints} may resolve contacts under standing orders while the captain is away.",
-                    if unattended_waypoints.len() == 1 {
-                        "Waypoint"
-                    } else {
-                        "Waypoints"
-                    },
-                ),
+                message: "Contacts may resolve under standing orders while the captain is away."
+                    .into(),
+                step_indices: unattended_waypoints,
             });
         }
         if !ship.cargo.is_empty() && current.plan_id != 0 && proposal.steps != current.steps {
-            warnings.push(FlightPlanWarning { code: "CARRIAGE_DIVERSION".into(), message: "Carried cargo remains aboard; changing the route does not alter delivery obligations or their dates.".into() });
+            warnings.push(FlightPlanWarning { code: "CARRIAGE_DIVERSION".into(), message: "Carried cargo remains aboard; changing the route does not alter delivery obligations or their dates.".into(), step_indices: Vec::new() });
         }
         if ship.mail_custody.is_some() && proposal.steps != current.steps {
-            warnings.push(FlightPlanWarning { code: "SEALED_MAIL_CUSTODY".into(), message: "The sealed mailbag remains in custody and must be delivered on its committed hop.".into() });
+            warnings.push(FlightPlanWarning { code: "SEALED_MAIL_CUSTODY".into(), message: "The sealed mailbag remains in custody and must be delivered on its committed hop.".into(), step_indices: Vec::new() });
         }
         let plan_end_second = game_second.saturating_add(elapsed_seconds);
         for entry in self.tasks.iter(txn)? {
@@ -5683,7 +5684,7 @@ impl Store {
                 .get(&stored.task.offer.destination_system_id)
                 .copied();
             let missed_by = match arrival {
-                Some(arrival_second) if arrival_second > deadline => {
+                Some((arrival_second, _, _)) if arrival_second > deadline => {
                     Some(arrival_second - deadline)
                 }
                 None if plan_end_second > deadline => Some(plan_end_second - deadline),
@@ -5708,6 +5709,16 @@ impl Store {
                 warnings.push(FlightPlanWarning {
                     code: "TASK_DEADLINE_MISSED".into(),
                     message,
+                    step_indices: arrival.map_or_else(Vec::new, |(_, index, _)| vec![index]),
+                });
+            } else if let Some((_, index, WaypointAuthority::Hold)) = arrival {
+                warnings.push(FlightPlanWarning {
+                    code: "TASK_DEADLINE_REQUIRES_WATCH".into(),
+                    message: format!(
+                        "Task #{} ({}) is not delivered until docking; take arrival watch before its delivery deadline or change this checkpoint to Through.",
+                        stored.task.task_id, stored.task.offer.title,
+                    ),
+                    step_indices: vec![index],
                 });
             }
         }
@@ -5730,6 +5741,7 @@ impl Store {
                 warnings.push(FlightPlanWarning {
                     code: "DESTROYED_REQUIRED_SYSTEM".into(),
                     message: format!("The ship cannot depart with its {name} destroyed."),
+                    step_indices: Vec::new(),
                 });
             }
         }
@@ -5752,6 +5764,7 @@ impl Store {
             warnings.push(FlightPlanWarning {
                 code: "DESTROYED_REQUIRED_SYSTEM".into(),
                 message: "The filed plan requires a functioning Jump drive.".into(),
+                step_indices: Vec::new(),
             });
         }
         let mut carriage_offers = Vec::new();
@@ -5822,7 +5835,7 @@ impl Store {
                         crate::wire::SkillId::Etiquette,
                     )?
                 {
-                    warnings.push(FlightPlanWarning { code: "PASSENGER_STEWARD_UNSTAFFED".into(), message: "High or middle passage is declared, but no qualified steward is aboard.".into() });
+                    warnings.push(FlightPlanWarning { code: "PASSENGER_STEWARD_UNSTAFFED".into(), message: "High or middle passage is declared, but no qualified steward is aboard.".into(), step_indices: Vec::new() });
                 }
                 if low != declaration.low_berths
                     && !self.ship_has_crew_skill_in(
@@ -5837,6 +5850,7 @@ impl Store {
                         message:
                             "Low passage is declared, but no qualified medical attendant is aboard."
                                 .into(),
+                        step_indices: Vec::new(),
                     });
                 }
             }
@@ -5882,7 +5896,21 @@ impl Store {
             .max(1);
         let required_person_days = persons_aboard.saturating_mul(voyage_days);
         if ship.provisions.person_days_remaining < required_person_days {
-            warnings.push(FlightPlanWarning { code: "INSUFFICIENT_PROVISIONS".into(), message: format!("The filed voyage requires {required_person_days} person-days of life-support stores; {} remain aboard.", ship.provisions.person_days_remaining) });
+            warnings.push(FlightPlanWarning { code: "INSUFFICIENT_PROVISIONS".into(), message: format!("The filed voyage requires {required_person_days} person-days of life-support stores; {} remain aboard.", ship.provisions.person_days_remaining), step_indices: Vec::new() });
+        }
+        let mut consolidated_warnings: Vec<FlightPlanWarning> = Vec::new();
+        for warning in warnings {
+            if let Some(existing) = consolidated_warnings.iter_mut().find(|existing| {
+                existing.code == warning.code && existing.message == warning.message
+            }) {
+                for step_index in warning.step_indices {
+                    if !existing.step_indices.contains(&step_index) {
+                        existing.step_indices.push(step_index);
+                    }
+                }
+            } else {
+                consolidated_warnings.push(warning);
+            }
         }
         let preview_hash = flight_plan_preview_hash(proposal, &carriage_offers)?;
         Ok(RuleResult::Applied(FlightPlanPreview {
@@ -5890,7 +5918,7 @@ impl Store {
             preview_hash,
             elapsed_seconds,
             fuel_millitons,
-            warnings,
+            warnings: consolidated_warnings,
             carriage_offers,
             carriage_revenue_credits,
             carriage_broker_fees_credits,
@@ -6441,7 +6469,7 @@ impl Store {
                             hold_on_rejection,
                         );
                     }
-                    if step.authority != WaypointAuthority::Through {
+                    if step.terminal {
                         plan.state = FlightPlanState::Completed;
                         self.flight_plans
                             .put(txn, &key, &encode_flight_plan_snapshot(&plan)?)?;
@@ -6908,6 +6936,9 @@ impl Store {
     ) -> Result<(), StoreError> {
         let key = encode_identity(identity);
         let (mut player, mut ship) = self.player_and_ship_in(txn, identity)?;
+        let arrived_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?
+            .unwrap_or(checkpoint.ready_second)
+            .max(checkpoint.ready_second);
         let (world_id, facility_id) = match checkpoint.locus {
             FlightLocus::Port {
                 world_id,
@@ -6919,9 +6950,9 @@ impl Store {
         ship.location = ShipLocationRecord::Docked {
             world_id,
             facility_id,
-            arrived_second: checkpoint.ready_second,
+            arrived_second,
         };
-        self.prepare_tasks_at_port_in(txn, identity, &mut ship, checkpoint.ready_second)?;
+        self.prepare_tasks_at_port_in(txn, identity, &mut ship, arrived_second)?;
         for subsystem in &mut ship.subsystems {
             if matches!(
                 subsystem.kind,
@@ -6930,13 +6961,7 @@ impl Store {
                 subsystem.duty_cycles = subsystem.duty_cycles.saturating_add(1);
             }
         }
-        self.settle_tasks_at_port_in(
-            txn,
-            identity,
-            &mut player,
-            &mut ship,
-            checkpoint.ready_second,
-        )?;
+        self.settle_tasks_at_port_in(txn, identity, &mut player, &mut ship, arrived_second)?;
         self.players
             .put(txn, &key, &encode_player_record(&player))?;
         self.ships
@@ -6944,7 +6969,7 @@ impl Store {
         self.checkpoints.delete(txn, &key)?;
         let available = self
             .simulation
-            .available_messages(txn, ship.system_id, checkpoint.ready_second, false)?
+            .available_messages(txn, ship.system_id, arrived_second, false)?
             .into_iter()
             .map(|item| item.message.message_id)
             .collect::<HashSet<_>>();
@@ -6984,7 +7009,7 @@ impl Store {
             ) && u16::from(law) + u16::from(warrant.severity)
                 >= recognition_threshold;
             let entropy = crate::ship_condition::mix64(
-                warrant.warrant_id ^ ship.ship_id.rotate_left(11) ^ checkpoint.ready_second,
+                warrant.warrant_id ^ ship.ship_id.rotate_left(11) ^ arrived_second,
             );
             let search_roll = (2 + entropy % 6 + entropy.rotate_left(17) % 6) as i16
                 + i16::from(law.div_ceil(2))
@@ -6999,7 +7024,7 @@ impl Store {
                     revision: 1,
                     kind: EncounterKind::Hostile,
                     state: EncounterState::AwaitingPosture,
-                    started_second: checkpoint.ready_second,
+                    started_second: arrived_second,
                     next_turn_second: 0,
                     turn: 0,
                     contact: EncounterContact {
@@ -7034,7 +7059,7 @@ impl Store {
                 &record.snapshot.contact,
                 record.snapshot.kind,
                 encounter_id,
-                checkpoint.ready_second,
+                arrived_second,
                 true,
                 &record.snapshot.summary,
             )?;
@@ -7059,11 +7084,8 @@ impl Store {
             .transpose()?
         {
             let current = usize::from(plan.current_step);
-            let through = plan
-                .steps
-                .get(current)
-                .is_some_and(|step| step.authority == WaypointAuthority::Through);
-            if through && current + 1 < plan.steps.len() {
+            let continues = plan.steps.get(current).is_some_and(|step| !step.terminal);
+            if continues && current + 1 < plan.steps.len() {
                 plan.state = FlightPlanState::Active;
                 plan.suspension_reason.clear();
                 let _ =
@@ -30893,7 +30915,11 @@ fn decode_encounter_policy_record(
 
 fn encode_flight_plan_step_record(bytes: &mut Vec<u8>, step: &FlightPlanStep) {
     encode_wire_locus(bytes, step.locus);
-    bytes.push(step.authority as u8);
+    bytes.push(match step.authority {
+        WaypointAuthority::Hold => 0,
+        WaypointAuthority::Through => 1,
+    });
+    bytes.push(u8::from(step.terminal));
     match step.action {
         FlightPlanAction::Hold => bytes.push(0),
         FlightPlanAction::Jump {
@@ -30946,12 +30972,18 @@ fn encode_flight_plan_step_record(bytes: &mut Vec<u8>, step: &FlightPlanStep) {
         }
     }
 }
-fn decode_flight_plan_step_record(decoder: &mut Decoder<'_>) -> Result<FlightPlanStep, StoreError> {
+fn decode_flight_plan_step_record(
+    decoder: &mut Decoder<'_>,
+    version: u8,
+) -> Result<FlightPlanStep, StoreError> {
     let locus = decode_wire_locus(decoder)?;
-    let authority = match decoder.u8()? {
-        0 => WaypointAuthority::Hold,
-        1 => WaypointAuthority::Terminal,
-        2 => WaypointAuthority::Through,
+    let encoded_authority = decoder.u8()?;
+    let (authority, terminal) = match (version, encoded_authority) {
+        (1, 0) => (WaypointAuthority::Hold, false),
+        (1, 1) => (WaypointAuthority::Hold, true),
+        (1, 2) => (WaypointAuthority::Through, false),
+        (2, 0) => (WaypointAuthority::Hold, decoder.u8()? != 0),
+        (2, 1) => (WaypointAuthority::Through, decoder.u8()? != 0),
         _ => return Err(StoreError::Corrupt("unknown waypoint authority")),
     };
     let action = match decoder.u8()? {
@@ -30998,6 +31030,7 @@ fn decode_flight_plan_step_record(decoder: &mut Decoder<'_>) -> Result<FlightPla
         locus,
         authority,
         action,
+        terminal,
     })
 }
 
@@ -31005,7 +31038,7 @@ fn encode_flight_plan_proposal_record(
     proposal: &FlightPlanProposal,
 ) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(1);
+    bytes.push(2);
     bytes.extend_from_slice(&proposal.expected_plan_revision.to_be_bytes());
     let count = u16::try_from(proposal.steps.len())
         .map_err(|_| StoreError::Corrupt("too many flight-plan steps"))?;
@@ -31019,14 +31052,15 @@ fn encode_flight_plan_proposal_record(
 fn decode_flight_plan_proposal_record(
     decoder: &mut Decoder<'_>,
 ) -> Result<FlightPlanProposal, StoreError> {
-    if decoder.u8()? != 1 {
+    let version = decoder.u8()?;
+    if version != 1 && version != 2 {
         return Err(StoreError::Corrupt("unsupported flight-plan proposal"));
     }
     let expected_plan_revision = decoder.u64()?;
     let count = decoder.u16()? as usize;
     let mut steps = Vec::with_capacity(count);
     for _ in 0..count {
-        steps.push(decode_flight_plan_step_record(decoder)?);
+        steps.push(decode_flight_plan_step_record(decoder, version)?);
     }
     let policy = decode_encounter_policy_record(decoder)?;
     Ok(FlightPlanProposal {
@@ -31060,7 +31094,7 @@ fn flight_plan_preview_hash(
 
 fn encode_flight_plan_snapshot(value: &FlightPlanSnapshot) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(1);
+    bytes.push(2);
     bytes.extend_from_slice(&value.plan_id.to_be_bytes());
     bytes.extend_from_slice(&value.revision.to_be_bytes());
     bytes.extend_from_slice(&value.current_step.to_be_bytes());
@@ -31077,7 +31111,8 @@ fn encode_flight_plan_snapshot(value: &FlightPlanSnapshot) -> Result<Vec<u8>, St
 }
 fn decode_flight_plan_snapshot(bytes: &[u8]) -> Result<FlightPlanSnapshot, StoreError> {
     let mut decoder = Decoder::new(bytes);
-    if decoder.u8()? != 1 {
+    let version = decoder.u8()?;
+    if version != 1 && version != 2 {
         return Err(StoreError::Corrupt("unsupported flight-plan record"));
     }
     let plan_id = decoder.u64()?;
@@ -31096,7 +31131,7 @@ fn decode_flight_plan_snapshot(bytes: &[u8]) -> Result<FlightPlanSnapshot, Store
     let count = decoder.u16()? as usize;
     let mut steps = Vec::with_capacity(count);
     for _ in 0..count {
-        steps.push(decode_flight_plan_step_record(&mut decoder)?);
+        steps.push(decode_flight_plan_step_record(&mut decoder, version)?);
     }
     let policy = decode_encounter_policy_record(&mut decoder)?;
     let suspension_reason = decoder.text()?;
@@ -34243,7 +34278,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(13);
+    bytes.push(14);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -34340,6 +34375,12 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
             for warning in &preview.warnings {
                 encode_text(&mut bytes, &warning.code)?;
                 encode_text(&mut bytes, &warning.message)?;
+                let step_count = u16::try_from(warning.step_indices.len())
+                    .map_err(|_| StoreError::Corrupt("too many warning step references"))?;
+                bytes.extend_from_slice(&step_count.to_be_bytes());
+                for step_index in &warning.step_indices {
+                    bytes.extend_from_slice(&step_index.to_be_bytes());
+                }
             }
         }
         OutcomeKind::Checkpoint(value) => {
@@ -34500,6 +34541,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 11
         && version != 12
         && version != 13
+        && version != 14
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -34569,6 +34611,16 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
                 warnings.push(FlightPlanWarning {
                     code: decoder.text()?,
                     message: decoder.text()?,
+                    step_indices: if version >= 14 {
+                        let step_count = decoder.u16()? as usize;
+                        let mut step_indices = Vec::with_capacity(step_count);
+                        for _ in 0..step_count {
+                            step_indices.push(decoder.u16()?);
+                        }
+                        step_indices
+                    } else {
+                        Vec::new()
+                    },
                 });
             }
             OutcomeKind::FlightPlanPreview(FlightPlanPreview {
@@ -40099,6 +40151,63 @@ mod tests {
     }
 
     #[test]
+    fn legacy_terminal_authority_decodes_as_held_terminal_step() {
+        let mut bytes = vec![1];
+        bytes.extend_from_slice(&7_u64.to_be_bytes());
+        bytes.extend_from_slice(&1_u16.to_be_bytes());
+        encode_wire_locus(&mut bytes, FlightLocus::JumpLocus { system_id: 11 });
+        bytes.push(1);
+        bytes.push(0);
+        encode_encounter_policy_record(&mut bytes, &EncounterPolicy::default()).unwrap();
+        let mut decoder = Decoder::new(&bytes);
+        let decoded = decode_flight_plan_proposal_record(&mut decoder).unwrap();
+        decoder.finish().unwrap();
+        assert_eq!(decoded.expected_plan_revision, 7);
+        assert_eq!(decoded.steps.len(), 1);
+        assert_eq!(decoded.steps[0].authority, WaypointAuthority::Hold);
+        assert!(decoded.steps[0].terminal);
+    }
+
+    #[test]
+    fn flight_plan_warning_outcome_preserves_step_references() {
+        let proposal = FlightPlanProposal {
+            expected_plan_revision: 7,
+            steps: vec![FlightPlanStep {
+                locus: FlightLocus::JumpLocus { system_id: 11 },
+                authority: WaypointAuthority::Through,
+                action: FlightPlanAction::Hold,
+                terminal: true,
+            }],
+            policy: EncounterPolicy::default(),
+        };
+        let outcome = Outcome {
+            command_id: [9; COMMAND_ID_BYTES],
+            committed_sequence: 15,
+            revision: 16,
+            replayed: false,
+            phase: PlayerPhase::Docked,
+            kind: OutcomeKind::FlightPlanPreview(FlightPlanPreview {
+                proposal,
+                preview_hash: vec![1, 2, 3],
+                elapsed_seconds: 4,
+                fuel_millitons: 5,
+                warnings: vec![FlightPlanWarning {
+                    code: "TEST".into(),
+                    message: "Referenced warning".into(),
+                    step_indices: vec![0],
+                }],
+                carriage_offers: Vec::new(),
+                carriage_revenue_credits: 0,
+                carriage_broker_fees_credits: 0,
+            }),
+        };
+        assert_eq!(
+            decode_outcome(&encode_outcome(&outcome).unwrap()).unwrap(),
+            outcome
+        );
+    }
+
+    #[test]
     fn docked_snapshot_outcome_preserves_clock_and_reads_version_twelve() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
@@ -42008,6 +42117,7 @@ mod tests {
                         navigation: crate::wire::JumpNavigationMethod::Onboard,
                         proceed_on_known_bad_plot: false,
                     },
+                    terminal: false,
                 },
                 FlightPlanStep {
                     locus: FlightLocus::Port {
@@ -42015,11 +42125,12 @@ mod tests {
                         world_id: destination,
                         facility_id: destination,
                     },
-                    authority: WaypointAuthority::Terminal,
+                    authority: WaypointAuthority::Hold,
                     action: FlightPlanAction::Dock {
                         world_id: destination,
                         facility_id: destination,
                     },
+                    terminal: true,
                 },
             ],
             policy: EncounterPolicy::default(),
@@ -42101,6 +42212,7 @@ mod tests {
                         navigation: crate::wire::JumpNavigationMethod::Onboard,
                         proceed_on_known_bad_plot: false,
                     },
+                    terminal: false,
                 },
                 FlightPlanStep {
                     locus: FlightLocus::Port {
@@ -42108,11 +42220,12 @@ mod tests {
                         world_id: destination,
                         facility_id: destination,
                     },
-                    authority: WaypointAuthority::Terminal,
+                    authority: WaypointAuthority::Hold,
                     action: FlightPlanAction::Dock {
                         world_id: destination,
                         facility_id: destination,
                     },
+                    terminal: true,
                 },
             ],
             policy: EncounterPolicy::default(),
@@ -42179,6 +42292,205 @@ mod tests {
     }
 
     #[test]
+    fn flight_plan_preview_distinguishes_hold_from_terminal_completion() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap()
+            .1;
+        let known = store
+            .known_destinations_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let destination = known
+            .systems
+            .iter()
+            .find(|system| system.within_jump_rating && system.system_id != ship.system_id)
+            .unwrap()
+            .system_id;
+        let mut proposal = FlightPlanProposal {
+            expected_plan_revision: 0,
+            steps: vec![
+                FlightPlanStep {
+                    locus: FlightLocus::JumpLocus {
+                        system_id: ship.system_id,
+                    },
+                    authority: WaypointAuthority::Through,
+                    action: FlightPlanAction::Jump {
+                        destination_system_id: destination,
+                        navigation: crate::wire::JumpNavigationMethod::Onboard,
+                        proceed_on_known_bad_plot: false,
+                    },
+                    terminal: false,
+                },
+                FlightPlanStep {
+                    locus: FlightLocus::Port {
+                        system_id: destination,
+                        world_id: destination,
+                        facility_id: destination,
+                    },
+                    authority: WaypointAuthority::Hold,
+                    action: FlightPlanAction::Dock {
+                        world_id: destination,
+                        facility_id: destination,
+                    },
+                    terminal: true,
+                },
+            ],
+            policy: EncounterPolicy::default(),
+        };
+        let task_id = 990_002;
+        let mut offer = test_task_offer(
+            990_003,
+            ship.system_id,
+            destination,
+            crate::wire::TaskKind::Freight,
+        );
+        offer.delivery_deadline_second = u64::MAX / 2;
+        let mut stored = test_task(identity(), task_id, offer, 0);
+        stored.task.state = crate::wire::TaskState::Loading;
+        stored.task.known_result = true;
+        stored.task.performing_ship_id = ship.ship_id;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .tasks
+            .put(
+                &mut txn,
+                &task_id.to_be_bytes(),
+                &encode_stored_task(&stored).unwrap(),
+            )
+            .unwrap();
+        txn.commit().unwrap();
+
+        let held = match store
+            .preview_flight_plan_in(&store.env.read_txn().unwrap(), &identity(), &proposal)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("preview rejected unexpectedly: {message}"),
+        };
+        let warning = held
+            .warnings
+            .iter()
+            .find(|warning| warning.code == "TASK_DEADLINE_REQUIRES_WATCH")
+            .expect("manual docking should identify the arrival-watch deadline");
+        assert_eq!(warning.step_indices, vec![1]);
+
+        proposal.steps[1].authority = WaypointAuthority::Through;
+        let unattended = match store
+            .preview_flight_plan_in(&store.env.read_txn().unwrap(), &identity(), &proposal)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("preview rejected unexpectedly: {message}"),
+        };
+        assert!(!unattended.warnings.iter().any(|warning| {
+            warning.code == "TASK_DEADLINE_REQUIRES_WATCH" || warning.code == "TASK_DEADLINE_MISSED"
+        }));
+
+        proposal.steps[0].terminal = true;
+        assert!(matches!(
+            store
+                .preview_flight_plan_in(&store.env.read_txn().unwrap(), &identity(), &proposal)
+                .unwrap(),
+            RuleResult::Rejected(message) if message.contains("one terminal waypoint")
+        ));
+        proposal.steps[0].terminal = false;
+        proposal.steps[1].terminal = false;
+        assert!(matches!(
+            store
+                .preview_flight_plan_in(&store.env.read_txn().unwrap(), &identity(), &proposal)
+                .unwrap(),
+            RuleResult::Rejected(message) if message.contains("one terminal waypoint")
+        ));
+    }
+
+    #[test]
+    fn held_nonterminal_checkpoint_resumes_the_following_step_after_watch() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap()
+            .1;
+        let key = encode_identity(&identity());
+        let checkpoint = CheckpointSnapshot {
+            checkpoint_id: 77,
+            plan_id: 88,
+            plan_revision: 1,
+            step_index: 0,
+            locus: FlightLocus::Port {
+                system_id: ship.system_id,
+                world_id: ship.system_id,
+                facility_id: ship.system_id,
+            },
+            kind: CheckpointKind::InhabitedWorld,
+            ready_second: 0,
+            acknowledged: true,
+        };
+        let plan = FlightPlanSnapshot {
+            plan_id: 88,
+            revision: 1,
+            current_step: 0,
+            state: FlightPlanState::Checkpoint,
+            steps: vec![
+                FlightPlanStep {
+                    locus: checkpoint.locus,
+                    authority: WaypointAuthority::Hold,
+                    action: FlightPlanAction::Dock {
+                        world_id: ship.system_id,
+                        facility_id: ship.system_id,
+                    },
+                    terminal: false,
+                },
+                FlightPlanStep {
+                    locus: checkpoint.locus,
+                    authority: WaypointAuthority::Hold,
+                    action: FlightPlanAction::Hold,
+                    terminal: true,
+                },
+            ],
+            policy: EncounterPolicy::default(),
+            suspension_reason: "arrival acknowledgement required".into(),
+        };
+        let mut txn = store.env.write_txn().unwrap();
+        put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, 123).unwrap();
+        store
+            .flight_plans
+            .put(&mut txn, &key, &encode_flight_plan_snapshot(&plan).unwrap())
+            .unwrap();
+        store
+            .checkpoints
+            .put(
+                &mut txn,
+                &key,
+                &encode_checkpoint_snapshot(&checkpoint).unwrap(),
+            )
+            .unwrap();
+        store
+            .finish_checkpoint_arrival_in(&mut txn, &identity(), &checkpoint)
+            .unwrap();
+        let resumed = store.flight_plan_in(&txn, &identity()).unwrap();
+        assert_eq!(resumed.state, FlightPlanState::Held);
+        assert_eq!(resumed.current_step, 1);
+        assert_eq!(
+            resumed.suspension_reason,
+            "flight plan is holding for the captain"
+        );
+        let (_, docked_ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        assert!(matches!(
+            docked_ship.location,
+            ShipLocationRecord::Docked {
+                arrived_second: 123,
+                ..
+            }
+        ));
+        txn.abort();
+    }
+
+    #[test]
     fn flight_plan_preview_commit_and_checkpoint_records_are_durable() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
@@ -42205,6 +42517,7 @@ mod tests {
                         navigation: crate::wire::JumpNavigationMethod::Onboard,
                         proceed_on_known_bad_plot: false,
                     },
+                    terminal: false,
                 },
                 FlightPlanStep {
                     locus: FlightLocus::Port {
@@ -42212,11 +42525,12 @@ mod tests {
                         world_id: destination,
                         facility_id: destination,
                     },
-                    authority: WaypointAuthority::Terminal,
+                    authority: WaypointAuthority::Hold,
                     action: FlightPlanAction::Dock {
                         world_id: destination,
                         facility_id: destination,
                     },
+                    terminal: true,
                 },
             ],
             policy: EncounterPolicy::default(),
@@ -42481,6 +42795,7 @@ mod tests {
                         operation: FuelOperation::BuyRefined,
                         quantity_millitons: MILLITONS_PER_TON,
                     },
+                    terminal: false,
                 },
                 FlightPlanStep {
                     locus: FlightLocus::JumpLocus {
@@ -42492,6 +42807,7 @@ mod tests {
                         navigation: crate::wire::JumpNavigationMethod::Onboard,
                         proceed_on_known_bad_plot: false,
                     },
+                    terminal: false,
                 },
                 FlightPlanStep {
                     locus: FlightLocus::Port {
@@ -42499,11 +42815,12 @@ mod tests {
                         world_id: destination,
                         facility_id: destination,
                     },
-                    authority: WaypointAuthority::Terminal,
+                    authority: WaypointAuthority::Hold,
                     action: FlightPlanAction::Dock {
                         world_id: destination,
                         facility_id: destination,
                     },
+                    terminal: true,
                 },
             ],
             policy: EncounterPolicy::default(),
@@ -42607,6 +42924,7 @@ mod tests {
                         operation,
                         quantity_millitons: MILLITONS_PER_TON,
                     },
+                    terminal: false,
                 },
                 FlightPlanStep {
                     locus: FlightLocus::JumpLocus {
@@ -42618,6 +42936,7 @@ mod tests {
                         navigation: crate::wire::JumpNavigationMethod::Onboard,
                         proceed_on_known_bad_plot: false,
                     },
+                    terminal: false,
                 },
                 FlightPlanStep {
                     locus: FlightLocus::Port {
@@ -42625,11 +42944,12 @@ mod tests {
                         world_id: destination,
                         facility_id: destination,
                     },
-                    authority: WaypointAuthority::Terminal,
+                    authority: WaypointAuthority::Hold,
                     action: FlightPlanAction::Dock {
                         world_id: destination,
                         facility_id: destination,
                     },
+                    terminal: true,
                 },
             ],
             policy: EncounterPolicy::default(),
@@ -44775,6 +45095,7 @@ mod tests {
                             navigation: crate::wire::JumpNavigationMethod::CommercialTape,
                             proceed_on_known_bad_plot: false,
                         },
+                        terminal: false,
                     },
                     FlightPlanStep {
                         locus: FlightLocus::Port {
@@ -44782,11 +45103,12 @@ mod tests {
                             world_id: destination,
                             facility_id: destination,
                         },
-                        authority: WaypointAuthority::Terminal,
+                        authority: WaypointAuthority::Hold,
                         action: FlightPlanAction::Dock {
                             world_id: destination,
                             facility_id: destination,
                         },
+                        terminal: true,
                     },
                 ],
                 policy: EncounterPolicy::default(),

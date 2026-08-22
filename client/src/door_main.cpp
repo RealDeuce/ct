@@ -119,6 +119,10 @@ bool page_pauses_enabled = true;
 ct::FirstWatchPreferenceState first_watch_state;
 bool first_watch_launch_pending = false;
 bool first_watch_preferences_recovered = false;
+ct::GeneratedPlanAuthority task_route_authority =
+   ct::GeneratedPlanAuthority::Automatic;
+ct::GeneratedPlanAuthority ordinary_route_authority =
+   ct::GeneratedPlanAuthority::Automatic;
 
 struct FlightPlanEditorResult {
    bool previewed = false;
@@ -1424,6 +1428,81 @@ void edit_page_pauses()
    }
 }
 
+const char* generated_plan_authority_name(
+   const ct::GeneratedPlanAuthority authority)
+{
+   return authority == ct::GeneratedPlanAuthority::Automatic
+          ? "Automatic" : "Hold";
+}
+
+void persist_generated_plan_authorities(
+   const ct::GeneratedPlanAuthority task_authority,
+   const ct::GeneratedPlanAuthority ordinary_authority)
+{
+   try {
+      ct::set_player_generated_plan_authorities(
+         local_identity_registry_path,
+         local_identity_bbs_id,
+         local_identity_player_id,
+         task_authority,
+         ordinary_authority);
+      task_route_authority = task_authority;
+      ordinary_route_authority = ordinary_authority;
+      door_success("Generated-plan defaults were saved.\n\r");
+   } catch(const std::exception& error) {
+      door_error("The generated-plan defaults could not be saved: %s\n\r",
+                 safe_field(error.what()).c_str());
+   }
+}
+
+void edit_generated_plan_authorities()
+{
+   output().suspend_paging();
+   while(true) {
+      od_clr_scr();
+      door_heading("Generated Flight Plans\n\r");
+      door_heading("======================\n\r\n\r");
+      door_label("Task routes:     ");
+      door_identifier("%s\n\r", generated_plan_authority_name(task_route_authority));
+      door_label("Ordinary routes: ");
+      door_identifier("%s\n\r", generated_plan_authority_name(ordinary_route_authority));
+      door_information(
+         "Automatic checkpoints continue under standing orders while the captain "
+         "is away. Hold checkpoints wait for arrival watch. The final step is "
+         "marked terminal independently so the plan ends after it completes.\n\r");
+      door_option_prompt({
+         "[T] Toggle task routes",
+         "[O] Toggle ordinary routes",
+         "[Q/Enter] Preferences",
+         "[?] Help",
+      });
+      const auto key = static_cast<char>(
+         std::toupper(static_cast<unsigned char>(::od_get_key(TRUE))));
+      if(key == 'T') {
+         echo_prompt_key(key, false);
+         persist_generated_plan_authorities(
+            task_route_authority == ct::GeneratedPlanAuthority::Automatic
+               ? ct::GeneratedPlanAuthority::Hold
+               : ct::GeneratedPlanAuthority::Automatic,
+            ordinary_route_authority);
+      } else if(key == 'O') {
+         echo_prompt_key(key, false);
+         persist_generated_plan_authorities(
+            task_route_authority,
+            ordinary_route_authority == ct::GeneratedPlanAuthority::Automatic
+               ? ct::GeneratedPlanAuthority::Hold
+               : ct::GeneratedPlanAuthority::Automatic);
+      } else if(key == '?') {
+         echo_prompt_key(key, true);
+         const HelpScope help_scope(ct::DoorHelpTopic::PlayerPreferences);
+         show_context_help();
+      } else if(key == '\r' || key == '\n' || key == 'Q') {
+         echo_prompt_key(key, false);
+         return;
+      }
+   }
+}
+
 bool render_help_browser_list(const std::string_view title,
                               const std::vector<std::string>& entries,
                               ct::HelpLevel& level,
@@ -1643,8 +1722,13 @@ bool show_player_preferences(const ct::PlayerPhase phase)
       door_label("First Watch:  ");
       door_identifier("%s\n\r", first_watch_disposition_name(
          first_watch_state.disposition));
+      door_label("Task routes:  ");
+      door_identifier("%s\n\r", generated_plan_authority_name(task_route_authority));
+      door_label("Other routes: ");
+      door_identifier("%s\n\r", generated_plan_authority_name(ordinary_route_authority));
       std::vector<std::string_view> options{
-         "[H] Help level", "[P] Page pauses", "[W] Begin/resume First Watch"};
+         "[H] Help level", "[P] Page pauses", "[G] Generated plans",
+         "[W] Begin/resume First Watch"};
       if(first_watch_state.disposition == ct::FirstWatchDisposition::Active) {
          options.emplace_back("[X] Hide First Watch");
       }
@@ -1663,6 +1747,9 @@ bool show_player_preferences(const ct::PlayerPhase phase)
       } else if(key == 'p' || key == 'P') {
          echo_prompt_key(key, false);
          edit_page_pauses();
+      } else if(key == 'g' || key == 'G') {
+         echo_prompt_key(key, false);
+         edit_generated_plan_authorities();
       } else if(key == 'w' || key == 'W' || key == 'r' || key == 'R') {
          echo_prompt_key(key, false);
          if(phase != ct::PlayerPhase::Docked) {
@@ -8439,12 +8526,18 @@ const char* waypoint_authority_name(const ct::WaypointAuthority authority)
    switch(authority) {
    case ct::WaypointAuthority::Hold:
       return "hold";
-   case ct::WaypointAuthority::Terminal:
-      return "terminal";
    case ct::WaypointAuthority::Through:
       return "through";
    }
    return "unknown";
+}
+
+ct::WaypointAuthority generated_waypoint_authority(
+   const ct::GeneratedPlanAuthority authority)
+{
+   return authority == ct::GeneratedPlanAuthority::Automatic
+          ? ct::WaypointAuthority::Through
+          : ct::WaypointAuthority::Hold;
 }
 
 std::string flight_plan_action_name(
@@ -8551,7 +8644,7 @@ ct::FlightPlanStep coordinate_jump_step(
          .world_id = 0,
          .facility_id = 0,
          .body_id = 0},
-      .authority = ct::WaypointAuthority::Terminal,
+      .authority = ct::WaypointAuthority::Hold,
       .action = ct::FlightPlanAction{
          .kind = ct::FlightPlanActionKind::JumpCoordinates,
          .destination_system_id = 0,
@@ -8562,7 +8655,18 @@ ct::FlightPlanStep coordinate_jump_step(
          .coreward_parsecs = coreward,
          .spinward_parsecs = spinward,
          .north_parsecs = north},
+      .terminal = true,
    };
+}
+
+void mark_final_flight_plan_step(ct::FlightPlanProposal& proposal)
+{
+   for(auto& step : proposal.steps) {
+      step.terminal = false;
+   }
+   if(!proposal.steps.empty()) {
+      proposal.steps.back().terminal = true;
+   }
 }
 
 bool configure_jump_navigation(ct::FlightPlanAction& action)
@@ -8646,7 +8750,8 @@ bool replace_proposal_with_course(
    ct::FlightPlanProposal& proposal,
    const ct::CoursePlan& course,
    const ct::KnownDestinations& destinations,
-   const ct::TravelStatus& travel)
+   const ct::TravelStatus& travel,
+   const ct::GeneratedPlanAuthority generated_authority)
 {
    if(!course.available || course.waypoints.size() < 2) {
       door_warning("No executable travel is required or available for that course.\n\r");
@@ -8694,8 +8799,10 @@ bool replace_proposal_with_course(
          }
          if(required > projected_fuel) {
             const auto quantity = required - projected_fuel;
-            steps.push_back(purchase_fuel_step(
-                               course.waypoints[index].system_id, source, quantity));
+            auto fuel = purchase_fuel_step(
+                           course.waypoints[index].system_id, source, quantity);
+            fuel.authority = generated_waypoint_authority(generated_authority);
+            steps.push_back(fuel);
             projected_fuel += quantity;
          }
       }
@@ -8705,17 +8812,19 @@ bool replace_proposal_with_course(
       step.action.jump_navigation = navigation_probe.jump_navigation;
       step.action.proceed_on_known_bad_plot =
          navigation_probe.proceed_on_known_bad_plot;
+      step.authority = generated_waypoint_authority(generated_authority);
       steps.push_back(step);
       steps.push_back(primary_dock_step(
                          course.waypoints[index + 1].system_id,
-                         index + 2 == course.waypoints.size()
-                         ? ct::WaypointAuthority::Terminal
-                         : ct::WaypointAuthority::Through));
+                         generated_waypoint_authority(generated_authority)));
       projected_fuel = projected_fuel >= leg_fuel(
                           course.waypoints[index].next_leg_milliparsecs)
                        ? projected_fuel - leg_fuel(
                           course.waypoints[index].next_leg_milliparsecs)
                        : 0;
+   }
+   if(!steps.empty()) {
+      steps.back().terminal = true;
    }
    proposal.steps = std::move(steps);
    return true;
@@ -8757,7 +8866,11 @@ FlightPlanEditorResult run_flight_plan_editor(
          door_identifier("%s", safe_field(flight_plan_action_name(step.action, destinations)).c_str());
          door_label("  [");
          door_value("%s", waypoint_authority_name(step.authority));
-         door_label("]\n\r");
+         door_label("]");
+         if(step.terminal) {
+            door_label(" [terminal]");
+         }
+         door_label("\n\r");
       }
       door_option_prompt({
          "[A] Add charted leg",
@@ -8804,9 +8917,13 @@ FlightPlanEditorResult run_flight_plan_editor(
          if(!configure_jump_navigation(jump.action)) {
             continue;
          }
+         jump.authority = generated_waypoint_authority(ordinary_route_authority);
          proposal.steps.push_back(jump);
          proposal.steps.push_back(primary_dock_step(
-                                     destination_system_id, ct::WaypointAuthority::Terminal));
+                                     destination_system_id,
+                                     generated_waypoint_authority(
+                                        ordinary_route_authority)));
+         mark_final_flight_plan_step(proposal);
       } else if(key == 'C') {
          if(destinations.current_system_id == 0) {
             door_warning("Course imports require a charted origin system.\n\r");
@@ -8834,7 +8951,8 @@ FlightPlanEditorResult run_flight_plan_editor(
                continue;
             }
             const auto& course = choice == 'F' ? plot.fastest : plot.cheapest;
-            replace_proposal_with_course(proposal, course, destinations, travel);
+            replace_proposal_with_course(
+               proposal, course, destinations, travel, ordinary_route_authority);
          } catch(const std::exception& error) {
             door_error("%s\n\r", safe_field(error.what()).c_str());
             wait_for_enter();
@@ -8864,7 +8982,8 @@ FlightPlanEditorResult run_flight_plan_editor(
                                    std::toupper(static_cast<unsigned char>(door_get_live_key())));
             od_printf("\n\r");
             if(choice == 'I') {
-               replace_proposal_with_course(proposal, course, destinations, travel);
+               replace_proposal_with_course(
+                  proposal, course, destinations, travel, task_route_authority);
             }
          } catch(const std::exception& error) {
             door_error("%s\n\r", safe_field(error.what()).c_str());
@@ -8924,9 +9043,13 @@ FlightPlanEditorResult run_flight_plan_editor(
             if(!configure_jump_navigation(jump.action)) {
                continue;
             }
+            jump.authority = generated_waypoint_authority(task_route_authority);
             proposal.steps.push_back(jump);
             proposal.steps.push_back(primary_dock_step(
-                                        destination_id, ct::WaypointAuthority::Terminal));
+                                        destination_id,
+                                        generated_waypoint_authority(
+                                           task_route_authority)));
+            mark_final_flight_plan_step(proposal);
          } catch(const std::exception& error) {
             door_error("%s\n\r", safe_field(error.what()).c_str());
             wait_for_enter();
@@ -8994,6 +9117,7 @@ FlightPlanEditorResult run_flight_plan_editor(
                   ? ct::FuelOperation::GasGiant
                   : ct::FuelOperation::WildernessWater,
                   .quantity_millitons = uint64_t{*tons} * 1000},
+               .terminal = true,
             });
          } catch(const std::exception& error) {
             door_error("%s\n\r", safe_field(error.what()).c_str());
@@ -9049,14 +9173,13 @@ FlightPlanEditorResult run_flight_plan_editor(
          } else if(!proposal.steps.empty()) {
             proposal.steps.pop_back();
          }
+         mark_final_flight_plan_step(proposal);
       } else if(key == 'T') {
          if(proposal.steps.empty()) {
             continue;
          }
          auto& authority = proposal.steps.back().authority;
          authority = authority == ct::WaypointAuthority::Hold
-                     ? ct::WaypointAuthority::Terminal
-                     : authority == ct::WaypointAuthority::Terminal
                      ? ct::WaypointAuthority::Through
                      : ct::WaypointAuthority::Hold;
       } else if(key == 'P') {
@@ -9076,19 +9199,48 @@ FlightPlanEditorResult run_flight_plan_editor(
             door_label("Estimated time: ");
             door_number("%s\n\r", course_duration(preview.elapsed_seconds).c_str());
             door_label("Jump fuel:     ");
-            door_number("%.1f t\n\r", preview.fuel_millitons / 1000.0);
-            for(const auto& warning : preview.warnings) {
-               if(warning.code == "TASK_DEADLINE_MISSED") {
-                  print_wrapped_field(
-                     "Deadline: ",
-                     warning.message,
-                     ct::DoorTextRole::Error);
-               } else {
-                  print_wrapped_field(
-                     "Warning: ",
-                     warning.message,
-                     ct::DoorTextRole::Warning);
+            door_number("%.1f t\n\r\n\r", preview.fuel_millitons / 1000.0);
+            for(size_t step_index = 0;
+                  step_index < preview.proposal.steps.size(); ++step_index) {
+               const auto& step = preview.proposal.steps[step_index];
+               door_number("%zu", step_index + 1);
+               door_label(". ");
+               door_identifier("%s",
+                  safe_field(flight_plan_action_name(step.action, destinations)).c_str());
+               door_label("  [");
+               door_value("%s", waypoint_authority_name(step.authority));
+               door_label("]");
+               if(step.terminal) {
+                  door_label(" [terminal]");
                }
+               for(size_t warning_index = 0;
+                     warning_index < preview.warnings.size(); ++warning_index) {
+                  const auto& references = preview.warnings[warning_index].step_indices;
+                  if(std::find(references.begin(), references.end(), step_index) !=
+                        references.end()) {
+                     door_label(" [");
+                     door_number("%zu", warning_index + 1);
+                     door_label("]");
+                  }
+               }
+               door_label("\n\r");
+            }
+            if(!preview.warnings.empty()) {
+               door_label("\n\r");
+            }
+            for(size_t warning_index = 0;
+                  warning_index < preview.warnings.size(); ++warning_index) {
+               const auto& warning = preview.warnings[warning_index];
+               const bool deadline =
+                  warning.code == "TASK_DEADLINE_MISSED" ||
+                  warning.code == "TASK_DEADLINE_REQUIRES_WATCH";
+               const auto label = "[" + std::to_string(warning_index + 1) + "] " +
+                                  (deadline ? "Deadline: " : "Warning: ");
+               print_wrapped_field(
+                  label.c_str(),
+                  warning.message,
+                  deadline ? ct::DoorTextRole::Error
+                           : ct::DoorTextRole::Warning);
             }
             door_option_prompt({
                "[F] File this plan", "[Q/Enter] Revise", "[?] Help"});
@@ -9670,6 +9822,52 @@ ct::PlayerPhase run_arrival_checkpoint(ct::TlsConnection& connection, const ct::
       door_information("The ship is holding clear of its destination until the captain takes the arrival watch.\n\r");
       door_label("Ready since: ");
       door_number("%s\n\r", game_date(latest_checkpoint->ready_second).c_str());
+      try {
+         const auto status = ct::get_travel_status(
+            connection, hello.assigned_epoch,
+            random_command_id(random), request_id++);
+         const auto ledger = ct::get_task_ledger(
+            connection, hello.assigned_epoch,
+            random_command_id(random), request_id++);
+         std::vector<const ct::TaskRecord*> pending_deliveries;
+         for(const auto& task : ledger.tasks) {
+            if(task.performing_ship_id == status.ship_id &&
+                  task.offer.destination_system_id ==
+                     latest_checkpoint->locus.system_id &&
+                  task.state != ct::TaskState::Completed &&
+                  task.state != ct::TaskState::Expired &&
+                  task.state != ct::TaskState::Cancelled &&
+                  task.state != ct::TaskState::Defaulted) {
+               pending_deliveries.push_back(&task);
+            }
+         }
+         if(!pending_deliveries.empty()) {
+            door_warning(
+               "These tasks are not delivered until docking completes. Take "
+               "arrival watch before their deadlines:\n\r");
+            for(const auto* task : pending_deliveries) {
+               door_label("  Task ");
+               door_identifier("#%llu ",
+                  static_cast<unsigned long long>(task->task_id));
+               door_identifier("%s\n\r", safe_field(task->offer.title).c_str());
+               door_label("    Due: ");
+               door_number("%s", game_date(task->offer.delivery_deadline_second).c_str());
+               if(task->offer.delivery_deadline_second > status.current_game_second) {
+                  door_label(" (");
+                  door_number("%s",
+                     course_duration(task->offer.delivery_deadline_second -
+                                     status.current_game_second).c_str());
+                  door_label(" remaining)");
+               } else {
+                  door_error(" (deadline passed)");
+               }
+               door_label("\n\r");
+            }
+         }
+      } catch(const std::exception& error) {
+         door_warning("Task deadlines could not be refreshed: %s\n\r",
+                      safe_field(error.what()).c_str());
+      }
       door_option_prompt({
          "[A] Take arrival watch",
          "[Enter] Refresh",
@@ -10482,6 +10680,8 @@ int main(int argc, char** argv)
       first_watch_state = local_identity.first_watch;
       first_watch_preferences_recovered =
          local_identity.first_watch_preferences_recovered;
+      task_route_authority = local_identity.task_route_authority;
+      ordinary_route_authority = local_identity.ordinary_route_authority;
       output().set_paging_enabled(page_pauses_enabled);
       ct::TlsConnection connection(
          config.server,

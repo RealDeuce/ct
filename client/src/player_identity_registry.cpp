@@ -31,7 +31,7 @@ namespace ct {
 namespace {
 
 constexpr std::array<uint8_t, 8> MAGIC = {'C', 'T', 'I', 'D', 'M', 'A', 'P', 0};
-constexpr uint16_t FORMAT_VERSION = 4;
+constexpr uint16_t FORMAT_VERSION = 5;
 constexpr size_t DIGEST_BYTES = 32;
 constexpr size_t MAX_NAME_BYTES = 255;
 constexpr size_t MAX_RECORDS = 1'000'000;
@@ -90,6 +90,8 @@ std::vector<uint8_t> encode(const Registry& registry) {
       bytes.push_back(static_cast<uint8_t>(entry.first_watch.disposition));
       put_u16(bytes, entry.first_watch.presentation_version);
       put_u32(bytes, entry.first_watch.seen);
+      bytes.push_back(static_cast<uint8_t>(entry.task_route_authority));
+      bytes.push_back(static_cast<uint8_t>(entry.ordinary_route_authority));
       put_u16(bytes, static_cast<uint16_t>(entry.name.size()));
       put_u32(bytes, entry.player_id);
       put_u32(bytes, entry.record_index.value_or(0));
@@ -136,7 +138,8 @@ Registry decode(const std::vector<uint8_t>& bytes, const uint32_t bbs_id) {
    result.entries.reserve(count);
    for(uint32_t index = 0; index < count; ++index) {
       const size_t entry_header_size =
-         version == 1 ? 12 : version == 2 ? 14 : version == 3 ? 15 : 22;
+         version == 1 ? 12 : version == 2 ? 14 : version == 3 ? 15
+         : version == 4 ? 22 : 24;
       if(offset + entry_header_size > payload.size()) {
          throw std::runtime_error("truncated player identity registry entry");
       }
@@ -147,6 +150,8 @@ Registry decode(const std::vector<uint8_t>& bytes, const uint32_t bbs_id) {
       bool page_pauses = true;
       FirstWatchPreferenceState first_watch;
       bool first_watch_preferences_recovered = false;
+      GeneratedPlanAuthority task_route_authority = GeneratedPlanAuthority::Automatic;
+      GeneratedPlanAuthority ordinary_route_authority = GeneratedPlanAuthority::Automatic;
       if(version >= 2) {
          const auto encoded_help_level = payload[offset++];
          const auto encoded_orientation = payload[offset++];
@@ -181,6 +186,18 @@ Registry decode(const std::vector<uint8_t>& bytes, const uint32_t bbs_id) {
             first_watch_preferences_recovered = true;
          }
       }
+      if(version >= 5) {
+         const auto encoded_task_authority = payload[offset++];
+         const auto encoded_ordinary_authority = payload[offset++];
+         if(encoded_task_authority > static_cast<uint8_t>(GeneratedPlanAuthority::Hold) ||
+            encoded_ordinary_authority > static_cast<uint8_t>(GeneratedPlanAuthority::Hold)) {
+            throw std::runtime_error("player identity registry entry is invalid");
+         }
+         task_route_authority =
+            static_cast<GeneratedPlanAuthority>(encoded_task_authority);
+         ordinary_route_authority =
+            static_cast<GeneratedPlanAuthority>(encoded_ordinary_authority);
+      }
       const auto name_size = get_u16(payload, offset);
       const auto player_id = get_u32(payload, offset);
       const auto record_index = get_u32(payload, offset);
@@ -199,6 +216,8 @@ Registry decode(const std::vector<uint8_t>& bytes, const uint32_t bbs_id) {
          .page_pauses = page_pauses,
          .first_watch = first_watch,
          .first_watch_preferences_recovered = first_watch_preferences_recovered,
+         .task_route_authority = task_route_authority,
+         .ordinary_route_authority = ordinary_route_authority,
       });
       offset += name_size;
    }
@@ -810,6 +829,8 @@ LocalPlayerIdentity resolve_player_identity(
       .page_pauses = true,
       .first_watch = {},
       .first_watch_preferences_recovered = false,
+      .task_route_authority = GeneratedPlanAuthority::Automatic,
+      .ordinary_route_authority = GeneratedPlanAuthority::Automatic,
    });
    const auto created = registry.entries.back();
    file.replace(encode(registry));
@@ -903,6 +924,26 @@ void set_player_first_watch_state(const std::string& path,
    entry.first_watch.seen =
       unknown_seen | state.seen;
    entry.first_watch_preferences_recovered = false;
+   file.replace(encode(registry));
+}
+
+void set_player_generated_plan_authorities(
+   const std::string& path,
+   const uint32_t bbs_id,
+   const uint32_t player_id,
+   const GeneratedPlanAuthority task_route_authority,
+   const GeneratedPlanAuthority ordinary_route_authority) {
+   if(static_cast<uint8_t>(task_route_authority) >
+         static_cast<uint8_t>(GeneratedPlanAuthority::Hold) ||
+      static_cast<uint8_t>(ordinary_route_authority) >
+         static_cast<uint8_t>(GeneratedPlanAuthority::Hold)) {
+      throw std::invalid_argument("invalid generated-plan authority preference");
+   }
+   LockedFile file(path, false);
+   auto registry = load(file, bbs_id);
+   auto& entry = active_by_id(registry, player_id);
+   entry.task_route_authority = task_route_authority;
+   entry.ordinary_route_authority = ordinary_route_authority;
    file.replace(encode(registry));
 }
 

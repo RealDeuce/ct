@@ -573,11 +573,21 @@ stops, coordinates, or the bounded all-assigned-tasks suggestion where those
 choices are available. Importing a plotted
 course also adds its required port purchases or frontier-fuel operations to
 the plan. A Flight Plan preview reports estimated time, fuel, and warnings
-before the plan is filed. Keep enough operating cash available: a purchase
+before the plan is filed. Each warning appears once as a numbered footnote,
+with its number repeated beside every affected step. Keep enough operating cash available: a purchase
 step that cannot be paid for or executed when reached holds the plan for the
 captain's attention. The preview marks a deadline warning in red when the
-planned route would deliver an accepted task late, or would run past its
-deadline without reaching its destination.
+planned route would dock after an accepted task's deadline, would run past its
+deadline without reaching its destination, or reaches a Hold checkpoint in
+time but still requires arrival watch before docking. Checkpoint readiness is
+not delivery.
+
+Checkpoint authority and plan completion are separate. **Through** permits the
+crew to use standing orders and continue while you are away; **Hold** waits for
+arrival watch. One terminal marker is always on the last step and ends the plan
+after the selected Hold or Through behavior completes. Generated task and
+ordinary routes initially use Through throughout. Player Preferences can make
+either type generate Hold checkpoints instead without changing a filed plan.
 
 Course knowledge and course execution are separate. A carried or purchased
 plot can still be risky, and warnings about a known bad plot require a
