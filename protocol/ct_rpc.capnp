@@ -264,6 +264,7 @@ enum SkillId {
   tacticsNaval @30;
   tradeCargomaster @31;
   vaccSuit @32;
+  tradeProspector @33;
 }
 
 struct SkillDefinition {
@@ -817,6 +818,18 @@ struct KnownDestinations {
   currentSystemId @0 :UInt64;
   jumpRating @1 :UInt8;
   systems @2 :List(KnownSystemSummary);
+  belts @3 :List(KnownBelt);
+}
+
+struct KnownBelt {
+  systemId @0 :UInt64;
+  bodyId @1 :UInt32;
+  name @2 :Text;
+  icy @3 :Bool;
+  carbonaceousPercent @4 :UInt8;
+  silicateOrRockPercent @5 :UInt8;
+  metalOrWaterIcePercent @6 :UInt8;
+  hydrocarbonPercent @7 :UInt8;
 }
 
 struct PlotCourseRequest {
@@ -908,6 +921,8 @@ struct CargoLot {
   uniqueObjectId @9 :UInt64;
   conditionPercent @10 :UInt8;
   destinationSystemId @11 :UInt64;
+  sourceBodyId @12 :UInt32;
+  sourceLodeId @13 :UInt64;
 }
 
 struct CargoSaleQuote {
@@ -1400,6 +1415,12 @@ enum TravelStage {
   wildernessWater @7;
   holding @8;
   encounter @9;
+  beltProspecting @10;
+  beltSurvey @11;
+  beltMining @12;
+  beltRefining @13;
+  beltRecovery @14;
+  beltEgress @15;
 }
 
 enum WaypointAuthority {
@@ -1422,6 +1443,7 @@ struct FlightPlanAction {
     dock @2 :PortLocus;
     fuel @3 :FuelPlanAction;
     jumpCoordinates @4 :CoordinateJumpPlanAction;
+    beltCycle @5 :UInt32;
   }
 }
 

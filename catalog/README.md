@@ -26,7 +26,7 @@ The active construction work is split deliberately:
 - `tools/ship_design.py` evaluates designs and checks source assertions.
 
 The naming model has two independent catalog relationships. The family pass
-groups all 214 active designs into 114 design families in
+groups all 215 active designs into 114 design families in
 [`ships/families.toml`](ships/families.toml). The native-path pass assigns
 every design through [`ships/upgrade-paths.toml`](ships/upgrade-paths.toml) to
 one of nine product doctrines, each representing one specialist

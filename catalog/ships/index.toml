@@ -2,9 +2,9 @@
 # are the complete reconstructed spreadsheet coverage inventory.
 
 schema_version = 1
-catalog_revision = 47
-entry_count = 214
-active_count = 214
+catalog_revision = 48
+entry_count = 215
+active_count = 215
 
 [[ship]]
 catalog_id = 1
@@ -1288,4 +1288,10 @@ status = "active"
 catalog_id = 214
 tag = "ship-214"
 file = "ship-214.toml"
+status = "active"
+
+[[ship]]
+catalog_id = 215
+tag = "ship-215"
+file = "ship-215.toml"
 status = "active"

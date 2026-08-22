@@ -3,7 +3,7 @@
 The canonical naming registry is
 [`catalog/ships/names.toml`](../catalog/ships/names.toml). It assigns Open Game
 Content names to all nine specialist paths, their presumed manufacturers, all
-114 design families, and all 214 fitted designs. Permanent `ship-N`,
+114 design families, and all 215 fitted designs. Permanent `ship-N`,
 `family-N`, and `upgrade-path-N` identities remain the machine keys; names are
 human-readable catalog data and may change only through an intentional catalog
 revision.

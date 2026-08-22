@@ -87,6 +87,9 @@ pub struct ShipStatusSpec {
     pub thrust_g: u8,
     pub fuel_capacity_millitons: u64,
     pub jump_fuel_millitons: u64,
+    /// Tankage allocated to ordinary power-plant operation rather than Jump.
+    pub power_fuel_millitons: u64,
+    pub power_plant_endurance_seconds: u64,
     pub cargo_capacity_millitons: u64,
     pub passenger_berths: u16,
     pub low_berths: u16,
@@ -94,6 +97,8 @@ pub struct ShipStatusSpec {
     pub life_support_capacity_persons: u16,
     pub has_fuel_scoop: bool,
     pub fuel_processing_millitons_per_day: u64,
+    pub mining_drone_sets: u32,
+    pub mineral_refinery_output_millitons_per_day: u64,
     pub subsystems: Vec<ShipSubsystemTemplate>,
 }
 
@@ -506,6 +511,20 @@ pub fn ship_status_spec(catalog_id: u32) -> Option<ShipStatusSpec> {
             hull_configuration == "streamlined" || equipment_quantity(source, "fuel-scoop") > 0;
         let fuel_processing_millitons_per_day =
             equipment_quantity(source, "fuel-processor").saturating_mul(20_000);
+        let power_fuel_millitons = fuel_capacity_millitons.saturating_sub(jump_fuel_millitons);
+        let power_plant_endurance_seconds =
+            scalar_u64(table_section(source, "[fuel]"), "power_plant_weeks")
+                .unwrap_or(0)
+                .saturating_mul(7 * 24 * 60 * 60);
+        let mining_drone_sets = equipment_quantity(source, "mining-drones") as u32;
+        let mineral_refinery_output_millitons_per_day = [
+            ("mineral-refinery-tl7", 500_u64),
+            ("mineral-refinery-tl10", 1_000_u64),
+            ("mineral-refinery-tl12", 2_000_u64),
+        ]
+        .into_iter()
+        .map(|(id, rate)| equipment_quantity(source, id).saturating_mul(rate))
+        .sum();
         ShipStatusSpec {
             tech_level: runtime.tech_level,
             construction_price_credits,
@@ -514,6 +533,8 @@ pub fn ship_status_spec(catalog_id: u32) -> Option<ShipStatusSpec> {
             thrust_g,
             fuel_capacity_millitons,
             jump_fuel_millitons,
+            power_fuel_millitons,
+            power_plant_endurance_seconds,
             cargo_capacity_millitons,
             passenger_berths,
             low_berths,
@@ -521,6 +542,8 @@ pub fn ship_status_spec(catalog_id: u32) -> Option<ShipStatusSpec> {
             life_support_capacity_persons,
             has_fuel_scoop,
             fuel_processing_millitons_per_day,
+            mining_drone_sets,
+            mineral_refinery_output_millitons_per_day,
             subsystems: ship_subsystem_templates(catalog_id, source),
         }
     })
@@ -852,6 +875,7 @@ fn default_crew_name(role: &str) -> &'static str {
         "navigator" => "Nav",
         "engineer" => "Chief",
         "sensors-operator" => "Sensors",
+        "prospector" => "Prospector",
         "screen-operator" => "Screens",
         "turret-gunner" => "Turrets",
         "bay-gunner" => "Bays",
@@ -899,7 +923,7 @@ fn crew_characteristics(role: &str) -> Characteristics {
             education: 8,
             charisma: 7,
         },
-        "navigator" | "sensors-operator" | "screen-operator" => Characteristics {
+        "navigator" | "sensors-operator" | "screen-operator" | "prospector" => Characteristics {
             strength: 6,
             dexterity: 8,
             endurance: 8,
@@ -1006,6 +1030,17 @@ fn crew_skills(role: &str) -> [SkillId; 9] {
             SkillId::Astrogation,
             SkillId::Admin,
             SkillId::Mechanic,
+        ],
+        "prospector" => [
+            SkillId::TradeProspector,
+            SkillId::Investigate,
+            SkillId::Electronics,
+            SkillId::Computer,
+            SkillId::Mechanic,
+            SkillId::VaccSuit,
+            SkillId::PilotSmallCraft,
+            SkillId::Recon,
+            SkillId::Admin,
         ],
         "screen-operator" => [
             SkillId::GunnerScreens,
@@ -1654,6 +1689,27 @@ mod tests {
     }
 
     #[test]
+    fn humboldt_foundry_is_a_tl11_liveable_drone_refinery() {
+        let entry = ship_market_catalog()
+            .into_iter()
+            .find(|entry| entry.catalog_id == 215)
+            .unwrap();
+        assert_eq!(entry.class_name, "Humboldt Foundry");
+        assert_eq!(entry.tech_level, 11);
+        assert_eq!(entry.displacement_millitons, 200_000);
+        assert_eq!(entry.jump_rating, 2);
+        assert_eq!(entry.cargo_capacity_millitons, 62_000);
+
+        let status = ship_status_spec(215).unwrap();
+        assert!(status.life_support_capacity_persons >= 6);
+        assert_eq!(ship_crew_complement(215), Some(6));
+        assert_eq!(status.mining_drone_sets, 1);
+        assert_eq!(status.mineral_refinery_output_millitons_per_day, 15_000);
+        assert!(status.has_fuel_scoop);
+        assert_eq!(status.fuel_processing_millitons_per_day, 20_000);
+    }
+
+    #[test]
     fn every_catalog_crew_role_has_a_standard_template() {
         for role in [
             "bay-gunner",
@@ -1666,6 +1722,7 @@ mod tests {
             "navigator",
             "other",
             "pilot",
+            "prospector",
             "screen-operator",
             "sensors-operator",
             "steward",

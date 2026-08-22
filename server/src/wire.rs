@@ -119,10 +119,11 @@ pub enum SkillId {
     TacticsNaval,
     TradeCargomaster,
     VaccSuit,
+    TradeProspector,
 }
 
 impl SkillId {
-    pub const ALL: [Self; 33] = [
+    pub const ALL: [Self; 34] = [
         Self::Admin,
         Self::Advocate,
         Self::Astrogation,
@@ -156,6 +157,7 @@ impl SkillId {
         Self::TacticsNaval,
         Self::TradeCargomaster,
         Self::VaccSuit,
+        Self::TradeProspector,
     ];
 
     pub fn name(self) -> &'static str {
@@ -193,6 +195,7 @@ impl SkillId {
             Self::TacticsNaval => "Tactics (Naval)",
             Self::TradeCargomaster => "Trade (Cargomaster)",
             Self::VaccSuit => "Vacc Suit",
+            Self::TradeProspector => "Trade (Prospector)",
         }
     }
 
@@ -825,6 +828,20 @@ pub struct KnownDestinations {
     pub current_system_id: u64,
     pub jump_rating: u8,
     pub systems: Vec<KnownSystemSummary>,
+    /// Catalogued planetoid belts in the ship's present system.
+    pub belts: Vec<KnownBelt>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct KnownBelt {
+    pub system_id: u64,
+    pub body_id: u32,
+    pub name: String,
+    pub icy: bool,
+    pub carbonaceous_percent: u8,
+    pub silicate_or_rock_percent: u8,
+    pub metal_or_water_ice_percent: u8,
+    pub hydrocarbon_percent: u8,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -927,6 +944,10 @@ pub struct CargoLot {
     pub unique_object_id: u64,
     pub condition_percent: u8,
     pub destination_system_id: u64,
+    /// Nonzero only for material recovered from a celestial body.
+    pub source_body_id: u32,
+    /// Nonzero only for material traced to a persistent resource lode.
+    pub source_lode_id: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1456,6 +1477,12 @@ pub enum TravelStage {
     WildernessWater,
     Holding,
     Encounter,
+    BeltProspecting,
+    BeltSurvey,
+    BeltMining,
+    BeltRefining,
+    BeltRecovery,
+    BeltEgress,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1498,6 +1525,9 @@ pub enum FlightPlanAction {
     Fuel {
         operation: FuelOperation,
         quantity_millitons: u64,
+    },
+    BeltCycle {
+        body_id: u32,
     },
 }
 
@@ -2639,6 +2669,9 @@ fn decode_flight_plan_proposal(
                         },
                         proceed_on_known_bad_plot: jump.get_proceed_on_known_bad_plot(),
                     }
+                }
+                crate::ct_rpc_capnp::flight_plan_action::BeltCycle(body_id) => {
+                    FlightPlanAction::BeltCycle { body_id }
                 }
             };
             Ok(FlightPlanStep {
@@ -4450,6 +4483,7 @@ fn encode_skill(skill: SkillId) -> crate::ct_rpc_capnp::SkillId {
         SkillId::TacticsNaval => Wire::TacticsNaval,
         SkillId::TradeCargomaster => Wire::TradeCargomaster,
         SkillId::VaccSuit => Wire::VaccSuit,
+        SkillId::TradeProspector => Wire::TradeProspector,
     }
 }
 
@@ -4489,6 +4523,7 @@ fn decode_skill(skill: crate::ct_rpc_capnp::SkillId) -> Result<SkillId, WireErro
         Wire::TacticsNaval => SkillId::TacticsNaval,
         Wire::TradeCargomaster => SkillId::TradeCargomaster,
         Wire::VaccSuit => SkillId::VaccSuit,
+        Wire::TradeProspector => SkillId::TradeProspector,
     })
 }
 
@@ -5018,7 +5053,7 @@ fn set_known_destinations(
     builder.set_jump_rating(snapshot.jump_rating);
     let count = u32::try_from(snapshot.systems.len())
         .map_err(|_| WireError::Expected("fewer known systems"))?;
-    let mut systems = builder.init_systems(count);
+    let mut systems = builder.reborrow().init_systems(count);
     for (index, system) in snapshot.systems.iter().enumerate() {
         let mut item = systems.reborrow().get(index as u32);
         item.set_system_id(system.system_id);
@@ -5058,6 +5093,20 @@ fn set_known_destinations(
             }
         });
         item.set_gas_giant_count(system.gas_giant_count);
+    }
+    let count = u32::try_from(snapshot.belts.len())
+        .map_err(|_| WireError::Expected("fewer known belts"))?;
+    let mut belts = builder.init_belts(count);
+    for (index, belt) in snapshot.belts.iter().enumerate() {
+        let mut item = belts.reborrow().get(index as u32);
+        item.set_system_id(belt.system_id);
+        item.set_body_id(belt.body_id);
+        item.set_name(&belt.name);
+        item.set_icy(belt.icy);
+        item.set_carbonaceous_percent(belt.carbonaceous_percent);
+        item.set_silicate_or_rock_percent(belt.silicate_or_rock_percent);
+        item.set_metal_or_water_ice_percent(belt.metal_or_water_ice_percent);
+        item.set_hydrocarbon_percent(belt.hydrocarbon_percent);
     }
     Ok(())
 }
@@ -5384,6 +5433,8 @@ fn set_fleet(
             item.set_unique_object_id(lot.unique_object_id);
             item.set_condition_percent(lot.condition_percent);
             item.set_destination_system_id(lot.destination_system_id);
+            item.set_source_body_id(lot.source_body_id);
+            item.set_source_lode_id(lot.source_lode_id);
         }
         let ammunition_count = u32::try_from(source.ammunition.len())
             .map_err(|_| WireError::Expected("fewer managed-vessel ammunition lots"))?;
@@ -5541,6 +5592,8 @@ fn set_market(
         item.set_unique_object_id(lot.unique_object_id);
         item.set_condition_percent(lot.condition_percent);
         item.set_destination_system_id(lot.destination_system_id);
+        item.set_source_body_id(lot.source_body_id);
+        item.set_source_lode_id(lot.source_lode_id);
     }
     let quote_count = u32::try_from(snapshot.cargo_sale_quotes.len())
         .map_err(|_| WireError::Expected("fewer cargo sale quotes"))?;
@@ -5666,6 +5719,12 @@ fn set_travel_status(
         TravelStage::WildernessWater => crate::ct_rpc_capnp::TravelStage::WildernessWater,
         TravelStage::Holding => crate::ct_rpc_capnp::TravelStage::Holding,
         TravelStage::Encounter => crate::ct_rpc_capnp::TravelStage::Encounter,
+        TravelStage::BeltProspecting => crate::ct_rpc_capnp::TravelStage::BeltProspecting,
+        TravelStage::BeltSurvey => crate::ct_rpc_capnp::TravelStage::BeltSurvey,
+        TravelStage::BeltMining => crate::ct_rpc_capnp::TravelStage::BeltMining,
+        TravelStage::BeltRefining => crate::ct_rpc_capnp::TravelStage::BeltRefining,
+        TravelStage::BeltRecovery => crate::ct_rpc_capnp::TravelStage::BeltRecovery,
+        TravelStage::BeltEgress => crate::ct_rpc_capnp::TravelStage::BeltEgress,
     });
     builder.set_current_game_second(snapshot.current_game_second);
     builder.set_due_second(snapshot.due_second);
@@ -5815,6 +5874,7 @@ fn set_flight_plan_action(
             });
             fuel.set_quantity_millitons(*quantity_millitons);
         }
+        FlightPlanAction::BeltCycle { body_id } => builder.set_belt_cycle(*body_id),
     }
 }
 

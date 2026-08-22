@@ -2,7 +2,7 @@
 
 *Status: current, 2026-07-27*
 
-The active 214-design catalog is grouped into 114 stable-numbered design
+The active 215-design catalog is grouped into 114 stable-numbered design
 families.
 The authoritative machine-readable relationship is
 [`catalog/ships/families.toml`](../catalog/ships/families.toml), and every

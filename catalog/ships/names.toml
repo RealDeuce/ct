@@ -6,7 +6,7 @@ schema_version = 1
 catalog_revision = 1
 path_name_count = 9
 family_name_count = 114
-design_name_count = 214
+design_name_count = 215
 open_game_content_designations = [
   "All path, manufacturer, family, and design names and naming conventions in this registry are Open Game Content.",
 ]
@@ -1050,3 +1050,6 @@ display_name = "Cutlass"
 [[design_name]]
 tag = "ship-214"
 display_name = "Leavitt"
+[[design_name]]
+tag = "ship-215"
+display_name = "Humboldt Foundry"

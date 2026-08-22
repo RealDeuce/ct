@@ -141,6 +141,7 @@ Engineer or Gunner specialty does not grant the others.
 | Tactics (Military) | Boarding actor assignment; its DM is not yet applied to boarding rounds |
 | Tactics (Naval) | Can be the captain's highest skill in a hostile arrival encounter |
 | Trade (Cargomaster) | Recorded and trainable; loading and custody currently use capacity and ledger checks |
+| Trade (Prospector) | Belt prospecting, survey, and mining-drone watches |
 | Vacc Suit | Recorded and trainable; no EVA task is currently resolved |
 
 One person assigned to concurrent actions takes -2 on every task for each
@@ -1012,12 +1013,53 @@ plans; Hold must therefore be chosen explicitly either as that preference or
 in the editor.
 
 A plan can include port purchases, wilderness water or ice collection,
-gas-giant skimming, Jump loci, known systems, surveyed coordinates, and
-imported plotted courses. Preview calculates known time, fuel, purchases, and
+gas-giant skimming, Jump loci, known systems, surveyed coordinates, imported
+plotted courses, and mining-drone Belt Cycles at catalogued planetoid belts.
+Preview calculates known time, fuel, purchases, and
 obligation warnings. Warnings are numbered once below the route and referenced
 beside every affected step. If a required service, source, payment, or course is no
 longer valid when reached, the plan holds instead of silently substituting
 another one.
+
+### Belt prospecting and mining
+
+A Belt Cycle leaves the primary berth, travels to the named belt, and exposes
+prospecting, survey, mining, refining, field recovery, and egress as distinct
+scheduled phases. It must include a later validated port egress. The ship
+protects enough power-plant fuel for that filed route using **184 hours per
+remaining Jump**, plus one additional day. Work repeats only while the lode,
+cargo capacity, and that reserve remain. A failed recovery attempt aborts the
+cycle immediately to the filed egress; it never leaves the ship holding for an
+offline captain.
+
+Prospecting uses an Average INT/Trade (Prospector) task in six-hour watches.
+Discoveries create persistent shared lodes, but the observation belongs only
+to the discovering captain. A discovery is not an exclusive claim: another
+crew can independently find and work the same deposit. Ordinary lodes range
+from ten to one million tons of feedstock. Their generated belt composition,
+extent, grade, and remaining quantity persist after every extraction.
+
+The game does not offer a blind sensor sweep for active miners across an
+entire belt: its physical volume makes geometric coincidence an unhelpful
+player action. Another operation can instead become contactable through a
+traffic record, transponder or radio emission, shared observation, contract,
+or an interception watch already established at that catalogued belt. System
+population and local order can affect how many such leads exist without
+pretending that every ship in the belt occupies the same sensor-local point.
+
+One installed mining-drone set handles **1D6 x 10 tons of feedstock per day**.
+A successful daily Prospector task produces the full result; Effect -1 halves
+it; Effect -2 or worse produces nothing and starts a 1D6-hour Mechanic
+recovery. Successful recovery resumes work and failed recovery begins egress.
+
+Without a mineral refinery, recovered feedstock is stowed as Basic Unrefined
+Ore. A refinery separates a grade-dependent output up to its daily capacity:
+silicate and carbonaceous finds become Basic Raw Materials, metal-bearing ore
+becomes Raw Materials, hydrocarbons become Petrochemicals, and exceptional
+finds can become Crystals and Gems, Precious Metals, or Radioactive Ore.
+Discarded tailings do not consume cargo space. Icy output can instead top up
+unrefined fuel when the ship has fuel-processing equipment. Every mined cargo
+lot retains its source system, body, and persistent lode identity.
 
 Task delivery occurs when docking completes, not when an arrival checkpoint
 becomes ready. Preview marks a task deadline in red when projected docking is
@@ -1046,6 +1088,10 @@ its Jump number for fuel and tape price. Required fuel is:
 Jump can begin or end only outside the union of the 100-diameter exclusion
 zones of relevant massive bodies. Maneuver flight between a port and the
 legal Jump locus uses the ship's real thrust, position, time, and fuel rules.
+Away from a berth, the ship's ordinary power-plant allocation burns
+continuously at the rate implied by its catalogued endurance. Fractional burn
+is retained exactly between scheduled settlements; an older save establishes
+a fresh timestamp without retroactive consumption.
 
 An onboard plot is an EDU/Astrogation task against 8 with an equipment DM of
 **4 - Jump number** and takes 1D6 kiloseconds. A failed plot normally holds the

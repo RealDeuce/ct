@@ -688,6 +688,18 @@ const char* travel_stage_name(const ct::TravelStage stage)
       return "Holding for captain";
    case ct::TravelStage::Encounter:
       return "Encounter";
+   case ct::TravelStage::BeltProspecting:
+      return "Belt prospecting watch";
+   case ct::TravelStage::BeltSurvey:
+      return "Surveying a resource lode";
+   case ct::TravelStage::BeltMining:
+      return "Mining-drone extraction";
+   case ct::TravelStage::BeltRefining:
+      return "Field refining and stowage";
+   case ct::TravelStage::BeltRecovery:
+      return "Mining-drone field recovery";
+   case ct::TravelStage::BeltEgress:
+      return "Returning from the belt";
    }
    return "Unknown";
 }
@@ -2027,6 +2039,8 @@ const char* canonical_skill_name(const ct::SkillId skill)
       return "Trade (Cargomaster)";
    case ct::SkillId::VaccSuit:
       return "Vacc Suit";
+   case ct::SkillId::TradeProspector:
+      return "Trade (Prospector)";
    }
    return "Unknown";
 }
@@ -8670,6 +8684,13 @@ std::string flight_plan_action_name(
                 " t unrefined fuel";
       }
       return "Acquire fuel";
+   case ct::FlightPlanActionKind::BeltCycle: {
+      const auto found = std::find_if(
+                            destinations.belts.begin(), destinations.belts.end(),
+      [&action](const auto & belt) { return belt.body_id == action.body_id; });
+      return "Belt cycle at " + (found == destinations.belts.end()
+                                  ? std::string("catalogued belt") : found->name);
+   }
    }
    return "Unknown action";
 }
@@ -8968,6 +8989,7 @@ FlightPlanEditorResult run_flight_plan_editor(
          "[R] Route all assigned tasks",
          "[J] Add task destination",
          "[G] Add frontier fuel stop",
+         "[B] Add belt cycle",
          "[X] Explore coordinates",
          "[D] Delete last leg",
          "[T] Last authority",
@@ -9146,6 +9168,56 @@ FlightPlanEditorResult run_flight_plan_editor(
             door_error("%s\n\r", safe_field(error.what()).c_str());
             wait_for_enter();
          }
+      } else if(key == 'B') {
+         if(!proposal.steps.empty() || destinations.current_system_id == 0 ||
+               travel.stage != ct::TravelStage::Docked) {
+            door_warning(
+               "A belt cycle can currently be filed only as the first step while docked.\n\r");
+            wait_for_enter();
+            continue;
+         }
+         if(destinations.belts.empty()) {
+            door_information("No planetoid belt is catalogued in this system.\n\r");
+            wait_for_enter();
+            continue;
+         }
+         output().resume_paging();
+         for(size_t index = 0; index < destinations.belts.size(); ++index) {
+            const auto& belt = destinations.belts[index];
+            door_number("%zu", index + 1);
+            door_label(". ");
+            door_identifier("%s", safe_field(belt.name).c_str());
+            door_label("  C%u R%u %s%u H%u\n\r",
+                       belt.carbonaceous_percent,
+                       belt.silicate_or_rock_percent,
+                       belt.icy ? "I" : "M",
+                       belt.metal_or_water_ice_percent,
+                       belt.hydrocarbon_percent);
+         }
+         const auto selected = input_number(
+                                  "Belt", 1,
+                                  static_cast<unsigned>(destinations.belts.size()));
+         if(!selected) {
+            continue;
+         }
+         const auto& belt = destinations.belts[*selected - 1];
+         proposal.steps.push_back(ct::FlightPlanStep{
+            .locus = ct::FlightLocus{
+               .kind = ct::FlightLocusKind::Body,
+               .system_id = belt.system_id,
+               .world_id = 0,
+               .facility_id = 0,
+               .body_id = belt.body_id},
+            .authority = ct::WaypointAuthority::Through,
+            .action = ct::FlightPlanAction{
+               .kind = ct::FlightPlanActionKind::BeltCycle,
+               .body_id = belt.body_id},
+            .terminal = false,
+         });
+         proposal.steps.push_back(primary_dock_step(
+                                     destinations.current_system_id,
+                                     ct::WaypointAuthority::Hold));
+         mark_final_flight_plan_step(proposal);
       } else if(key == 'G') {
          if(!proposal.steps.empty() || destinations.current_system_id == 0 ||
                travel.stage != ct::TravelStage::Docked) {

@@ -16,7 +16,7 @@ use crate::bbs_polity::{
     BBS_POLITY_SYSTEM_COUNT, BbsHome, BbsPolitySite, CAPITAL_INDEX, FIRST_COMPANION_INDEX,
     SECOND_COMPANION_INDEX, candidate_sites,
 };
-use crate::celestial::{CelestialSystem, derive_celestial_system, derive_primary_world};
+use crate::celestial::{BodyKind, CelestialSystem, derive_celestial_system, derive_primary_world};
 use crate::commerce::{
     MILLITONS_PER_TON, REFINED_FUEL_PRICE_PER_TON, commodity, negotiated_sale_price,
     purchase_cost_credits, quote_market_goods, sale_proceeds_credits,
@@ -32,8 +32,8 @@ use crate::crypto::{CryptoError, SeedStream};
 use crate::navigation::{
     BBS_CORE_MAXIMUM_JUMP_APPROACH_DAYS, bbs_core_jump_guard_days, body_position_au,
     gas_giant_fuel_source, gas_giant_fuel_sources, nearest_gas_giant_fuel_source,
-    nearest_wilderness_water_source, primary_world_jump_safety, wilderness_water_source,
-    wilderness_water_sources,
+    nearest_wilderness_water_source, primary_world_jump_safety, rest_to_rest_travel_days,
+    wilderness_water_source, wilderness_water_sources,
 };
 use crate::place_names::{
     FEDERATION_NAMING_PROFILE_ID, PlaceNameError, naming_stream, polity_profile,
@@ -60,13 +60,13 @@ use crate::wire::{
     EncounterFallback, EncounterKind, EncounterPolicy, EncounterPosture, EncounterResult,
     EncounterSnapshot, EncounterState, ErrorCode, FlightLocus, FlightPlanAction, FlightPlanPreview,
     FlightPlanProposal, FlightPlanSnapshot, FlightPlanState, FlightPlanStep, FlightPlanWarning,
-    FuelOperation, FuelPurchaseReceipt, KnownDestinations, KnownSystemSummary, MarketOffer,
-    MarketSnapshot, MessageClassification, MessageItem, MessageManagement, OriginDossier, Outcome,
-    OutcomeKind, PlayerCreation, PlayerIdentity, PlayerPhase, PriceDistribution,
-    ProvisionPurchaseReceipt, ShipActivityKind as WireShipActivityKind, ShipActivityStatus,
-    ShipAmmunitionStatus, ShipProvisionStatus, ShipStatusSnapshot, ShipSubsystemKind,
-    ShipSubsystemStatus, SystemMappingChoice, SystemMappingState, SystemMappingStatus,
-    TaskRouteAssessment, TravelStage, TravelStatus, WaypointAuthority,
+    FuelOperation, FuelPurchaseReceipt, KnownBelt, KnownDestinations, KnownSystemSummary,
+    MarketOffer, MarketSnapshot, MessageClassification, MessageItem, MessageManagement,
+    OriginDossier, Outcome, OutcomeKind, PlayerCreation, PlayerIdentity, PlayerPhase,
+    PriceDistribution, ProvisionPurchaseReceipt, ShipActivityKind as WireShipActivityKind,
+    ShipActivityStatus, ShipAmmunitionStatus, ShipProvisionStatus, ShipStatusSnapshot,
+    ShipSubsystemKind, ShipSubsystemStatus, SystemMappingChoice, SystemMappingState,
+    SystemMappingStatus, TaskRouteAssessment, TravelStage, TravelStatus, WaypointAuthority,
 };
 
 type SequenceDatabase = Database<U64<BE>, Bytes>;
@@ -96,6 +96,7 @@ const META_NEXT_CHECKPOINT_ID: &str = "next-checkpoint-id";
 const META_NEXT_ENCOUNTER_ID: &str = "next-encounter-id";
 const META_NEXT_RADIO_TRANSMISSION_ID: &str = "next-radio-transmission-id";
 const META_NEXT_RADIO_RECEPTION_ID: &str = "next-radio-reception-id";
+const META_NEXT_RESOURCE_LODE_ID: &str = "next-resource-lode-id";
 const META_PENDING_SYSTEM_PUBLICATIONS: &str = "pending-system-publications";
 const META_GAME_SECOND: &str = "game-second";
 const META_CLOCK_FORMAT_VERSION: &str = "clock-format-version";
@@ -105,7 +106,7 @@ const META_STORAGE_FORMAT_VERSION: &str = "storage-format-version";
 pub const STORAGE_FORMAT_VERSION: u64 = 1;
 const META_ACCOMMODATION_CAPACITY_VERSION: &str = "accommodation-capacity-version";
 const ACCOMMODATION_CAPACITY_VERSION: u64 = 1;
-const SHIP_RECORD_CODEC_VERSION: u8 = 1;
+const SHIP_RECORD_CODEC_VERSION: u8 = 2;
 const CNS5_COVERAGE_DISTRIBUTION_VERSION: u16 = 1;
 const CNS5_COVERAGE_SAMPLER_VERSION: u16 = 1;
 const PERSON_TREATMENT_EVENT_BIT: u64 = 1_u64 << 63;
@@ -670,6 +671,11 @@ pub struct ShipRecord {
     pub unrefined_fuel_millitons: u64,
     pub fuel_capacity_bonus_millitons: u64,
     pub cargo_capacity_penalty_millitons: u64,
+    /// Last instant at which ordinary power-plant consumption was charged.
+    /// `u64::MAX` is the migration sentinel for a legacy record.
+    pub power_fuel_last_settled_second: u64,
+    /// Fractional milliton-seconds retained between exact settlements.
+    pub power_fuel_burn_remainder: u64,
     pub location: ShipLocationRecord,
     pub cargo: Vec<CargoLot>,
     pub passengers: Vec<PassengerManifestRecord>,
@@ -684,6 +690,23 @@ pub struct ShipRecord {
     pub combat_policy: crate::combat::AutomationPolicy,
     pub recovery_plan: Option<PostCombatRecoveryPlan>,
     pub service_ledger: Vec<ShipServiceLedgerEntry>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ResourceLodeRecord {
+    lode_id: u64,
+    system_id: u64,
+    body_id: u32,
+    kind: crate::mining::ResourceKind,
+    remaining_raw_millitons: u64,
+    grade_percent: u8,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ResourceObservationRecord {
+    lode_id: u64,
+    observer: PlayerIdentity,
+    observed_second: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -712,6 +735,41 @@ fn effective_fuel_capacity(ship: &ShipRecord, spec: &creation::ShipStatusSpec) -
 fn effective_cargo_capacity(ship: &ShipRecord, spec: &creation::ShipStatusSpec) -> u64 {
     spec.cargo_capacity_millitons
         .saturating_sub(ship.cargo_capacity_penalty_millitons)
+}
+
+/// Charges ordinary power-plant operation while the vessel is away from a
+/// berth.  Legacy records establish their first timestamp without a
+/// retroactive charge.  Fractional consumption is carried exactly across
+/// settlements.
+fn settle_power_fuel(ship: &mut ShipRecord, spec: &creation::ShipStatusSpec, now: u64) {
+    if ship.power_fuel_last_settled_second == u64::MAX {
+        ship.power_fuel_last_settled_second = now;
+        ship.power_fuel_burn_remainder = 0;
+        return;
+    }
+    if matches!(ship.location, ShipLocationRecord::Docked { .. }) {
+        ship.power_fuel_last_settled_second = now;
+        ship.power_fuel_burn_remainder = 0;
+        return;
+    }
+    let elapsed = now.saturating_sub(ship.power_fuel_last_settled_second);
+    if elapsed == 0 || spec.power_fuel_millitons == 0 || spec.power_plant_endurance_seconds == 0 {
+        ship.power_fuel_last_settled_second = now;
+        return;
+    }
+    let numerator = u128::from(spec.power_fuel_millitons)
+        .saturating_mul(u128::from(elapsed))
+        .saturating_add(u128::from(ship.power_fuel_burn_remainder));
+    let denominator = u128::from(spec.power_plant_endurance_seconds);
+    let burn = u64::try_from(numerator / denominator).unwrap_or(u64::MAX);
+    ship.power_fuel_burn_remainder = u64::try_from(numerator % denominator).unwrap_or(0);
+    let refined = ship
+        .current_fuel_millitons
+        .saturating_sub(ship.unrefined_fuel_millitons);
+    let unrefined_burn = burn.saturating_sub(refined);
+    ship.current_fuel_millitons = ship.current_fuel_millitons.saturating_sub(burn);
+    ship.unrefined_fuel_millitons = ship.unrefined_fuel_millitons.saturating_sub(unrefined_burn);
+    ship.power_fuel_last_settled_second = now;
 }
 
 fn shift_price_tier(base: u64, price: u64, delta: i8, purchase: bool) -> u64 {
@@ -1042,6 +1100,25 @@ pub enum FlightLegPurpose {
     ReturnFromFrontierFuel {
         activity_id: u64,
     },
+    ReachBelt(BeltCycleContext),
+    ProspectBelt(BeltCycleContext),
+    SurveyBelt(BeltCycleContext),
+    MineBelt(BeltCycleContext),
+    RefineBelt(BeltCycleContext),
+    RecoverBelt {
+        context: BeltCycleContext,
+        successful: bool,
+    },
+    ReturnFromBelt(BeltCycleContext),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BeltCycleContext {
+    pub lode_id: u64,
+    pub body_id: u32,
+    pub return_world_id: u64,
+    pub return_facility_id: u64,
+    pub transit_seconds: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2854,6 +2931,32 @@ fn reconcile_radio_identifier_metadata_in(
     Ok(())
 }
 
+fn reconcile_resource_lode_identifier_metadata_in(
+    meta: Database<Str, Bytes>,
+    resource_lodes: UniverseDatabase,
+    txn: &mut heed::RwTxn<'_>,
+) -> Result<(), StoreError> {
+    if meta.get(txn, META_UNIVERSE_ID)?.is_none() {
+        return Ok(());
+    }
+    let minimum =
+        resource_lodes
+            .iter(txn)?
+            .try_fold(1_u64, |minimum, entry| -> Result<u64, StoreError> {
+                let (lode_id, _) = entry?;
+                let next = lode_id
+                    .checked_add(1)
+                    .ok_or(StoreError::Corrupt("resource lode identifier overflow"))?;
+                Ok(minimum.max(next))
+            })?;
+    let actual = get_meta_u64(meta, txn, META_NEXT_RESOURCE_LODE_ID)?;
+    let reconciled = actual.unwrap_or(1).max(minimum);
+    if actual != Some(reconciled) {
+        put_meta_u64(meta, txn, META_NEXT_RESOURCE_LODE_ID, reconciled)?;
+    }
+    Ok(())
+}
+
 fn reconcile_initial_system_publications_in(
     meta: Database<Str, Bytes>,
     systems: UniverseDatabase,
@@ -3061,6 +3164,8 @@ pub struct Store {
     shared_combat_events: Database<Bytes, Bytes>,
     contact_events: Database<Bytes, Bytes>,
     interception_watches: UniverseDatabase,
+    resource_lodes: UniverseDatabase,
+    resource_observations: Database<Bytes, Bytes>,
     simulation: SimulationDatabases,
 }
 
@@ -3095,7 +3200,7 @@ impl Store {
         let env = unsafe {
             EnvOpenOptions::new()
                 .map_size(map_size_bytes)
-                .max_dbs(80)
+                .max_dbs(82)
                 .open(path.as_ref())?
         };
         let mut txn = env.write_txn()?;
@@ -3168,6 +3273,8 @@ impl Store {
             env.create_database(&mut txn, Some("shared-combat-turn-events"))?;
         let contact_events = env.create_database(&mut txn, Some("contact-check-events"))?;
         let interception_watches = env.create_database(&mut txn, Some("interception-watches"))?;
+        let resource_lodes = env.create_database(&mut txn, Some("resource-lodes"))?;
+        let resource_observations = env.create_database(&mut txn, Some("resource-observations"))?;
         let simulation = SimulationDatabases::create(&env, &mut txn)?;
         match get_meta_u64(meta, &txn, META_STORAGE_FORMAT_VERSION)? {
             Some(actual) if actual != STORAGE_FORMAT_VERSION => {
@@ -3201,6 +3308,7 @@ impl Store {
             radio_receptions,
             &mut txn,
         )?;
+        reconcile_resource_lode_identifier_metadata_in(meta, resource_lodes, &mut txn)?;
         reconcile_initial_system_publications_in(meta, systems, system_publications, &mut txn)?;
         reconcile_accommodation_capacity_in(ships, meta, &mut txn)?;
         txn.commit()?;
@@ -3267,6 +3375,8 @@ impl Store {
             shared_combat_events,
             contact_events,
             interception_watches,
+            resource_lodes,
+            resource_observations,
             simulation,
         })
     }
@@ -3997,6 +4107,25 @@ impl Store {
         let player_exists = self.players.get(txn, &identity_key)?.is_some();
         if player_exists {
             self.collect_tax_arrears_in(txn, &queued.identity)?;
+            let (_, mut active_ship) = self.player_and_ship_in(txn, &queued.identity)?;
+            let spec = creation::ship_status_spec(active_ship.catalog_id)
+                .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
+            let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+            let prior_fuel = active_ship.current_fuel_millitons;
+            let prior_settled = active_ship.power_fuel_last_settled_second;
+            settle_power_fuel(&mut active_ship, &spec, current);
+            if active_ship.current_fuel_millitons != prior_fuel
+                || active_ship.power_fuel_last_settled_second != prior_settled
+            {
+                if active_ship.current_fuel_millitons != prior_fuel {
+                    active_ship.revision = active_ship.revision.saturating_add(1);
+                }
+                self.ships.put(
+                    txn,
+                    &active_ship.ship_id,
+                    &encode_ship_record(&active_ship)?,
+                )?;
+            }
         }
         match &queued.request.command {
             Command::CreatePlayer(proposal) if !player_exists => {
@@ -5533,6 +5662,119 @@ impl Store {
                     system_id = 0;
                     at_primary_port = false;
                 }
+                FlightPlanAction::BeltCycle { body_id } => {
+                    if !at_primary_port {
+                        return Ok(RuleResult::Rejected(format!(
+                            "waypoint {} must begin from the system's primary berth",
+                            index + 1
+                        )));
+                    }
+                    if spec.mining_drone_sets == 0 {
+                        return Ok(RuleResult::Rejected(
+                            "this ship has no mining-drone set for a belt cycle".into(),
+                        ));
+                    }
+                    let FlightLocus::Body {
+                        system_id: belt_system,
+                        body_id: locus_body,
+                    } = step.locus
+                    else {
+                        return Ok(RuleResult::Rejected(format!(
+                            "waypoint {} must name a planetoid belt",
+                            index + 1
+                        )));
+                    };
+                    if belt_system != system_id || locus_body != body_id {
+                        return Ok(RuleResult::Rejected(format!(
+                            "waypoint {} belt identity disagrees with its action",
+                            index + 1
+                        )));
+                    }
+                    let stellar = self
+                        .systems
+                        .get(txn, &system_id)?
+                        .map(decode_stellar_system)
+                        .transpose()?
+                        .ok_or(StoreError::Corrupt("belt system is missing"))?;
+                    let celestial = derive_celestial_system(&stellar)?;
+                    if !celestial.bodies.iter().any(|body| {
+                        body.local_id == body_id
+                            && matches!(body.kind, BodyKind::PlanetoidBelt { .. })
+                    }) {
+                        return Ok(RuleResult::Rejected(format!(
+                            "waypoint {} is not a catalogued planetoid belt",
+                            index + 1
+                        )));
+                    }
+                    let Some(egress_index) = proposal.steps[index + 1..]
+                        .iter()
+                        .position(|candidate| {
+                            matches!(candidate.action, FlightPlanAction::Dock { .. })
+                        })
+                        .map(|offset| index + 1 + offset)
+                    else {
+                        return Ok(RuleResult::Rejected(format!(
+                            "waypoint {} needs a later prevalidated port egress",
+                            index + 1
+                        )));
+                    };
+                    let days = game_second.saturating_add(elapsed_seconds) as f64
+                        / crate::simulation::SECONDS_PER_DAY as f64;
+                    let primary_id = celestial
+                        .bodies
+                        .iter()
+                        .find(|body| body.is_primary_world)
+                        .map(|body| body.local_id)
+                        .ok_or(StoreError::Corrupt("system has no primary world"))?;
+                    let primary = body_position_au(&celestial, days, primary_id)
+                        .ok_or(StoreError::Corrupt("primary world position is missing"))?;
+                    let target = body_position_au(&celestial, days, body_id)
+                        .ok_or(StoreError::Corrupt("belt position is missing"))?;
+                    let distance_au = primary
+                        .iter()
+                        .zip(target)
+                        .map(|(a, b)| (a - b).powi(2))
+                        .sum::<f64>()
+                        .sqrt();
+                    let transit = (rest_to_rest_travel_days(distance_au, f64::from(spec.thrust_g))
+                        * crate::simulation::SECONDS_PER_DAY as f64)
+                        .ceil() as u64;
+                    let local_cycle = transit
+                        .saturating_mul(2)
+                        .saturating_add(crate::mining::WATCH_SECONDS * 2)
+                        .saturating_add(crate::mining::DAY_SECONDS);
+                    let jump_count = proposal.steps[index + 1..=egress_index]
+                        .iter()
+                        .filter(|candidate| {
+                            matches!(
+                                candidate.action,
+                                FlightPlanAction::Jump { .. }
+                                    | FlightPlanAction::JumpCoordinates { .. }
+                            )
+                        })
+                        .count() as u64;
+                    let reserve_duration = local_cycle
+                        .saturating_add(
+                            jump_count.saturating_mul(crate::mining::MAXIMUM_JUMP_SECONDS),
+                        )
+                        .saturating_add(crate::mining::SAFE_MARGIN_SECONDS);
+                    let power_fuel = crate::mining::power_fuel_for_duration(
+                        spec.power_fuel_millitons,
+                        spec.power_plant_endurance_seconds,
+                        reserve_duration,
+                    );
+                    if available_fuel_millitons < power_fuel {
+                        return Ok(RuleResult::Rejected(format!(
+                            "waypoint {} needs {:.1} tons of protected power-plant reserve through its filed egress",
+                            index + 1,
+                            power_fuel as f64 / 1_000.0
+                        )));
+                    }
+                    available_fuel_millitons -= power_fuel;
+                    fuel_millitons = fuel_millitons.saturating_add(power_fuel);
+                    elapsed_seconds = elapsed_seconds.saturating_add(local_cycle);
+                    at_primary_port = true;
+                }
                 FlightPlanAction::Fuel {
                     operation,
                     quantity_millitons,
@@ -6069,7 +6311,7 @@ impl Store {
                 uncovered.join(", ")
             )));
         }
-        let Some((first_jump_index, first_jump)) = request
+        let first_jump = request
             .proposal
             .steps
             .iter()
@@ -6079,12 +6321,18 @@ impl Store {
                     Some((index, step.action.clone()))
                 }
                 _ => None,
-            })
-        else {
+            });
+        if first_jump.is_none()
+            && !request
+                .proposal
+                .steps
+                .iter()
+                .any(|step| matches!(step.action, FlightPlanAction::BeltCycle { .. }))
+        {
             return Ok(RuleResult::Rejected(
-                "the initial flight plan must contain a jump".into(),
+                "the initial flight plan must contain a jump or belt cycle".into(),
             ));
-        };
+        }
         let phase = self.player_phase_in(txn, identity)?;
         if phase != PlayerPhase::Docked && phase != PlayerPhase::Interplanetary {
             return Ok(RuleResult::Rejected(
@@ -6140,6 +6388,11 @@ impl Store {
             suspension_reason: String::new(),
         };
         if phase == PlayerPhase::Interplanetary && !holding_in_deep_space {
+            let Some((first_jump_index, first_jump)) = first_jump else {
+                return Ok(RuleResult::Rejected(
+                    "a route revised after departure must retain its committed jump".into(),
+                ));
+            };
             if request.proposal.steps[..first_jump_index]
                 .iter()
                 .any(|step| !matches!(step.action, FlightPlanAction::Hold))
@@ -6747,6 +7000,39 @@ impl Store {
                             let ShipLocationRecord::InFlight(ref mut leg) = ship.location else {
                                 return Err(StoreError::Corrupt(
                                     "accepted fuel step did not create a flight leg",
+                                ));
+                            };
+                            leg.plan_id = plan.plan_id;
+                            leg.plan_revision = plan.revision;
+                            leg.leg_index = plan.current_step;
+                            self.ships
+                                .put(txn, &player.ship_id, &encode_ship_record(&ship)?)?;
+                            plan.state = FlightPlanState::Active;
+                            self.flight_plans.put(
+                                txn,
+                                &key,
+                                &encode_flight_plan_snapshot(&plan)?,
+                            )?;
+                            return Ok(RuleResult::Applied(plan));
+                        }
+                    }
+                }
+                FlightPlanAction::BeltCycle { body_id } => {
+                    match self.begin_belt_cycle_in(txn, identity, body_id)? {
+                        RuleResult::Rejected(message) => {
+                            return self.reject_or_hold_plan_in(
+                                txn,
+                                &key,
+                                plan,
+                                &message,
+                                hold_on_rejection,
+                            );
+                        }
+                        RuleResult::Applied(_) => {
+                            let (player, mut ship) = self.player_and_ship_in(txn, identity)?;
+                            let ShipLocationRecord::InFlight(ref mut leg) = ship.location else {
+                                return Err(StoreError::Corrupt(
+                                    "accepted belt cycle did not create a flight leg",
                                 ));
                             };
                             leg.plan_id = plan.plan_id;
@@ -7449,6 +7735,8 @@ impl Store {
                             unique_object_id: 0,
                             condition_percent: 100,
                             destination_system_id: stored.task.offer.destination_system_id,
+                            source_body_id: 0,
+                            source_lode_id: 0,
                         });
                         ship.revision = ship.revision.saturating_add(1);
                         stored.task.state = crate::wire::TaskState::Loading;
@@ -11798,6 +12086,8 @@ impl Store {
             unrefined_fuel_millitons: 0,
             fuel_capacity_bonus_millitons: 0,
             cargo_capacity_penalty_millitons: 0,
+            power_fuel_last_settled_second: u64::MAX,
+            power_fuel_burn_remainder: 0,
             location: ShipLocationRecord::Docked {
                 world_id: lost_ship.system_id,
                 facility_id: lost_ship.system_id,
@@ -14616,10 +14906,39 @@ impl Store {
             });
         }
         systems.sort_by_key(|system| (system.distance_milliparsecs, system.system_id));
+        let belts = if let Some(origin) = origin.as_ref() {
+            derive_celestial_system(origin)?
+                .bodies
+                .into_iter()
+                .filter_map(|body| match body.kind {
+                    BodyKind::PlanetoidBelt {
+                        icy,
+                        carbonaceous_percent,
+                        silicate_or_rock_percent,
+                        metal_or_water_ice_percent,
+                        hydrocarbon_percent,
+                        ..
+                    } => Some(KnownBelt {
+                        system_id: origin.id,
+                        body_id: body.local_id,
+                        name: body.name,
+                        icy,
+                        carbonaceous_percent,
+                        silicate_or_rock_percent,
+                        metal_or_water_ice_percent,
+                        hydrocarbon_percent,
+                    }),
+                    _ => None,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         Ok(KnownDestinations {
             current_system_id: origin.as_ref().map_or(0, |system| system.id),
             jump_rating: spec.jump_rating,
             systems,
+            belts,
         })
     }
 
@@ -19029,6 +19348,8 @@ impl Store {
             unrefined_fuel_millitons: 0,
             fuel_capacity_bonus_millitons: 0,
             cargo_capacity_penalty_millitons: 0,
+            power_fuel_last_settled_second: u64::MAX,
+            power_fuel_burn_remainder: 0,
             location: captor.location,
             cargo: Vec::new(),
             passengers: Vec::new(),
@@ -19089,6 +19410,8 @@ impl Store {
                     unique_object_id: 0,
                     condition_percent: 100,
                     destination_system_id: 0,
+                    source_body_id: 0,
+                    source_lode_id: 0,
                 });
             }
         }
@@ -19850,6 +20173,8 @@ impl Store {
             },
             fuel_capacity_bonus_millitons: 0,
             cargo_capacity_penalty_millitons: 0,
+            power_fuel_last_settled_second: u64::MAX,
+            power_fuel_burn_remainder: 0,
             location: old_ship.location,
             cargo: if trade_in {
                 old_ship.cargo.clone()
@@ -20097,6 +20422,8 @@ impl Store {
             unrefined_fuel_millitons: 0,
             fuel_capacity_bonus_millitons: 0,
             cargo_capacity_penalty_millitons: 0,
+            power_fuel_last_settled_second: u64::MAX,
+            power_fuel_burn_remainder: 0,
             location: ShipLocationRecord::Docked {
                 world_id,
                 facility_id,
@@ -20456,6 +20783,8 @@ impl Store {
             },
             condition_percent: 100,
             destination_system_id: 0,
+            source_body_id: 0,
+            source_lode_id: 0,
         });
         self.players.put(
             txn,
@@ -21789,6 +22118,183 @@ impl Store {
         Ok(RuleResult::Applied(self.travel_status_in(txn, identity)?))
     }
 
+    fn begin_belt_cycle_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        body_id: u32,
+    ) -> Result<RuleResult<TravelStatus>, StoreError> {
+        let (mut player, mut ship) = self.player_and_ship_in(txn, identity)?;
+        let ShipLocationRecord::Docked {
+            world_id,
+            facility_id,
+            arrived_second,
+        } = ship.location
+        else {
+            return Ok(RuleResult::Rejected(
+                "a belt cycle can only begin while docked".into(),
+            ));
+        };
+        if ship.activity.is_some() {
+            return Ok(RuleResult::Rejected(
+                "the ship already has active work".into(),
+            ));
+        }
+        let spec = creation::ship_status_spec(ship.catalog_id)
+            .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
+        if spec.mining_drone_sets == 0 {
+            return Ok(RuleResult::Rejected(
+                "the ship has no mining-drone set".into(),
+            ));
+        }
+        if !self.ship_has_crew_skill_in(
+            txn,
+            identity,
+            ship.ship_id,
+            crate::wire::SkillId::TradeProspector,
+        )? {
+            return Ok(RuleResult::Rejected(
+                "the filed cycle needs a trained Trade (Prospector) watchkeeper".into(),
+            ));
+        }
+        let cargo_used = ship
+            .cargo
+            .iter()
+            .try_fold(0_u64, |sum, lot| sum.checked_add(lot.quantity_millitons))
+            .ok_or(StoreError::Corrupt("cargo quantity overflow"))?;
+        if cargo_used >= effective_cargo_capacity(&ship, &spec) {
+            return Ok(RuleResult::Rejected(
+                "the cargo hold has no room for recovered material".into(),
+            ));
+        }
+        let system = self
+            .systems
+            .get(txn, &ship.system_id)?
+            .map(decode_stellar_system)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("ship system is missing"))?;
+        let celestial = derive_celestial_system(&system)?;
+        if !celestial.bodies.iter().any(|body| {
+            body.local_id == body_id && matches!(body.kind, BodyKind::PlanetoidBelt { .. })
+        }) {
+            return Ok(RuleResult::Rejected(
+                "the selected body is not a catalogued planetoid belt".into(),
+            ));
+        }
+        let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        let days = current as f64 / crate::simulation::SECONDS_PER_DAY as f64;
+        let primary_id = celestial
+            .bodies
+            .iter()
+            .find(|body| body.is_primary_world)
+            .map(|body| body.local_id)
+            .ok_or(StoreError::Corrupt("system has no primary world"))?;
+        let primary = body_position_au(&celestial, days, primary_id)
+            .ok_or(StoreError::Corrupt("primary world position is missing"))?;
+        let target = body_position_au(&celestial, days, body_id)
+            .ok_or(StoreError::Corrupt("belt position is missing"))?;
+        let distance_au = primary
+            .iter()
+            .zip(target)
+            .map(|(a, b)| (a - b).powi(2))
+            .sum::<f64>()
+            .sqrt();
+        let transit_seconds = (rest_to_rest_travel_days(distance_au, f64::from(spec.thrust_g))
+            * crate::simulation::SECONDS_PER_DAY as f64)
+            .ceil() as u64;
+        let minimum_cycle = transit_seconds
+            .saturating_mul(2)
+            .saturating_add(crate::mining::WATCH_SECONDS * 2)
+            .saturating_add(crate::mining::DAY_SECONDS)
+            .saturating_add(crate::mining::SAFE_MARGIN_SECONDS);
+        let required_power = crate::mining::power_fuel_for_duration(
+            spec.power_fuel_millitons,
+            spec.power_plant_endurance_seconds,
+            minimum_cycle,
+        );
+        if ship.current_fuel_millitons < required_power {
+            return Ok(RuleResult::Rejected(format!(
+                "the belt cycle and one-day safety margin require {:.1} tons of power-plant fuel",
+                required_power as f64 / 1_000.0
+            )));
+        }
+        let berth_fee = crate::ship_condition::berth_fee_credits(arrived_second, current);
+        if !self.charge_operating_account_in(txn, &mut player, ship.ship_id, berth_fee)? {
+            return Ok(RuleResult::Rejected(format!(
+                "departure requires Cr{berth_fee} berth; the operating account is short"
+            )));
+        }
+        let known_lode = self
+            .resource_lodes
+            .iter(txn)?
+            .filter_map(|entry| entry.ok())
+            .filter_map(|(_, bytes)| decode_resource_lode(bytes).ok())
+            .find(|lode| {
+                lode.system_id == ship.system_id
+                    && lode.body_id == body_id
+                    && lode.remaining_raw_millitons != 0
+                    && self
+                        .resource_observations
+                        .get(txn, &resource_observation_key(identity, lode.lode_id))
+                        .ok()
+                        .flatten()
+                        .is_some()
+            });
+        let lode_id = if let Some(lode) = known_lode {
+            lode.lode_id
+        } else {
+            take_next_id(self.meta, txn, META_NEXT_RESOURCE_LODE_ID)?
+        };
+        let context = BeltCycleContext {
+            lode_id,
+            body_id,
+            return_world_id: world_id,
+            return_facility_id: facility_id,
+            transit_seconds: transit_seconds.max(1),
+        };
+        let due = current
+            .checked_add(context.transit_seconds)
+            .ok_or(StoreError::Corrupt("belt transit time overflow"))?;
+        ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: crate::ship_condition::mix64(ship.ship_id ^ current ^ u64::from(body_id)),
+            plan_revision: 1,
+            leg_index: 0,
+            origin: ShipLocusRecord::Port {
+                system_id: ship.system_id,
+                world_id,
+                facility_id,
+            },
+            destination: ShipLocusRecord::Body {
+                system_id: ship.system_id,
+                body_id,
+            },
+            started_second: current,
+            due_second: due,
+            purpose: FlightLegPurpose::ReachBelt(context),
+        });
+        ship.power_fuel_last_settled_second = current;
+        ship.power_fuel_burn_remainder = 0;
+        for subsystem in &mut ship.subsystems {
+            if matches!(
+                subsystem.kind,
+                ShipSubsystemKind::ManeuverDrive | ShipSubsystemKind::PowerPlant
+            ) {
+                subsystem.operating_seconds = subsystem
+                    .operating_seconds
+                    .saturating_add(context.transit_seconds * 2);
+            }
+        }
+        self.schedule_player_travel_in(txn, ship.ship_id, due)?;
+        self.ships
+            .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+        self.players.put(
+            txn,
+            &encode_identity(identity),
+            &encode_player_record(&player),
+        )?;
+        Ok(RuleResult::Applied(self.travel_status_in(txn, identity)?))
+    }
+
     fn travel_status_in(
         &self,
         txn: &heed::RoTxn<'_>,
@@ -21872,6 +22378,24 @@ impl Store {
                             }
                         };
                         (leg.destination.system_id(), stage)
+                    }
+                    FlightLegPurpose::ReachBelt(_) | FlightLegPurpose::ProspectBelt(_) => {
+                        (leg.destination.system_id(), TravelStage::BeltProspecting)
+                    }
+                    FlightLegPurpose::SurveyBelt(_) => {
+                        (leg.destination.system_id(), TravelStage::BeltSurvey)
+                    }
+                    FlightLegPurpose::MineBelt(_) => {
+                        (leg.destination.system_id(), TravelStage::BeltMining)
+                    }
+                    FlightLegPurpose::RefineBelt(_) => {
+                        (leg.destination.system_id(), TravelStage::BeltRefining)
+                    }
+                    FlightLegPurpose::RecoverBelt { .. } => {
+                        (leg.destination.system_id(), TravelStage::BeltRecovery)
+                    }
+                    FlightLegPurpose::ReturnFromBelt(_) => {
+                        (leg.destination.system_id(), TravelStage::BeltEgress)
                     }
                 };
                 (
@@ -23485,6 +24009,8 @@ impl Store {
             unrefined_fuel_millitons: 0,
             fuel_capacity_bonus_millitons,
             cargo_capacity_penalty_millitons,
+            power_fuel_last_settled_second: u64::MAX,
+            power_fuel_burn_remainder: 0,
             location: ShipLocationRecord::Docked {
                 world_id: home.capital_system_id,
                 facility_id: home.capital_system_id,
@@ -24329,6 +24855,7 @@ impl Store {
         put_meta_u64(self.meta, &mut txn, META_NEXT_ENCOUNTER_ID, 1)?;
         put_meta_u64(self.meta, &mut txn, META_NEXT_RADIO_TRANSMISSION_ID, 1)?;
         put_meta_u64(self.meta, &mut txn, META_NEXT_RADIO_RECEPTION_ID, 1)?;
+        put_meta_u64(self.meta, &mut txn, META_NEXT_RESOURCE_LODE_ID, 1)?;
         put_meta_u64(self.meta, &mut txn, META_GAME_SECOND, 0)?;
         let pie = UniqueCargoRecord {
             object_id: 1,
@@ -26748,6 +27275,8 @@ impl Store {
             unrefined_fuel_millitons: 0,
             fuel_capacity_bonus_millitons: 0,
             cargo_capacity_penalty_millitons: 0,
+            power_fuel_last_settled_second: u64::MAX,
+            power_fuel_burn_remainder: 0,
             location: ShipLocationRecord::Docked {
                 world_id: current_ship.system_id,
                 facility_id: current_ship.system_id,
@@ -27246,7 +27775,11 @@ impl Store {
             else {
                 return Err(StoreError::Corrupt("recovering crew ship is missing"));
             };
+            let spec = creation::ship_status_spec(ship.catalog_id)
+                .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
+            settle_power_fuel(&mut ship, &spec, due_second);
             if ship.provisions.last_consumed_second >= due_second {
+                self.ships.put(txn, ship_id, &encode_ship_record(&ship)?)?;
                 continue;
             }
             let mut persons = std::collections::BTreeSet::new();
@@ -27981,7 +28514,9 @@ impl Store {
             .ok_or(StoreError::Corrupt("scheduled player ship is missing"))?;
         let spec = creation::ship_status_spec(ship.catalog_id)
             .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
+        settle_power_fuel(&mut ship, &spec, due_second);
         let mut automatic_checkpoint: Option<(u64, EncounterPolicy)> = None;
+        let mut continue_belt_plan = false;
         if let Some(encounter) = self
             .encounters
             .get(txn, &encode_identity(&ship.command))?
@@ -28808,6 +29343,492 @@ impl Store {
                 self.schedule_ship_activity_in(txn, ship.ship_id, due_second)?;
                 (system_id, 5)
             }
+            ShipLocationRecord::InFlight(
+                leg @ FlightLegRecord {
+                    destination: ShipLocusRecord::Body { .. },
+                    purpose: FlightLegPurpose::ReachBelt(context),
+                    ..
+                },
+            ) => {
+                if leg.due_second != due_second {
+                    return Err(StoreError::Corrupt(
+                        "belt outbound event disagrees with ship location",
+                    ));
+                }
+                let next_due = due_second
+                    .checked_add(crate::mining::WATCH_SECONDS)
+                    .ok_or(StoreError::Corrupt("belt prospecting time overflow"))?;
+                ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+                    plan_id: leg.plan_id,
+                    plan_revision: leg.plan_revision,
+                    leg_index: leg.leg_index,
+                    origin: leg.destination,
+                    destination: leg.destination,
+                    started_second: due_second,
+                    due_second: next_due,
+                    purpose: FlightLegPurpose::ProspectBelt(context),
+                });
+                self.schedule_player_travel_in(txn, ship.ship_id, next_due)?;
+                (ship.system_id, 8)
+            }
+            ShipLocationRecord::InFlight(
+                leg @ FlightLegRecord {
+                    destination: ShipLocusRecord::Body { system_id, .. },
+                    purpose: FlightLegPurpose::ProspectBelt(context),
+                    ..
+                },
+            ) => {
+                if leg.due_second != due_second || system_id != ship.system_id {
+                    return Err(StoreError::Corrupt(
+                        "belt prospecting event disagrees with ship location",
+                    ));
+                }
+                let (operator, condition_dm) = self.best_watch_operator_in(
+                    txn,
+                    &ship.command,
+                    ship.ship_id,
+                    crate::wire::SkillId::TradeProspector,
+                )?;
+                let result = crate::task_resolution::resolve(
+                    &operator,
+                    crate::task_resolution::TaskRequest {
+                        characteristic: operator.characteristics.intelligence,
+                        skill: crate::wire::SkillId::TradeProspector,
+                        difficulty: 8,
+                        equipment_dm: 0,
+                        condition_dm,
+                        assistance_dm: 0,
+                        entropy: crate::ship_condition::mix64(context.lode_id ^ due_second),
+                    },
+                );
+                let known = self.resource_lodes.get(txn, &context.lode_id)?.is_some();
+                if result.success || known {
+                    if !known {
+                        let stellar = self
+                            .systems
+                            .get(txn, &ship.system_id)?
+                            .map(decode_stellar_system)
+                            .transpose()?
+                            .ok_or(StoreError::Corrupt("belt system is missing"))?;
+                        let celestial = derive_celestial_system(&stellar)?;
+                        let body = celestial
+                            .bodies
+                            .iter()
+                            .find(|body| body.local_id == context.body_id)
+                            .ok_or(StoreError::Corrupt("belt body is missing"))?;
+                        let BodyKind::PlanetoidBelt {
+                            icy,
+                            carbonaceous_percent,
+                            silicate_or_rock_percent,
+                            metal_or_water_ice_percent,
+                            hydrocarbon_percent,
+                            ..
+                        } = body.kind
+                        else {
+                            return Err(StoreError::Corrupt("belt cycle body changed kind"));
+                        };
+                        let profile = crate::mining::prospect(
+                            crate::ship_condition::mix64(context.lode_id ^ due_second),
+                            crate::mining::BeltComposition {
+                                icy,
+                                carbonaceous_percent,
+                                silicate_or_rock_percent,
+                                metal_or_water_ice_percent,
+                                hydrocarbon_percent,
+                            },
+                            result.effect >= 4,
+                        );
+                        let lode = ResourceLodeRecord {
+                            lode_id: context.lode_id,
+                            system_id: ship.system_id,
+                            body_id: context.body_id,
+                            kind: profile.kind,
+                            remaining_raw_millitons: profile.remaining_raw_millitons,
+                            grade_percent: profile.grade_percent,
+                        };
+                        self.resource_lodes
+                            .put(txn, &lode.lode_id, &encode_resource_lode(lode))?;
+                    }
+                    let observation = ResourceObservationRecord {
+                        lode_id: context.lode_id,
+                        observer: ship.command.clone(),
+                        observed_second: due_second,
+                    };
+                    self.resource_observations.put(
+                        txn,
+                        &resource_observation_key(&ship.command, context.lode_id),
+                        &encode_resource_observation(observation),
+                    )?;
+                    let next_due = due_second
+                        .checked_add(crate::mining::WATCH_SECONDS)
+                        .ok_or(StoreError::Corrupt("belt survey time overflow"))?;
+                    ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+                        plan_id: leg.plan_id,
+                        plan_revision: leg.plan_revision,
+                        leg_index: leg.leg_index,
+                        origin: leg.destination,
+                        destination: leg.destination,
+                        started_second: due_second,
+                        due_second: next_due,
+                        purpose: FlightLegPurpose::SurveyBelt(context),
+                    });
+                    self.schedule_player_travel_in(txn, ship.ship_id, next_due)?;
+                    (ship.system_id, 9)
+                } else {
+                    let next_due = due_second
+                        .checked_add(context.transit_seconds)
+                        .ok_or(StoreError::Corrupt("belt egress time overflow"))?;
+                    ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+                        plan_id: leg.plan_id,
+                        plan_revision: leg.plan_revision,
+                        leg_index: leg.leg_index,
+                        origin: leg.destination,
+                        destination: ShipLocusRecord::Port {
+                            system_id: ship.system_id,
+                            world_id: context.return_world_id,
+                            facility_id: context.return_facility_id,
+                        },
+                        started_second: due_second,
+                        due_second: next_due,
+                        purpose: FlightLegPurpose::ReturnFromBelt(context),
+                    });
+                    self.schedule_player_travel_in(txn, ship.ship_id, next_due)?;
+                    (ship.system_id, 13)
+                }
+            }
+            ShipLocationRecord::InFlight(
+                leg @ FlightLegRecord {
+                    purpose: FlightLegPurpose::SurveyBelt(context),
+                    ..
+                },
+            ) => {
+                if leg.due_second != due_second {
+                    return Err(StoreError::Corrupt(
+                        "belt survey event disagrees with ship location",
+                    ));
+                }
+                let next_due = due_second
+                    .checked_add(crate::mining::DAY_SECONDS)
+                    .ok_or(StoreError::Corrupt("belt mining time overflow"))?;
+                ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+                    plan_id: leg.plan_id,
+                    plan_revision: leg.plan_revision,
+                    leg_index: leg.leg_index,
+                    origin: leg.destination,
+                    destination: leg.destination,
+                    started_second: due_second,
+                    due_second: next_due,
+                    purpose: FlightLegPurpose::MineBelt(context),
+                });
+                self.schedule_player_travel_in(txn, ship.ship_id, next_due)?;
+                (ship.system_id, 10)
+            }
+            ShipLocationRecord::InFlight(
+                leg @ FlightLegRecord {
+                    purpose: FlightLegPurpose::MineBelt(context),
+                    ..
+                },
+            ) => {
+                if leg.due_second != due_second {
+                    return Err(StoreError::Corrupt(
+                        "belt mining event disagrees with ship location",
+                    ));
+                }
+                let (operator, condition_dm) = self.best_watch_operator_in(
+                    txn,
+                    &ship.command,
+                    ship.ship_id,
+                    crate::wire::SkillId::TradeProspector,
+                )?;
+                let entropy =
+                    crate::ship_condition::mix64(context.lode_id ^ due_second ^ ship.ship_id);
+                let result = crate::task_resolution::resolve(
+                    &operator,
+                    crate::task_resolution::TaskRequest {
+                        characteristic: operator.characteristics.intelligence,
+                        skill: crate::wire::SkillId::TradeProspector,
+                        difficulty: 8,
+                        equipment_dm: 0,
+                        condition_dm,
+                        assistance_dm: 0,
+                        entropy,
+                    },
+                );
+                if result.effect <= -2 {
+                    let recovery_hours = 1 + entropy % 6;
+                    let next_due = due_second
+                        .checked_add(recovery_hours * 60 * 60)
+                        .ok_or(StoreError::Corrupt("belt recovery time overflow"))?;
+                    let successful = self
+                        .best_watch_operator_in(
+                            txn,
+                            &ship.command,
+                            ship.ship_id,
+                            crate::wire::SkillId::Mechanic,
+                        )
+                        .ok()
+                        .is_some_and(|(mechanic, mechanic_condition)| {
+                            crate::task_resolution::resolve(
+                                &mechanic,
+                                crate::task_resolution::TaskRequest {
+                                    characteristic: mechanic.characteristics.education,
+                                    skill: crate::wire::SkillId::Mechanic,
+                                    difficulty: 8,
+                                    equipment_dm: 0,
+                                    condition_dm: mechanic_condition,
+                                    assistance_dm: 0,
+                                    entropy: entropy ^ 0x5245_434f_5645_5259,
+                                },
+                            )
+                            .success
+                        });
+                    ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+                        plan_id: leg.plan_id,
+                        plan_revision: leg.plan_revision,
+                        leg_index: leg.leg_index,
+                        origin: leg.destination,
+                        destination: leg.destination,
+                        started_second: due_second,
+                        due_second: next_due,
+                        purpose: FlightLegPurpose::RecoverBelt {
+                            context,
+                            successful,
+                        },
+                    });
+                    self.schedule_player_travel_in(txn, ship.ship_id, next_due)?;
+                    (ship.system_id, 12)
+                } else {
+                    let mut lode = self
+                        .resource_lodes
+                        .get(txn, &context.lode_id)?
+                        .map(decode_resource_lode)
+                        .transpose()?
+                        .ok_or(StoreError::Corrupt("observed resource lode is missing"))?;
+                    let roll = ((entropy % 6) + 1) as u8;
+                    let mut raw =
+                        crate::mining::daily_drone_capacity_millitons(spec.mining_drone_sets, roll)
+                            .min(lode.remaining_raw_millitons);
+                    if result.effect == -1 {
+                        raw /= 2;
+                    }
+                    let cargo_used = ship
+                        .cargo
+                        .iter()
+                        .map(|lot| lot.quantity_millitons)
+                        .sum::<u64>();
+                    let cargo_free =
+                        effective_cargo_capacity(&ship, &spec).saturating_sub(cargo_used);
+                    let product_capacity = if lode.kind == crate::mining::ResourceKind::WaterIce
+                        && spec.fuel_processing_millitons_per_day != 0
+                    {
+                        effective_fuel_capacity(&ship, &spec)
+                            .saturating_sub(ship.current_fuel_millitons)
+                    } else {
+                        cargo_free
+                    };
+                    let (commodity_id, output, raw_consumed) =
+                        if spec.mineral_refinery_output_millitons_per_day == 0 {
+                            (6, raw.min(cargo_free), raw.min(cargo_free))
+                        } else {
+                            let grade = u64::from(lode.grade_percent.max(1));
+                            let raw_for_refinery = spec
+                                .mineral_refinery_output_millitons_per_day
+                                .saturating_mul(100)
+                                .div_ceil(grade);
+                            let raw_for_storage =
+                                product_capacity.saturating_mul(100).div_ceil(grade);
+                            let feed = raw.min(raw_for_refinery).min(raw_for_storage);
+                            let output = crate::mining::refined_output_millitons(
+                                feed,
+                                lode.grade_percent,
+                                spec.mineral_refinery_output_millitons_per_day,
+                            );
+                            (
+                                lode.kind.refined_commodity_id(),
+                                output.min(product_capacity),
+                                feed,
+                            )
+                        };
+                    if lode.kind == crate::mining::ResourceKind::WaterIce
+                        && spec.fuel_processing_millitons_per_day != 0
+                    {
+                        let capacity = effective_fuel_capacity(&ship, &spec);
+                        let fuel = output.min(capacity.saturating_sub(ship.current_fuel_millitons));
+                        ship.current_fuel_millitons =
+                            ship.current_fuel_millitons.saturating_add(fuel);
+                        ship.unrefined_fuel_millitons =
+                            ship.unrefined_fuel_millitons.saturating_add(fuel);
+                    } else if output != 0 {
+                        let definition = commodity(commodity_id)
+                            .ok_or(StoreError::Corrupt("mined commodity is missing"))?;
+                        let lot_id = take_next_id(self.meta, txn, META_NEXT_CARGO_LOT_ID)?;
+                        ship.cargo.push(CargoLot {
+                            cargo_lot_id: lot_id,
+                            commodity_id,
+                            commodity_name: definition.name.into(),
+                            quantity_millitons: output,
+                            purchase_price_per_ton: 0,
+                            origin_system_id: ship.system_id,
+                            acquired_second: due_second,
+                            title: CargoTitle::PlayerOwned,
+                            task_id: 0,
+                            unique_object_id: 0,
+                            condition_percent: 100,
+                            destination_system_id: 0,
+                            source_body_id: context.body_id,
+                            source_lode_id: context.lode_id,
+                        });
+                    }
+                    lode.remaining_raw_millitons =
+                        lode.remaining_raw_millitons.saturating_sub(raw_consumed);
+                    self.resource_lodes
+                        .put(txn, &lode.lode_id, &encode_resource_lode(lode))?;
+                    let next_due = due_second.saturating_add(60 * 60);
+                    ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+                        plan_id: leg.plan_id,
+                        plan_revision: leg.plan_revision,
+                        leg_index: leg.leg_index,
+                        origin: leg.destination,
+                        destination: leg.destination,
+                        started_second: due_second,
+                        due_second: next_due,
+                        purpose: FlightLegPurpose::RefineBelt(context),
+                    });
+                    self.schedule_player_travel_in(txn, ship.ship_id, next_due)?;
+                    (ship.system_id, 11)
+                }
+            }
+            ShipLocationRecord::InFlight(
+                leg @ FlightLegRecord {
+                    purpose:
+                        FlightLegPurpose::RecoverBelt {
+                            context,
+                            successful,
+                        },
+                    ..
+                },
+            ) => {
+                if leg.due_second != due_second {
+                    return Err(StoreError::Corrupt(
+                        "belt recovery event disagrees with ship location",
+                    ));
+                }
+                let next_due;
+                let purpose;
+                let destination;
+                if successful {
+                    next_due = due_second.saturating_add(crate::mining::DAY_SECONDS);
+                    purpose = FlightLegPurpose::MineBelt(context);
+                    destination = leg.destination;
+                } else {
+                    next_due = due_second.saturating_add(context.transit_seconds);
+                    purpose = FlightLegPurpose::ReturnFromBelt(context);
+                    destination = ShipLocusRecord::Port {
+                        system_id: ship.system_id,
+                        world_id: context.return_world_id,
+                        facility_id: context.return_facility_id,
+                    };
+                }
+                ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+                    plan_id: leg.plan_id,
+                    plan_revision: leg.plan_revision,
+                    leg_index: leg.leg_index,
+                    origin: leg.destination,
+                    destination,
+                    started_second: due_second,
+                    due_second: next_due,
+                    purpose,
+                });
+                self.schedule_player_travel_in(txn, ship.ship_id, next_due)?;
+                (ship.system_id, if successful { 10 } else { 13 })
+            }
+            ShipLocationRecord::InFlight(
+                leg @ FlightLegRecord {
+                    purpose: FlightLegPurpose::RefineBelt(context),
+                    ..
+                },
+            ) => {
+                if leg.due_second != due_second {
+                    return Err(StoreError::Corrupt(
+                        "belt refining event disagrees with ship location",
+                    ));
+                }
+                let lode_remaining = self
+                    .resource_lodes
+                    .get(txn, &context.lode_id)?
+                    .map(decode_resource_lode)
+                    .transpose()?
+                    .map_or(0, |lode| lode.remaining_raw_millitons);
+                let cargo_used = ship
+                    .cargo
+                    .iter()
+                    .map(|lot| lot.quantity_millitons)
+                    .sum::<u64>();
+                let has_room =
+                    effective_cargo_capacity(&ship, &spec).saturating_sub(cargo_used) >= 1_000;
+                let return_reserve = crate::mining::power_fuel_for_duration(
+                    spec.power_fuel_millitons,
+                    spec.power_plant_endurance_seconds,
+                    context
+                        .transit_seconds
+                        .saturating_add(crate::mining::SAFE_MARGIN_SECONDS),
+                );
+                let continue_work =
+                    lode_remaining != 0 && has_room && ship.current_fuel_millitons > return_reserve;
+                let (next_due, destination, purpose) = if continue_work {
+                    (
+                        due_second.saturating_add(crate::mining::DAY_SECONDS),
+                        leg.destination,
+                        FlightLegPurpose::MineBelt(context),
+                    )
+                } else {
+                    (
+                        due_second.saturating_add(context.transit_seconds),
+                        ShipLocusRecord::Port {
+                            system_id: ship.system_id,
+                            world_id: context.return_world_id,
+                            facility_id: context.return_facility_id,
+                        },
+                        FlightLegPurpose::ReturnFromBelt(context),
+                    )
+                };
+                ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+                    plan_id: leg.plan_id,
+                    plan_revision: leg.plan_revision,
+                    leg_index: leg.leg_index,
+                    origin: leg.destination,
+                    destination,
+                    started_second: due_second,
+                    due_second: next_due,
+                    purpose,
+                });
+                self.schedule_player_travel_in(txn, ship.ship_id, next_due)?;
+                (ship.system_id, if continue_work { 10 } else { 13 })
+            }
+            ShipLocationRecord::InFlight(FlightLegRecord {
+                destination:
+                    ShipLocusRecord::Port {
+                        system_id,
+                        world_id,
+                        facility_id,
+                    },
+                due_second: recorded_due,
+                purpose: FlightLegPurpose::ReturnFromBelt(_),
+                ..
+            }) => {
+                if recorded_due != due_second || system_id != ship.system_id {
+                    return Err(StoreError::Corrupt(
+                        "belt egress event disagrees with ship location",
+                    ));
+                }
+                ship.location = ShipLocationRecord::Docked {
+                    world_id,
+                    facility_id,
+                    arrived_second: due_second,
+                };
+                continue_belt_plan = true;
+                (system_id, 14)
+            }
             _ => {
                 return Err(StoreError::Corrupt(
                     "scheduled travel event has no matching leg",
@@ -28817,6 +29838,30 @@ impl Store {
         self.reconcile_radio_for_ship_in(txn, &ship, due_second)?;
         self.ships
             .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+        if continue_belt_plan {
+            let key = encode_identity(&ship.command);
+            if let Some(plan) = self
+                .flight_plans
+                .get(txn, &key)?
+                .map(decode_flight_plan_snapshot)
+                .transpose()?
+            {
+                let current = usize::from(plan.current_step);
+                if plan.state == FlightPlanState::Active
+                    && plan.steps.get(current).is_some_and(|step| {
+                        matches!(step.action, FlightPlanAction::BeltCycle { .. })
+                    })
+                {
+                    let _ = self.activate_flight_plan_from_in(
+                        txn,
+                        &ship.command,
+                        plan,
+                        current + 1,
+                        true,
+                    )?;
+                }
+            }
+        }
         if let Some((checkpoint_id, policy)) = automatic_checkpoint {
             let _ = self.acknowledge_checkpoint_in(txn, &ship.command, checkpoint_id)?;
             if let Some(encounter) = self.encounter_in(txn, &ship.command)?
@@ -31506,6 +32551,10 @@ fn encode_flight_plan_step_record(bytes: &mut Vec<u8>, step: &FlightPlanStep) {
             });
             bytes.push(u8::from(proceed_on_known_bad_plot));
         }
+        FlightPlanAction::BeltCycle { body_id } => {
+            bytes.push(5);
+            bytes.extend_from_slice(&body_id.to_be_bytes());
+        }
     }
 }
 fn decode_flight_plan_step_record(
@@ -31518,8 +32567,8 @@ fn decode_flight_plan_step_record(
         (1, 0) => (WaypointAuthority::Hold, false),
         (1, 1) => (WaypointAuthority::Hold, true),
         (1, 2) => (WaypointAuthority::Through, false),
-        (2, 0) => (WaypointAuthority::Hold, decoder.u8()? != 0),
-        (2, 1) => (WaypointAuthority::Through, decoder.u8()? != 0),
+        (2 | 3, 0) => (WaypointAuthority::Hold, decoder.u8()? != 0),
+        (2 | 3, 1) => (WaypointAuthority::Through, decoder.u8()? != 0),
         _ => return Err(StoreError::Corrupt("unknown waypoint authority")),
     };
     let action = match decoder.u8()? {
@@ -31560,6 +32609,9 @@ fn decode_flight_plan_step_record(
             },
             proceed_on_known_bad_plot: decoder.u8()? != 0,
         },
+        5 if version >= 3 => FlightPlanAction::BeltCycle {
+            body_id: decoder.u32()?,
+        },
         _ => return Err(StoreError::Corrupt("unknown flight-plan action")),
     };
     Ok(FlightPlanStep {
@@ -31574,7 +32626,7 @@ fn encode_flight_plan_proposal_record(
     proposal: &FlightPlanProposal,
 ) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(2);
+    bytes.push(3);
     bytes.extend_from_slice(&proposal.expected_plan_revision.to_be_bytes());
     let count = u16::try_from(proposal.steps.len())
         .map_err(|_| StoreError::Corrupt("too many flight-plan steps"))?;
@@ -31589,7 +32641,7 @@ fn decode_flight_plan_proposal_record(
     decoder: &mut Decoder<'_>,
 ) -> Result<FlightPlanProposal, StoreError> {
     let version = decoder.u8()?;
-    if version != 1 && version != 2 {
+    if version != 1 && version != 2 && version != 3 {
         return Err(StoreError::Corrupt("unsupported flight-plan proposal"));
     }
     let expected_plan_revision = decoder.u64()?;
@@ -31630,7 +32682,7 @@ fn flight_plan_preview_hash(
 
 fn encode_flight_plan_snapshot(value: &FlightPlanSnapshot) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(2);
+    bytes.push(3);
     bytes.extend_from_slice(&value.plan_id.to_be_bytes());
     bytes.extend_from_slice(&value.revision.to_be_bytes());
     bytes.extend_from_slice(&value.current_step.to_be_bytes());
@@ -31648,7 +32700,7 @@ fn encode_flight_plan_snapshot(value: &FlightPlanSnapshot) -> Result<Vec<u8>, St
 fn decode_flight_plan_snapshot(bytes: &[u8]) -> Result<FlightPlanSnapshot, StoreError> {
     let mut decoder = Decoder::new(bytes);
     let version = decoder.u8()?;
-    if version != 1 && version != 2 {
+    if version != 1 && version != 2 && version != 3 {
         return Err(StoreError::Corrupt("unsupported flight-plan record"));
     }
     let plan_id = decoder.u64()?;
@@ -33982,6 +35034,8 @@ fn encode_fleet_into(
             bytes.extend_from_slice(&lot.unique_object_id.to_be_bytes());
             bytes.push(lot.condition_percent);
             bytes.extend_from_slice(&lot.destination_system_id.to_be_bytes());
+            bytes.extend_from_slice(&lot.source_body_id.to_be_bytes());
+            bytes.extend_from_slice(&lot.source_lode_id.to_be_bytes());
         }
         let ammunition_count = u16::try_from(ship.ammunition.len())
             .map_err(|_| StoreError::Corrupt("too many fleet ammunition lots"))?;
@@ -34112,7 +35166,10 @@ fn decode_ship_title(value: u8) -> Result<crate::wire::ShipTitleKind, StoreError
     })
 }
 
-fn decode_fleet(d: &mut Decoder<'_>) -> Result<crate::wire::FleetSnapshot, StoreError> {
+fn decode_fleet(
+    d: &mut Decoder<'_>,
+    outcome_version: u8,
+) -> Result<crate::wire::FleetSnapshot, StoreError> {
     let revision = d.u64()?;
     let active_ship_id = d.u64()?;
     let count = d.u16()? as usize;
@@ -34166,6 +35223,8 @@ fn decode_fleet(d: &mut Decoder<'_>) -> Result<crate::wire::FleetSnapshot, Store
                 unique_object_id: d.u64()?,
                 condition_percent: d.u8()?,
                 destination_system_id: d.u64()?,
+                source_body_id: if outcome_version >= 16 { d.u32()? } else { 0 },
+                source_lode_id: if outcome_version >= 16 { d.u64()? } else { 0 },
             });
         }
         let ammunition_count = d.u16()? as usize;
@@ -34861,7 +35920,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(15);
+    bytes.push(16);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -35126,6 +36185,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 13
         && version != 14
         && version != 15
+        && version != 16
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -35313,7 +36373,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
             })
         }
         31 => OutcomeKind::DockedServices(decode_docked_services(&mut decoder)?),
-        32 => OutcomeKind::Fleet(decode_fleet(&mut decoder)?),
+        32 => OutcomeKind::Fleet(decode_fleet(&mut decoder, version)?),
         33 => OutcomeKind::SystemRadio(decode_system_radio(&mut decoder)?),
         34 => OutcomeKind::RadioContent(crate::wire::RadioContent {
             reception_id: decoder.u64()?,
@@ -36559,6 +37619,13 @@ fn decode_interception_watch(bytes: &[u8]) -> Result<InterceptionWatchRecord, St
 }
 
 fn encode_flight_leg_purpose(bytes: &mut Vec<u8>, purpose: FlightLegPurpose) {
+    fn context(bytes: &mut Vec<u8>, value: BeltCycleContext) {
+        bytes.extend_from_slice(&value.lode_id.to_be_bytes());
+        bytes.extend_from_slice(&value.body_id.to_be_bytes());
+        bytes.extend_from_slice(&value.return_world_id.to_be_bytes());
+        bytes.extend_from_slice(&value.return_facility_id.to_be_bytes());
+        bytes.extend_from_slice(&value.transit_seconds.to_be_bytes());
+    }
     match purpose {
         FlightLegPurpose::DepartForJump {
             jump_destination_system_id,
@@ -36601,10 +37668,51 @@ fn encode_flight_leg_purpose(bytes: &mut Vec<u8>, purpose: FlightLegPurpose) {
             bytes.push(5);
             bytes.extend_from_slice(&activity_id.to_be_bytes());
         }
+        FlightLegPurpose::ReachBelt(value) => {
+            bytes.push(7);
+            context(bytes, value);
+        }
+        FlightLegPurpose::ProspectBelt(value) => {
+            bytes.push(8);
+            context(bytes, value);
+        }
+        FlightLegPurpose::SurveyBelt(value) => {
+            bytes.push(9);
+            context(bytes, value);
+        }
+        FlightLegPurpose::MineBelt(value) => {
+            bytes.push(10);
+            context(bytes, value);
+        }
+        FlightLegPurpose::RefineBelt(value) => {
+            bytes.push(11);
+            context(bytes, value);
+        }
+        FlightLegPurpose::RecoverBelt {
+            context: value,
+            successful,
+        } => {
+            bytes.push(12);
+            context(bytes, value);
+            bytes.push(u8::from(successful));
+        }
+        FlightLegPurpose::ReturnFromBelt(value) => {
+            bytes.push(13);
+            context(bytes, value);
+        }
     }
 }
 
 fn decode_flight_leg_purpose(decoder: &mut Decoder<'_>) -> Result<FlightLegPurpose, StoreError> {
+    fn context(decoder: &mut Decoder<'_>) -> Result<BeltCycleContext, StoreError> {
+        Ok(BeltCycleContext {
+            lode_id: decoder.u64()?,
+            body_id: decoder.u32()?,
+            return_world_id: decoder.u64()?,
+            return_facility_id: decoder.u64()?,
+            transit_seconds: decoder.u64()?,
+        })
+    }
     match decoder.u8()? {
         0 => Ok(FlightLegPurpose::DepartForJump {
             jump_destination_system_id: decoder.u64()?,
@@ -36631,6 +37739,16 @@ fn decode_flight_leg_purpose(decoder: &mut Decoder<'_>) -> Result<FlightLegPurpo
                 north_bits: decoder.u64()?,
             },
         }),
+        7 => Ok(FlightLegPurpose::ReachBelt(context(decoder)?)),
+        8 => Ok(FlightLegPurpose::ProspectBelt(context(decoder)?)),
+        9 => Ok(FlightLegPurpose::SurveyBelt(context(decoder)?)),
+        10 => Ok(FlightLegPurpose::MineBelt(context(decoder)?)),
+        11 => Ok(FlightLegPurpose::RefineBelt(context(decoder)?)),
+        12 => Ok(FlightLegPurpose::RecoverBelt {
+            context: context(decoder)?,
+            successful: decoder.u8()? != 0,
+        }),
+        13 => Ok(FlightLegPurpose::ReturnFromBelt(context(decoder)?)),
         _ => Err(StoreError::Corrupt("unknown flight-leg purpose")),
     }
 }
@@ -37037,6 +38155,58 @@ fn decode_career_record(bytes: &[u8]) -> Result<crate::careers::CareerState, Sto
     Ok(state)
 }
 
+fn resource_observation_key(identity: &PlayerIdentity, lode_id: u64) -> Vec<u8> {
+    let mut key = encode_identity(identity).to_vec();
+    key.extend_from_slice(&lode_id.to_be_bytes());
+    key
+}
+
+fn encode_resource_lode(value: ResourceLodeRecord) -> Vec<u8> {
+    let mut bytes = vec![1];
+    bytes.extend_from_slice(&value.lode_id.to_be_bytes());
+    bytes.extend_from_slice(&value.system_id.to_be_bytes());
+    bytes.extend_from_slice(&value.body_id.to_be_bytes());
+    bytes.push(value.kind as u8);
+    bytes.extend_from_slice(&value.remaining_raw_millitons.to_be_bytes());
+    bytes.push(value.grade_percent);
+    bytes
+}
+
+fn decode_resource_lode(bytes: &[u8]) -> Result<ResourceLodeRecord, StoreError> {
+    let mut d = Decoder::new(bytes);
+    if d.u8()? != 1 {
+        return Err(StoreError::Corrupt("unsupported resource-lode record"));
+    }
+    let value = ResourceLodeRecord {
+        lode_id: d.u64()?,
+        system_id: d.u64()?,
+        body_id: d.u32()?,
+        kind: match d.u8()? {
+            0 => crate::mining::ResourceKind::Silicate,
+            1 => crate::mining::ResourceKind::Carbonaceous,
+            2 => crate::mining::ResourceKind::Metal,
+            3 => crate::mining::ResourceKind::WaterIce,
+            4 => crate::mining::ResourceKind::Hydrocarbons,
+            5 => crate::mining::ResourceKind::Crystals,
+            6 => crate::mining::ResourceKind::PreciousMetals,
+            7 => crate::mining::ResourceKind::Radioactives,
+            _ => return Err(StoreError::Corrupt("unknown resource kind")),
+        },
+        remaining_raw_millitons: d.u64()?,
+        grade_percent: d.u8()?,
+    };
+    d.finish()?;
+    Ok(value)
+}
+
+fn encode_resource_observation(value: ResourceObservationRecord) -> Vec<u8> {
+    let mut bytes = vec![1];
+    bytes.extend_from_slice(&value.lode_id.to_be_bytes());
+    bytes.extend_from_slice(&encode_identity(&value.observer));
+    bytes.extend_from_slice(&value.observed_second.to_be_bytes());
+    bytes
+}
+
 fn encode_ship_record(record: &ShipRecord) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
     bytes.push(SHIP_RECORD_CODEC_VERSION);
@@ -37058,6 +38228,8 @@ fn encode_ship_record(record: &ShipRecord) -> Result<Vec<u8>, StoreError> {
     bytes.extend_from_slice(&record.unrefined_fuel_millitons.to_be_bytes());
     bytes.extend_from_slice(&record.fuel_capacity_bonus_millitons.to_be_bytes());
     bytes.extend_from_slice(&record.cargo_capacity_penalty_millitons.to_be_bytes());
+    bytes.extend_from_slice(&record.power_fuel_last_settled_second.to_be_bytes());
+    bytes.extend_from_slice(&record.power_fuel_burn_remainder.to_be_bytes());
     match record.location {
         ShipLocationRecord::Docked {
             world_id,
@@ -37109,6 +38281,8 @@ fn encode_ship_record(record: &ShipRecord) -> Result<Vec<u8>, StoreError> {
         bytes.extend_from_slice(&lot.unique_object_id.to_be_bytes());
         bytes.push(lot.condition_percent);
         bytes.extend_from_slice(&lot.destination_system_id.to_be_bytes());
+        bytes.extend_from_slice(&lot.source_body_id.to_be_bytes());
+        bytes.extend_from_slice(&lot.source_lode_id.to_be_bytes());
     }
     let passenger_count = u16::try_from(record.passengers.len())
         .map_err(|_| StoreError::Corrupt("too many passenger manifests"))?;
@@ -37320,7 +38494,7 @@ fn encode_ship_record(record: &ShipRecord) -> Result<Vec<u8>, StoreError> {
 fn decode_ship_record(bytes: &[u8]) -> Result<ShipRecord, StoreError> {
     let mut decoder = Decoder::new(bytes);
     let version = decoder.u8()?;
-    if version != SHIP_RECORD_CODEC_VERSION {
+    if !matches!(version, 1 | SHIP_RECORD_CODEC_VERSION) {
         return Err(StoreError::Corrupt("unsupported ship record version"));
     }
     let ship_id = decoder.u64()?;
@@ -37349,6 +38523,11 @@ fn decode_ship_record(bytes: &[u8]) -> Result<ShipRecord, StoreError> {
     let unrefined_fuel_millitons = decoder.u64()?;
     let fuel_capacity_bonus_millitons = decoder.u64()?;
     let cargo_capacity_penalty_millitons = decoder.u64()?;
+    let (power_fuel_last_settled_second, power_fuel_burn_remainder) = if version >= 2 {
+        (decoder.u64()?, decoder.u64()?)
+    } else {
+        (u64::MAX, 0)
+    };
     let location = match decoder.u8()? {
         0 => ShipLocationRecord::Docked {
             world_id: decoder.u64()?,
@@ -37397,6 +38576,8 @@ fn decode_ship_record(bytes: &[u8]) -> Result<ShipRecord, StoreError> {
             unique_object_id: decoder.u64()?,
             condition_percent: decoder.u8()?,
             destination_system_id: decoder.u64()?,
+            source_body_id: if version >= 2 { decoder.u32()? } else { 0 },
+            source_lode_id: if version >= 2 { decoder.u64()? } else { 0 },
         });
     }
     let passenger_count = decoder.u16()? as usize;
@@ -37621,6 +38802,8 @@ fn decode_ship_record(bytes: &[u8]) -> Result<ShipRecord, StoreError> {
         unrefined_fuel_millitons,
         fuel_capacity_bonus_millitons,
         cargo_capacity_penalty_millitons,
+        power_fuel_last_settled_second,
+        power_fuel_burn_remainder,
         location,
         cargo,
         passengers,
@@ -39127,6 +40310,21 @@ fn encode_known_destinations_into(
         bytes.push(u8::from(system.remote_candidate));
         bytes.push(system.gas_giant_count);
     }
+    let count = u32::try_from(snapshot.belts.len())
+        .map_err(|_| StoreError::Corrupt("too many known belts"))?;
+    bytes.extend_from_slice(&count.to_be_bytes());
+    for belt in &snapshot.belts {
+        bytes.extend_from_slice(&belt.system_id.to_be_bytes());
+        bytes.extend_from_slice(&belt.body_id.to_be_bytes());
+        encode_text(bytes, &belt.name)?;
+        bytes.push(u8::from(belt.icy));
+        bytes.extend_from_slice(&[
+            belt.carbonaceous_percent,
+            belt.silicate_or_rock_percent,
+            belt.metal_or_water_ice_percent,
+            belt.hydrocarbon_percent,
+        ]);
+    }
     Ok(())
 }
 
@@ -39192,10 +40390,28 @@ fn decode_known_destinations(
             gas_giant_count,
         });
     }
+    let mut belts = Vec::new();
+    if outcome_version >= 16 {
+        let count = decoder.u32()? as usize;
+        belts.reserve(count);
+        for _ in 0..count {
+            belts.push(KnownBelt {
+                system_id: decoder.u64()?,
+                body_id: decoder.u32()?,
+                name: decoder.text()?,
+                icy: decoder.u8()? != 0,
+                carbonaceous_percent: decoder.u8()?,
+                silicate_or_rock_percent: decoder.u8()?,
+                metal_or_water_ice_percent: decoder.u8()?,
+                hydrocarbon_percent: decoder.u8()?,
+            });
+        }
+    }
     Ok(KnownDestinations {
         current_system_id,
         jump_rating,
         systems,
+        belts,
     })
 }
 
@@ -39346,6 +40562,8 @@ fn encode_market_snapshot_into(
         bytes.extend_from_slice(&lot.unique_object_id.to_be_bytes());
         bytes.push(lot.condition_percent);
         bytes.extend_from_slice(&lot.destination_system_id.to_be_bytes());
+        bytes.extend_from_slice(&lot.source_body_id.to_be_bytes());
+        bytes.extend_from_slice(&lot.source_lode_id.to_be_bytes());
     }
     let code_count = u16::try_from(snapshot.trade_codes.len())
         .map_err(|_| StoreError::Corrupt("too many market trade codes"))?;
@@ -39465,6 +40683,16 @@ fn decode_market_snapshot(
             unique_object_id: decoder.u64()?,
             condition_percent: decoder.u8()?,
             destination_system_id: decoder.u64()?,
+            source_body_id: if outcome_version >= 16 {
+                decoder.u32()?
+            } else {
+                0
+            },
+            source_lode_id: if outcome_version >= 16 {
+                decoder.u64()?
+            } else {
+                0
+            },
         });
     }
     let code_count = decoder.u16()? as usize;
@@ -39599,6 +40827,12 @@ fn encode_travel_status_into(
         TravelStage::WildernessWater => 7,
         TravelStage::Holding => 8,
         TravelStage::Encounter => 9,
+        TravelStage::BeltProspecting => 10,
+        TravelStage::BeltSurvey => 11,
+        TravelStage::BeltMining => 12,
+        TravelStage::BeltRefining => 13,
+        TravelStage::BeltRecovery => 14,
+        TravelStage::BeltEgress => 15,
     });
     for value in [
         snapshot.current_game_second,
@@ -39634,6 +40868,12 @@ fn decode_travel_status(decoder: &mut Decoder<'_>) -> Result<TravelStatus, Store
         7 => TravelStage::WildernessWater,
         8 => TravelStage::Holding,
         9 => TravelStage::Encounter,
+        10 => TravelStage::BeltProspecting,
+        11 => TravelStage::BeltSurvey,
+        12 => TravelStage::BeltMining,
+        13 => TravelStage::BeltRefining,
+        14 => TravelStage::BeltRecovery,
+        15 => TravelStage::BeltEgress,
         _ => return Err(StoreError::Corrupt("unknown cached travel stage")),
     };
     let current_game_second = decoder.u64()?;
@@ -40861,15 +42101,35 @@ mod tests {
                     knowledge_source: crate::wire::SystemKnowledgeSource::CarriedRecords,
                     gas_giant_count: 3,
                 }],
+                belts: vec![KnownBelt {
+                    system_id: 1,
+                    body_id: 7,
+                    name: "First Belt".into(),
+                    icy: false,
+                    carbonaceous_percent: 20,
+                    silicate_or_rock_percent: 50,
+                    metal_or_water_ice_percent: 30,
+                    hydrocarbon_percent: 0,
+                }],
             }),
         };
 
         let encoded = encode_outcome(&outcome).unwrap();
         assert_eq!(decode_outcome(&encoded).unwrap(), outcome);
 
-        let mut version_two = encoded;
+        let mut version_two = encode_outcome(&Outcome {
+            kind: match outcome.kind.clone() {
+                OutcomeKind::KnownDestinations(mut value) => {
+                    value.belts.clear();
+                    OutcomeKind::KnownDestinations(value)
+                }
+                value => value,
+            },
+            ..outcome.clone()
+        })
+        .unwrap();
         version_two[0] = 2;
-        assert_eq!(version_two.pop(), Some(3));
+        version_two.truncate(version_two.len() - 5);
         let decoded = decode_outcome(&version_two).unwrap();
         let OutcomeKind::KnownDestinations(snapshot) = decoded.kind else {
             panic!("expected known destinations");
@@ -40952,6 +42212,8 @@ mod tests {
             thrust_g: 1,
             fuel_capacity_millitons: 22_000,
             jump_fuel_millitons: 20_000,
+            power_fuel_millitons: 2_000,
+            power_plant_endurance_seconds: 14 * 24 * 60 * 60,
             cargo_capacity_millitons: 10_000,
             passenger_berths: 0,
             low_berths: 0,
@@ -40959,6 +42221,8 @@ mod tests {
             life_support_capacity_persons: 0,
             has_fuel_scoop: true,
             fuel_processing_millitons_per_day: 20_000,
+            mining_drone_sets: 0,
+            mineral_refinery_output_millitons_per_day: 0,
             subsystems: Vec::new(),
         };
         let fastest = calculate_course_plan(
@@ -41032,6 +42296,8 @@ mod tests {
             thrust_g: 1,
             fuel_capacity_millitons: 30_000,
             jump_fuel_millitons: 10_000,
+            power_fuel_millitons: 20_000,
+            power_plant_endurance_seconds: 14 * 24 * 60 * 60,
             cargo_capacity_millitons: 1,
             passenger_berths: 0,
             low_berths: 0,
@@ -41039,6 +42305,8 @@ mod tests {
             life_support_capacity_persons: 0,
             has_fuel_scoop: false,
             fuel_processing_millitons_per_day: 0,
+            mining_drone_sets: 0,
+            mineral_refinery_output_millitons_per_day: 0,
             subsystems: Vec::new(),
         };
 
@@ -41193,6 +42461,8 @@ mod tests {
             thrust_g: 2,
             fuel_capacity_millitons: 66_000,
             jump_fuel_millitons: 60_000,
+            power_fuel_millitons: 6_000,
+            power_plant_endurance_seconds: 14 * 24 * 60 * 60,
             cargo_capacity_millitons: 131_500,
             passenger_berths: 6,
             low_berths: 0,
@@ -41200,6 +42470,8 @@ mod tests {
             life_support_capacity_persons: 6,
             has_fuel_scoop: false,
             fuel_processing_millitons_per_day: 0,
+            mining_drone_sets: 0,
+            mineral_refinery_output_millitons_per_day: 0,
             subsystems: Vec::new(),
         };
         let plan = calculate_course_plan(
@@ -41561,6 +42833,8 @@ mod tests {
                     unrefined_fuel_millitons: 0,
                     fuel_capacity_bonus_millitons: 0,
                     cargo_capacity_penalty_millitons: 0,
+                    power_fuel_last_settled_second: u64::MAX,
+                    power_fuel_burn_remainder: 0,
                     location: ShipLocationRecord::Docked {
                         world_id: 1,
                         facility_id: 1,
@@ -43509,6 +44783,228 @@ mod tests {
                 .flight_plan_in(&reopened.env.read_txn().unwrap(), &identity())
                 .unwrap(),
             plan
+        );
+    }
+
+    #[test]
+    fn belt_cycle_persists_a_sourced_lode_and_returns_to_port() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let epoch = initialize_player_fixture(&store);
+        let player = store.player_record(&identity()).unwrap().unwrap();
+        let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        ship.catalog_id = 215;
+        ship.catalog_revision = 48;
+        ship.name = "Test Foundry".into();
+        ship.fuel_capacity_bonus_millitons = 100_000;
+        ship.current_fuel_millitons = 100_000;
+        ship.unrefined_fuel_millitons = 0;
+
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        let service = store
+            .crew_services
+            .iter(&txn)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|(_, bytes)| decode_crew_service(bytes).unwrap())
+            .find(|service| {
+                service.ship_id == ship.ship_id && !service.assigned_slot_ids.is_empty()
+            })
+            .unwrap();
+        let mut prospector = store
+            .persons
+            .get(&txn, &service.person_id)
+            .unwrap()
+            .map(decode_person_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        prospector.person.characteristics.intelligence = 15;
+        prospector.person.skills.push(crate::wire::SkillRating {
+            skill: crate::wire::SkillId::TradeProspector,
+            level: 6,
+        });
+        store
+            .persons
+            .put(
+                &mut txn,
+                &prospector.person_id,
+                &encode_person_record(&prospector).unwrap(),
+            )
+            .unwrap();
+        txn.commit().unwrap();
+
+        let known = store
+            .known_destinations_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let belt = known
+            .belts
+            .first()
+            .expect("fixture system must have a belt");
+        let proposal = FlightPlanProposal {
+            expected_plan_revision: 0,
+            steps: vec![
+                FlightPlanStep {
+                    locus: FlightLocus::Body {
+                        system_id: known.current_system_id,
+                        body_id: belt.body_id,
+                    },
+                    authority: WaypointAuthority::Through,
+                    action: FlightPlanAction::BeltCycle {
+                        body_id: belt.body_id,
+                    },
+                    terminal: false,
+                },
+                FlightPlanStep {
+                    locus: FlightLocus::Port {
+                        system_id: known.current_system_id,
+                        world_id: known.current_system_id,
+                        facility_id: known.current_system_id,
+                    },
+                    authority: WaypointAuthority::Through,
+                    action: FlightPlanAction::Dock {
+                        world_id: known.current_system_id,
+                        facility_id: known.current_system_id,
+                    },
+                    terminal: true,
+                },
+            ],
+            policy: EncounterPolicy::default(),
+        };
+        let preview = match store
+            .preview_flight_plan_in(&store.env.read_txn().unwrap(), &identity(), &proposal)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("belt-cycle preview rejected: {message}"),
+        };
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(
+                    epoch,
+                    232,
+                    Command::CommitFlightPlan(CommitFlightPlanRequest {
+                        proposal,
+                        preview_hash: preview.preview_hash,
+                        acknowledge_warnings: true,
+                    }),
+                ),
+            })
+            .unwrap();
+        match store.process_next().unwrap().unwrap().outcome.kind {
+            OutcomeKind::FlightPlan(_) => {}
+            other => panic!("expected committed belt plan, got {other:?}"),
+        }
+        let outbound = store.ship_record(ship.ship_id).unwrap().unwrap();
+        let (context, outbound_due) = match outbound.location {
+            ShipLocationRecord::InFlight(FlightLegRecord {
+                purpose: FlightLegPurpose::ReachBelt(context),
+                due_second,
+                ..
+            }) => (context, due_second),
+            other => panic!("expected outbound belt leg, got {other:?}"),
+        };
+
+        store.advance_simulation_to(outbound_due).unwrap();
+        let prospect_due = match store.ship_record(ship.ship_id).unwrap().unwrap().location {
+            ShipLocationRecord::InFlight(FlightLegRecord {
+                purpose: FlightLegPurpose::ProspectBelt(_),
+                due_second,
+                ..
+            }) => due_second,
+            other => panic!("expected prospecting watch, got {other:?}"),
+        };
+        store.advance_simulation_to(prospect_due).unwrap();
+        let survey_due = match store.ship_record(ship.ship_id).unwrap().unwrap().location {
+            ShipLocationRecord::InFlight(FlightLegRecord {
+                purpose: FlightLegPurpose::SurveyBelt(_),
+                due_second,
+                ..
+            }) => due_second,
+            other => panic!("expected survey watch, got {other:?}"),
+        };
+        let mut txn = store.env.write_txn().unwrap();
+        let mut lode = store
+            .resource_lodes
+            .get(&txn, &context.lode_id)
+            .unwrap()
+            .map(decode_resource_lode)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        lode.kind = crate::mining::ResourceKind::Metal;
+        lode.grade_percent = 100;
+        lode.remaining_raw_millitons = MILLITONS_PER_TON;
+        store
+            .resource_lodes
+            .put(&mut txn, &lode.lode_id, &encode_resource_lode(lode))
+            .unwrap();
+        txn.commit().unwrap();
+
+        store.advance_simulation_to(survey_due).unwrap();
+        let mining_due = match store.ship_record(ship.ship_id).unwrap().unwrap().location {
+            ShipLocationRecord::InFlight(FlightLegRecord {
+                purpose: FlightLegPurpose::MineBelt(_),
+                due_second,
+                ..
+            }) => due_second,
+            other => panic!("expected mining day, got {other:?}"),
+        };
+        store.advance_simulation_to(mining_due).unwrap();
+        let refining_due = match store.ship_record(ship.ship_id).unwrap().unwrap().location {
+            ShipLocationRecord::InFlight(FlightLegRecord {
+                purpose: FlightLegPurpose::RefineBelt(_),
+                due_second,
+                ..
+            }) => due_second,
+            other => panic!("expected refining phase, got {other:?}"),
+        };
+        let mined = store.ship_record(ship.ship_id).unwrap().unwrap();
+        assert!(mined.cargo.iter().any(|lot| {
+            lot.commodity_id == 40
+                && lot.quantity_millitons == MILLITONS_PER_TON
+                && lot.source_body_id == belt.body_id
+                && lot.source_lode_id == context.lode_id
+        }));
+        assert_eq!(
+            store
+                .resource_lodes
+                .get(&store.env.read_txn().unwrap(), &context.lode_id)
+                .unwrap()
+                .map(decode_resource_lode)
+                .transpose()
+                .unwrap()
+                .unwrap()
+                .remaining_raw_millitons,
+            0
+        );
+
+        store.advance_simulation_to(refining_due).unwrap();
+        let return_due = match store.ship_record(ship.ship_id).unwrap().unwrap().location {
+            ShipLocationRecord::InFlight(FlightLegRecord {
+                purpose: FlightLegPurpose::ReturnFromBelt(_),
+                due_second,
+                ..
+            }) => due_second,
+            other => panic!("expected belt return, got {other:?}"),
+        };
+        store.advance_simulation_to(return_due).unwrap();
+        let returned = store.ship_record(ship.ship_id).unwrap().unwrap();
+        assert!(matches!(
+            returned.location,
+            ShipLocationRecord::Docked { .. }
+        ));
+        assert_eq!(
+            store
+                .flight_plan_in(&store.env.read_txn().unwrap(), &identity())
+                .unwrap()
+                .state,
+            FlightPlanState::Completed
         );
     }
 
@@ -49557,6 +51053,8 @@ mod tests {
                 unique_object_id: 0,
                 condition_percent: 100,
                 destination_system_id: 0,
+                source_body_id: 0,
+                source_lode_id: 0,
             });
             ship.cargo.push(CargoLot {
                 cargo_lot_id: task_id + 1,
@@ -49571,6 +51069,8 @@ mod tests {
                 unique_object_id: 0,
                 condition_percent: 100,
                 destination_system_id: 0,
+                source_body_id: 0,
+                source_lode_id: 0,
             });
             let mut txn = store.env.write_txn().unwrap();
             store
@@ -49647,6 +51147,8 @@ mod tests {
             unique_object_id: 0,
             condition_percent: 100,
             destination_system_id: 0,
+            source_body_id: 0,
+            source_lode_id: 0,
         });
         let starting_credits = player.credits;
         let mut txn = store.env.write_txn().unwrap();
@@ -50283,6 +51785,8 @@ mod tests {
             unique_object_id: 0,
             condition_percent: 100,
             destination_system_id: 0,
+            source_body_id: 0,
+            source_lode_id: 0,
         });
         let starting_credits = player.credits;
         let mut txn = store.env.write_txn().unwrap();
@@ -50328,6 +51832,8 @@ mod tests {
             unique_object_id: 0,
             condition_percent: 100,
             destination_system_id: 0,
+            source_body_id: 0,
+            source_lode_id: 0,
         });
         store
             .settle_tasks_at_port_in(&mut txn, &identity(), &mut player, &mut ship, 0)
@@ -50685,6 +52191,8 @@ mod tests {
             unique_object_id: 0,
             condition_percent: 100,
             destination_system_id: 0,
+            source_body_id: 0,
+            source_lode_id: 0,
         };
         let mut cargo = vec![
             lot(1, 1, "Basic Consumable Goods", 1_000),
@@ -50726,6 +52234,8 @@ mod tests {
             unique_object_id: 0,
             condition_percent: 100,
             destination_system_id: 0,
+            source_body_id: 0,
+            source_lode_id: 0,
         });
         store
             .players

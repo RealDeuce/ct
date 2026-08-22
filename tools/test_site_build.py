@@ -3958,7 +3958,7 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertEqual(archimedes["length_m"], 8.4)
 
     def test_all_records_expose_evaluator_derived_performance_and_price(self) -> None:
-        self.assertEqual(len(self.records), 214)
+        self.assertEqual(len(self.records), 215)
         self.assertTrue(all(record["thrust_g"] > 0 for record in self.records.values()))
         self.assertTrue(
             all(
@@ -3974,7 +3974,7 @@ class CatalogRecordTests(unittest.TestCase):
         records = SITE_BUILD.catalog_records()
         self.assertEqual(
             [record["catalog_id"] for record in records],
-            list(range(1, 215)),
+            list(range(1, 216)),
         )
         page = SITE_BUILD.ship_catalog_page(records)
         self.assertLess(page.index(">Aegis</option>"), page.index(">Aeolus</option>"))
@@ -4038,12 +4038,12 @@ class CatalogRecordTests(unittest.TestCase):
 
         first_page = SITE_BUILD.ship_detail_page(by_id[1], records)
         self.assertIn(
-            f'rel="prev" href="{by_id[214]["page"]}" '
-            f'aria-label="Previous catalog entry 214: {by_id[214]["name"]}"',
+            f'rel="prev" href="{by_id[215]["page"]}" '
+            f'aria-label="Previous catalog entry 215: {by_id[215]["name"]}"',
             first_page,
         )
 
-        last_page = SITE_BUILD.ship_detail_page(by_id[214], records)
+        last_page = SITE_BUILD.ship_detail_page(by_id[215], records)
         self.assertIn(
             f'rel="next" href="{by_id[1]["page"]}" '
             f'aria-label="Next catalog entry 001: {by_id[1]["name"]}"',

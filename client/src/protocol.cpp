@@ -295,6 +295,18 @@ TravelStage decode_travel_stage(const rpc::TravelStage stage)
       return TravelStage::Holding;
    case rpc::TravelStage::ENCOUNTER:
       return TravelStage::Encounter;
+   case rpc::TravelStage::BELT_PROSPECTING:
+      return TravelStage::BeltProspecting;
+   case rpc::TravelStage::BELT_SURVEY:
+      return TravelStage::BeltSurvey;
+   case rpc::TravelStage::BELT_MINING:
+      return TravelStage::BeltMining;
+   case rpc::TravelStage::BELT_REFINING:
+      return TravelStage::BeltRefining;
+   case rpc::TravelStage::BELT_RECOVERY:
+      return TravelStage::BeltRecovery;
+   case rpc::TravelStage::BELT_EGRESS:
+      return TravelStage::BeltEgress;
    }
    throw std::runtime_error("unknown CT-RPC travel stage");
 }
@@ -420,6 +432,9 @@ void encode_proposal(rpc::FlightPlanProposal::Builder target, const FlightPlanPr
          fuel.setQuantityMillitons(step.action.quantity_millitons);
          break;
       }
+      case FlightPlanActionKind::BeltCycle:
+         action.setBeltCycle(step.action.body_id);
+         break;
       }
    }
    encode_policy(target.initPolicy(), source.policy);
@@ -461,6 +476,9 @@ FlightPlanStep decode_plan_step(rpc::FlightPlanStep::Reader source)
       result.action.kind = FlightPlanActionKind::Fuel;
       result.action.fuel_operation = static_cast<FuelOperation>(action.getFuel().getOperation());
       result.action.quantity_millitons = action.getFuel().getQuantityMillitons();
+   } else if(action.isBeltCycle()) {
+      result.action.kind = FlightPlanActionKind::BeltCycle;
+      result.action.body_id = action.getBeltCycle();
    }
    return result;
 }
@@ -1051,6 +1069,7 @@ KnownDestinations decode_known_destinations(const rpc::Response::Reader response
       .current_system_id = source.getCurrentSystemId(),
       .jump_rating = source.getJumpRating(),
       .systems = {},
+      .belts = {},
       .committed_sequence = response.getCommittedSequence(),
       .revision = response.getRevision(),
       .phase = decode_response_phase(response.getPhase()),
@@ -1074,6 +1093,18 @@ KnownDestinations decode_known_destinations(const rpc::Response::Reader response
          .knowledge_source = static_cast<SystemKnowledgeSource>(
             system.getKnowledgeSource()),
          .gas_giant_count = system.getGasGiantCount(),
+      });
+   }
+   for(const auto belt : source.getBelts()) {
+      result.belts.push_back(KnownDestinations::Belt{
+         .system_id = belt.getSystemId(),
+         .body_id = belt.getBodyId(),
+         .name = belt.getName().cStr(),
+         .icy = belt.getIcy(),
+         .carbonaceous_percent = belt.getCarbonaceousPercent(),
+         .silicate_or_rock_percent = belt.getSilicateOrRockPercent(),
+         .metal_or_water_ice_percent = belt.getMetalOrWaterIcePercent(),
+         .hydrocarbon_percent = belt.getHydrocarbonPercent(),
       });
    }
    return result;
@@ -1595,6 +1626,8 @@ MarketSnapshot decode_market(const rpc::Response::Reader response)
          .unique_object_id = lot.getUniqueObjectId(),
          .condition_percent = lot.getConditionPercent(),
          .destination_system_id = lot.getDestinationSystemId(),
+         .source_body_id = lot.getSourceBodyId(),
+         .source_lode_id = lot.getSourceLodeId(),
       });
    }
    for(const auto quote : source.getCargoSaleQuotes()) {
@@ -2897,6 +2930,8 @@ FleetSnapshot decode_fleet(const rpc::Response::Reader response)
             .unique_object_id = lot.getUniqueObjectId(),
             .condition_percent = lot.getConditionPercent(),
             .destination_system_id = lot.getDestinationSystemId(),
+            .source_body_id = lot.getSourceBodyId(),
+            .source_lode_id = lot.getSourceLodeId(),
          });
       }
       for(const auto lot : wire_ship.getAmmunition()) {

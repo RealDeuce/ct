@@ -1,7 +1,7 @@
 # Validated runtime projection of the authoritative ship designs.
 # Regenerate with tools/validate_ship_catalog.py --runtime-index catalog/ship-runtime.toml.
 schema_version = 2
-catalog_revision = 47
+catalog_revision = 48
 
 [[ship]]
 catalog_id = 26
@@ -2567,6 +2567,25 @@ passenger_accommodation_berths = 0
 provision_capacity_persons = 6
 low_berths = 0
 monthly_life_support_credits = 6000
+
+[[ship]]
+catalog_id = 215
+display_name = "Humboldt Foundry"
+tech_level = 11
+construction_price_credits = 81910000
+construction_weeks = 44
+displacement_millitons = 200000
+jump_rating = 2
+thrust_g = 2
+fuel_millitons = 44000
+jump_fuel_millitons = 40000
+cargo_millitons = 62000
+minimum_crew = 4
+crew_accommodation_capacity = 10
+passenger_accommodation_berths = 2
+provision_capacity_persons = 10
+low_berths = 0
+monthly_life_support_credits = 10400
 
 [[component]]
 catalog_id = 26
@@ -40662,5 +40681,203 @@ kind = "cargo"
 component_id = "cargo-hold"
 quantity = 1
 displacement_millitons = 5000
+price_credits = 0
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "hull"
+component_id = "ship-200"
+quantity = 1
+displacement_millitons = 0
+price_credits = 8000000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "armor"
+component_id = "crystaliron-whole-points"
+quantity = 2
+displacement_millitons = 5000
+price_credits = 800000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "jump-drive"
+component_id = "B"
+quantity = 1
+displacement_millitons = 15000
+price_credits = 20000000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "maneuver-drive"
+component_id = "B"
+quantity = 1
+displacement_millitons = 3000
+price_credits = 8000000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "power-plant"
+component_id = "B"
+quantity = 1
+displacement_millitons = 7000
+price_credits = 16000000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "fuel"
+component_id = "tankage"
+quantity = 1
+displacement_millitons = 44000
+price_credits = 0
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "bridge"
+component_id = "bridge"
+quantity = 1
+displacement_millitons = 10000
+price_credits = 1000000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "computer"
+component_id = "model-3"
+quantity = 1
+displacement_millitons = 0
+price_credits = 2000000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "software"
+component_id = "jump-control"
+quantity = 2
+displacement_millitons = 0
+price_credits = 200000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "software"
+component_id = "fire-control"
+quantity = 1
+displacement_millitons = 0
+price_credits = 2000000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "electronics"
+component_id = "basic-military"
+quantity = 1
+displacement_millitons = 2000
+price_credits = 1000000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "equipment"
+component_id = "stateroom"
+quantity = 5
+displacement_millitons = 20000
+price_credits = 2500000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "equipment"
+component_id = "fuel-scoop"
+quantity = 1
+displacement_millitons = 0
+price_credits = 1000000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "equipment"
+component_id = "fuel-processor"
+quantity = 1
+displacement_millitons = 1000
+price_credits = 50000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "equipment"
+component_id = "emergency-low-berth"
+quantity = 1
+displacement_millitons = 1000
+price_credits = 100000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "equipment"
+component_id = "mining-drones"
+quantity = 1
+displacement_millitons = 10000
+price_credits = 2000000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "equipment"
+component_id = "mineral-refinery-tl10"
+quantity = 15
+displacement_millitons = 15000
+price_credits = 15000000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "parameterized-equipment"
+component_id = "medical-bay"
+quantity = 1
+displacement_millitons = 2000
+price_credits = 500000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "fire-control"
+component_id = "unarmed-station"
+quantity = 1
+displacement_millitons = 1000
+price_credits = 0
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "weapon-mount"
+component_id = "double-turret"
+quantity = 1
+displacement_millitons = 1000
+price_credits = 1750000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "ammunition"
+component_id = "sandcaster-canister"
+quantity = 20
+displacement_millitons = 1000
+price_credits = 10000
+pack_units = 1
+
+[[component]]
+catalog_id = 215
+kind = "cargo"
+component_id = "cargo-hold"
+quantity = 1
+displacement_millitons = 62000
 price_credits = 0
 pack_units = 1

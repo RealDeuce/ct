@@ -24,7 +24,7 @@ class ValidateShipCatalogTests(unittest.TestCase):
         )
         self.assertEqual(
             messages[0],
-            "validated 214 rule-derived ship catalog entries (214 active) "
+            "validated 215 rule-derived ship catalog entries (215 active) "
             "in 114 families (39 shared lineages, 75 singleton designs) "
             "across 9 upgrade paths with canonical names",
         )

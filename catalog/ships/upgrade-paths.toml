@@ -52,7 +52,7 @@ specialty = "Austere frontier commerce, prospecting, mining, and self-supported 
 native_design_tags = [
   "ship-2", "ship-24", "ship-34", "ship-38", "ship-43", "ship-57", "ship-58",
   "ship-78", "ship-124", "ship-153", "ship-161",
-  "ship-170", "ship-175", "ship-193", "ship-214",
+  "ship-170", "ship-175", "ship-193", "ship-214", "ship-215",
 ]
 
 [[path]]

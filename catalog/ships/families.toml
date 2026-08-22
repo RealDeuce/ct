@@ -134,7 +134,7 @@ member_tags = ["ship-30", "ship-32"]
 family_id = 34
 tag = "family-34"
 grouping_basis = "shared-lineage"
-member_tags = ["ship-34", "ship-43"]
+member_tags = ["ship-34", "ship-43", "ship-215"]
 
 [[family]]
 family_id = 35

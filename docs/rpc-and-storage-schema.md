@@ -154,6 +154,15 @@ explicitly three legs: port to source body, work at the body, and return to
 port. Each boundary is independently scheduled, so contact checks can attach
 to the correct locus without inferring direction from a Boolean.
 
+A Belt Cycle uses the same durable travel-event queue. Its outbound,
+prospecting, survey, mining, refining, recovery, and egress purposes are typed
+leg states. Global `resource-lodes` records own composition, grade, extent,
+and depletion; `resource-observations` separately key private captain
+knowledge. No record grants an exclusive claim. Ship records retain exact
+power-fuel settlement time and fractional burn, while mined cargo lots retain
+source body and lode IDs. Ship codec version 2 reads version 1 with zero cargo
+provenance and a no-retroactive-burn timestamp sentinel.
+
 `FlightPlanSnapshot` is stored separately from the ship's current physical
 leg. It owns ordered typed waypoints, bounded actions, hold/through checkpoint
 authority, a separate last-step terminal marker, encounter policy, revision, current step, state, and suspension
@@ -172,9 +181,11 @@ engine inputs and use the same ingress sequence as every other mutation.
 
 `FlightPlanStep.terminal` and `FlightPlanWarning.stepIndices` are additive
 CT-RPC fields. The flight-plan proposal and snapshot record codecs use version
-2; version-1 Terminal authority decodes as Hold plus a terminal marker. Outcome
-codec version 15 preserves warning step references and adds the capable-yard
-commission catalog; older outcomes decode with no commission designs. A
+3; versions 1 and 2 remain readable, and version-1 Terminal authority decodes
+as Hold plus a terminal marker. Outcome codec version 16 preserves warning
+step references, catalogued belts, cargo provenance, and the capable-yard
+commission catalog; older outcomes decode absent additive fields as empty or
+zero. A
 pre-field proposal with no explicit terminal bit is normalized at the wire
 boundary by marking its last step. CT-RPC 8 adds durable ship commissions and
 construction activity. No universe-wide storage migration is required.

@@ -74,6 +74,7 @@ enum class SkillId : uint8_t {
    TacticsNaval,
    TradeCargomaster,
    VaccSuit,
+   TradeProspector,
 };
 
 struct SkillDefinition {
@@ -614,6 +615,17 @@ struct KnownDestinations {
    uint64_t current_system_id;
    uint8_t jump_rating;
    std::vector<KnownSystemSummary> systems;
+   struct Belt {
+      uint64_t system_id;
+      uint32_t body_id;
+      std::string name;
+      bool icy;
+      uint8_t carbonaceous_percent;
+      uint8_t silicate_or_rock_percent;
+      uint8_t metal_or_water_ice_percent;
+      uint8_t hydrocarbon_percent;
+   };
+   std::vector<Belt> belts;
    uint64_t committed_sequence;
    uint64_t revision;
    PlayerPhase phase;
@@ -690,6 +702,8 @@ struct CargoLot {
    uint64_t unique_object_id;
    uint8_t condition_percent;
    uint64_t destination_system_id;
+   uint32_t source_body_id;
+   uint64_t source_lode_id;
 };
 
 struct CargoSaleQuote {
@@ -1088,6 +1102,12 @@ enum class TravelStage {
    WildernessWater,
    Holding,
    Encounter,
+   BeltProspecting,
+   BeltSurvey,
+   BeltMining,
+   BeltRefining,
+   BeltRecovery,
+   BeltEgress,
 };
 
 enum class FlightLocusKind {
@@ -1143,6 +1163,7 @@ enum class FlightPlanActionKind {
    Dock,
    Fuel,
    JumpCoordinates,
+   BeltCycle,
 };
 
 enum class JumpNavigationMethod {
@@ -1179,6 +1200,7 @@ struct FlightPlanAction {
    uint64_t facility_id = 0;
    FuelOperation fuel_operation = FuelOperation::GasGiant;
    uint64_t quantity_millitons = 0;
+   uint32_t body_id = 0;
    JumpNavigationMethod jump_navigation = JumpNavigationMethod::Onboard;
    bool proceed_on_known_bad_plot = false;
    double coreward_parsecs = 0.0;

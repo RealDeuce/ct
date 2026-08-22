@@ -54,16 +54,16 @@ The active catalog contains:
 
 | Property | Count |
 | --- | ---: |
-| Fitted designs | 214 |
+| Fitted designs | 215 |
 | Design families | 114 |
-| Shared multi-design lineages | 39 families / 139 designs |
+| Shared multi-design lineages | 39 families / 140 designs |
 | Singleton families | 75 |
 | Families spanning more than one shipyard path | 21 |
 | Small craft, 10-95 tons | 62 |
 | Ships, 100 tons or more, without Jump | 17 |
-| Jump-capable starships | 135 |
-| Streamlined / standard / distributed / close-structure hulls | 127 / 75 / 10 / 2 |
-| Designs with turret mounts | 164 |
+| Jump-capable starships | 136 |
+| Streamlined / standard / distributed / close-structure hulls | 127 / 76 / 10 / 2 |
+| Designs with turret mounts | 165 |
 | Designs with barbettes | 23 |
 | Designs with weapon bays | 32 |
 | Designs with point defense | 57 |
@@ -77,7 +77,7 @@ The displacement range is 10 to 5,000 tons:
 | Displacement band | Designs | Visual reading |
 | --- | ---: | --- |
 | 10-95 tons | 62 | Human-scale launches, fighters, cutters, and boats |
-| 100-299 tons | 31 | Compact independent ships; doors, gear, and windows remain prominent |
+| 100-299 tons | 32 | Compact independent ships; doors, gear, and windows remain prominent |
 | 300-599 tons | 59 | The most common merchant, patrol, and raider scale |
 | 600-999 tons | 22 | Large working ships; hangars and major systems shape the hull |
 | 1,000-1,999 tons | 25 | Multi-deck commands and serious combatants |

@@ -42,6 +42,7 @@ pub mod crypto;
 pub mod engine;
 pub mod i18n;
 pub mod jump;
+pub mod mining;
 pub mod navigation;
 pub mod person_names;
 pub mod personnel;

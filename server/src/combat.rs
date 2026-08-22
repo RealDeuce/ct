@@ -1551,7 +1551,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(admitted, 213);
+        assert_eq!(admitted, 215);
     }
 
     #[test]

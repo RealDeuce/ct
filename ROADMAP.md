@@ -47,6 +47,11 @@ outcomes. The reopened cross-cutting boundary is now closed: people have
 physical condition, service, pay, morale, treatment, and shore location;
 Tasks retain ship-bound cargo/passenger custody; messages carry typed action
 references; and persistent facilities control every advertised dock service.
+Supporting Milestone 7 work now also gives catalogued asteroid belts an
+executable shared-resource loop: persistent non-exclusive lodes, private
+observations, autonomous Belt Cycle phases, exact off-berth endurance, and a
+commissionable field-refinery variant. The current priority remains deployed
+BBS validation rather than further mining expansion.
 
 ### Immediate Work Queue
 

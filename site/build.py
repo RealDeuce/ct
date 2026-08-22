@@ -1381,6 +1381,12 @@ PUBLISHED_SHIP_ART = {
         "one beam turret, and a separate cylindrical engineering stern.",
         43.0,
     ),
+    215: (
+        "assets/ships/family-034-humboldt.webp",
+        "Painted three-quarter view of Humboldt Foundry, an avocado and ochre "
+        "two-hundred-ton prospecting and refinery ship with a mixed turret.",
+        43.0,
+    ),
 }
 
 CATEGORY_NAMES = {
@@ -2238,7 +2244,7 @@ def ship_catalog_page(records: list[dict[str, object]] | None = None) -> str:
     <header><p class="section-index">Registry finder</p><h2 id="catalog-index-title">Issued dossiers</h2><p>This register stays compact for rapid filtering. Open a vessel to see its complete recognition plate, operational profile, construction record, crew, equipment, and provenance.</p></header>
     <nav class="catalog-index" id="catalog-index" aria-label="Issued ship plates">{''.join(index_links)}</nav>
     <div id="no-ship-results" class="no-results" hidden><strong>No issued plate matches.</strong><p>Clear a filter or try a broader registry term.</p></div>
-    <p class="catalog-source"><span>Registry note</span> Only vessels with an approved family plate appear here. The active construction catalog currently contains 214 designs.</p>
+    <p class="catalog-source"><span>Registry note</span> Only vessels with an approved family plate appear here. The active construction catalog currently contains 215 designs.</p>
   </section>
 </div>
 """

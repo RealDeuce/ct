@@ -1,0 +1,99 @@
+# Field-refinery conversion of the Humboldt prospecting ship.
+schema_version = 1
+design_id = "ct-humboldt-foundry"
+revision = 1
+ruleset_id = "cepheus-trader.shipbuilding"
+source_ids = ["cepheus-engine-srd-2016", "ship-source-a-f", "ship-source-socs-4-6", "ship-source-tech-update-2350", "cepheus-trader-2026"]
+tech_level = 11
+standard_design = false
+electronics = "basic-military"
+unused_fire_control_stations = 1
+cargo_millitons = 62000
+
+[catalog]
+catalog_id = 215
+tag = "ship-215"
+family_id = 34
+upgrade_path_id = 3
+progression_stage = "starter"
+status = "active"
+vessel_kind = "starship"
+display_name = "Humboldt Foundry"
+primary_role = "prospecting-refinery"
+secondary_roles = ["survey", "field-processing"]
+mission_tags = ["jump-2", "mining-drones", "mineral-refinery", "fuel-processing"]
+open_game_content_designations = ["The complete original catalog entry and adapted construction data are Open Game Content."]
+description_paragraphs = [
+  "The Humboldt Foundry trades its parent design's oversized boat bay for a fifteen-ton TL-10 mineral refinery, another stateroom, and a sixty-two-ton hold. Its mining drones can feed the plant while a dedicated prospector directs survey and extraction watches.",
+  "Jump-2 range, two-gravity acceleration, fuel scoops and processing, a medical bay, light armor, and the original defensive turret let the six-person ship work beyond dependable infrastructure and bring saleable product home instead of low-value feedstock.",
+]
+
+[hull]
+id = "ship-200"
+configuration = "standard"
+[armor]
+id = "crystaliron-whole-points"
+points = 2
+[drives]
+jump = "B"
+maneuver = "B"
+power = "B"
+[fuel]
+jump_distance = 2
+jump_count = 1
+power_plant_weeks = 2
+[computer]
+id = "model-3"
+options = []
+[[software]]
+id = "jump-control"
+level = 2
+[[software]]
+id = "fire-control"
+level = 1
+[[equipment]]
+id = "stateroom"
+quantity = 5
+[[equipment]]
+id = "fuel-scoop"
+quantity = 1
+[[equipment]]
+id = "fuel-processor"
+quantity = 1
+[[equipment]]
+id = "emergency-low-berth"
+quantity = 1
+[[equipment]]
+id = "mining-drones"
+quantity = 1
+[[equipment]]
+id = "mineral-refinery-tl10"
+quantity = 15
+[[parameterized_equipment]]
+id = "medical-bay"
+beds = 1
+[[mounts]]
+id = "double-turret"
+weapons = ["beam-laser", "sandcaster"]
+quantity = 1
+[[ammunition]]
+id = "sandcaster-canister"
+quantity = 20
+[[crew]]
+role = "pilot"
+quantity = 1
+[[crew]]
+role = "navigator"
+quantity = 1
+[[crew]]
+role = "engineer"
+quantity = 1
+[[crew]]
+role = "turret-gunner"
+quantity = 1
+[[crew]]
+role = "medic"
+quantity = 1
+[[crew]]
+role = "prospector"
+quantity = 1

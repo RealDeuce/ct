@@ -871,6 +871,9 @@ full_formula = "one-per-35-drive-tons"
 id = "sensors-operator"
 minimum_formula = "none"
 [[crew_role]]
+id = "prospector"
+minimum_formula = "none"
+[[crew_role]]
 id = "medic"
 minimum_formula = "none"
 full_formula = "one-per-120-persons"

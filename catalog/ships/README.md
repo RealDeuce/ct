@@ -44,7 +44,7 @@ gaps. Exact adjacent-path backfill choices are a later explicit relationship,
 not something inferred from tonnage.
 
 `names.toml` assigns the canonical Open Game Content names for all nine paths
-and manufacturers, 114 families, and 214 fitted designs. It also gives each
+and manufacturers, 114 families, and 215 fitted designs. It also gives each
 path a six-stage naming sequence. Every ship repeats its canonical display
 name, and validation requires exact agreement. The convention and principal
 family examples are documented in `../../docs/ship-catalog-naming.md`.
