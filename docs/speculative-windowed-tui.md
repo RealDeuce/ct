@@ -50,6 +50,10 @@ tiers:
 Each tier supplements the one below it. Higher-tier presentation does not
 introduce otherwise unavailable game information, decisions, or actions.
 
+Paired [ship-market mockups](mockups/README.md) illustrate the same workspace
+at the basic windowed-TUI and rich-terminal tiers. They are exploratory visual
+notes, not implementation specifications.
+
 ### Pointer interaction
 
 Mouse input can provide direct activation of the window switcher, windows,

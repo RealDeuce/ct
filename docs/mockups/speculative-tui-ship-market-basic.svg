@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800" role="img" aria-labelledby="title description">
+  <title id="title">Basic character-cell mockup of the speculative Cepheus Trader TUI</title>
+  <desc id="description">A docked workspace with overlapping Port Services and Shipyard Market windows. The active market window shows a textual Hermes ship listing and keyboard commands.</desc>
+  <defs>
+    <style>
+      .cell { shape-rendering: crispEdges; }
+      .text { font-family: "DejaVu Sans Mono", "Liberation Mono", monospace; font-size: 18px; fill: #c8d5df; }
+      .small { font-size: 15px; } .tiny { font-size: 13px; }
+      .label { fill: #67d9e8; } .muted { fill: #71828f; } .bright { fill: #f5fbff; } .inverse { fill: #071019; }
+      .accent { fill: #ffcf4a; } .green { fill: #7ee787; } .dim { fill: #40515e; }
+      .rule { stroke: #3f7080; stroke-width: 2; fill: none; shape-rendering: crispEdges; }
+      .active-rule { stroke: #67d9e8; stroke-width: 2; fill: none; shape-rendering: crispEdges; }
+    </style>
+  </defs>
+  <rect width="1280" height="800" fill="#02070d"/>
+  <rect x="18" y="16" width="1244" height="58" fill="#07141e" stroke="#3f7080" stroke-width="2" class="cell"/>
+  <text x="36" y="52" class="text accent">CT://DOCKED</text>
+  <rect x="205" y="26" width="128" height="38" fill="#0b2330" stroke="#3f7080" class="cell"/>
+  <text x="225" y="51" class="text small">1 DOCKED</text>
+  <rect x="342" y="26" width="226" height="38" fill="#1b4f61" stroke="#67d9e8" stroke-width="2" class="cell"/>
+  <text x="360" y="51" class="text small bright">2 SHIPYARD MARKET</text>
+  <rect x="577" y="26" width="165" height="38" fill="#0b2330" stroke="#3f7080" class="cell"/>
+  <text x="596" y="51" class="text small">3 SHIP STATUS</text>
+  <rect x="751" y="26" width="156" height="38" fill="#0b2330" stroke="#3f7080" class="cell"/>
+  <text x="770" y="51" class="text small">4 MESSAGES</text>
+  <text x="893" y="51" class="text small accent">(2)</text>
+  <text x="1115" y="51" class="text tiny muted">ALT+TAB: NEXT</text>
+  <rect x="30" y="126" width="676" height="594" fill="#050d14" stroke="#294753" stroke-width="2" class="cell"/>
+  <rect x="30" y="126" width="676" height="42" fill="#0a1821" class="cell"/>
+  <text x="48" y="153" class="text dim">PORT SERVICES — CASSILDA HIGHPORT</text>
+  <text x="48" y="201" class="text dim">F  Refuel</text><text x="48" y="232" class="text dim">R  Repairs</text>
+  <text x="48" y="263" class="text dim">Y  Shipyard market</text><text x="48" y="294" class="text dim">C  Crew exchange</text>
+  <text x="48" y="325" class="text dim">B  Bank</text>
+  <text x="48" y="688" class="text tiny dim">MODELESS — SELECT IN WINDOW SWITCHER</text>
+  <rect x="176" y="94" width="1074" height="650" fill="#071019" stroke="#67d9e8" stroke-width="3" class="cell"/>
+  <rect x="176" y="94" width="1074" height="44" fill="#123643" class="cell"/>
+  <text x="194" y="123" class="text bright">SHIPYARD MARKET</text>
+  <text x="566" y="123" class="text small muted">CASSILDA HIGHPORT / LOCAL LISTINGS</text>
+  <text x="1205" y="123" class="text bright">[X]</text>
+  <line x1="510" y1="138" x2="510" y2="665" class="active-rule"/><line x1="176" y1="665" x2="1250" y2="665" class="active-rule"/>
+  <text x="198" y="174" class="text small label">AVAILABLE CRAFT</text>
+  <text x="198" y="205" class="text tiny muted">DESIGN / CLASS       ROLE</text>
+  <rect x="190" y="219" width="306" height="70" fill="#d4e8ee" class="cell"/>
+  <text x="207" y="247" class="text small inverse">&gt; 001 HERMES</text>
+  <text x="225" y="272" class="text tiny inverse">DISPATCH COURIER</text>
+  <text x="207" y="319" class="text small muted">  018 WAYFARER</text><text x="225" y="344" class="text tiny dim">UTILITY CRAFT</text>
+  <text x="207" y="384" class="text small muted">  024 PROTEUS</text><text x="225" y="409" class="text tiny dim">MINING MODULE BOAT</text>
+  <text x="198" y="628" class="text tiny muted">UP/DOWN SELECT   PGUP/PGDN SCROLL</text>
+  <text x="536" y="177" class="text accent">HERMES</text><text x="536" y="205" class="text small label">10-TON DISPATCH COURIER</text>
+  <text x="1088" y="177" class="text small green">AVAILABLE</text><line x1="536" y1="220" x2="1224" y2="220" class="rule"/>
+  <text x="536" y="255" class="text small label">CATALOG</text><text x="674" y="255" class="text small bright">001 / TL 11</text>
+  <text x="536" y="286" class="text small label">CREW</text><text x="674" y="286" class="text small bright">2 PILOTS</text>
+  <text x="536" y="317" class="text small label">CARGO</text><text x="674" y="317" class="text small bright">4.9 TONS</text>
+  <text x="536" y="348" class="text small label">ENDURANCE</text><text x="674" y="348" class="text small bright">1 WEEK</text>
+  <text x="536" y="379" class="text small label">JUMP</text><text x="674" y="379" class="text small bright">NONE</text>
+  <text x="536" y="410" class="text small label">ARMAMENT</text><text x="674" y="410" class="text small bright">NONE</text>
+  <rect x="874" y="246" width="350" height="173" fill="#03090e" stroke="#294753" class="cell"/>
+  <text x="892" y="275" class="text tiny muted">TEXT RECORD</text>
+  <text x="925" y="308" class="text small label">+------------------+</text><text x="925" y="333" class="text small label">|  HERMES / 001    |</text>
+  <text x="925" y="358" class="text small label">|  LOCAL CRAFT     |</text><text x="925" y="383" class="text small label">+------------------+</text>
+  <text x="892" y="406" class="text tiny muted">NO PIXEL GRAPHICS REQUIRED</text>
+  <text x="536" y="457" class="text small">Two-person cockpit; compact priority cargo hold.</text>
+  <text x="536" y="485" class="text small">Unarmed and non-jump-capable. Requires a parent</text>
+  <text x="536" y="513" class="text small">ship or local base for interstellar transport.</text>
+  <text x="536" y="558" class="text small label">ILLUSTRATIVE OFFER</text><text x="536" y="590" class="text bright">CR 428,000</text>
+  <text x="735" y="590" class="text small muted">INSPECTION: CURRENT</text><text x="735" y="618" class="text small muted">SELLER: ORBITAL COURIER SURPLUS</text>
+  <text x="198" y="700" class="text small bright">[B] BUY</text><text x="340" y="700" class="text small">[C] COMPARE</text>
+  <text x="528" y="700" class="text small">[D] DETAILS</text><text x="705" y="700" class="text small">[I] INSPECT</text>
+  <text x="1082" y="700" class="text small">[ESC] CLOSE</text>
+  <rect x="18" y="760" width="1244" height="26" fill="#0a1821" class="cell"/>
+  <text x="30" y="779" class="text tiny muted">BASIC TIER • KEYBOARD • CHARACTER-CELL LAYOUT • SAME GAME STATE AND ACTIONS AS ENHANCED VIEW</text>
+</svg>
