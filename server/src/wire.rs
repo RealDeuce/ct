@@ -448,6 +448,7 @@ pub struct CrewManagementMember {
     pub condition: PersonCondition,
     pub injury_points: u16,
     pub fatigue_points: u16,
+    pub unfed_days: u16,
     pub available: bool,
     pub current_strength: u8,
     pub current_dexterity: u8,
@@ -4726,6 +4727,7 @@ fn set_crew_management(
         });
         item.set_injury_points(member.injury_points);
         item.set_fatigue_points(member.fatigue_points);
+        item.set_unfed_days(member.unfed_days);
         item.set_available(member.available);
         item.set_current_strength(member.current_strength);
         item.set_current_dexterity(member.current_dexterity);

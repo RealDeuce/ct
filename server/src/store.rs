@@ -610,6 +610,9 @@ pub struct PersonRecord {
     /// applies surgical damage when the queued procedure completes.
     pub pending_treatment_effect: i16,
     pub pending_treatment_due_second: u64,
+    /// Consecutive daily food settlements for which this person was not fed.
+    /// CE starvation checks begin after the third such day.
+    pub unfed_days: u16,
 }
 
 fn person_maximum(person: &PersonRecord) -> crate::personnel::PhysicalCondition {
@@ -655,6 +658,41 @@ fn person_incapacitated(person: &PersonRecord) -> bool {
 
 fn person_condition_dm(person: &PersonRecord) -> i8 {
     if person.fatigue_points == 0 { 0 } else { -2 }
+}
+
+fn settle_person_food(person: &mut PersonRecord, fed: bool, due_second: u64) -> u8 {
+    if person_dead(person) {
+        return 0;
+    }
+    if fed {
+        person.unfed_days = 0;
+        return 0;
+    }
+    person.unfed_days = person.unfed_days.saturating_add(1);
+    if person.unfed_days <= 3 {
+        return 0;
+    }
+    let entropy = crate::ship_condition::mix64(
+        person.person_id ^ due_second.rotate_left(23) ^ 0x5354_4152_5645_0001,
+    );
+    let check = crate::personnel::starvation_check(
+        person.current_endurance,
+        person.unfed_days.saturating_sub(4),
+        entropy,
+    );
+    if check.success {
+        return 0;
+    }
+    let mut physical = person_physical(person);
+    crate::personnel::apply_damage(
+        &mut physical,
+        person_maximum(person),
+        u16::from(check.damage),
+    );
+    set_person_physical(person, physical);
+    person.last_injury_second = due_second;
+    person.first_aid_applied = false;
+    check.damage
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -5556,6 +5594,7 @@ impl Store {
         let mut warnings = Vec::new();
         let mut unattended_waypoints = Vec::new();
         let mut docked_arrivals = HashMap::new();
+        let mut step_elapsed_seconds = Vec::with_capacity(proposal.steps.len());
         for (index, step) in proposal.steps.iter().enumerate() {
             if step.locus.system_id() != system_id {
                 return Ok(RuleResult::Rejected(format!(
@@ -6105,6 +6144,7 @@ impl Store {
                 }
                 FlightPlanAction::Hold => {}
             }
+            step_elapsed_seconds.push(elapsed_seconds);
             if step.authority == WaypointAuthority::Through {
                 unattended_waypoints.push(index as u16);
             }
@@ -6357,7 +6397,16 @@ impl Store {
             .max(1);
         let required_person_days = persons_aboard.saturating_mul(voyage_days);
         if ship.provisions.person_days_remaining < required_person_days {
-            warnings.push(FlightPlanWarning { code: "INSUFFICIENT_PROVISIONS".into(), message: format!("The filed voyage requires {required_person_days} person-days of life-support stores; {} remain aboard.", ship.provisions.person_days_remaining), step_indices: Vec::new() });
+            let step_indices = step_elapsed_seconds
+                .iter()
+                .enumerate()
+                .filter_map(|(index, elapsed)| {
+                    let days = elapsed.div_ceil(crate::simulation::SECONDS_PER_DAY).max(1);
+                    let needed = persons_aboard.saturating_mul(days);
+                    (needed > ship.provisions.person_days_remaining).then_some(index as u16)
+                })
+                .collect();
+            warnings.push(FlightPlanWarning { code: "INSUFFICIENT_PROVISIONS".into(), message: format!("The filed voyage requires {required_person_days} person-days of life-support stores; {} remain aboard. Numbered markers identify every step reached after stores run short.", ship.provisions.person_days_remaining), step_indices });
         }
         let mut consolidated_warnings: Vec<FlightPlanWarning> = Vec::new();
         for warning in warnings {
@@ -12194,6 +12243,7 @@ impl Store {
                     last_treatment_second: current,
                     pending_treatment_effect: 0,
                     pending_treatment_due_second: 0,
+                    unfed_days: 0,
                 })?,
             )?;
             player.captain_person_id = person_id;
@@ -19639,6 +19689,7 @@ impl Store {
                 last_treatment_second: current_second,
                 pending_treatment_effect: 0,
                 pending_treatment_due_second: 0,
+                unfed_days: 0,
             };
             self.persons
                 .put(txn, &person_id, &encode_person_record(&person)?)?;
@@ -20059,6 +20110,7 @@ impl Store {
             last_treatment_second: 0,
             pending_treatment_effect: 0,
             pending_treatment_due_second: 0,
+            unfed_days: 0,
         };
         let slot_id = self
             .crew_services
@@ -23883,6 +23935,7 @@ impl Store {
                 condition,
                 injury_points,
                 fatigue_points: person.fatigue_points,
+                unfed_days: person.unfed_days,
                 available: !person_incapacitated(&person)
                     && service_available_for_duty(
                         &service,
@@ -24006,6 +24059,7 @@ impl Store {
             last_treatment_second: 0,
             pending_treatment_effect: 0,
             pending_treatment_due_second: 0,
+            unfed_days: 0,
         };
         self.persons
             .put(txn, &captain.person_id, &encode_person_record(&captain)?)?;
@@ -24065,6 +24119,7 @@ impl Store {
                 last_treatment_second: 0,
                 pending_treatment_effect: 0,
                 pending_treatment_due_second: 0,
+                unfed_days: 0,
             };
             self.persons
                 .put(txn, &person_id, &encode_person_record(&person)?)?;
@@ -28149,6 +28204,7 @@ impl Store {
                 ship_ids.contains(&service.ship_id) || service.shore_system_id == system_id
             })
             .collect::<Vec<_>>();
+        let mut daily_feeding = std::collections::BTreeMap::new();
         for ship_id in &ship_ids {
             let Some(mut ship) = self
                 .ships
@@ -28165,30 +28221,77 @@ impl Store {
                 self.ships.put(txn, ship_id, &encode_ship_record(&ship)?)?;
                 continue;
             }
-            let mut persons = std::collections::BTreeSet::new();
-            let mut required = 0_u64;
-            for service in services.iter().filter(|service| {
-                service.ship_id == *ship_id
-                    && service_active(service)
-                    && service.availability == CrewAvailability::Active
-            }) {
-                if !persons.insert(service.person_id) {
-                    continue;
+            let mut active_services = services
+                .iter()
+                .filter(|service| {
+                    service.ship_id == *ship_id
+                        && service_active(service)
+                        && service.availability == CrewAvailability::Active
+                })
+                .collect::<Vec<_>>();
+            active_services.sort_by_key(|service| (service.slot_id != 0, service.person_id));
+            let docked = matches!(ship.location, ShipLocationRecord::Docked { .. });
+            if docked {
+                for service in active_services {
+                    let person = self
+                        .persons
+                        .get(txn, &service.person_id)?
+                        .map(decode_person_record)
+                        .transpose()?
+                        .ok_or(StoreError::Corrupt("provisioned crewmember is missing"))?;
+                    if person_dead(&person) || service.slot_id != 0 {
+                        daily_feeding.insert(service.person_id, true);
+                        continue;
+                    }
+                    let fed = if ship.provisions.person_days_remaining != 0 {
+                        ship.provisions.person_days_remaining -= 1;
+                        true
+                    } else {
+                        let package_person_days =
+                            u64::from(spec.life_support_capacity_persons).saturating_mul(30);
+                        let meal_cost = spec
+                            .monthly_life_support_credits
+                            .saturating_mul(2)
+                            .div_ceil(package_person_days.max(1));
+                        let identity_key = encode_identity(&ship.command);
+                        let mut player = self
+                            .players
+                            .get(txn, &identity_key)?
+                            .map(decode_player_record)
+                            .transpose()?
+                            .ok_or(StoreError::Corrupt("captain meal account is missing"))?;
+                        if player.credits >= meal_cost {
+                            player.credits -= meal_cost;
+                            self.players
+                                .put(txn, &identity_key, &encode_player_record(&player))?;
+                            true
+                        } else {
+                            false
+                        }
+                    };
+                    daily_feeding.insert(service.person_id, fed);
                 }
-                let person = self
-                    .persons
-                    .get(txn, &service.person_id)?
-                    .map(decode_person_record)
-                    .transpose()?
-                    .ok_or(StoreError::Corrupt("provisioned crewmember is missing"))?;
-                required = required
-                    .saturating_add(u64::from(crew_service_living_positions(service, &person)));
+            } else {
+                for service in active_services {
+                    let person = self
+                        .persons
+                        .get(txn, &service.person_id)?
+                        .map(decode_person_record)
+                        .transpose()?
+                        .ok_or(StoreError::Corrupt("provisioned crewmember is missing"))?;
+                    let required = u64::from(crew_service_living_positions(service, &person));
+                    let fed = required == 0 || ship.provisions.person_days_remaining >= required;
+                    ship.provisions.person_days_remaining = ship
+                        .provisions
+                        .person_days_remaining
+                        .saturating_sub(required);
+                    daily_feeding.insert(service.person_id, fed);
+                }
+                ship.provisions.person_days_remaining = ship
+                    .provisions
+                    .person_days_remaining
+                    .saturating_sub(awake_passenger_count(&ship.passengers));
             }
-            required = required.saturating_add(awake_passenger_count(&ship.passengers));
-            ship.provisions.person_days_remaining = ship
-                .provisions
-                .person_days_remaining
-                .saturating_sub(required);
             ship.provisions.last_consumed_second = due_second;
             ship.revision = ship.revision.saturating_add(1);
             self.ships.put(txn, ship_id, &encode_ship_record(&ship)?)?;
@@ -28239,7 +28342,33 @@ impl Store {
             else {
                 return Err(StoreError::Corrupt("recovering crewmember is missing"));
             };
+            let fed = daily_feeding.get(&service.person_id).copied().or_else(|| {
+                matches!(
+                    service.availability,
+                    CrewAvailability::ShoreLeave
+                        | CrewAvailability::MedicalCare
+                        | CrewAvailability::AwaitingRecall
+                )
+                .then_some(true)
+            });
+            if let Some(fed) = fed {
+                let starvation_damage = settle_person_food(&mut person, fed, due_second);
+                if starvation_damage != 0
+                    && person_incapacitated(&person)
+                    && !service.assigned_slot_ids.is_empty()
+                {
+                    service.assigned_slot_ids.clear();
+                    service.revision = service.revision.saturating_add(1);
+                    self.crew_services.put(
+                        txn,
+                        &service.person_id,
+                        &encode_crew_service(&service)?,
+                    )?;
+                }
+            }
             if person_dead(&person) {
+                self.persons
+                    .put(txn, &person.person_id, &encode_person_record(&person)?)?;
                 continue;
             }
             let at_port = service.shore_system_id == system_id
@@ -28309,7 +28438,7 @@ impl Store {
                 // day therefore clears the coarse fatigue counter.
                 person.fatigue_points = 0;
             }
-            if person_injury_points(&person) != 0 {
+            if person.unfed_days == 0 && person_injury_points(&person) != 0 {
                 let mut physical = person_physical(&person);
                 let maximum = person_maximum(&person);
                 let recovery = if receiving_medical_care {
@@ -36452,7 +36581,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(16);
+    bytes.push(17);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -36718,6 +36847,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 14
         && version != 15
         && version != 16
+        && version != 17
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -37979,7 +38109,7 @@ fn decode_player_record(bytes: &[u8]) -> Result<PlayerRecord, StoreError> {
 
 fn encode_person_record(record: &PersonRecord) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(1);
+    bytes.push(2);
     bytes.extend_from_slice(&record.person_id.to_be_bytes());
     bytes.extend_from_slice(&record.origin_bbs_id.to_be_bytes());
     bytes.extend_from_slice(&record.origin_system_id.to_be_bytes());
@@ -37993,12 +38123,14 @@ fn encode_person_record(record: &PersonRecord) -> Result<Vec<u8>, StoreError> {
     bytes.extend_from_slice(&record.last_treatment_second.to_be_bytes());
     bytes.extend_from_slice(&record.pending_treatment_effect.to_be_bytes());
     bytes.extend_from_slice(&record.pending_treatment_due_second.to_be_bytes());
+    bytes.extend_from_slice(&record.unfed_days.to_be_bytes());
     Ok(bytes)
 }
 
 fn decode_person_record(bytes: &[u8]) -> Result<PersonRecord, StoreError> {
     let mut decoder = Decoder::new(bytes);
-    if decoder.u8()? != 1 {
+    let version = decoder.u8()?;
+    if !matches!(version, 1 | 2) {
         return Err(StoreError::Corrupt("unsupported person record version"));
     }
     let person_id = decoder.u64()?;
@@ -38019,6 +38151,7 @@ fn decode_person_record(bytes: &[u8]) -> Result<PersonRecord, StoreError> {
         last_treatment_second: decoder.u64()?,
         pending_treatment_effect: decoder.i16()?,
         pending_treatment_due_second: decoder.u64()?,
+        unfed_days: if version >= 2 { decoder.u16()? } else { 0 },
     };
     decoder.finish()?;
     Ok(record)
@@ -39992,6 +40125,9 @@ fn encode_crew_management_into(
         bytes.extend_from_slice(&role.represented_positions.to_be_bytes());
     }
     bytes.extend_from_slice(&snapshot.established_complement.to_be_bytes());
+    for member in &snapshot.members {
+        bytes.extend_from_slice(&member.unfed_days.to_be_bytes());
+    }
     Ok(())
 }
 
@@ -40064,6 +40200,7 @@ fn decode_crew_management(
             condition,
             injury_points,
             fatigue_points,
+            unfed_days: 0,
             available,
             current_strength,
             current_dexterity,
@@ -40098,6 +40235,11 @@ fn decode_crew_management(
             .map(|member| member.represented_positions)
             .fold(0_u16, u16::saturating_add)
     };
+    if outcome_version >= 17 {
+        for member in &mut members {
+            member.unfed_days = decoder.u16()?;
+        }
+    }
     Ok(crate::wire::CrewManagementSnapshot {
         ship_id,
         ship_name,
@@ -42691,7 +42833,7 @@ mod tests {
 
         let mut version_four = encoded;
         version_four[0] = 4;
-        version_four.truncate(version_four.len() - 2);
+        version_four.truncate(version_four.len() - 2 - snapshot.members.len() * 2);
         let decoded = decode_outcome(&version_four).unwrap();
         let OutcomeKind::CrewManagement(legacy) = decoded.kind else {
             panic!("expected crew management");
@@ -45249,6 +45391,28 @@ mod tests {
                 .iter()
                 .any(|warning| warning.code == "INSUFFICIENT_PROVISIONS")
         );
+        constrained_ship.provisions.person_days_remaining = 0;
+        store
+            .ships
+            .put(
+                &mut txn,
+                &constrained_ship.ship_id,
+                &encode_ship_record(&constrained_ship).unwrap(),
+            )
+            .unwrap();
+        let empty_stores_preview = match store
+            .preview_flight_plan_in(&txn, &identity(), &proposal)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("preview rejected unexpectedly: {message}"),
+        };
+        let provision_warning = empty_stores_preview
+            .warnings
+            .iter()
+            .find(|warning| warning.code == "INSUFFICIENT_PROVISIONS")
+            .expect("empty stores should produce a provision warning");
+        assert_eq!(provision_warning.step_indices, vec![0, 1]);
         constrained_ship.provisions = original_provisions;
         store
             .ships
@@ -50447,7 +50611,7 @@ mod tests {
     }
 
     #[test]
-    fn daily_system_work_consumes_physical_life_support_stores() {
+    fn underway_daily_work_consumes_crew_and_awake_passenger_provisions() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
         initialize_player_fixture(&store);
@@ -50471,6 +50635,12 @@ mod tests {
                 embarked_second: 0,
             },
         ]);
+        before.location = ShipLocationRecord::Holding {
+            locus: ShipLocusRecord::JumpLocus {
+                system_id: before.system_id,
+            },
+            arrived_second: 0,
+        };
         let required = store
             .crew_services(player.ship_id)
             .unwrap()
@@ -50500,6 +50670,194 @@ mod tests {
                 .saturating_sub(required + 2)
         );
         assert_eq!(after.provisions.last_consumed_second, due);
+    }
+
+    #[test]
+    fn every_named_crewmember_goes_unfed_when_an_underway_ship_is_empty() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let player = store.player_record(&identity()).unwrap().unwrap();
+        let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        ship.provisions.person_days_remaining = 0;
+        ship.location = ShipLocationRecord::Holding {
+            locus: ShipLocusRecord::JumpLocus {
+                system_id: ship.system_id,
+            },
+            arrived_second: 0,
+        };
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        store
+            .process_person_recovery_day_in(
+                &mut txn,
+                ship.system_id,
+                crate::simulation::SECONDS_PER_DAY,
+            )
+            .unwrap();
+        txn.commit().unwrap();
+
+        for service in store.crew_services(player.ship_id).unwrap() {
+            let person = store.person_record(service.person_id).unwrap().unwrap();
+            assert_eq!(person.unfed_days, 1);
+        }
+    }
+
+    #[test]
+    fn docked_crew_eat_ashore_while_the_captain_uses_one_ship_provision() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let player = store.player_record(&identity()).unwrap().unwrap();
+        let before = store.ship_record(player.ship_id).unwrap().unwrap();
+        let due = crate::simulation::SECONDS_PER_DAY;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .process_person_recovery_day_in(&mut txn, before.system_id, due)
+            .unwrap();
+        txn.commit().unwrap();
+
+        let after = store.ship_record(player.ship_id).unwrap().unwrap();
+        assert_eq!(
+            after.provisions.person_days_remaining,
+            before.provisions.person_days_remaining - 1
+        );
+        for service in store.crew_services(player.ship_id).unwrap() {
+            let person = store.person_record(service.person_id).unwrap().unwrap();
+            assert_eq!(person.unfed_days, 0);
+        }
+    }
+
+    #[test]
+    fn person_food_state_round_trips_and_legacy_people_start_fed() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let player = store.player_record(&identity()).unwrap().unwrap();
+        let mut person = store
+            .person_record(player.captain_person_id)
+            .unwrap()
+            .unwrap();
+        person.unfed_days = 7;
+        let encoded = encode_person_record(&person).unwrap();
+        assert_eq!(decode_person_record(&encoded).unwrap(), person);
+
+        let mut legacy = encoded;
+        legacy[0] = 1;
+        legacy.truncate(legacy.len() - 2);
+        let decoded = decode_person_record(&legacy).unwrap();
+        assert_eq!(decoded.unfed_days, 0);
+        assert_eq!(decoded.person_id, person.person_id);
+    }
+
+    #[test]
+    fn docked_captain_buys_a_meal_at_twice_the_package_person_day_rate() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut player = store.player_record(&identity()).unwrap().unwrap();
+        let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        let spec = creation::ship_status_spec(ship.catalog_id).unwrap();
+        let package_person_days = u64::from(spec.life_support_capacity_persons) * 30;
+        let meal_cost = spec
+            .monthly_life_support_credits
+            .saturating_mul(2)
+            .div_ceil(package_person_days);
+        ship.provisions.person_days_remaining = 0;
+        player.credits = meal_cost + 50;
+        let due = crate::simulation::SECONDS_PER_DAY;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        store
+            .players
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_player_record(&player),
+            )
+            .unwrap();
+        store
+            .process_person_recovery_day_in(&mut txn, ship.system_id, due)
+            .unwrap();
+        txn.commit().unwrap();
+
+        let after = store.player_record(&identity()).unwrap().unwrap();
+        assert_eq!(after.credits, 50);
+        let captain = store
+            .person_record(after.captain_person_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(captain.unfed_days, 0);
+    }
+
+    #[test]
+    fn an_unfed_captain_takes_ce_starvation_damage_after_three_days() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut player = store.player_record(&identity()).unwrap().unwrap();
+        let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        ship.provisions.person_days_remaining = 0;
+        player.credits = 0;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        store
+            .players
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_player_record(&player),
+            )
+            .unwrap();
+        for day in 1..=3 {
+            store
+                .process_person_recovery_day_in(
+                    &mut txn,
+                    ship.system_id,
+                    day * crate::simulation::SECONDS_PER_DAY,
+                )
+                .unwrap();
+        }
+        let hungry = decode_person_record(
+            store
+                .persons
+                .get(&txn, &player.captain_person_id)
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(hungry.unfed_days, 3);
+        assert_eq!(person_injury_points(&hungry), 0);
+
+        for day in 4..=12 {
+            store
+                .process_person_recovery_day_in(
+                    &mut txn,
+                    ship.system_id,
+                    day * crate::simulation::SECONDS_PER_DAY,
+                )
+                .unwrap();
+        }
+        let starving = decode_person_record(
+            store
+                .persons
+                .get(&txn, &player.captain_person_id)
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(starving.unfed_days >= 4);
+        assert!(person_injury_points(&starving) != 0);
+        txn.commit().unwrap();
     }
 
     #[test]

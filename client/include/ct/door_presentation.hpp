@@ -8,6 +8,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace ct {
 
@@ -32,6 +33,25 @@ enum class DoorTextRole {
    Information,
    Success,
    Warning,
+   PriceFavorable,
+   PriceMiddling,
+   PriceUnfavorable,
+   PriceMarkerFavorable,
+   PriceMarkerMiddling,
+   PriceMarkerUnfavorable,
+};
+
+enum class PricePlotBand {
+   None,
+   Favorable,
+   Middling,
+   Unfavorable,
+};
+
+struct PricePlotSpan {
+   std::string text;
+   PricePlotBand band = PricePlotBand::None;
+   bool current_marker = false;
 };
 
 struct DoorTextSpan {
@@ -61,6 +81,15 @@ std::string price_box_plot(uint64_t minimum,
                            uint64_t maximum,
                            uint64_t current,
                            size_t width = 21);
+std::vector<PricePlotSpan> styled_price_box_plot(
+   uint64_t minimum,
+   uint64_t lower_quartile,
+   uint64_t median,
+   uint64_t upper_quartile,
+   uint64_t maximum,
+   uint64_t current,
+   bool buying,
+   size_t width = 21);
 
 class DoorPresentation {
 public:

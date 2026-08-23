@@ -503,6 +503,7 @@ struct CrewManagementMember {
   shoreLocation @24 :Text;
   roleKind @25 :CrewRoleKind;
   locationKind @26 :CrewLocationKind;
+  unfedDays @27 :UInt16;
 }
 
 enum CrewLocationKind { aboardShip @0; shoreFacility @1; }

@@ -64,6 +64,47 @@ std::string option_shortcut_sort_key(const std::string_view option) {
    return key;
 }
 
+size_t multiply_divide(const uint64_t value,
+                       const size_t multiplier,
+                       const uint64_t divisor) {
+   size_t quotient = 0;
+   uint64_t remainder = 0;
+   auto bit = size_t{1} << (std::numeric_limits<size_t>::digits - 1);
+   while(bit != 0 && (bit & multiplier) == 0) {
+      bit >>= 1;
+   }
+   for(; bit != 0; bit >>= 1) {
+      quotient *= 2;
+      if(remainder >= divisor - remainder) {
+         remainder -= divisor - remainder;
+         ++quotient;
+      } else {
+         remainder += remainder;
+      }
+      if((bit & multiplier) != 0) {
+         if(remainder >= divisor - value) {
+            remainder -= divisor - value;
+            ++quotient;
+         } else {
+            remainder += value;
+         }
+      }
+   }
+   return quotient;
+}
+
+size_t price_plot_position(const uint64_t value,
+                           const uint64_t minimum,
+                           const uint64_t maximum,
+                           const size_t width) {
+   if(maximum <= minimum) {
+      return width / 2;
+   }
+   const auto bounded = std::clamp(value, minimum, maximum);
+   return multiply_divide(
+      bounded - minimum, width - 1, maximum - minimum);
+}
+
 bool is_iso646_invariant(const char32_t value) {
    if((value >= U'0' && value <= U'9') ||
       (value >= U'A' && value <= U'Z') ||
@@ -344,6 +385,18 @@ std::string_view role_sequence(const DoorTextRole role) {
          return "\x1b[1;32m";
       case DoorTextRole::Warning:
          return "\x1b[1;31m";
+      case DoorTextRole::PriceFavorable:
+         return "\x1b[30;42m";
+      case DoorTextRole::PriceMiddling:
+         return "\x1b[30;43m";
+      case DoorTextRole::PriceUnfavorable:
+         return "\x1b[37;41m";
+      case DoorTextRole::PriceMarkerFavorable:
+         return "\x1b[1;37;42m";
+      case DoorTextRole::PriceMarkerMiddling:
+         return "\x1b[1;34;43m";
+      case DoorTextRole::PriceMarkerUnfavorable:
+         return "\x1b[1;33;41m";
    }
    return "\x1b[0m";
 }
@@ -516,40 +569,8 @@ std::string price_box_plot(const uint64_t minimum,
                            const size_t requested_width) {
    const auto width = std::max<size_t>(requested_width, 9);
    std::string result(width, ' ');
-   const auto multiply_divide = [](const uint64_t value,
-                                   const size_t multiplier,
-                                   const uint64_t divisor) {
-      size_t quotient = 0;
-      uint64_t remainder = 0;
-      auto bit = size_t{1} << (std::numeric_limits<size_t>::digits - 1);
-      while(bit != 0 && (bit & multiplier) == 0) {
-         bit >>= 1;
-      }
-      for(; bit != 0; bit >>= 1) {
-         quotient *= 2;
-         if(remainder >= divisor - remainder) {
-            remainder -= divisor - remainder;
-            ++quotient;
-         } else {
-            remainder += remainder;
-         }
-         if((bit & multiplier) != 0) {
-            if(remainder >= divisor - value) {
-               remainder -= divisor - value;
-               ++quotient;
-            } else {
-               remainder += value;
-            }
-         }
-      }
-      return quotient;
-   };
    const auto position = [&](const uint64_t value) {
-      if(maximum <= minimum) {
-         return width / 2;
-      }
-      const auto bounded = std::clamp(value, minimum, maximum);
-      return multiply_divide(bounded - minimum, width - 1, maximum - minimum);
+      return price_plot_position(value, minimum, maximum, width);
    };
    const auto minimum_position = position(minimum);
    const auto lower_position = position(lower_quartile);
@@ -577,6 +598,61 @@ std::string price_box_plot(const uint64_t minimum,
       current_position == maximum_position;
    result[current_position] = marker_overlap ? 'X' : '*';
    return result;
+}
+
+std::vector<PricePlotSpan> styled_price_box_plot(
+   const uint64_t minimum,
+   const uint64_t lower_quartile,
+   const uint64_t median,
+   const uint64_t upper_quartile,
+   const uint64_t maximum,
+   const uint64_t current,
+   const bool buying,
+   const size_t requested_width)
+{
+   const auto width = std::max<size_t>(requested_width, 9);
+   const auto plot = price_box_plot(
+      minimum, lower_quartile, median, upper_quartile, maximum,
+      current, width);
+   const auto minimum_position = price_plot_position(
+      minimum, minimum, maximum, width);
+   const auto lower_position = price_plot_position(
+      lower_quartile, minimum, maximum, width);
+   const auto median_position = price_plot_position(
+      median, minimum, maximum, width);
+   const auto upper_position = price_plot_position(
+      upper_quartile, minimum, maximum, width);
+   const auto maximum_position = price_plot_position(
+      maximum, minimum, maximum, width);
+   const auto current_position = price_plot_position(
+      current, minimum, maximum, width);
+
+   std::vector<PricePlotSpan> spans;
+   for(size_t position = 0; position < plot.size(); ++position) {
+      auto band = PricePlotBand::None;
+      if(position >= minimum_position && position <= maximum_position) {
+         if(buying) {
+            band = position < lower_position
+               ? PricePlotBand::Favorable
+               : position < median_position
+                  ? PricePlotBand::Middling
+                  : PricePlotBand::Unfavorable;
+         } else {
+            band = position > upper_position
+               ? PricePlotBand::Favorable
+               : position > median_position
+                  ? PricePlotBand::Middling
+                  : PricePlotBand::Unfavorable;
+         }
+      }
+      const bool marker = position == current_position;
+      if(spans.empty() || spans.back().band != band ||
+         spans.back().current_marker != marker) {
+         spans.push_back({{}, band, marker});
+      }
+      spans.back().text.push_back(plot[position]);
+   }
+   return spans;
 }
 
 std::string door_option_prompt(

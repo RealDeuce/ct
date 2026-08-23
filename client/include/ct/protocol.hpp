@@ -308,6 +308,7 @@ struct CrewManagementMember {
    PersonCondition condition;
    uint16_t injury_points;
    uint16_t fatigue_points;
+   uint16_t unfed_days;
    bool available;
    uint8_t current_strength;
    uint8_t current_dexterity;

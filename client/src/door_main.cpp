@@ -3297,7 +3297,12 @@ void show_crew_member(
       door_label("  Injury ");
       door_number("%u", member.injury_points);
       door_label("  Fatigue ");
-      door_number("%u\n\r", member.fatigue_points);
+      door_number("%u", member.fatigue_points);
+      if(member.unfed_days != 0) {
+         door_label("  Without food ");
+         door_warning("%u d", member.unfed_days);
+      }
+      od_printf("\n\r");
       door_label("Physical: STR ");
       door_number("%u", member.current_strength);
       door_label(" / DEX ");
@@ -7954,16 +7959,48 @@ const char* market_price_description(const MarketPriceBand band,
    return "unknown";
 }
 
+ct::DoorTextRole price_plot_role(const ct::PricePlotSpan& span) {
+   switch(span.band) {
+      case ct::PricePlotBand::None:
+         return ct::DoorTextRole::Value;
+      case ct::PricePlotBand::Favorable:
+         return span.current_marker
+            ? ct::DoorTextRole::PriceMarkerFavorable
+            : ct::DoorTextRole::PriceFavorable;
+      case ct::PricePlotBand::Middling:
+         return span.current_marker
+            ? ct::DoorTextRole::PriceMarkerMiddling
+            : ct::DoorTextRole::PriceMiddling;
+      case ct::PricePlotBand::Unfavorable:
+         return span.current_marker
+            ? ct::DoorTextRole::PriceMarkerUnfavorable
+            : ct::DoorTextRole::PriceUnfavorable;
+   }
+   return ct::DoorTextRole::Value;
+}
+
+void render_price_plot(const ct::PriceDistribution& distribution,
+                       const uint64_t current,
+                       const bool buying) {
+   const auto spans = ct::styled_price_box_plot(
+      distribution.minimum,
+      distribution.lower_quartile,
+      distribution.median,
+      distribution.upper_quartile,
+      distribution.maximum,
+      current,
+      buying);
+   for(const auto& span : spans) {
+      door_write(span.text, price_plot_role(span));
+   }
+}
+
 void render_price_distribution(const ct::PriceDistribution& distribution,
-                               const uint64_t current) {
+                               const uint64_t current,
+                               const bool buying) {
    door_label("   Range ");
-   door_value("%s\n\r",
-              ct::price_box_plot(distribution.minimum,
-                                 distribution.lower_quartile,
-                                 distribution.median,
-                                 distribution.upper_quartile,
-                                 distribution.maximum,
-                                 current).c_str());
+   render_price_plot(distribution, current, buying);
+   od_printf("\n\r");
    door_label("   Min Cr");
    door_number("%llu", static_cast<unsigned long long>(distribution.minimum));
    door_label("  Q1 Cr");
@@ -7976,6 +8013,46 @@ void render_price_distribution(const ct::PriceDistribution& distribution,
                static_cast<unsigned long long>(distribution.upper_quartile));
    door_label("   Max Cr");
    door_number("%llu/t\n\r", static_cast<unsigned long long>(distribution.maximum));
+}
+
+void render_market_offer_summary(const ct::MarketOffer& offer,
+                                 const size_t index) {
+   const auto band = market_price_band(
+      offer.price_distribution, offer.purchase_price_per_ton, true);
+   door_number("%zu", index + 1);
+   door_label(". ");
+   door_value("%s", safe_field(offer.commodity_name).c_str());
+   door_label("  Buy Cr");
+   door_market_price(offer.purchase_price_per_ton, band);
+   door_label("/t  Available ");
+   print_millitons(offer.available_millitons);
+   od_printf("\n\r");
+   door_label("   ");
+   render_price_plot(
+      offer.price_distribution, offer.purchase_price_per_ton, true);
+   door_label("  ");
+   door_value("%s\n\r", market_price_description(band, true));
+}
+
+void render_market_offer_detail(const ct::MarketOffer& offer,
+                                const size_t index) {
+   od_clr_scr();
+   door_heading("Local Offer %zu - ", index + 1);
+   door_value("%s\n\r", safe_field(offer.commodity_name).c_str());
+   door_heading("===========\n\r");
+   const auto band = market_price_band(
+      offer.price_distribution, offer.purchase_price_per_ton, true);
+   door_label("Buy price: Cr");
+   door_market_price(offer.purchase_price_per_ton, band);
+   door_label("/t  ");
+   door_value("%s\n\r", market_price_description(band, true));
+   door_label("Available: ");
+   print_millitons(offer.available_millitons);
+   od_printf("\n\r");
+   render_price_distribution(
+      offer.price_distribution, offer.purchase_price_per_ton, true);
+   door_information("\n\rPlot: o min/max, ( ) quartiles, : median, X overlap.\n\r");
+   wait_for_enter();
 }
 
 void render_market(const ct::MarketSnapshot& market)
@@ -7991,24 +8068,11 @@ void render_market(const ct::MarketSnapshot& market)
    door_label("/");
    print_millitons(market.cargo_capacity_millitons);
    od_printf("\n\r");
-   door_information("Universal market range; * marks your current negotiated quote.\n\r");
-   door_information("Plot: o min/max, ( ) quartiles, : median, X overlap\n\r\n\r");
+   door_information("Universal range; * marks your current negotiated quote.\n\r");
+   door_information("Chart: green good, yellow marginal, red bad; X is an overlap.\n\r\n\r");
    door_identifier("Local offers\n\r");
    for(size_t index = 0; index < market.offers.size(); ++index) {
-      const auto& offer = market.offers[index];
-      door_number("%u", static_cast<unsigned>(index + 1));
-      door_label(". ");
-      door_value("%s\n\r", safe_field(offer.commodity_name).c_str());
-      door_label("   Buy Cr");
-      const auto band = market_price_band(
-         offer.price_distribution, offer.purchase_price_per_ton, true);
-      door_market_price(offer.purchase_price_per_ton, band);
-      door_label("/t  Available ");
-      print_millitons(offer.available_millitons);
-      door_label("  ");
-      door_value("%s\n\r", market_price_description(band, true));
-      render_price_distribution(
-         offer.price_distribution, offer.purchase_price_per_ton);
+      render_market_offer_summary(market.offers[index], index);
    }
    door_identifier("\n\rCargo aboard\n\r");
    if(market.cargo.empty()) {
@@ -8040,7 +8104,7 @@ void render_market(const ct::MarketSnapshot& market)
          door_label("/t  ");
          door_value("%s\n\r", market_price_description(band, false));
          render_price_distribution(
-            quote->price_distribution, quote->price_per_ton);
+            quote->price_distribution, quote->price_per_ton, false);
       }
    }
    door_identifier("\n\rPort research\n\r");
@@ -8105,6 +8169,7 @@ void run_cargo_exchange(
          "[B] Buy",
          "[S] Sell",
          "[F] Find market",
+         "[I] Inspect offer",
          "[R] Reserve lead",
          "[P] Perform lead",
          "[U] Release reservation",
@@ -8122,7 +8187,18 @@ void run_cargo_exchange(
       if(key == 'q' || key == 'Q') {
          return;
       }
-      if(key == 'b' || key == 'B') {
+      if(key == 'i' || key == 'I') {
+         if(market.offers.empty()) {
+            continue;
+         }
+         const auto choice = input_number(
+            "Offer", 1, static_cast<unsigned>(market.offers.size()));
+         if(!choice) {
+            continue;
+         }
+         render_market_offer_detail(
+            market.offers[*choice - 1], *choice - 1);
+      } else if(key == 'b' || key == 'B') {
          if(market.offers.empty()) {
             continue;
          }
@@ -8435,6 +8511,42 @@ std::optional<ct::TravelStatus> run_fuel_service(
    door_number("%llu/%llu person-days\n\r",
                static_cast<unsigned long long>(services.provisions.person_days_remaining),
                static_cast<unsigned long long>(services.provisions.capacity_person_days));
+   const auto package_person_days = services.provision_package_person_days;
+   const auto package_price = services.provision_package_price_credits;
+   const auto effective_package_person_days =
+      std::max<uint64_t>(package_person_days, 1);
+   const auto daily_quotient = package_price / effective_package_person_days;
+   const auto daily_remainder = package_price % effective_package_person_days;
+   const auto meal_remainder = daily_remainder == 0
+      ? uint64_t{0}
+      : daily_remainder > effective_package_person_days - daily_remainder
+         ? uint64_t{2}
+         : uint64_t{1};
+   const auto doubled_daily_quotient = daily_quotient >
+         std::numeric_limits<uint64_t>::max() / 2
+      ? std::numeric_limits<uint64_t>::max()
+      : daily_quotient * 2;
+   const auto captain_meal_price = doubled_daily_quotient >
+         std::numeric_limits<uint64_t>::max() - meal_remainder
+      ? std::numeric_limits<uint64_t>::max()
+      : doubled_daily_quotient + meal_remainder;
+   door_label("Captain meal fallback: ");
+   door_number("Cr%llu/day\n\r",
+               static_cast<unsigned long long>(captain_meal_price));
+   if(services.provisions.person_days_remaining == 0 &&
+      account.credits < captain_meal_price) {
+      door_error("The captain has neither provisions nor enough liquid credits to eat.\n\r");
+   }
+   if(services.provisions_available) {
+      door_label("Monthly provision package: ");
+      door_number("%llu person-days",
+                  static_cast<unsigned long long>(
+                     services.provision_package_person_days));
+      door_label("  Cr");
+      door_number("%llu\n\r",
+                  static_cast<unsigned long long>(
+                     services.provision_package_price_credits));
+   }
    door_label("Magazine lots: ");
    door_number("%zu\n\r", services.ammunition.size());
    std::vector<std::string_view> options{
@@ -8514,6 +8626,17 @@ std::optional<ct::TravelStatus> run_fuel_service(
          wait_for_enter();
          return std::nullopt;
       }
+      door_information("\n\rOne package loads ");
+      door_number("%llu",
+                  static_cast<unsigned long long>(
+                     services.provision_package_person_days));
+      door_information(" person-days for Cr");
+      door_number("%llu",
+                  static_cast<unsigned long long>(
+                     services.provision_package_price_credits));
+      door_information(". Up to ");
+      door_number("%llu", static_cast<unsigned long long>(max_packages));
+      door_information(" fit in the installed stores.\n\r");
       const auto packages = input_number("Monthly packages", 1,
                                          static_cast<unsigned>(std::min<uint64_t>(
                                             max_packages,

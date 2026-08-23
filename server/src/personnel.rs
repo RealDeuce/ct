@@ -120,6 +120,50 @@ pub fn medical_care_points(current_endurance: u8, medicine_level: i8) -> i16 {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StarvationCheck {
+    pub first_die: u8,
+    pub second_die: u8,
+    pub total: i16,
+    pub success: bool,
+    pub damage: u8,
+}
+
+fn entropy_die(entropy: u64, shift: u32) -> u8 {
+    ((entropy.rotate_right(shift) % 6) + 1) as u8
+}
+
+/// Resolve the daily CE starvation check after the initial three days without
+/// food. `previous_checks` is zero for the first check and supplies the
+/// cumulative DM-1 on each later day. Water is handled separately by callers.
+pub fn starvation_check(
+    current_endurance: u8,
+    previous_checks: u16,
+    entropy: u64,
+) -> StarvationCheck {
+    let first_die = entropy_die(entropy, 0);
+    let second_die = entropy_die(entropy ^ 0x9e37_79b9_7f4a_7c15, 29);
+    let prior_penalty = i16::try_from(previous_checks).unwrap_or(i16::MAX);
+    let total = i16::from(first_die)
+        + i16::from(second_die)
+        + i16::from(characteristic_dm(current_endurance))
+        + 2
+        - prior_penalty;
+    let success = total >= 8;
+    let damage = if success {
+        0
+    } else {
+        entropy_die(entropy ^ 0xd1b5_4a32_d192_ed03, 17)
+    };
+    StarvationCheck {
+        first_die,
+        second_die,
+        total,
+        success,
+        damage,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MoraleBand {
     Steady,
     Uneasy,
@@ -191,5 +235,21 @@ mod tests {
         assert_eq!(morale_band(20), MoraleBand::Disaffected);
         assert_eq!(morale_band(1), MoraleBand::Defiant);
         assert_eq!(morale_band(0), MoraleBand::Broken);
+    }
+
+    #[test]
+    fn starvation_checks_are_routine_and_worsen_each_day() {
+        let first = starvation_check(8, 0, 0x1234_5678);
+        let later = starvation_check(8, 4, 0x1234_5678);
+        assert_eq!(later.first_die, first.first_die);
+        assert_eq!(later.second_die, first.second_die);
+        assert_eq!(later.total, first.total - 4);
+        for check in [first, later] {
+            if check.success {
+                assert_eq!(check.damage, 0);
+            } else {
+                assert!((1..=6).contains(&check.damage));
+            }
+        }
     }
 }

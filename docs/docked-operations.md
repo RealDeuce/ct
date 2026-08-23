@@ -110,8 +110,12 @@ voids the standard warranty.
 
 Installed life-support provisions and catalogued ammunition are physical
 quantities in the ship record. Provisions are bought in physical
-awake-accommodation-based monthly packages and consumed by living crew and
-awake passengers through queued daily work. Ammunition is bought only
+awake-accommodation-based monthly packages. Away from a berth they are
+consumed by living crew and awake passengers through queued daily work.
+Docked ordinary crew arrange their own meals; the captain uses one ship
+person-day or automatically pays liquid credits for an ashore meal at twice
+the package-average daily rate. An unfed character receives the CE starvation
+grace period, checks, and damage. Ammunition is bought only
 in the fitted component's pack size, cannot exceed magazine capacity, is
 consumed by combat, and is never regenerated merely by materializing another
 encounter.

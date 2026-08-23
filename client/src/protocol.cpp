@@ -712,6 +712,7 @@ CrewManagementSnapshot decode_crew_management(
          .condition = static_cast<PersonCondition>(member.getCondition()),
          .injury_points = member.getInjuryPoints(),
          .fatigue_points = member.getFatiguePoints(),
+         .unfed_days = member.getUnfedDays(),
          .available = member.getAvailable(),
          .current_strength = member.getCurrentStrength(),
          .current_dexterity = member.getCurrentDexterity(),

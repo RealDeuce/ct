@@ -105,6 +105,46 @@ int main() {
       std::numeric_limits<uint64_t>::max() / 2);
    check(full_range_price_plot.find('*') == 9);
 
+   const auto buy_spans = ct::styled_price_box_plot(
+      900, 1'000, 1'100, 1'200, 1'300, 1'150, true);
+   std::string rebuilt_buy_plot;
+   bool found_buy_marker = false;
+   bool found_favorable_buy_range = false;
+   for(const auto& span : buy_spans) {
+      rebuilt_buy_plot += span.text;
+      found_favorable_buy_range = found_favorable_buy_range ||
+         span.band == ct::PricePlotBand::Favorable;
+      if(span.current_marker) {
+         check(span.text == "*");
+         check(span.band == ct::PricePlotBand::Unfavorable);
+         found_buy_marker = true;
+      }
+   }
+   check(rebuilt_buy_plot == price_plot);
+   check(found_buy_marker);
+   check(found_favorable_buy_range);
+
+   const auto sale_spans = ct::styled_price_box_plot(
+      900, 1'000, 1'100, 1'200, 1'300, 1'150, false);
+   bool found_sale_marker = false;
+   for(const auto& span : sale_spans) {
+      if(span.current_marker) {
+         check(span.text == "*");
+         check(span.band == ct::PricePlotBand::Middling);
+         found_sale_marker = true;
+      }
+   }
+   check(found_sale_marker);
+
+   const auto flat_spans = ct::styled_price_box_plot(
+      1'000, 1'000, 1'000, 1'000, 1'000, 1'000, true);
+   check(flat_spans.size() == 3);
+   check(flat_spans.front().band == ct::PricePlotBand::None);
+   check(flat_spans[1].text == "X");
+   check(flat_spans[1].current_marker);
+   check(flat_spans[1].band == ct::PricePlotBand::Unfavorable);
+   check(flat_spans.back().band == ct::PricePlotBand::None);
+
    check(ct::parse_tonnage_millitons("1") == 1000);
    check(ct::parse_tonnage_millitons("1.25") == 1250);
    check(ct::parse_tonnage_millitons(".001") == 1);
@@ -293,6 +333,20 @@ int main() {
          std::string_view::npos);
    const auto& fuel_help = ct::door_help(ct::DoorHelpTopic::Fuel);
    check(fuel_help.beginner_body.find("fueling receipt") != std::string_view::npos);
+   check(fuel_help.beginner_body.find("One person-day supports one awake") !=
+         std::string_view::npos);
+   check(fuel_help.beginner_body.find("30 person-days for every fitted") !=
+         std::string_view::npos);
+   check(fuel_help.beginner_body.find("multiply the number of awake people") !=
+         std::string_view::npos);
+   check(fuel_help.expert_body.find("low-berth occupants are excluded") !=
+         std::string_view::npos);
+   check(fuel_help.beginner_body.find("Docked crew arrange their own meals") !=
+         std::string_view::npos);
+   check(fuel_help.beginner_body.find("Starting on the fourth") !=
+         std::string_view::npos);
+   check(fuel_help.beginner_body.find("twice the package's average price") !=
+         std::string_view::npos);
    for(const auto& help : help_topics) {
       check(!help.title.empty());
       check(!help.group.empty());
@@ -354,6 +408,12 @@ int main() {
       std::pair{ct::DoorTextRole::Information, std::string_view{"\x1b[32m"}},
       std::pair{ct::DoorTextRole::Success, std::string_view{"\x1b[1;32m"}},
       std::pair{ct::DoorTextRole::Warning, std::string_view{"\x1b[1;31m"}},
+      std::pair{ct::DoorTextRole::PriceFavorable, std::string_view{"\x1b[30;42m"}},
+      std::pair{ct::DoorTextRole::PriceMiddling, std::string_view{"\x1b[30;43m"}},
+      std::pair{ct::DoorTextRole::PriceUnfavorable, std::string_view{"\x1b[37;41m"}},
+      std::pair{ct::DoorTextRole::PriceMarkerFavorable, std::string_view{"\x1b[1;37;42m"}},
+      std::pair{ct::DoorTextRole::PriceMarkerMiddling, std::string_view{"\x1b[1;34;43m"}},
+      std::pair{ct::DoorTextRole::PriceMarkerUnfavorable, std::string_view{"\x1b[1;33;41m"}},
    };
    for(const auto& [role, sequence] : semantic_roles) {
       const auto sample =

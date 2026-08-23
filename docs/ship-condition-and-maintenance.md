@@ -253,10 +253,14 @@ person-days per physical awake-accommodation place, and the installed limit is
 180 person-days per place. Physical capacity counts both occupants of an
 ordinary or compact stateroom, all fitted crew berths, and every fitted
 high-class or steerage place; low berths use their own life support instead.
-The queued daily system transaction consumes one person-day for each
-represented living crewmember and each awake passenger aboard. Departure
-preview includes both crew and passengers in the required person-days, and
-commitment rejects a shortage. Dockside monthly packages use the accommodation
+Away from a berth, the queued daily system transaction consumes one person-day
+for each represented living crewmember and each awake passenger aboard. Docked
+ordinary crew arrange their own meals and do not draw ship stores. The captain
+consumes one ship person-day by default; when stores are empty, the captain
+instead buys a meal from liquid credits at twice the ship's monthly-package
+price per person-day, rounded up. If neither source is available, the captain
+goes unfed. Departure preview includes both crew and passengers in the required
+person-days, and commitment rejects a shortage. Dockside monthly packages use the accommodation
 costs from *Anderson & Felix*, p.109:
 Cr2,000 per ordinary/compact stateroom, Cr3,000 per crew-berthing or barracks
 allocation, Cr5,000 per high-class stateroom, Cr100 per low berth, and Cr100
@@ -265,6 +269,13 @@ available ordinary, compact, or high-class room supplies one saleable passenger
 berth, while steerage supplies its explicit fitted places. Passenger
 double-occupancy and luxury dining supplements wait for actual passenger
 loading rather than being charged to an empty room.
+
+Each person records consecutive unfed days. CE's three-day food grace period
+is followed by one Routine (+2) Endurance check per day, with cumulative DM-1
+for every previous starvation check. Failure applies 1D6 physical damage;
+starvation damage cannot recover until the person is fed. Ordinary shipboard
+water is assumed available, so this policy does not invoke the separate hourly
+dehydration checks.
 
 Ammunition is likewise part of the persistent ship record. Initial magazine
 capacity, pack size, and pack price come from normalized catalog components.

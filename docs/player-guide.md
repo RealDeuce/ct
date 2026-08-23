@@ -319,9 +319,14 @@ will actually travel; changing a route does not rewrite an obligation.
 ### Fuel, provisions, and port costs
 
 Refined and unrefined fuel are distinct, and availability depends on the port
-or selected collection method. Provisions are consumed by crew and awake
-passengers; passengers travelling in low berths do not consume them while
-frozen. Berth charges and other immediate obligations may be settled when the
+or selected collection method. Away from a berth, provisions are consumed by
+crew and awake passengers; passengers travelling in low berths do not consume
+them while frozen. Docked ordinary crew arrange their own food. The captain
+uses one ship person-day or, when stores are empty, automatically buys a meal
+from liquid credits at twice the package-average daily price. Three days
+without food cause discomfort but no damage; later days bring increasingly
+difficult Endurance checks, and failed checks cause starvation damage that
+cannot heal until the character eats. Berth charges and other immediate obligations may be settled when the
 ship departs. After a port fuel purchase, the fueling receipt lists the amount
 loaded, tank state, total charge, the restricted and liquid amounts used, and
 both remaining balances. A chandlery receipt likewise lists the monthly packages
@@ -577,7 +582,9 @@ choices are available. Importing a plotted
 course also adds its required port purchases or frontier-fuel operations to
 the plan. A Flight Plan preview reports estimated time, fuel, and warnings
 before the plan is filed. Each warning appears once as a numbered footnote,
-with its number repeated beside every affected step. Keep enough operating cash available: a purchase
+with its number repeated beside every affected step. A provision-shortage
+warning is repeated beside every step where cumulative projected consumption
+has exceeded the person-days aboard. Keep enough operating cash available: a purchase
 step that cannot be paid for or executed when reached holds the plan for the
 captain's attention. The preview marks a deadline warning in red when the
 planned route would dock after an accepted task's deadline, would run past its

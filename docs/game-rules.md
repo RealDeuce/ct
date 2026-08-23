@@ -917,9 +917,15 @@ unrefined portion is tracked so the Jump penalty follows the fuel actually
 burned.
 
 New ships begin with 30 person-days of provisions for every awake-accommodation
-place and can store at most 180 per place. One person-day is consumed daily by
-each represented living crewmember and awake passenger. A dockside monthly
-package costs Cr2,000 per ordinary or compact stateroom, Cr3,000 per crew
+place and can store at most 180 per place. Away from a berth, one person-day is
+consumed daily by each represented living crewmember and awake passenger.
+Docked ordinary crew arrange their own meals. The captain consumes one ship
+person-day or, if stores are empty, automatically buys an ashore meal from
+liquid credits at twice the ship's package-average person-day price. A person
+may go three days without food; subsequent days require the CE Routine (+2)
+Endurance check with cumulative DM-1 per prior check, and failure causes 1D6
+damage that cannot heal until the person is fed. Shipboard water is assumed
+available. A dockside monthly package costs Cr2,000 per ordinary or compact stateroom, Cr3,000 per crew
 berth or barracks allocation, Cr5,000 per high-class stateroom, Cr100 per low
 berth, and Cr100 per emergency-berth place.
 
