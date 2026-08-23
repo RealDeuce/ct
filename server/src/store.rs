@@ -30765,22 +30765,23 @@ impl Store {
                         "belt recovery event disagrees with ship location",
                     ));
                 }
-                let next_due;
-                let purpose;
-                let destination;
-                if successful {
-                    next_due = due_second.saturating_add(crate::mining::DAY_SECONDS);
-                    purpose = FlightLegPurpose::MineBelt(context);
-                    destination = leg.destination;
+                let (next_due, purpose, destination) = if successful {
+                    (
+                        due_second.saturating_add(crate::mining::DAY_SECONDS),
+                        FlightLegPurpose::MineBelt(context),
+                        leg.destination,
+                    )
                 } else {
-                    next_due = due_second.saturating_add(context.transit_seconds);
-                    purpose = FlightLegPurpose::ReturnFromBelt(context);
-                    destination = ShipLocusRecord::Port {
-                        system_id: ship.system_id,
-                        world_id: context.return_world_id,
-                        facility_id: context.return_facility_id,
-                    };
-                }
+                    (
+                        due_second.saturating_add(context.transit_seconds),
+                        FlightLegPurpose::ReturnFromBelt(context),
+                        ShipLocusRecord::Port {
+                            system_id: ship.system_id,
+                            world_id: context.return_world_id,
+                            facility_id: context.return_facility_id,
+                        },
+                    )
+                };
                 ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
                     plan_id: leg.plan_id,
                     plan_revision: leg.plan_revision,
