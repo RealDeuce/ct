@@ -312,7 +312,11 @@ rules and compatibility boundary are in
 The authoritative background simulation schedules one daily job per system
 and persists ordinary traffic ships with catalog designs and complete,
 fuel-executable itineraries selected from endpoint economic profiles. At each
-departure, queued electronic mail for which that leg is a valid forward hop
+departure, its route is confined to visited systems; a plotted but unvisited
+frontier cannot originate, receive, or relay generated traffic. The fixed
+catalogue and BBS polity members begin established and visited, while a BBS
+founding contact also visits the plotted systems on its connecting route.
+Queued electronic mail for which that leg is a valid forward hop
 may enter a sealed mailbag as a side effect; mail never creates or redirects
 the traffic.
 Immutable messages fan out through destination envelopes, beacon queues,

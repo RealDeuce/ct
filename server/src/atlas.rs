@@ -137,11 +137,12 @@ pub fn read_snapshot(
         .iter()
         .map(|system| system.id)
         .collect::<HashSet<_>>();
+    let mut publication_visit_fallback = Vec::new();
     if let Some(publications) = publications {
         for entry in publications.iter(&txn)? {
             let (system_id, bytes) = entry?;
             let record = decode_system_publication(bytes)?;
-            visited.insert(system_id);
+            publication_visit_fallback.push(system_id);
             if record.state == SystemPublicationState::UniversallyKnown {
                 universally_known.insert(system_id, record.completed_second);
             }
@@ -153,6 +154,8 @@ pub fn read_snapshot(
             decode_system_visit(bytes)?;
             visited.insert(system_id);
         }
+    } else {
+        visited.extend(publication_visit_fallback);
     }
     let included = universally_known.keys().copied().collect::<HashSet<_>>();
     let mut atlas_systems = Vec::new();
@@ -423,7 +426,7 @@ mod tests {
 
         let known = read_snapshot(directory.path(), AtlasVisibility::UniversallyKnown).unwrap();
         let omniscient = read_snapshot(directory.path(), AtlasVisibility::Omniscient).unwrap();
-        assert_eq!(known.systems.len(), INITIAL_SYSTEMS.len());
+        assert!(known.systems.len() > INITIAL_SYSTEMS.len());
         assert!(omniscient.systems.len() > known.systems.len());
         assert!(
             known
@@ -431,7 +434,10 @@ mod tests {
                 .iter()
                 .all(|system| system.universally_known_second == Some(0))
         );
-        assert!(known.systems.iter().all(|system| system.visited));
+        let visited_known = known.systems.iter().filter(|system| system.visited).count();
+        assert!(visited_known >= INITIAL_SYSTEMS.len());
+        assert!(visited_known < known.systems.len());
+        assert!(known.systems.iter().any(|system| !system.visited));
         assert!(
             omniscient
                 .systems

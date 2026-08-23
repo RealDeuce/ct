@@ -11,6 +11,15 @@ population, technology, trade, and the movement of ships between a small
 number of useful destinations. A random contact becomes an encounter only
 when the ships can actually converge.
 
+Generated traffic is bounded by established or physically explored space. An unvisited
+frontier system may be plotted and may continue its local daily world state,
+but it is excluded from generated-traffic neighbor lists and itineraries: no
+background ship enters, exits, or transits it. Publication alone does not open
+the boundary. The fixed catalogue and each complete BBS polity begin visited;
+a BBS founding contact also visits its plotted connecting route. Otherwise the
+first committed player-ship arrival activates a system and its links to other
+already visited systems.
+
 Two related observations must remain distinct. **System traffic** is the
 traffic-control picture assembled from active transponders and movement
 reports across the system. **Local contacts** are vessels detected at the

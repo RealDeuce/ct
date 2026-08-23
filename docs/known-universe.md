@@ -155,7 +155,11 @@ are in [`mail-service-and-security.md`](mail-service-and-security.md).
 
 A newly added BBS polity remains headline-level news at any distance, but
 “headline-level” controls significance and rebroadcast priority rather than
-delivery speed. It still reaches distant systems on the mail timeline. A
+delivery speed. Its first contact is one polity-originated packet carried by
+the arriving ship. That dossier lists the polity's complete registered-system
+catalogue, so receiving it adds every polity member to the local Known Universe
+together; the unaligned stub and surrounding frontier are not members and are
+not disclosed by the packet. It still reaches distant systems on the mail timeline. A
 routine discovery of an uninhabited system is normally low-significance
 rather than public headline news. If its captain sends a public system-
 discovery package, that package still propagates fully. A direct filing
@@ -221,8 +225,10 @@ Message Management may provide “open referenced system” and Known Universe
 may provide “show source message,” but each retains its own navigation model.
 
 The initial operational database is implemented. Player creation copies the IDs
-of the home polity and currently materialized Federation systems into the
-captain record with one acquisition/observation game second. `GetKnownDestinations`
+of the home polity, every system in its locally plotted six-parsec frontier,
+and every universally published system, including the initial Federation
+frontier shell, into the captain record with one acquisition/observation game
+second. `GetKnownDestinations`
 looks up only those IDs, computes distance from the ship's carried current
 system, marks systems within its catalogued jump rating, and returns primary-
 world starport, population, TL, and a starting-packet provenance label. The

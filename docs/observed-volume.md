@@ -87,8 +87,11 @@ The fixed initial CNS5 volume uses distribution and sampler version 1.
 Every cell with positive-volume intersection with the convex hull of the
 43-system starting catalogue is resolved by that fixed-catalog layer,
 preventing later generation from inserting another component into the initial
-observed neighborhood. A destructive universe reinitialization clears all
-coverage chunks and recreates this layer.
+observed neighborhood. Only after that hull layer commits does initialization
+materialize the remaining six-parsec footprint around each fixed system. The
+result is a plotted outer shell whose generated systems cannot occupy a cell
+owned by the fixed-catalog layer. A destructive universe reinitialization
+clears all coverage chunks and recreates the hull and shell in that order.
 
 ## Oracle result
 

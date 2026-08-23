@@ -56,6 +56,9 @@ pub struct SimulationSystem {
     pub population: u8,
     pub tech_level: u8,
     pub starport: u8,
+    /// Derived from the authoritative player-visit aggregate. Generated
+    /// traffic may use only systems for which this flag is true.
+    pub generated_traffic_enabled: bool,
     pub next_system_day: u64,
     pub jump_two_neighbors: Vec<u64>,
 }
@@ -479,6 +482,55 @@ impl SimulationDatabases {
                     system_id,
                     day: current_day,
                 },
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn reconcile_generated_traffic(
+        &self,
+        txn: &mut RwTxn<'_>,
+        visited_system_ids: &BTreeSet<u64>,
+    ) -> Result<(), SimulationError> {
+        let mut systems = self.systems(txn)?;
+        for system in &mut systems {
+            system.generated_traffic_enabled = visited_system_ids.contains(&system.system_id);
+        }
+        self.rewrite_traffic_neighbors(txn, systems)
+    }
+
+    pub fn enable_generated_traffic(
+        &self,
+        txn: &mut RwTxn<'_>,
+        system_id: u64,
+    ) -> Result<(), SimulationError> {
+        let mut systems = self.systems(txn)?;
+        let system = systems
+            .iter_mut()
+            .find(|system| system.system_id == system_id)
+            .ok_or(SimulationError::Corrupt(
+                "visited system is missing from simulation",
+            ))?;
+        if system.generated_traffic_enabled {
+            return Ok(());
+        }
+        system.generated_traffic_enabled = true;
+        self.rewrite_traffic_neighbors(txn, systems)
+    }
+
+    fn rewrite_traffic_neighbors(
+        &self,
+        txn: &mut RwTxn<'_>,
+        mut systems: Vec<SimulationSystem>,
+    ) -> Result<(), SimulationError> {
+        systems.sort_by_key(|system| system.system_id);
+        let neighbors = jump_two_neighbor_lists(&systems);
+        for (system, system_neighbors) in systems.iter_mut().zip(neighbors) {
+            system.jump_two_neighbors = system_neighbors;
+            self.records.put(
+                txn,
+                &record_key(RECORD_SYSTEM, system.system_id),
+                &encode_system(system)?,
             )?;
         }
         Ok(())
@@ -1278,7 +1330,11 @@ impl SimulationDatabases {
         let label = format!("simulation/system-day/v1/{day}");
         let seed = derive_seed(system.generation_seed, label.as_bytes())?;
         let mut random = SeedStream::new(seed);
-        let departures = sample_hundredths(traffic_rate_hundredths(&system), &mut random)?;
+        let departures = if system.generated_traffic_enabled {
+            sample_hundredths(traffic_rate_hundredths(&system), &mut random)?
+        } else {
+            0
+        };
         let systems = self.connected_polity_systems(txn, &system)?;
         let traffic_systems = self.systems(txn)?;
 
@@ -1477,8 +1533,25 @@ impl SimulationDatabases {
         origin_system_id: u64,
         destination_system_id: u64,
     ) -> Result<String, SimulationError> {
-        let traffic_ship_id = self.take_id(txn, META_NEXT_TRAFFIC_SHIP)?;
         let systems = self.systems(txn)?;
+        let origin = systems
+            .iter()
+            .find(|system| system.system_id == origin_system_id)
+            .ok_or(SimulationError::Corrupt(
+                "scheduled traffic origin is missing",
+            ))?;
+        let destination = systems
+            .iter()
+            .find(|system| system.system_id == destination_system_id)
+            .ok_or(SimulationError::Corrupt(
+                "scheduled traffic destination is missing",
+            ))?;
+        if !origin.generated_traffic_enabled || !destination.generated_traffic_enabled {
+            return Ok(format!(
+                "TrafficDeparture suppressed {origin_system_id}->{destination_system_id}: unvisited frontier"
+            ));
+        }
+        let traffic_ship_id = self.take_id(txn, META_NEXT_TRAFFIC_SHIP)?;
         let itinerary = crate::traffic::generated_itinerary(
             &systems,
             origin_system_id,
@@ -1550,6 +1623,20 @@ impl SimulationDatabases {
         let destination_system_id = *ship.itinerary.get(index).ok_or(SimulationError::Corrupt(
             "traffic itinerary destination is missing",
         ))?;
+        let origin = self.get_system(txn, origin_system_id)?;
+        let destination = self.get_system(txn, destination_system_id)?;
+        if !origin.generated_traffic_enabled || !destination.generated_traffic_enabled {
+            ship.status = TrafficShipStatus::Arrived;
+            ship.mailbag_id = None;
+            self.records.put(
+                txn,
+                &record_key(RECORD_TRAFFIC_SHIP, ship.traffic_ship_id),
+                &encode_traffic_ship(&ship),
+            )?;
+            return Ok(format!(
+                "TrafficDeparture suppressed {origin_system_id}->{destination_system_id}: unvisited frontier"
+            ));
+        }
         let arrival_second = now
             .checked_add(STANDARD_JUMP_SECONDS)
             .ok_or(SimulationError::Corrupt("traffic arrival overflow"))?;
@@ -2111,6 +2198,9 @@ fn jump_two_neighbor_lists(systems: &[SimulationSystem]) -> Vec<Vec<u64>> {
     };
     let mut buckets = BTreeMap::<(i64, i64, i64), Vec<usize>>::new();
     for (index, system) in systems.iter().enumerate() {
+        if !system.generated_traffic_enabled {
+            continue;
+        }
         buckets
             .entry(bucket_coordinate(system.position_parsecs))
             .or_default()
@@ -2118,6 +2208,9 @@ fn jump_two_neighbor_lists(systems: &[SimulationSystem]) -> Vec<Vec<u64>> {
     }
     let mut neighbors = vec![Vec::<u64>::new(); systems.len()];
     for index in 0..systems.len() {
+        if !systems[index].generated_traffic_enabled {
+            continue;
+        }
         let (bucket_x, bucket_y, bucket_z) = bucket_coordinate(systems[index].position_parsecs);
         for offset_x in -1..=1 {
             for offset_y in -1..=1 {
@@ -2262,7 +2355,7 @@ impl<'a> Decoder<'a> {
 }
 
 fn encode_system(system: &SimulationSystem) -> Result<Vec<u8>, SimulationError> {
-    let mut bytes = vec![3];
+    let mut bytes = vec![4];
     let default_name = format!("Frontier {}", system.system_id);
     if system.name == default_name {
         bytes.push(0);
@@ -2278,6 +2371,7 @@ fn encode_system(system: &SimulationSystem) -> Result<Vec<u8>, SimulationError> 
     bytes.push(system.population);
     bytes.push(system.tech_level);
     bytes.push(system.starport);
+    bytes.push(u8::from(system.generated_traffic_enabled));
     bytes.extend_from_slice(&system.next_system_day.to_be_bytes());
     let count = u16::try_from(system.jump_two_neighbors.len())
         .map_err(|_| SimulationError::Corrupt("too many J-2 neighbors"))?;
@@ -2290,7 +2384,8 @@ fn encode_system(system: &SimulationSystem) -> Result<Vec<u8>, SimulationError> 
 
 fn decode_system(id: u64, bytes: &[u8]) -> Result<SimulationSystem, SimulationError> {
     let mut decoder = Decoder::new(bytes);
-    if decoder.u8()? != 3 {
+    let version = decoder.u8()?;
+    if !matches!(version, 3 | 4) {
         return Err(SimulationError::Corrupt("unsupported simulation system"));
     }
     let system_id = id;
@@ -2308,6 +2403,17 @@ fn decode_system(id: u64, bytes: &[u8]) -> Result<SimulationSystem, SimulationEr
     let population = decoder.u8()?;
     let tech_level = decoder.u8()?;
     let starport = decoder.u8()?;
+    let generated_traffic_enabled = if version >= 4 {
+        match decoder.u8()? {
+            0 => false,
+            1 => true,
+            _ => {
+                return Err(SimulationError::Corrupt("invalid generated-traffic flag"));
+            }
+        }
+    } else {
+        true
+    };
     let next_system_day = decoder.u64()?;
     let count = decoder.u16()? as usize;
     let mut jump_two_neighbors = Vec::with_capacity(count);
@@ -2324,6 +2430,7 @@ fn decode_system(id: u64, bytes: &[u8]) -> Result<SimulationSystem, SimulationEr
         population,
         tech_level,
         starport,
+        generated_traffic_enabled,
         next_system_day,
         jump_two_neighbors,
     })
@@ -2889,6 +2996,7 @@ mod tests {
             population: 8,
             tech_level: 15,
             starport: crate::universe::Starport::A as u8,
+            generated_traffic_enabled: true,
             next_system_day: 0,
             jump_two_neighbors: Vec::new(),
         }
@@ -2906,6 +3014,7 @@ mod tests {
                 population: 5,
                 tech_level: 10,
                 starport: 2,
+                generated_traffic_enabled: true,
                 next_system_day: 0,
                 jump_two_neighbors: match system_id {
                     1 => vec![2, 3],
@@ -2939,6 +3048,7 @@ mod tests {
                 population: 0,
                 tech_level: 0,
                 starport: 5,
+                generated_traffic_enabled: true,
                 next_system_day: 0,
                 jump_two_neighbors: Vec::new(),
             })
@@ -2947,6 +3057,50 @@ mod tests {
             jump_two_neighbor_lists(&systems),
             vec![vec![2, 3, 5], vec![1, 4], vec![1], vec![2], vec![1]]
         );
+    }
+
+    #[test]
+    fn unvisited_systems_are_excluded_from_generated_traffic_topology() {
+        let mut systems = vec![
+            test_system(1, 0.0),
+            test_system(2, 1.0),
+            test_system(3, 1.5),
+        ];
+        systems[2].generated_traffic_enabled = false;
+        assert_eq!(
+            jump_two_neighbor_lists(&systems),
+            vec![vec![2], vec![1], vec![]]
+        );
+        let encoded = encode_system(&systems[2]).unwrap();
+        assert!(
+            !decode_system(3, &encoded)
+                .unwrap()
+                .generated_traffic_enabled
+        );
+    }
+
+    #[test]
+    fn stale_departure_into_unvisited_system_is_suppressed() {
+        let directory = TempDir::new().unwrap();
+        // SAFETY: this test owns the temporary directory and opens it once.
+        let env = unsafe {
+            EnvOpenOptions::new()
+                .map_size(16 * 1024 * 1024)
+                .max_dbs(4)
+                .open(directory.path())
+                .unwrap()
+        };
+        let mut txn = env.write_txn().unwrap();
+        let simulation = SimulationDatabases::create(&env, &mut txn).unwrap();
+        let visited = test_system(1, 0.0);
+        let mut frontier = test_system(2, 1.0);
+        frontier.generated_traffic_enabled = false;
+        simulation
+            .initialize(&mut txn, vec![visited, frontier])
+            .unwrap();
+        let summary = simulation.process_departure(&mut txn, 0, 1, 2).unwrap();
+        assert!(summary.contains("suppressed"));
+        assert_eq!(simulation.report(&txn, 0).unwrap().traffic_ships, 0);
     }
 
     #[test]

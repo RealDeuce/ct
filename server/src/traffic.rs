@@ -138,7 +138,10 @@ pub fn movements(
     after_second: u64,
     through_second: u64,
 ) -> Result<Vec<TrafficContact>, CryptoError> {
-    if through_second < after_second || system.jump_two_neighbors.is_empty() {
+    if through_second < after_second
+        || !system.generated_traffic_enabled
+        || system.jump_two_neighbors.is_empty()
+    {
         return Ok(Vec::new());
     }
     let first_day = after_second / SECONDS_PER_DAY;
@@ -523,6 +526,11 @@ pub fn operational_route(
     origin_system_id: u64,
     destination_system_id: u64,
 ) -> Option<OperationalRoute> {
+    let systems = systems
+        .iter()
+        .filter(|system| system.generated_traffic_enabled)
+        .cloned()
+        .collect::<Vec<_>>();
     static ROUTES: OnceLock<Mutex<BTreeMap<(u64, u64, u64), Option<OperationalRoute>>>> =
         OnceLock::new();
     let fingerprint = systems.iter().fold(systems.len() as u64, |value, system| {
@@ -548,7 +556,7 @@ pub fn operational_route(
     {
         return route;
     }
-    let route = calculate_operational_route(systems, origin_system_id, destination_system_id);
+    let route = calculate_operational_route(&systems, origin_system_id, destination_system_id);
     ROUTES
         .get_or_init(|| Mutex::new(BTreeMap::new()))
         .lock()
@@ -748,9 +756,17 @@ mod tests {
             population: 10,
             tech_level: 13,
             starport: 0,
+            generated_traffic_enabled: true,
             next_system_day: 0,
             jump_two_neighbors: vec![2, 3, 4],
         }
+    }
+
+    #[test]
+    fn unvisited_system_has_no_projected_generated_traffic() {
+        let mut frontier = system(9);
+        frontier.generated_traffic_enabled = false;
+        assert!(movements(&frontier, 0, SECONDS_PER_DAY).unwrap().is_empty());
     }
 
     fn positioned_system(
@@ -768,6 +784,7 @@ mod tests {
             population: 8,
             tech_level: 15,
             starport: starport as u8,
+            generated_traffic_enabled: true,
             next_system_day: 0,
             jump_two_neighbors: Vec::new(),
         }
@@ -824,7 +841,7 @@ mod tests {
 
     #[test]
     fn operational_route_requires_tankage_to_cross_a_dry_system() {
-        let systems = vec![
+        let mut systems = vec![
             positioned_system(1, [0.0, 0.0, 0.0], Starport::A, [1; 32]),
             positioned_system(2, [1.5, 0.0, 0.0], Starport::X, gas_giant_free_seed(2)),
             positioned_system(3, [3.0, 0.0, 0.0], Starport::A, [3; 32]),
@@ -834,6 +851,12 @@ mod tests {
         assert_eq!(route.jump_rating, 2);
         assert!(route.tank_jump_units >= 4);
         assert!(route.capability_level >= 2);
+
+        systems[1].generated_traffic_enabled = false;
+        let bypass = operational_route(&systems, 1, 3).expect("a direct J-3 bypass exists");
+        assert!(!bypass.system_ids.contains(&2));
+        assert!(operational_route(&systems, 2, 3).is_none());
+        assert!(operational_route(&systems, 1, 2).is_none());
     }
 
     #[test]

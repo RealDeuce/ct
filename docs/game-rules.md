@@ -303,14 +303,24 @@ Chaos-Order and Trade-Combat orientations defined under traffic.
 
 Every newly founded BBS home polity is internally connected by Jump-2 legs
 and joins the existing system-to-system Jump-2 network that reaches Sol. Its
-capital therefore has a Jump-2 route to Sol through already established
-systems and its own cluster. Founding a new polity does not move or regenerate
-older systems or historical clusters.
+capital therefore has a Jump-2 route to Sol through its own cluster and an
+already plotted contact route. The founding ship's stops on that route become
+visited together with every member of the new polity, creating a narrow
+traffic-active bridge through the former frontier without moving or
+regenerating older systems. The polity's protected three-parsec core is
+resolved before its remaining six-parsec frontier is materialized.
 
 Charts are observations. A captain knows only systems and details carried by
 the ship's records or received through survey and mail. Empty surveyed space
 is also knowledge: it prevents a resolved volume from being rerolled merely
 because another captain arrives later.
+
+At the founding epoch, the complete volume inside the fixed 43-system
+catalogue's convex boundary is settled first. Survey stations then plot the
+remaining space out to six parsecs from every catalogue system. Contacts found
+in that outer shell enter the public charts but remain frontier systems until a
+player ship physically visits them. The shell survey cannot insert another
+system inside the already settled catalogue volume.
 
 ### Universal World Profile
 
@@ -1201,7 +1211,12 @@ contains no ordinary encounters.
 Scheduled route traffic is observable for one game hour before through one
 hour after its route edge. Local persistent traffic is assigned 55% to ports,
 30% to Jump loci, and 15% to other bodies; deep-space ships are visible only
-when their real trajectories supply a contact solution. Traffic volume follows
+when their real trajectories supply a contact solution. Generated traffic
+never enters, exits, or passes through an unvisited frontier system. Plotting
+or publishing a contact does not open it to background traffic. Initial
+catalogue systems and BBS polity members are established visited systems; an
+ordinary frontier system opens on the first player arrival or when it is an
+actual stop on a later BBS founding contact route. Traffic volume follows
 population, starport, connectivity, route demand, and vessels capable of the
 route rather than a fixed encounter table.
 

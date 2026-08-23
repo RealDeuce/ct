@@ -44,8 +44,12 @@ server/target/release/cepheus-trader-universe-site \
 The default visibility is `universally-known`. The exporter includes only
 systems whose public mapping broadcast has completed across every currently
 applicable system. That state is monotonic: a system does not disappear from a
-later public snapshot. The initial 43-system Federation is universally known
-at game second zero.
+later public snapshot. At game second zero, the initial 43-system Federation
+and the plotted six-parsec frontier shell around it are universally known. The
+43 fixed systems begin visited; generated shell contacts begin unvisited. Every
+BBS polity member is also established as visited when that polity is
+materialized, as are the plotted systems actually crossed by its founding
+contact route; its unaligned stub and remaining shell begin as frontier.
 
 An operator-only snapshot can deliberately bypass that filter:
 
@@ -73,8 +77,8 @@ disclosure choices, and mapping publications. A visit that left none of that
 durable evidence in an older database cannot be reconstructed and remains
 marked as frontier.
 
-For a documentation site or a new universe without a database, generate the
-fixed initial map with:
+For a documentation site without a database, generate the fixed initial map
+with:
 
 ```console
 server/target/release/cepheus-trader-universe-site \
@@ -82,8 +86,10 @@ server/target/release/cepheus-trader-universe-site \
   --output site/_site/atlas
 ```
 
-This mode is always `universally-known` and intentionally omits procedurally
-derived world details except for fixed Earth data.
+This mode is always `universally-known` and intentionally omits both the
+procedurally generated frontier shell and procedurally derived world details
+except for fixed Earth data. Export an initialized database to see its actual
+day-zero frontier.
 
 ## Deployment behavior
 

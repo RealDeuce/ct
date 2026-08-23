@@ -28,7 +28,7 @@ use crate::coverage::{
     settlement_sphere_footprint_masks, sphere_footprint_masks,
 };
 use crate::creation;
-use crate::crypto::{CryptoError, SeedStream};
+use crate::crypto::{CryptoError, SeedStream, derive_seed};
 use crate::navigation::{
     BBS_CORE_MAXIMUM_JUMP_APPROACH_DAYS, bbs_core_jump_guard_days, body_position_au,
     gas_giant_fuel_source, gas_giant_fuel_sources, nearest_gas_giant_fuel_source,
@@ -3440,6 +3440,15 @@ impl Store {
             system_visits,
             &mut txn,
         )?;
+        let visited_system_ids = system_visits
+            .iter(&txn)?
+            .map(|entry| {
+                let (system_id, encoded) = entry?;
+                decode_system_visit(encoded)?;
+                Ok(system_id)
+            })
+            .collect::<Result<std::collections::BTreeSet<_>, StoreError>>()?;
+        simulation.reconcile_generated_traffic(&mut txn, &visited_system_ids)?;
         reconcile_accommodation_capacity_in(ships, meta, &mut txn)?;
         txn.commit()?;
         Ok(Self {
@@ -15174,30 +15183,27 @@ impl Store {
                         }),
                     )?;
                 }
-                if !player
-                    .known_system_ids
-                    .contains(&available.message.origin_system_id)
-                {
-                    player
+                if available.message.class == crate::simulation::MessageClass::Private {
+                    if !player
                         .known_system_ids
-                        .push(available.message.origin_system_id);
-                }
-                let mapping_key =
-                    player_system_mapping_key(identity, available.message.origin_system_id);
-                if self
-                    .player_system_mappings
-                    .get(txn, &mapping_key)?
-                    .is_none()
-                    && available.message.class != crate::simulation::MessageClass::Private
-                {
-                    self.player_system_mappings.put(
+                        .contains(&available.message.origin_system_id)
+                    {
+                        player
+                            .known_system_ids
+                            .push(available.message.origin_system_id);
+                    }
+                } else {
+                    // Public contact arrives as one carried dossier. Knowing
+                    // its polity means learning the polity's complete system
+                    // register together, not discovering its members one mail
+                    // hop at a time.
+                    self.merge_public_polity_dossier_in(
                         txn,
-                        &mapping_key,
-                        &encode_player_system_mapping(&PlayerSystemMappingRecord {
-                            state: SystemMappingState::KnownPublic,
-                            dispatch_message_id: Some(available.message.message_id),
-                            changed_second: available.available_second,
-                        }),
+                        identity,
+                        &mut player,
+                        available.message.origin_system_id,
+                        available.message.message_id,
+                        available.available_second,
                     )?;
                 }
                 let candidate = PlayerFeedCursorRecord {
@@ -24103,11 +24109,40 @@ impl Store {
         }
         let ship_spec = creation::ship_status_spec(offer.ship_catalog_id)
             .ok_or(StoreError::Corrupt("starting ship status data is missing"))?;
+        let home_member_positions = home
+            .cluster_system_ids
+            .iter()
+            .map(|system_id| {
+                self.systems
+                    .get(txn, system_id)?
+                    .map(decode_stellar_system)
+                    .transpose()?
+                    .map(|system| system.position_parsecs)
+                    .ok_or(StoreError::Corrupt("home polity member system is missing"))
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        let frontier_radius_squared =
+            crate::coverage::JUMP_ARRIVAL_MAPPING_RADIUS_PARSECS.powi(2) + 1.0e-9;
         let mut known_system_ids = Vec::new();
         for entry in self.systems.iter(txn)? {
             let (_, encoded) = entry?;
             let system = decode_stellar_system(encoded)?;
-            if system.polity_id == home.polity_id || system.polity_id == FEDERATION_POLITY_ID {
+            let universally_known = self
+                .system_publications
+                .get(txn, &system.id)?
+                .map(decode_system_publication)
+                .transpose()?
+                .is_some_and(|record| record.state == SystemPublicationState::UniversallyKnown);
+            let in_home_frontier = home_member_positions.iter().any(|position| {
+                system
+                    .position_parsecs
+                    .iter()
+                    .zip(position)
+                    .map(|(left, right)| (left - right).powi(2))
+                    .sum::<f64>()
+                    <= frontier_radius_squared
+            });
+            if system.polity_id == home.polity_id || universally_known || in_home_frontier {
                 known_system_ids.push(system.id);
             }
         }
@@ -24278,6 +24313,8 @@ impl Store {
             home.capital_system_id,
             current_game_second,
         )?;
+        self.simulation
+            .enable_generated_traffic(txn, home.capital_system_id)?;
         Ok(())
     }
 
@@ -24621,15 +24658,25 @@ impl Store {
 
     /// Resolve the canonical six-parsec sensor volume around a Jump breakout.
     ///
-    /// The entropy is drawn only while processing the authoritative travel
-    /// transaction. Generated component seeds and all resulting systems are
-    /// committed with the coverage bits, so no master universe seed exists
-    /// and an uncommitted retry cannot leak a partially materialized volume.
+    /// Ordinary travel draws entropy while processing its authoritative
+    /// transaction. Fresh-universe shell surveys instead pass domain-separated
+    /// initialization entropy after the fixed hull is resolved. Generated
+    /// component seeds and all resulting systems commit with the coverage bits.
     fn materialize_jump_arrival_volume_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
         target_parsecs: [f64; 3],
         current_second: u64,
+    ) -> Result<Vec<StellarSystem>, StoreError> {
+        self.materialize_jump_arrival_volume_with_seed_in(txn, target_parsecs, current_second, None)
+    }
+
+    fn materialize_jump_arrival_volume_with_seed_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        target_parsecs: [f64; 3],
+        current_second: u64,
+        operation_seed: Option<[u8; 32]>,
     ) -> Result<Vec<StellarSystem>, StoreError> {
         let footprint = jump_arrival_footprint_masks(target_parsecs)?;
         let mut missing = footprint.clone();
@@ -24644,8 +24691,14 @@ impl Store {
         missing.retain(|_, cells| !cells.is_empty());
 
         if !missing.is_empty() {
-            let mut operation_seed = [0_u8; 32];
-            getrandom::fill(&mut operation_seed)?;
+            let operation_seed = match operation_seed {
+                Some(seed) => seed,
+                None => {
+                    let mut seed = [0_u8; 32];
+                    getrandom::fill(&mut seed)?;
+                    seed
+                }
+            };
             let mut stream = SeedStream::new(operation_seed);
             let mut name_stream =
                 naming_stream(operation_seed, b"place-naming/frontier-arrival/v1")?;
@@ -24738,6 +24791,7 @@ impl Store {
                     population: world.population,
                     tech_level: world.tech_level,
                     starport: world.starport as u8,
+                    generated_traffic_enabled: false,
                     next_system_day: 0,
                     jump_two_neighbors: Vec::new(),
                 });
@@ -24832,6 +24886,62 @@ impl Store {
         self.players
             .put(txn, &identity_key, &encode_player_record(&player))?;
         Ok(surveyed)
+    }
+
+    fn merge_public_polity_dossier_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        player: &mut PlayerRecord,
+        origin_system_id: u64,
+        message_id: u64,
+        observed_second: u64,
+    ) -> Result<(), StoreError> {
+        let origin = self
+            .systems
+            .get(txn, &origin_system_id)?
+            .map(decode_stellar_system)
+            .transpose()?
+            .ok_or(StoreError::Corrupt(
+                "public message origin system is missing",
+            ))?;
+        let disclosed_system_ids = if origin.polity_id == 0 {
+            vec![origin.id]
+        } else {
+            self.systems
+                .iter(txn)?
+                .filter_map(|entry| match entry {
+                    Ok((system_id, encoded)) => match decode_stellar_system(encoded) {
+                        Ok(system) if system.polity_id == origin.polity_id => Some(Ok(system_id)),
+                        Ok(_) => None,
+                        Err(error) => Some(Err(error)),
+                    },
+                    Err(error) => Some(Err(StoreError::Heed(error))),
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?
+        };
+        for system_id in disclosed_system_ids {
+            if !player.known_system_ids.contains(&system_id) {
+                player.known_system_ids.push(system_id);
+            }
+            let mapping_key = player_system_mapping_key(identity, system_id);
+            if self
+                .player_system_mappings
+                .get(txn, &mapping_key)?
+                .is_none()
+            {
+                self.player_system_mappings.put(
+                    txn,
+                    &mapping_key,
+                    &encode_player_system_mapping(&PlayerSystemMappingRecord {
+                        state: SystemMappingState::KnownPublic,
+                        dispatch_message_id: Some(message_id),
+                        changed_second: observed_second,
+                    }),
+                )?;
+            }
+        }
+        Ok(())
     }
 
     pub fn initialize_universe(
@@ -25079,6 +25189,44 @@ impl Store {
         if initial_coverage_cells == 0 {
             return Err(StoreError::Corrupt("empty initial coverage footprint"));
         }
+
+        // The fixed-catalog hull must win every overlapping coverage cell.
+        // Only after that layer is complete do the hardcoded systems survey
+        // their six-parsec surroundings, so the frontier sampler can populate
+        // only the unresolved shell outside the established CNS5 volume.
+        for (initial, generation_seed) in INITIAL_SYSTEMS.iter().zip(system_seeds) {
+            let operation_seed =
+                derive_seed(*generation_seed, b"frontier/initial-catalog-arrival/v1")?;
+            self.materialize_jump_arrival_volume_with_seed_in(
+                &mut txn,
+                initial.position_parsecs,
+                0,
+                Some(operation_seed),
+            )?;
+        }
+        let initial_frontier_ids = self
+            .systems
+            .iter(&txn)?
+            .filter_map(|entry| match entry {
+                Ok((system_id, _)) if system_id > INITIAL_SYSTEMS.len() as u64 => {
+                    Some(Ok(system_id))
+                }
+                Ok(_) => None,
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for system_id in initial_frontier_ids {
+            self.system_publications.put(
+                &mut txn,
+                &system_id,
+                &encode_system_publication(&SystemPublicationRecord {
+                    message_id: 0,
+                    dispatched_second: 0,
+                    completed_second: 0,
+                    state: SystemPublicationState::UniversallyKnown,
+                }),
+            )?;
+        }
         for (bbs_id, configuration) in &configured {
             let home = self.materialize_bbs_polity_in(
                 &mut txn,
@@ -25121,12 +25269,22 @@ impl Store {
                     population: world.population,
                     tech_level: world.tech_level,
                     starport: world.starport as u8,
+                    generated_traffic_enabled: self.system_visits.get(&txn, &system.id)?.is_some(),
                     next_system_day: 0,
                     jump_two_neighbors: Vec::new(),
                 })
             })
             .collect::<Result<Vec<_>, StoreError>>()?;
         self.simulation.initialize(&mut txn, simulation_systems)?;
+        for (bbs_id, configuration) in &configured {
+            let home = self
+                .bbs_homes
+                .get(&txn, bbs_id)?
+                .map(decode_bbs_home)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("initialized BBS home is missing"))?;
+            self.dispatch_bbs_founding_announcement_in(&mut txn, &home, &configuration.settings)?;
+        }
 
         let sequence = get_meta_u64(self.meta, &txn, META_NEXT_INGRESS)?.unwrap_or(1);
         let next_sequence = sequence
@@ -25414,6 +25572,7 @@ impl Store {
                     population: world.population,
                     tech_level: world.tech_level,
                     starport: world.starport as u8,
+                    generated_traffic_enabled: self.system_visits.get(&txn, &system.id)?.is_some(),
                     next_system_day: 0,
                     jump_two_neighbors: Vec::new(),
                 })
@@ -29282,6 +29441,8 @@ impl Store {
                     destination_system_id,
                     due_second,
                 )?;
+                self.simulation
+                    .enable_generated_traffic(txn, destination_system_id)?;
                 let celestial = derive_celestial_system(&destination)?;
                 let approach = primary_world_jump_safety(
                     &celestial,
@@ -30604,6 +30765,53 @@ impl Store {
                 world.law_level,
             ));
         }
+        let inward_gateway = self
+            .systems
+            .get(txn, &home.cluster_system_ids[0])?
+            .map(decode_stellar_system)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("new BBS inward gateway is missing"))?;
+        let mut contact_candidates = self
+            .systems
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((system_id, encoded)) if !home.cluster_system_ids.contains(&system_id) => {
+                    match decode_stellar_system(encoded) {
+                        Ok(system) => {
+                            let distance_squared = system
+                                .position_parsecs
+                                .iter()
+                                .zip(inward_gateway.position_parsecs)
+                                .map(|(left, right)| (left - right).powi(2))
+                                .sum::<f64>();
+                            if distance_squared <= 4.0 + 1.0e-9 {
+                                Some(Ok((distance_squared, system_id)))
+                            } else {
+                                None
+                            }
+                        }
+                        Err(error) => Some(Err(error)),
+                    }
+                }
+                Ok(_) => None,
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        contact_candidates.sort_by(|left, right| {
+            left.0
+                .total_cmp(&right.0)
+                .then_with(|| left.1.cmp(&right.1))
+        });
+        let mut contact_system_id = None;
+        for (_, system_id) in contact_candidates {
+            if self.system_visits.get(txn, &system_id)?.is_some() {
+                contact_system_id = Some(system_id);
+                break;
+            }
+        }
+        let contact_system_id = contact_system_id.ok_or(StoreError::Corrupt(
+            "BBS founding contact system is missing",
+        ))?;
         let destinations = self
             .systems
             .iter(txn)?
@@ -30614,7 +30822,7 @@ impl Store {
             })
             .collect::<Result<Vec<_>, StoreError>>()?;
         let now = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
-        self.simulation.dispatch_message(
+        let (message_id, _) = self.simulation.dispatch_message(
             txn,
             now,
             home.capital_system_id,
@@ -30624,6 +30832,8 @@ impl Store {
             &dossier,
             &destinations,
         )?;
+        self.simulation
+            .deliver_player_carried_message(txn, message_id, contact_system_id, now)?;
         Ok(())
     }
 
@@ -30701,7 +30911,6 @@ impl Store {
         if existing.iter().all(|system| system.polity_id == 0) {
             return Err(StoreError::NoBbsPolitySite);
         }
-
         let mut stream = SeedStream::new(placement_seed);
         let tie_salt = stream.next_u64()?;
         let mut candidates = Vec::new();
@@ -30731,6 +30940,14 @@ impl Store {
             .into_iter()
             .next()
             .ok_or(StoreError::NoBbsPolitySite)?;
+        let contact_route = shortest_jump_two_path_to_visited(
+            &existing,
+            site.anchor_system_id,
+            &HashSet::from([SOL_SYSTEM_ID]),
+        )
+        .ok_or(StoreError::Corrupt(
+            "BBS gateway has no plotted route to visited space",
+        ))?;
 
         let polity_id = take_next_id(self.meta, txn, META_NEXT_POLITY_ID)?;
         let first_system_id = take_id_range(
@@ -30841,6 +31058,35 @@ impl Store {
             &guard,
         )?;
 
+        // The founding contact traverses an already plotted J-2 route from
+        // visited space to the new polity. Those actual stops become a narrow
+        // visited bridge; lateral plotted systems remain frontier until a ship
+        // visits them. The complete BBS cluster itself is established and
+        // visited before its six-parsec shell is surveyed.
+        let current_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        for system_id in contact_route {
+            record_first_system_visit_in(self.system_visits, txn, system_id, current_second)?;
+        }
+        for system_id in cluster_system_ids {
+            record_first_system_visit_in(self.system_visits, txn, system_id, current_second)?;
+        }
+        for system_id in cluster_system_ids {
+            let system = self
+                .systems
+                .get(txn, &system_id)?
+                .map(decode_stellar_system)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("new BBS system is missing"))?;
+            let operation_seed =
+                derive_seed(system.generation_seed, b"frontier/bbs-polity-arrival/v1")?;
+            self.materialize_jump_arrival_volume_with_seed_in(
+                txn,
+                system.position_parsecs,
+                current_second,
+                Some(operation_seed),
+            )?;
+        }
+
         let home = BbsHome {
             bbs_id,
             polity_id,
@@ -30873,10 +31119,24 @@ impl Store {
                 .get(txn, system_id)?
                 .ok_or(StoreError::Corrupt("materialized BBS system is missing"))?;
             let system = decode_stellar_system(encoded)?;
-            systems.push(simulation_system_from_stellar(system)?);
+            systems.push(simulation_system_from_stellar(
+                system,
+                home.cluster_system_ids.contains(system_id),
+            )?);
         }
         let current_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
         self.simulation.add_systems(txn, systems, current_second)?;
+        let visited_system_ids = self
+            .system_visits
+            .iter(txn)?
+            .map(|entry| {
+                entry
+                    .map(|(system_id, _)| system_id)
+                    .map_err(StoreError::Heed)
+            })
+            .collect::<Result<std::collections::BTreeSet<_>, StoreError>>()?;
+        self.simulation
+            .reconcile_generated_traffic(txn, &visited_system_ids)?;
         self.extend_pending_system_publications_in(txn, &system_ids, current_second)?;
         Ok(())
     }
@@ -31744,7 +32004,54 @@ fn calculate_course_plan_through(
     }
 }
 
-fn simulation_system_from_stellar(system: StellarSystem) -> Result<SimulationSystem, StoreError> {
+fn shortest_jump_two_path_to_visited(
+    systems: &[StellarSystem],
+    origin_system_id: u64,
+    visited_system_ids: &HashSet<u64>,
+) -> Option<Vec<u64>> {
+    let mut frontier = std::collections::VecDeque::from([origin_system_id]);
+    let mut predecessor = HashMap::<u64, u64>::new();
+    let mut reached = HashSet::from([origin_system_id]);
+    while let Some(system_id) = frontier.pop_front() {
+        if visited_system_ids.contains(&system_id) {
+            let mut path = vec![system_id];
+            let mut current = system_id;
+            while current != origin_system_id {
+                current = predecessor[&current];
+                path.push(current);
+            }
+            path.reverse();
+            return Some(path);
+        }
+        let system = systems.iter().find(|system| system.id == system_id)?;
+        let mut neighbors = systems
+            .iter()
+            .filter(|candidate| {
+                !reached.contains(&candidate.id)
+                    && candidate
+                        .position_parsecs
+                        .iter()
+                        .zip(system.position_parsecs)
+                        .map(|(left, right)| (left - right).powi(2))
+                        .sum::<f64>()
+                        <= 4.0 + 1.0e-9
+            })
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>();
+        neighbors.sort_unstable();
+        for neighbor_id in neighbors {
+            reached.insert(neighbor_id);
+            predecessor.insert(neighbor_id, system_id);
+            frontier.push_back(neighbor_id);
+        }
+    }
+    None
+}
+
+fn simulation_system_from_stellar(
+    system: StellarSystem,
+    generated_traffic_enabled: bool,
+) -> Result<SimulationSystem, StoreError> {
     let world = derive_primary_world(&system)?;
     Ok(SimulationSystem {
         system_id: system.id,
@@ -31755,6 +32062,7 @@ fn simulation_system_from_stellar(system: StellarSystem) -> Result<SimulationSys
         population: world.population,
         tech_level: world.tech_level,
         starport: world.starport as u8,
+        generated_traffic_enabled,
         next_system_day: 0,
         jump_two_neighbors: Vec::new(),
     })
@@ -43114,6 +43422,37 @@ mod tests {
             .collect()
     }
 
+    fn stellar_jump_two_route_exists(
+        systems: &[StellarSystem],
+        origin_system_id: u64,
+        destination_system_id: u64,
+    ) -> bool {
+        let mut frontier = std::collections::VecDeque::from([origin_system_id]);
+        let mut visited = HashSet::from([origin_system_id]);
+        while let Some(current_id) = frontier.pop_front() {
+            if current_id == destination_system_id {
+                return true;
+            }
+            let Some(current) = systems.iter().find(|system| system.id == current_id) else {
+                return false;
+            };
+            let neighbor_ids = systems
+                .iter()
+                .filter(|candidate| {
+                    !visited.contains(&candidate.id)
+                        && squared_distance(current.position_parsecs, candidate.position_parsecs)
+                            <= 4.0 + 1.0e-9
+                })
+                .map(|neighbor| neighbor.id)
+                .collect::<Vec<_>>();
+            for neighbor_id in neighbor_ids {
+                visited.insert(neighbor_id);
+                frontier.push_back(neighbor_id);
+            }
+        }
+        false
+    }
+
     #[test]
     fn reopening_an_older_universe_backfills_fixed_system_publications() {
         let directory = TempDir::new().unwrap();
@@ -45838,8 +46177,8 @@ mod tests {
                 .unwrap();
             assert_eq!(replay, first);
             assert_eq!(first.polity_count, 1);
-            assert_eq!(first.system_count, INITIAL_SYSTEMS.len() as u32);
-            assert_eq!(first.world_count, INITIAL_SYSTEMS.len() as u32);
+            assert!(first.system_count > INITIAL_SYSTEMS.len() as u32);
+            assert_eq!(first.world_count, first.system_count);
             assert_eq!(
                 store.polities().unwrap(),
                 vec![Polity {
@@ -45849,14 +46188,21 @@ mod tests {
                 }]
             );
             let systems = store.stellar_systems().unwrap();
-            assert_eq!(systems.len(), INITIAL_SYSTEMS.len());
+            assert_eq!(systems.len(), first.system_count as usize);
             assert_eq!(systems[0].name, "Sol");
             assert_eq!(systems[0].position_parsecs, [0.0; 3]);
             assert_eq!(systems[0].generation_seed, [1; 32]);
             assert!(
                 systems
                     .iter()
+                    .take(INITIAL_SYSTEMS.len())
                     .all(|system| system.polity_id == FEDERATION_POLITY_ID)
+            );
+            assert!(
+                systems
+                    .iter()
+                    .skip(INITIAL_SYSTEMS.len())
+                    .all(|system| system.polity_id == 0)
             );
             assert!(
                 systems
@@ -45870,17 +46216,13 @@ mod tests {
             assert_eq!(sol.primary_world(), &fixed_earth_world());
             assert!(sol.bodies.iter().any(|body| body.name == "Jupiter"));
             let coverage = store.mapping_coverage([0.0; 3]).unwrap();
-            assert_eq!(coverage.coverage_revision(), 1);
-            assert!(matches!(
-                coverage,
-                MappingCoverage::NeedsMaterialization { .. }
-            ));
+            assert!(matches!(coverage, MappingCoverage::FullyMapped { .. }));
             first
         };
         let reopened = Store::open(dir.path()).unwrap();
         assert_eq!(
             reopened.stellar_systems().unwrap().len(),
-            INITIAL_SYSTEMS.len()
+            expected.system_count as usize
         );
         assert_eq!(reopened.worlds().unwrap()[0].tech_level, 13);
         assert_eq!(
@@ -46107,7 +46449,7 @@ mod tests {
             }
         }
         let txn = store.env.read_txn().unwrap();
-        for system in generated {
+        for system in &generated {
             let mapping = store
                 .player_system_mappings
                 .get(&txn, &player_system_mapping_key(&identity(), system.id))
@@ -46129,6 +46471,21 @@ mod tests {
         let coverage_revision = get_meta_u64(store.meta, &txn, META_COVERAGE_REVISION).unwrap();
         let system_count = store.systems.len(&txn).unwrap();
         drop(txn);
+        let simulation_systems = store.simulation_systems().unwrap();
+        assert!(
+            simulation_systems
+                .iter()
+                .find(|system| system.system_id == destination.id)
+                .unwrap()
+                .generated_traffic_enabled
+        );
+        assert!(generated.iter().all(|generated| {
+            !simulation_systems
+                .iter()
+                .find(|system| system.system_id == generated.id)
+                .unwrap()
+                .generated_traffic_enabled
+        }));
 
         let mut txn = store.env.write_txn().unwrap();
         store
@@ -46168,7 +46525,7 @@ mod tests {
     }
 
     #[test]
-    fn initial_catalog_hull_resolves_every_fixed_system_and_reduces_arrival_boundary() {
+    fn initial_catalog_hull_precedes_a_public_unvisited_frontier_shell() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
         store
@@ -46179,43 +46536,65 @@ mod tests {
                 &[],
             )
             .unwrap();
-        let coverage_txn = store.env.read_txn().unwrap();
+        let systems = store.stellar_systems().unwrap();
+        assert!(systems.len() > INITIAL_SYSTEMS.len());
+        let simulation_systems = store.simulation_systems().unwrap();
+        assert_eq!(simulation_systems.len(), systems.len());
+        assert_eq!(
+            simulation_systems
+                .iter()
+                .filter(|system| system.generated_traffic_enabled)
+                .count(),
+            INITIAL_SYSTEMS.len()
+        );
+        assert!(simulation_systems.iter().all(|system| {
+            !system.generated_traffic_enabled
+                || system.jump_two_neighbors.iter().all(|neighbor_id| {
+                    simulation_systems.iter().any(|neighbor| {
+                        neighbor.system_id == *neighbor_id && neighbor.generated_traffic_enabled
+                    })
+                })
+        }));
+        let initial_coverage = convex_polyhedron_footprint_masks(
+            INITIAL_CATALOG_HULL_VERTICES,
+            INITIAL_CATALOG_HULL_FACE_NORMALS,
+            INITIAL_CATALOG_HULL_EDGES,
+        )
+        .unwrap();
         for initial in INITIAL_SYSTEMS {
+            assert!(matches!(
+                store.mapping_coverage(initial.position_parsecs).unwrap(),
+                MappingCoverage::FullyMapped { .. }
+            ));
+        }
+        let txn = store.env.read_txn().unwrap();
+        for frontier in systems.iter().skip(INITIAL_SYSTEMS.len()) {
+            let (coordinate, bit_index) = point_cell(frontier.position_parsecs).unwrap();
+            assert!(
+                !initial_coverage
+                    .get(&coordinate)
+                    .is_some_and(|cells| cells.contains(bit_index)),
+                "{} was generated inside the fixed-catalog hull layer",
+                frontier.name
+            );
+            let publication = decode_system_publication(
+                store
+                    .system_publications
+                    .get(&txn, &frontier.id)
+                    .unwrap()
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(publication.state, SystemPublicationState::UniversallyKnown);
+            assert_eq!(publication.completed_second, 0);
             assert!(
                 store
-                    .point_is_resolved_in(&coverage_txn, initial.position_parsecs)
-                    .unwrap(),
-                "{} must lie in a resolved initial-hull cell",
-                initial.name
+                    .system_visits
+                    .get(&txn, &frontier.id)
+                    .unwrap()
+                    .is_none()
             );
         }
-        drop(coverage_txn);
-        let MappingCoverage::NeedsMaterialization {
-            coverage_revision,
-            footprint_cells,
-            missing_cells,
-        } = store.mapping_coverage([0.0; 3]).unwrap()
-        else {
-            panic!("initial catalogue hull unexpectedly fills a six-parsec sphere");
-        };
-        let missing_count = missing_cells
-            .values()
-            .map(CellBitmap::count_ones)
-            .sum::<u64>();
-        assert_eq!(coverage_revision, 1);
-        assert!(missing_count > 0);
-        assert!(missing_count < footprint_cells);
-        assert_eq!(
-            materialize_for_test(&store, coverage_revision, &missing_cells).unwrap(),
-            (2, missing_count)
-        );
-        assert!(matches!(
-            store.mapping_coverage([0.0; 3]).unwrap(),
-            MappingCoverage::FullyMapped {
-                coverage_revision: 2,
-                ..
-            }
-        ));
     }
 
     #[test]
@@ -46272,9 +46651,13 @@ mod tests {
             .unwrap();
         assert_eq!(initialized.committed_sequence, 5);
         assert_eq!(initialized.polity_count, 2);
+        assert!(
+            initialized.system_count
+                > (INITIAL_SYSTEMS.len() + BBS_POLITY_TOTAL_SEEDED_SYSTEMS) as u32
+        );
         assert_eq!(
-            initialized.system_count,
-            (INITIAL_SYSTEMS.len() + BBS_POLITY_TOTAL_SEEDED_SYSTEMS) as u32
+            initialized.system_count as usize,
+            store.stellar_systems().unwrap().len()
         );
         assert_eq!(initialized.world_count, initialized.system_count);
         let home = store.bbs_home(credential.bbs_id).unwrap().unwrap();
@@ -46368,19 +46751,32 @@ mod tests {
                     .naming_profile_id,
                 polity_profile([0x91; 32]).unwrap()
             );
-            let expected_systems = INITIAL_SYSTEMS.len() + BBS_POLITY_TOTAL_SEEDED_SYSTEMS;
-            assert_eq!(store.stellar_systems().unwrap().len(), expected_systems);
-            assert_eq!(store.worlds().unwrap().len(), expected_systems);
-            assert_eq!(store.simulation_systems().unwrap().len(), expected_systems);
+            let expected_minimum_systems = existing_before.len() + BBS_POLITY_TOTAL_SEEDED_SYSTEMS;
+            let actual_systems = store.stellar_systems().unwrap().len();
+            assert!(actual_systems > expected_minimum_systems);
+            assert_eq!(store.worlds().unwrap().len(), actual_systems);
+            assert_eq!(store.simulation_systems().unwrap().len(), actual_systems);
             assert!(
-                crate::simulation::shortest_route(
-                    &store.simulation_systems().unwrap(),
+                stellar_jump_two_route_exists(
+                    &store.stellar_systems().unwrap(),
                     home.capital_system_id,
                     SOL_SYSTEM_ID,
-                )
-                .is_some(),
+                ),
                 "a newly materialized BBS capital must have a J-2 path to Sol"
             );
+            let traffic_systems = store.simulation_systems().unwrap();
+            let contact_bridge = crate::simulation::shortest_route(
+                &traffic_systems,
+                home.capital_system_id,
+                SOL_SYSTEM_ID,
+            )
+            .expect("the founding contact route must become traffic-active");
+            assert!(contact_bridge.iter().all(|system_id| {
+                traffic_systems
+                    .iter()
+                    .find(|system| system.system_id == *system_id)
+                    .is_some_and(|system| system.generated_traffic_enabled)
+            }));
 
             let systems = store.stellar_systems().unwrap();
             let worlds = store.worlds().unwrap();
@@ -46518,9 +46914,30 @@ mod tests {
                 .unwrap();
                 assert_eq!(&regenerated, stored);
             }
+            let simulation_systems = store.simulation_systems().unwrap();
             let coverage_txn = store.env.read_txn().unwrap();
             for member in cluster {
-                let footprint = sphere_footprint_masks(member.position_parsecs, 3.0).unwrap();
+                assert!(
+                    store
+                        .system_visits
+                        .get(&coverage_txn, &member.id)
+                        .unwrap()
+                        .is_some(),
+                    "every BBS polity member begins visited"
+                );
+                assert!(
+                    simulation_systems
+                        .iter()
+                        .find(|system| system.system_id == member.id)
+                        .unwrap()
+                        .generated_traffic_enabled,
+                    "every BBS polity member participates in generated traffic"
+                );
+                let footprint = sphere_footprint_masks(
+                    member.position_parsecs,
+                    crate::coverage::JUMP_ARRIVAL_MAPPING_RADIUS_PARSECS,
+                )
+                .unwrap();
                 for (coordinate, required) in footprint {
                     let encoded = store
                         .coverage_chunks
@@ -46533,6 +46950,22 @@ mod tests {
                     assert!(missing.is_empty());
                 }
             }
+            assert!(
+                store
+                    .system_visits
+                    .get(&coverage_txn, &home.frontier_stub_system_id)
+                    .unwrap()
+                    .is_none(),
+                "the unaligned outward stub remains frontier"
+            );
+            assert!(
+                !simulation_systems
+                    .iter()
+                    .find(|system| system.system_id == home.frontier_stub_system_id)
+                    .unwrap()
+                    .generated_traffic_enabled,
+                "generated traffic must not enter the unvisited stub"
+            );
             expected_home = home;
         }
 
@@ -46540,8 +46973,136 @@ mod tests {
         assert_eq!(reopened.bbs_home(1).unwrap(), Some(expected_home));
         assert_eq!(
             reopened.simulation_systems().unwrap().len(),
-            INITIAL_SYSTEMS.len() + BBS_POLITY_TOTAL_SEEDED_SYSTEMS
+            reopened.stellar_systems().unwrap().len()
         );
+    }
+
+    #[test]
+    fn one_public_contact_packet_discloses_the_entire_origin_polity() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        store
+            .initialize_universe(
+                &[0x92; COMMAND_ID_BYTES],
+                [0x93; 16],
+                &initial_seeds(9),
+                &[],
+            )
+            .unwrap();
+        let credential = store
+            .add_bbs(&[0x94; COMMAND_ID_BYTES], "Contact BBS", [0x95; 32])
+            .unwrap();
+        store
+            .configure_bbs(
+                credential.bbs_id,
+                &[0x96; COMMAND_ID_BYTES],
+                0,
+                &BbsSettings {
+                    bbs_name: "Contact BBS".into(),
+                    polity_name: "Packet Reach".into(),
+                    trade_combat: 50,
+                    chaos_order: 50,
+                },
+                [0x97; 32],
+            )
+            .unwrap();
+        let home = store.bbs_home(credential.bbs_id).unwrap().unwrap();
+        let systems = store.stellar_systems().unwrap();
+        let (contact_system_id, message_id) = {
+            let txn = store.env.read_txn().unwrap();
+            let mut contact = None;
+            for system in systems {
+                if system.id == home.capital_system_id {
+                    continue;
+                }
+                for available in store
+                    .simulation
+                    .available_messages(&txn, system.id, 0, true)
+                    .unwrap()
+                {
+                    if available.message.origin_system_id == home.capital_system_id
+                        && available.message.subject == "New polity: Packet Reach"
+                    {
+                        contact = Some((system.id, available.message.message_id));
+                        break;
+                    }
+                }
+                if contact.is_some() {
+                    break;
+                }
+            }
+            contact.expect("the arriving polity ship must deposit its founding packet")
+        };
+        establish_player(&store, &identity());
+
+        {
+            let mut txn = store.env.write_txn().unwrap();
+            let (_, mut ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+            ship.system_id = contact_system_id;
+            ship.location = ShipLocationRecord::Docked {
+                world_id: contact_system_id,
+                facility_id: contact_system_id,
+                arrived_second: 0,
+            };
+            store
+                .ships
+                .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+                .unwrap();
+            store
+                .player_arrivals
+                .put(
+                    &mut txn,
+                    &encode_identity(&identity()),
+                    &encode_player_arrival(&PlayerArrivalRecord {
+                        system_id: contact_system_id,
+                        arrival_second: 0,
+                        mailbag_id: None,
+                        mail_delivered: 1,
+                        mail_forwarded: 0,
+                        mail_expired: 0,
+                        stipend_credits: 0,
+                        presented: false,
+                    }),
+                )
+                .unwrap();
+            txn.commit().unwrap();
+        }
+
+        let mut txn = store.env.write_txn().unwrap();
+        let packet = store.open_arrival_packet_in(&mut txn, &identity()).unwrap();
+        assert!(
+            packet
+                .items
+                .iter()
+                .any(|item| item.message_id == message_id)
+        );
+        txn.commit().unwrap();
+
+        let player = store.player_record(&identity()).unwrap().unwrap();
+        for system_id in home.cluster_system_ids {
+            assert!(
+                player.known_system_ids.contains(&system_id),
+                "one packet must disclose every polity member"
+            );
+        }
+        assert!(
+            !player
+                .known_system_ids
+                .contains(&home.frontier_stub_system_id)
+        );
+        let txn = store.env.read_txn().unwrap();
+        for system_id in home.cluster_system_ids {
+            let mapping = store
+                .player_system_mappings
+                .get(&txn, &player_system_mapping_key(&identity(), system_id))
+                .unwrap()
+                .map(decode_player_system_mapping)
+                .transpose()
+                .unwrap()
+                .unwrap();
+            assert_eq!(mapping.state, SystemMappingState::KnownPublic);
+            assert_eq!(mapping.dispatch_message_id, Some(message_id));
+        }
     }
 
     #[test]
@@ -46728,10 +47289,14 @@ mod tests {
         let systems = store.stellar_systems().unwrap();
         let simulation_systems = store.simulation_systems().unwrap();
         assert_eq!(store.polities().unwrap().len(), 3);
-        let expected_systems = INITIAL_SYSTEMS.len() + 2 * BBS_POLITY_TOTAL_SEEDED_SYSTEMS;
+        let expected_systems = simulation_systems.len();
         assert_eq!(systems.len(), expected_systems);
         assert_eq!(store.worlds().unwrap().len(), expected_systems);
         for home in homes {
+            assert!(
+                stellar_jump_two_route_exists(&systems, home.capital_system_id, SOL_SYSTEM_ID,),
+                "every newly materialized BBS capital must remain on Sol's J-2 network"
+            );
             assert!(
                 crate::simulation::shortest_route(
                     &simulation_systems,
@@ -46739,7 +47304,7 @@ mod tests {
                     SOL_SYSTEM_ID,
                 )
                 .is_some(),
-                "every newly materialized BBS capital must remain on Sol's J-2 network"
+                "each founding contact must chart a traffic-active bridge"
             );
             let mut gateways = 0;
             for member_id in home.cluster_system_ids {
@@ -46780,30 +47345,21 @@ mod tests {
                     &[],
                 )
                 .unwrap();
+            let system_count = store.stellar_systems().unwrap().len();
             let advance = store
                 .advance_simulation_to(8 * crate::simulation::SECONDS_PER_DAY)
                 .unwrap();
-            assert_eq!(advance.system_day_events, 9 * INITIAL_SYSTEMS.len() as u64);
+            assert_eq!(advance.system_day_events, 9 * system_count as u64);
             assert_eq!(
                 advance.processed_events,
                 advance.system_day_events
                     + advance.traffic_departure_events
                     + advance.traffic_arrival_events
             );
-            assert_eq!(advance.per_system.len(), INITIAL_SYSTEMS.len());
-            assert!(
-                advance
-                    .universe_days_per_wall_second(INITIAL_SYSTEMS.len())
-                    .unwrap()
-                    > 0.0
-            );
+            assert_eq!(advance.per_system.len(), system_count);
+            assert!(advance.universe_days_per_wall_second(system_count).unwrap() > 0.0);
             if advance.thread_cpu_nanoseconds.is_some() {
-                assert!(
-                    advance
-                        .universe_days_per_cpu_second(INITIAL_SYSTEMS.len())
-                        .unwrap()
-                        > 0.0
-                );
+                assert!(advance.universe_days_per_cpu_second(system_count).unwrap() > 0.0);
             }
             let report = store.simulation_report().unwrap();
             assert!(report.message_count() > 0);
@@ -46979,6 +47535,24 @@ mod tests {
             PlayerPhase::Docked
         );
         let player = store.player_record(&identity()).unwrap().unwrap();
+        let home = store.bbs_home(credential.bbs_id).unwrap().unwrap();
+        assert!(
+            player
+                .known_system_ids
+                .contains(&home.frontier_stub_system_id),
+            "a new local captain must inherit the BBS's plotted frontier"
+        );
+        assert!(
+            store
+                .system_visits
+                .get(
+                    &store.env.read_txn().unwrap(),
+                    &home.frontier_stub_system_id
+                )
+                .unwrap()
+                .is_none(),
+            "starting-chart knowledge must not turn frontier into visited space"
+        );
         assert_eq!(
             store
                 .person_record(player.captain_person_id)
