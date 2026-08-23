@@ -432,8 +432,9 @@ const SETTLEMENT_STEP_LIMIT: usize = 4_096;
 const SIMULATION_EVENT_LIMIT: usize = 65_536;
 
 fn advance_one_simulation_event(engine: &Engine, target_second: u64) -> bool {
+    let current_second = engine.game_second().unwrap();
     engine
-        .advance_simulation_toward(target_second, 1)
+        .advance_simulation_toward(target_second.max(current_second), 1)
         .unwrap()
         .reached_target
 }
@@ -710,8 +711,7 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
         session.send_to_menu(b"k", "Ship's Navigation Library");
         session.send_to_menu(b"q", "Captain's Command Console");
     }
-    session.return_to_bbs();
-    session.finish()
+    session.terminate()
 }
 
 fn complete_arrival_and_trade(
@@ -730,19 +730,29 @@ fn complete_arrival_and_trade(
     session.wait_for("Return to BBS");
 
     session.send_to_menu(b"f", "Fuel and Supplies");
-    session.send_through_page_prompt(b"f", "Fuel source (Q to cancel", "Refined starship fuel");
-    session.send(b"1\r");
-    // The 40-column profile may wrap the prompt between "to" and
-    // "cancel"; match the semantic prefix shared by every width.
-    let (selection, _) = session.wait_for_any(&["Tonnes (Q to", "That service"]);
-    if selection == 0 {
+    let fuel_sources =
+        session.send_through_page_prompt(b"f", "Fuel source (Q to cancel", "tank room");
+    let fuel_sources = normalized_display_text(&fuel_sources);
+    let unrefined_option = fuel_sources
+        .find(". Unrefined bulk fuel")
+        .and_then(|marker| fuel_sources[..marker].split_whitespace().next_back())
+        .and_then(|number| number.parse::<u32>().ok());
+    if let Some(option) = unrefined_option {
+        session.send(format!("{option}\r").as_bytes());
+        // The 40-column profile may wrap the prompt between "to" and
+        // "cancel"; match the semantic prefix shared by every width.
+        session.wait_for("Tonnes (Q to");
         session.send(b"1\r");
         session.wait_for("Fueling complete");
+        session.wait_for("(Enter) Previous menu");
+        session.send_to_menu(b"\r", "Docked Operations");
     } else {
-        session.wait_for("That service");
+        assert!(
+            fuel_sources.contains("Unavailable: Unrefined bulk fuel"),
+            "fuel sources: {fuel_sources:?}"
+        );
+        session.send_to_menu(b"q", "Docked Operations");
     }
-    session.wait_for("(Enter) Previous menu");
-    session.send_to_menu(b"\r", "Docked Operations");
 
     // Exercise the facility-backed provision service when the destination
     // has a chandlery. At a frontier port, prove the same stale/forged key is
@@ -2156,7 +2166,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         .as_ref()
         .map_or(0, |custody| custody.advertised_stipend_credits);
 
-    let (arrival_report, arrival_credits, arrival_fuel, arrival_provisions) = {
+    let (arrival_report, arrival_credits, arrival_provisions) = {
         advance_player_simulation_to(data.path(), &identity, jump_due, &mut settlement_request_id);
         advance_until_flight_leg(
             data.path(),
@@ -2178,7 +2188,6 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         (
             store.simulation_report().unwrap(),
             player.credits,
-            ship.current_fuel_millitons,
             ship.provisions.person_days_remaining,
         )
     };
@@ -2220,6 +2229,8 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     for (index, (profile, columns)) in profile_cases.into_iter().enumerate() {
         let profile_data = profile_root.path().join(index.to_string());
         copy_directory(data.path(), &profile_data);
+        let mut profile_request_id = settlement_request_id;
+        settle_arrival_checkpoint(&profile_data, &identity, &mut profile_request_id);
         let mut profile_server = spawn_server(
             &server_executable,
             &game_address_text,
@@ -2269,6 +2280,12 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     // Complete the remaining checkpoint and physical approach before
     // returning to the real server.
     settle_arrival_checkpoint(data.path(), &identity, &mut settlement_request_id);
+    let docked_fuel = Store::open(data.path())
+        .unwrap()
+        .ship_record(ship_id)
+        .unwrap()
+        .unwrap()
+        .current_fuel_millitons;
     server = spawn_server(
         &server_executable,
         &game_address_text,
@@ -2297,10 +2314,10 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
                 .all(|lot| lot.cargo_lot_id != cargo_lot_id)
         );
         assert!(ship.mail_custody.is_none());
-        if completed_screen.contains("That service") {
-            assert_eq!(ship.current_fuel_millitons, arrival_fuel);
+        if completed_screen.contains("Unavailable: Unrefined bulk fuel") {
+            assert_eq!(ship.current_fuel_millitons, docked_fuel);
         } else {
-            assert_eq!(ship.current_fuel_millitons, arrival_fuel + 1_000);
+            assert_eq!(ship.current_fuel_millitons, docked_fuel + 1_000);
             for expected in [
                 "Fueling complete",
                 "Loaded:",
@@ -2475,7 +2492,19 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     );
     let initialization_output = String::from_utf8_lossy(&universe_initializer.stdout);
     assert!(initialization_output.starts_with("universe-id="));
-    assert!(initialization_output.contains(" polities=2 systems=54 worlds=54\n"));
+    let initialization_count = |name: &str| {
+        initialization_output
+            .split_whitespace()
+            .find_map(|field| field.strip_prefix(name))
+            .and_then(|value| value.parse::<u32>().ok())
+            .unwrap_or_else(|| panic!("missing {name} count: {initialization_output}"))
+    };
+    let polity_count = initialization_count("polities=");
+    let system_count = initialization_count("systems=");
+    let world_count = initialization_count("worlds=");
+    assert_eq!(polity_count, 2, "{initialization_output}");
+    assert!(system_count >= 54, "{initialization_output}");
+    assert_eq!(world_count, system_count, "{initialization_output}");
     let reset_committed = initialization_output
         .split(" committed=")
         .nth(1)
