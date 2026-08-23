@@ -913,8 +913,10 @@ than creating supplies through a background charge.
 Fuel and cargo transactions use 0.001-ton units, but dockside fuel is bought
 in positive whole tons. Refined fuel costs Cr500 per ton and unrefined fuel
 Cr100 per ton where the port table permits it. A tank can contain both; the
-unrefined portion is tracked so the Jump penalty follows the fuel actually
-burned.
+unrefined portion is tracked. Every power-plant or Jump burn draws refined and
+unrefined fuel proportionally to the tank mixture (with deterministic integer
+rounding), so the Jump penalty follows whether that specific burn consumes any
+unrefined fuel rather than assuming refined fuel is always used first.
 
 New ships begin with 30 person-days of provisions for every awake-accommodation
 place and can store at most 180 per place. Away from a berth, one person-day is
@@ -1158,6 +1160,16 @@ source, equipment, time, and authority. Collection rights do not follow from
 hydrographics alone. Skimming adds wear and voids the ordinary new-ship
 warranty. Each collection operation is a named Flight Plan step; failure or a
 changed legal condition holds the plan.
+
+A scoop permits collection without a processor. The captain explicitly chooses
+whether an installed processor refines the collected batch; otherwise it enters
+the tanks as unrefined fuel. Processing is Average (8+) Engineer (Power)/EDU.
+Failure doubles processing time. Effect -6 or worse also causes one sustained
+hit to the Jump drive, falling back to the maneuver drive and then the fuel
+system when necessary. Unrefined fuel already aboard may be processed as a
+stationary Flight Plan step while docked or safely holding. Selected feedstock
+is protected from power burn, and an off-berth attempt requires enough other
+fuel for the worst-case doubled duration.
 
 ## Information, mail, and discovery
 

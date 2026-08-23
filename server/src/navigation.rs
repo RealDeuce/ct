@@ -25,9 +25,18 @@ pub struct JumpSafetySolution {
 pub struct FrontierFuelSolution {
     pub body_local_id: u32,
     pub body_name: String,
+    pub body_kind: FrontierFuelBodyKind,
     /// Rest-to-rest travel from the primary-world Jump locus to the nearest
     /// gas giant and back. Collection and processing time are separate.
     pub round_trip_days: f64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FrontierFuelBodyKind {
+    GasGiant,
+    Planet,
+    Moon,
+    IcyBelt,
 }
 
 #[derive(Clone, Copy)]
@@ -180,6 +189,7 @@ pub fn gas_giant_fuel_sources(
                 FrontierFuelSolution {
                     body_local_id: body.local_id,
                     body_name: body.name.clone(),
+                    body_kind: FrontierFuelBodyKind::GasGiant,
                     round_trip_days: 2.0 * rest_to_rest_travel_days(distance_au, thrust_g),
                 }
             })
@@ -236,6 +246,13 @@ pub fn wilderness_water_sources(
             usable.then(|| FrontierFuelSolution {
                 body_local_id: body.local_id,
                 body_name: body.name.clone(),
+                body_kind: if matches!(body.kind, BodyKind::PlanetoidBelt { .. }) {
+                    FrontierFuelBodyKind::IcyBelt
+                } else if body.parent_body_id.is_some() {
+                    FrontierFuelBodyKind::Moon
+                } else {
+                    FrontierFuelBodyKind::Planet
+                },
                 round_trip_days: 2.0
                     * rest_to_rest_travel_days(magnitude(subtract(position, jump_locus)), thrust_g),
             })

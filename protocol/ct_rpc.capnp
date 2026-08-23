@@ -628,6 +628,19 @@ enum DockedFuelServiceKind {
   wildernessWater @3;
 }
 
+enum FuelSourceBodyKind {
+  notApplicable @0;
+  gasGiant @1;
+  planet @2;
+  moon @3;
+  icyBelt @4;
+}
+
+enum FuelAccessKind {
+  portSale @0;
+  routineWilderness @1;
+}
+
 struct DockedFuelService {
   kind @0 :DockedFuelServiceKind;
   label @1 :Text;
@@ -638,6 +651,9 @@ struct DockedFuelService {
   pricePerTonCredits @6 :UInt64;
   maximumMillitons @7 :UInt64;
   serviceSeconds @8 :UInt64;
+  bodyKind @9 :FuelSourceBodyKind;
+  accessKind @10 :FuelAccessKind;
+  canRefine @11 :Bool;
 }
 
 struct DockedRepairService {
@@ -749,7 +765,9 @@ struct ShipActivityStatus {
     escortDuty @12 :UInt64;       # operations-order identifier
     fieldRecovery @13 :UInt16;    # subsystem ID under crew field repair
     construction @14 :Void;
+    fuelProcessing @15 :UInt64;    # quantity in millitons
   }
+  refineCollected @16 :Bool;
 }
 
 struct DockedSnapshot {
@@ -1422,6 +1440,7 @@ enum TravelStage {
   beltRefining @13;
   beltRecovery @14;
   beltEgress @15;
+  fuelProcessing @16;
 }
 
 enum WaypointAuthority {
@@ -1445,6 +1464,7 @@ struct FlightPlanAction {
     fuel @3 :FuelPlanAction;
     jumpCoordinates @4 :CoordinateJumpPlanAction;
     beltCycle @5 :UInt32;
+    refineFuel @6 :UInt64;
   }
 }
 
@@ -1468,6 +1488,18 @@ struct CoordinateJumpPlanAction {
 struct FuelPlanAction {
   operation @0 :FuelOperation;
   quantityMillitons @1 :UInt64;
+  refineCollected @2 :Bool = true;
+}
+
+struct FuelOperationTiming {
+  stepIndex @0 :UInt16;
+  roundTripSeconds @1 :UInt64;
+  collectionSeconds @2 :UInt64;
+  processingSeconds @3 :UInt64;
+  failedProcessingSeconds @4 :UInt64;
+  normalTotalSeconds @5 :UInt64;
+  failedTotalSeconds @6 :UInt64;
+  outputRefined @7 :Bool;
 }
 
 struct FlightPlanStep {
@@ -1527,6 +1559,7 @@ struct FlightPlanPreview {
   carriageOffers @5 :List(TaskOffer);
   carriageRevenueCredits @6 :UInt64;
   carriageBrokerFeesCredits @7 :UInt64;
+  fuelTimings @8 :List(FuelOperationTiming);
 }
 
 enum FlightPlanState {

@@ -307,6 +307,8 @@ TravelStage decode_travel_stage(const rpc::TravelStage stage)
       return TravelStage::BeltRecovery;
    case rpc::TravelStage::BELT_EGRESS:
       return TravelStage::BeltEgress;
+   case rpc::TravelStage::FUEL_PROCESSING:
+      return TravelStage::FuelProcessing;
    }
    throw std::runtime_error("unknown CT-RPC travel stage");
 }
@@ -430,10 +432,14 @@ void encode_proposal(rpc::FlightPlanProposal::Builder target, const FlightPlanPr
          auto fuel = action.initFuel();
          fuel.setOperation(static_cast<rpc::FuelOperation>(step.action.fuel_operation));
          fuel.setQuantityMillitons(step.action.quantity_millitons);
+         fuel.setRefineCollected(step.action.refine_collected);
          break;
       }
       case FlightPlanActionKind::BeltCycle:
          action.setBeltCycle(step.action.body_id);
+         break;
+      case FlightPlanActionKind::RefineFuel:
+         action.setRefineFuel(step.action.quantity_millitons);
          break;
       }
    }
@@ -476,9 +482,13 @@ FlightPlanStep decode_plan_step(rpc::FlightPlanStep::Reader source)
       result.action.kind = FlightPlanActionKind::Fuel;
       result.action.fuel_operation = static_cast<FuelOperation>(action.getFuel().getOperation());
       result.action.quantity_millitons = action.getFuel().getQuantityMillitons();
+      result.action.refine_collected = action.getFuel().getRefineCollected();
    } else if(action.isBeltCycle()) {
       result.action.kind = FlightPlanActionKind::BeltCycle;
       result.action.body_id = action.getBeltCycle();
+   } else if(action.isRefineFuel()) {
+      result.action.kind = FlightPlanActionKind::RefineFuel;
+      result.action.quantity_millitons = action.getRefineFuel();
    }
    return result;
 }
@@ -515,6 +525,7 @@ std::optional<ShipActivityStatus> decode_ship_activity(
       .source_body_id = source.getHasSourceBody()
       ? std::optional<uint32_t>(source.getSourceBodyId())
       : std::nullopt,
+      .refine_collected = source.getRefineCollected(),
    };
    if(source.isConstruction()) {
       result.kind = ShipActivityKind::Construction;
@@ -532,6 +543,9 @@ std::optional<ShipActivityStatus> decode_ship_activity(
    } else if(source.isWildernessWater()) {
       result.kind = ShipActivityKind::WildernessWater;
       result.quantity_millitons = source.getWildernessWater();
+   } else if(source.isFuelProcessing()) {
+      result.kind = ShipActivityKind::FuelProcessing;
+      result.quantity_millitons = source.getFuelProcessing();
    } else if(source.isEscortDuty()) {
       result.kind = ShipActivityKind::EscortDuty;
       result.opportunity_id = source.getEscortDuty();
@@ -990,6 +1004,9 @@ DockedServices decode_docked_services(const rpc::Response::Reader response)
          .price_per_ton_credits = item.getPricePerTonCredits(),
          .maximum_millitons = item.getMaximumMillitons(),
          .service_seconds = item.getServiceSeconds(),
+         .body_kind = static_cast<FuelSourceBodyKind>(item.getBodyKind()),
+         .access_kind = static_cast<FuelAccessKind>(item.getAccessKind()),
+         .can_refine = item.getCanRefine(),
       });
    }
    for(const auto lot : source.getAmmunition()) {
@@ -3143,6 +3160,7 @@ FlightPlanPreview preview_flight_plan(
       .carriage_offers = {},
       .carriage_revenue_credits = source.getCarriageRevenueCredits(),
       .carriage_broker_fees_credits = source.getCarriageBrokerFeesCredits(),
+      .fuel_timings = {},
    };
    const auto hash = source.getPreviewHash();
    result.preview_hash.assign(hash.begin(), hash.end());
@@ -3159,6 +3177,18 @@ FlightPlanPreview preview_flight_plan(
    }
    for(const auto offer : source.getCarriageOffers()) {
       result.carriage_offers.push_back(decode_task_offer(offer));
+   }
+   for(const auto timing : source.getFuelTimings()) {
+      result.fuel_timings.push_back(FuelOperationTiming{
+         .step_index = timing.getStepIndex(),
+         .round_trip_seconds = timing.getRoundTripSeconds(),
+         .collection_seconds = timing.getCollectionSeconds(),
+         .processing_seconds = timing.getProcessingSeconds(),
+         .failed_processing_seconds = timing.getFailedProcessingSeconds(),
+         .normal_total_seconds = timing.getNormalTotalSeconds(),
+         .failed_total_seconds = timing.getFailedTotalSeconds(),
+         .output_refined = timing.getOutputRefined(),
+      });
    }
    return result;
 }

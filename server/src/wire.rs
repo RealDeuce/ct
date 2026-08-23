@@ -626,6 +626,21 @@ pub enum DockedFuelServiceKind {
     WildernessWater,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FuelSourceBodyKind {
+    NotApplicable,
+    GasGiant,
+    Planet,
+    Moon,
+    IcyBelt,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FuelAccessKind {
+    PortSale,
+    RoutineWilderness,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DockedFuelService {
     pub kind: DockedFuelServiceKind,
@@ -636,6 +651,9 @@ pub struct DockedFuelService {
     pub price_per_ton_credits: u64,
     pub maximum_millitons: u64,
     pub service_seconds: u64,
+    pub body_kind: FuelSourceBodyKind,
+    pub access_kind: FuelAccessKind,
+    pub can_refine: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -746,6 +764,7 @@ pub struct ShipActivityStatus {
     pub due_second: u64,
     pub cost_credits: u64,
     pub source_body_id: Option<u32>,
+    pub refine_collected: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -758,6 +777,7 @@ pub enum ShipActivityKind {
     WildernessWater { quantity_millitons: u64 },
     EscortDuty { opportunity_id: u64 },
     FieldRecovery { subsystem_id: u16 },
+    FuelProcessing { quantity_millitons: u64 },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1484,6 +1504,7 @@ pub enum TravelStage {
     BeltRefining,
     BeltRecovery,
     BeltEgress,
+    FuelProcessing,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1526,9 +1547,13 @@ pub enum FlightPlanAction {
     Fuel {
         operation: FuelOperation,
         quantity_millitons: u64,
+        refine_collected: bool,
     },
     BeltCycle {
         body_id: u32,
+    },
+    RefineFuel {
+        quantity_millitons: u64,
     },
 }
 
@@ -1600,6 +1625,18 @@ pub struct FlightPlanWarning {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FuelOperationTiming {
+    pub step_index: u16,
+    pub round_trip_seconds: u64,
+    pub collection_seconds: u64,
+    pub processing_seconds: u64,
+    pub failed_processing_seconds: u64,
+    pub normal_total_seconds: u64,
+    pub failed_total_seconds: u64,
+    pub output_refined: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FlightPlanPreview {
     pub proposal: FlightPlanProposal,
     pub preview_hash: Vec<u8>,
@@ -1609,6 +1646,7 @@ pub struct FlightPlanPreview {
     pub carriage_offers: Vec<TaskOffer>,
     pub carriage_revenue_credits: u64,
     pub carriage_broker_fees_credits: u64,
+    pub fuel_timings: Vec<FuelOperationTiming>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2649,6 +2687,7 @@ fn decode_flight_plan_proposal(
                             }
                         },
                         quantity_millitons: fuel.get_quantity_millitons(),
+                        refine_collected: fuel.get_refine_collected(),
                     }
                 }
                 crate::ct_rpc_capnp::flight_plan_action::JumpCoordinates(jump) => {
@@ -2673,6 +2712,9 @@ fn decode_flight_plan_proposal(
                 }
                 crate::ct_rpc_capnp::flight_plan_action::BeltCycle(body_id) => {
                     FlightPlanAction::BeltCycle { body_id }
+                }
+                crate::ct_rpc_capnp::flight_plan_action::RefineFuel(quantity_millitons) => {
+                    FlightPlanAction::RefineFuel { quantity_millitons }
                 }
             };
             Ok(FlightPlanStep {
@@ -4821,6 +4863,7 @@ fn set_ship_status(
         activity.set_cost_credits(source.cost_credits);
         activity.set_has_source_body(source.source_body_id.is_some());
         activity.set_source_body_id(source.source_body_id.unwrap_or(0));
+        activity.set_refine_collected(source.refine_collected);
         match source.kind {
             ShipActivityKind::Construction => activity.set_construction(()),
             ShipActivityKind::Refit => activity.set_refit(()),
@@ -4835,6 +4878,9 @@ fn set_ship_status(
             }
             ShipActivityKind::WildernessWater { quantity_millitons } => {
                 activity.set_wilderness_water(quantity_millitons)
+            }
+            ShipActivityKind::FuelProcessing { quantity_millitons } => {
+                activity.set_fuel_processing(quantity_millitons)
             }
             ShipActivityKind::EscortDuty { opportunity_id } => {
                 activity.set_escort_duty(opportunity_id)
@@ -4918,6 +4964,25 @@ fn schema_docked_fuel_kind(
     }
 }
 
+fn schema_fuel_source_body_kind(
+    kind: FuelSourceBodyKind,
+) -> crate::ct_rpc_capnp::FuelSourceBodyKind {
+    match kind {
+        FuelSourceBodyKind::NotApplicable => crate::ct_rpc_capnp::FuelSourceBodyKind::NotApplicable,
+        FuelSourceBodyKind::GasGiant => crate::ct_rpc_capnp::FuelSourceBodyKind::GasGiant,
+        FuelSourceBodyKind::Planet => crate::ct_rpc_capnp::FuelSourceBodyKind::Planet,
+        FuelSourceBodyKind::Moon => crate::ct_rpc_capnp::FuelSourceBodyKind::Moon,
+        FuelSourceBodyKind::IcyBelt => crate::ct_rpc_capnp::FuelSourceBodyKind::IcyBelt,
+    }
+}
+
+fn schema_fuel_access_kind(kind: FuelAccessKind) -> crate::ct_rpc_capnp::FuelAccessKind {
+    match kind {
+        FuelAccessKind::PortSale => crate::ct_rpc_capnp::FuelAccessKind::PortSale,
+        FuelAccessKind::RoutineWilderness => crate::ct_rpc_capnp::FuelAccessKind::RoutineWilderness,
+    }
+}
+
 fn set_docked_services(
     mut builder: crate::ct_rpc_capnp::docked_services::Builder<'_>,
     snapshot: &DockedServices,
@@ -4938,6 +5003,9 @@ fn set_docked_services(
         item.set_price_per_ton_credits(offer.price_per_ton_credits);
         item.set_maximum_millitons(offer.maximum_millitons);
         item.set_service_seconds(offer.service_seconds);
+        item.set_body_kind(schema_fuel_source_body_kind(offer.body_kind));
+        item.set_access_kind(schema_fuel_access_kind(offer.access_kind));
+        item.set_can_refine(offer.can_refine);
     }
     let ammunition_count = u32::try_from(snapshot.ammunition.len())
         .map_err(|_| WireError::Expected("fewer ammunition lots"))?;
@@ -5727,6 +5795,7 @@ fn set_travel_status(
         TravelStage::BeltRefining => crate::ct_rpc_capnp::TravelStage::BeltRefining,
         TravelStage::BeltRecovery => crate::ct_rpc_capnp::TravelStage::BeltRecovery,
         TravelStage::BeltEgress => crate::ct_rpc_capnp::TravelStage::BeltEgress,
+        TravelStage::FuelProcessing => crate::ct_rpc_capnp::TravelStage::FuelProcessing,
     });
     builder.set_current_game_second(snapshot.current_game_second);
     builder.set_due_second(snapshot.due_second);
@@ -5864,6 +5933,7 @@ fn set_flight_plan_action(
         FlightPlanAction::Fuel {
             operation,
             quantity_millitons,
+            refine_collected,
         } => {
             let mut fuel = builder.init_fuel();
             fuel.set_operation(match operation {
@@ -5875,8 +5945,12 @@ fn set_flight_plan_action(
                 FuelOperation::BuyUnrefined => crate::ct_rpc_capnp::FuelOperation::BuyUnrefined,
             });
             fuel.set_quantity_millitons(*quantity_millitons);
+            fuel.set_refine_collected(*refine_collected);
         }
         FlightPlanAction::BeltCycle { body_id } => builder.set_belt_cycle(*body_id),
+        FlightPlanAction::RefineFuel { quantity_millitons } => {
+            builder.set_refine_fuel(*quantity_millitons)
+        }
     }
 }
 
@@ -5964,6 +6038,20 @@ fn set_flight_plan_preview(
     }
     builder.set_carriage_revenue_credits(preview.carriage_revenue_credits);
     builder.set_carriage_broker_fees_credits(preview.carriage_broker_fees_credits);
+    let timing_count = u32::try_from(preview.fuel_timings.len())
+        .map_err(|_| WireError::Expected("fewer fuel-operation timings"))?;
+    let mut timings = builder.reborrow().init_fuel_timings(timing_count);
+    for (index, timing) in preview.fuel_timings.iter().enumerate() {
+        let mut item = timings.reborrow().get(index as u32);
+        item.set_step_index(timing.step_index);
+        item.set_round_trip_seconds(timing.round_trip_seconds);
+        item.set_collection_seconds(timing.collection_seconds);
+        item.set_processing_seconds(timing.processing_seconds);
+        item.set_failed_processing_seconds(timing.failed_processing_seconds);
+        item.set_normal_total_seconds(timing.normal_total_seconds);
+        item.set_failed_total_seconds(timing.failed_total_seconds);
+        item.set_output_refined(timing.output_refined);
+    }
     Ok(())
 }
 

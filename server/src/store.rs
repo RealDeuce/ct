@@ -30,8 +30,8 @@ use crate::coverage::{
 use crate::creation;
 use crate::crypto::{CryptoError, SeedStream, derive_seed};
 use crate::navigation::{
-    BBS_CORE_MAXIMUM_JUMP_APPROACH_DAYS, bbs_core_jump_guard_days, body_position_au,
-    gas_giant_fuel_source, gas_giant_fuel_sources, nearest_gas_giant_fuel_source,
+    BBS_CORE_MAXIMUM_JUMP_APPROACH_DAYS, FrontierFuelBodyKind, bbs_core_jump_guard_days,
+    body_position_au, gas_giant_fuel_source, gas_giant_fuel_sources, nearest_gas_giant_fuel_source,
     nearest_wilderness_water_source, primary_world_jump_safety, rest_to_rest_travel_days,
     wilderness_water_source, wilderness_water_sources,
 };
@@ -60,13 +60,14 @@ use crate::wire::{
     EncounterFallback, EncounterKind, EncounterPolicy, EncounterPosture, EncounterResult,
     EncounterSnapshot, EncounterState, ErrorCode, FlightLocus, FlightPlanAction, FlightPlanPreview,
     FlightPlanProposal, FlightPlanSnapshot, FlightPlanState, FlightPlanStep, FlightPlanWarning,
-    FuelOperation, FuelPurchaseReceipt, KnownBelt, KnownDestinations, KnownSystemSummary,
-    MarketOffer, MarketSnapshot, MessageClassification, MessageItem, MessageManagement,
-    OriginDossier, Outcome, OutcomeKind, PlayerCreation, PlayerIdentity, PlayerPhase,
-    PriceDistribution, ProvisionPurchaseReceipt, ShipActivityKind as WireShipActivityKind,
-    ShipActivityStatus, ShipAmmunitionStatus, ShipProvisionStatus, ShipStatusSnapshot,
-    ShipSubsystemKind, ShipSubsystemStatus, SystemMappingChoice, SystemMappingState,
-    SystemMappingStatus, TaskRouteAssessment, TravelStage, TravelStatus, WaypointAuthority,
+    FuelAccessKind, FuelOperation, FuelOperationTiming, FuelPurchaseReceipt, FuelSourceBodyKind,
+    KnownBelt, KnownDestinations, KnownSystemSummary, MarketOffer, MarketSnapshot,
+    MessageClassification, MessageItem, MessageManagement, OriginDossier, Outcome, OutcomeKind,
+    PlayerCreation, PlayerIdentity, PlayerPhase, PriceDistribution, ProvisionPurchaseReceipt,
+    ShipActivityKind as WireShipActivityKind, ShipActivityStatus, ShipAmmunitionStatus,
+    ShipProvisionStatus, ShipStatusSnapshot, ShipSubsystemKind, ShipSubsystemStatus,
+    SystemMappingChoice, SystemMappingState, SystemMappingStatus, TaskRouteAssessment, TravelStage,
+    TravelStatus, WaypointAuthority,
 };
 
 type SequenceDatabase = Database<U64<BE>, Bytes>;
@@ -108,7 +109,7 @@ pub const STORAGE_FORMAT_VERSION: u64 = 1;
 const META_ACCOMMODATION_CAPACITY_VERSION: &str = "accommodation-capacity-version";
 const ACCOMMODATION_CAPACITY_VERSION: u64 = 1;
 const SYSTEM_VISITS_BACKFILL_VERSION: u64 = 1;
-const SHIP_RECORD_CODEC_VERSION: u8 = 2;
+const SHIP_RECORD_CODEC_VERSION: u8 = 3;
 const CNS5_COVERAGE_DISTRIBUTION_VERSION: u16 = 1;
 const CNS5_COVERAGE_SAMPLER_VERSION: u16 = 1;
 const PERSON_TREATMENT_EVENT_BIT: u64 = 1_u64 << 63;
@@ -777,6 +778,78 @@ fn effective_cargo_capacity(ship: &ShipRecord, spec: &creation::ShipStatusSpec) 
         .saturating_sub(ship.cargo_capacity_penalty_millitons)
 }
 
+/// Split a burn across mixed refined and unrefined fuel in the same
+/// proportion as the fuel currently in the tanks.  The rounded result is
+/// deterministic so preview and execution make the same misjump decision.
+fn proportional_fuel_burn(
+    total_millitons: u64,
+    unrefined_millitons: u64,
+    requested_burn_millitons: u64,
+) -> (u64, u64) {
+    let burn = requested_burn_millitons.min(total_millitons);
+    if burn == 0 || total_millitons == 0 {
+        return (0, 0);
+    }
+    let available_unrefined = unrefined_millitons.min(total_millitons);
+    let numerator = u128::from(burn).saturating_mul(u128::from(available_unrefined));
+    let mut unrefined_burn = u64::try_from(
+        numerator.saturating_add(u128::from(total_millitons / 2)) / u128::from(total_millitons),
+    )
+    .unwrap_or(burn)
+    .min(available_unrefined)
+    .min(burn);
+    let refined_available = total_millitons.saturating_sub(available_unrefined);
+    if burn.saturating_sub(unrefined_burn) > refined_available {
+        unrefined_burn = burn.saturating_sub(refined_available);
+    }
+    (burn.saturating_sub(unrefined_burn), unrefined_burn)
+}
+
+fn consume_ship_fuel(ship: &mut ShipRecord, requested_burn_millitons: u64) -> u64 {
+    let (_, unrefined_burn) = proportional_fuel_burn(
+        ship.current_fuel_millitons,
+        ship.unrefined_fuel_millitons,
+        requested_burn_millitons,
+    );
+    let burn = requested_burn_millitons.min(ship.current_fuel_millitons);
+    ship.current_fuel_millitons = ship.current_fuel_millitons.saturating_sub(burn);
+    ship.unrefined_fuel_millitons = ship.unrefined_fuel_millitons.saturating_sub(unrefined_burn);
+    unrefined_burn
+}
+
+fn reserved_unrefined_fuel(ship: &ShipRecord) -> u64 {
+    match &ship.activity {
+        Some(ShipActivityRecord {
+            kind:
+                ShipActivityKind::FuelProcessing {
+                    quantity_millitons, ..
+                },
+            ..
+        }) => (*quantity_millitons).min(ship.unrefined_fuel_millitons),
+        _ => 0,
+    }
+}
+
+fn apply_fuel_processing_damage(ship: &mut ShipRecord) {
+    for kind in [
+        ShipSubsystemKind::JumpDrive,
+        ShipSubsystemKind::ManeuverDrive,
+        ShipSubsystemKind::FuelSystem,
+    ] {
+        if let Some(subsystem) = ship
+            .subsystems
+            .iter_mut()
+            .filter(|subsystem| {
+                subsystem.kind == kind && subsystem.sustained_hits < subsystem.maximum_hits
+            })
+            .min_by_key(|subsystem| subsystem.subsystem_id)
+        {
+            subsystem.sustained_hits = subsystem.sustained_hits.saturating_add(1);
+            return;
+        }
+    }
+}
+
 /// Charges ordinary power-plant operation while the vessel is away from a
 /// berth.  Legacy records establish their first timestamp without a
 /// retroactive charge.  Fractional consumption is carried exactly across
@@ -803,11 +876,17 @@ fn settle_power_fuel(ship: &mut ShipRecord, spec: &creation::ShipStatusSpec, now
     let denominator = u128::from(spec.power_plant_endurance_seconds);
     let burn = u64::try_from(numerator / denominator).unwrap_or(u64::MAX);
     ship.power_fuel_burn_remainder = u64::try_from(numerator % denominator).unwrap_or(0);
-    let refined = ship
+    let reserved_unrefined = reserved_unrefined_fuel(ship);
+    let burnable_total = ship
         .current_fuel_millitons
-        .saturating_sub(ship.unrefined_fuel_millitons);
-    let unrefined_burn = burn.saturating_sub(refined);
-    ship.current_fuel_millitons = ship.current_fuel_millitons.saturating_sub(burn);
+        .saturating_sub(reserved_unrefined);
+    let actual_burn = burn.min(burnable_total);
+    let burnable_unrefined = ship
+        .unrefined_fuel_millitons
+        .saturating_sub(reserved_unrefined);
+    let (_, unrefined_burn) =
+        proportional_fuel_burn(burnable_total, burnable_unrefined, actual_burn);
+    ship.current_fuel_millitons = ship.current_fuel_millitons.saturating_sub(actual_burn);
     ship.unrefined_fuel_millitons = ship.unrefined_fuel_millitons.saturating_sub(unrefined_burn);
     ship.power_fuel_last_settled_second = now;
 }
@@ -875,9 +954,20 @@ pub enum ShipActivityKind {
     },
     GasGiantSkim {
         quantity_millitons: u64,
+        refine_collected: bool,
+        processing_effect: i16,
+        processing_damages_jump_drive: bool,
     },
     WildernessWater {
         quantity_millitons: u64,
+        refine_collected: bool,
+        processing_effect: i16,
+        processing_damages_jump_drive: bool,
+    },
+    FuelProcessing {
+        quantity_millitons: u64,
+        processing_effect: i16,
+        processing_damages_jump_drive: bool,
     },
     Refurbishment {
         subsystem_ids: Vec<u16>,
@@ -5578,6 +5668,8 @@ impl Store {
         let mut system_id = ship.system_id;
         let mut fuel_millitons = 0_u64;
         let mut available_fuel_millitons = ship.current_fuel_millitons;
+        let mut available_unrefined_millitons = ship.unrefined_fuel_millitons;
+        let mut fuel_timings = Vec::new();
         let mut available_credits =
             self.operating_account_credits_in(txn, &player, ship.ship_id)?;
         let mut elapsed_seconds = match ship.location {
@@ -5733,6 +5825,22 @@ impl Store {
                         });
                     }
                     fuel_millitons = fuel_millitons.saturating_add(leg_fuel);
+                    let projected_burn = leg_fuel.min(available_fuel_millitons);
+                    let (_, unrefined_burn) = proportional_fuel_burn(
+                        available_fuel_millitons,
+                        available_unrefined_millitons,
+                        projected_burn,
+                    );
+                    if unrefined_burn != 0 {
+                        warnings.push(FlightPlanWarning {
+                            code: "UNREFINED_JUMP_FUEL".into(),
+                            message: "This Jump burns mixed or unrefined fuel and takes the normal -2 misjump DM."
+                                .into(),
+                            step_indices: vec![index as u16],
+                        });
+                    }
+                    available_unrefined_millitons =
+                        available_unrefined_millitons.saturating_sub(unrefined_burn);
                     if available_fuel_millitons < leg_fuel {
                         warnings.push(FlightPlanWarning {
                             code: "INSUFFICIENT_CARRIED_FUEL".into(),
@@ -5826,6 +5934,22 @@ impl Store {
                         });
                     }
                     fuel_millitons = fuel_millitons.saturating_add(leg_fuel);
+                    let projected_burn = leg_fuel.min(available_fuel_millitons);
+                    let (_, unrefined_burn) = proportional_fuel_burn(
+                        available_fuel_millitons,
+                        available_unrefined_millitons,
+                        projected_burn,
+                    );
+                    if unrefined_burn != 0 {
+                        warnings.push(FlightPlanWarning {
+                            code: "UNREFINED_JUMP_FUEL".into(),
+                            message: "This Jump burns mixed or unrefined fuel and takes the normal -2 misjump DM."
+                                .into(),
+                            step_indices: vec![index as u16],
+                        });
+                    }
+                    available_unrefined_millitons =
+                        available_unrefined_millitons.saturating_sub(unrefined_burn);
                     if available_fuel_millitons < leg_fuel {
                         warnings.push(FlightPlanWarning {
                             code: "INSUFFICIENT_CARRIED_FUEL".into(),
@@ -5949,7 +6073,14 @@ impl Store {
                             power_fuel as f64 / 1_000.0
                         )));
                     }
+                    let (_, unrefined_power_burn) = proportional_fuel_burn(
+                        available_fuel_millitons,
+                        available_unrefined_millitons,
+                        power_fuel,
+                    );
                     available_fuel_millitons -= power_fuel;
+                    available_unrefined_millitons =
+                        available_unrefined_millitons.saturating_sub(unrefined_power_burn);
                     fuel_millitons = fuel_millitons.saturating_add(power_fuel);
                     elapsed_seconds = elapsed_seconds.saturating_add(local_cycle);
                     at_primary_port = true;
@@ -5957,6 +6088,7 @@ impl Store {
                 FlightPlanAction::Fuel {
                     operation,
                     quantity_millitons,
+                    refine_collected,
                 } => {
                     if quantity_millitons == 0 || quantity_millitons % MILLITONS_PER_TON != 0 {
                         return Ok(RuleResult::Rejected(format!(
@@ -6028,12 +6160,29 @@ impl Store {
                             }
                             available_credits -= cost;
                             if operation == FuelOperation::BuyUnrefined {
-                                warnings.push(FlightPlanWarning {
-                                    code: "UNREFINED_JUMP_FUEL".into(),
-                                    message: "Unrefined fuel is purchased; any Jump burning it carries the normal misjump penalty."
-                                        .into(),
-                                    step_indices: vec![index as u16],
-                                });
+                                if refine_collected && spec.fuel_processing_millitons_per_day != 0 {
+                                    let processing_seconds = milliton_service_seconds(
+                                        quantity_millitons,
+                                        spec.fuel_processing_millitons_per_day,
+                                    );
+                                    let failed_processing_seconds =
+                                        processing_seconds.saturating_mul(2);
+                                    fuel_timings.push(FuelOperationTiming {
+                                        step_index: index as u16,
+                                        round_trip_seconds: 0,
+                                        collection_seconds: 0,
+                                        processing_seconds,
+                                        failed_processing_seconds,
+                                        normal_total_seconds: processing_seconds,
+                                        failed_total_seconds: failed_processing_seconds,
+                                        output_refined: true,
+                                    });
+                                    elapsed_seconds =
+                                        elapsed_seconds.saturating_add(processing_seconds);
+                                } else {
+                                    available_unrefined_millitons = available_unrefined_millitons
+                                        .saturating_add(quantity_millitons);
+                                }
                             }
                         }
                         FuelOperation::GasGiant | FuelOperation::WildernessWater => {
@@ -6093,19 +6242,128 @@ impl Store {
                             } else {
                                 0
                             };
-                            let processing_seconds = milliton_service_seconds(
-                                quantity_millitons,
-                                spec.fuel_processing_millitons_per_day,
-                            );
-                            elapsed_seconds = elapsed_seconds.saturating_add(
-                                (source.round_trip_days * crate::simulation::SECONDS_PER_DAY as f64)
-                                    .ceil() as u64
-                                    + collection_seconds.max(processing_seconds),
-                            );
+                            if refine_collected && spec.fuel_processing_millitons_per_day == 0 {
+                                return Ok(RuleResult::Rejected(format!(
+                                    "waypoint {} requests refining, but the ship has no fuel processor",
+                                    index + 1
+                                )));
+                            }
+                            let round_trip_seconds = (source.round_trip_days
+                                * crate::simulation::SECONDS_PER_DAY as f64)
+                                .ceil() as u64;
+                            let processing_seconds = if refine_collected {
+                                milliton_service_seconds(
+                                    quantity_millitons,
+                                    spec.fuel_processing_millitons_per_day,
+                                )
+                            } else {
+                                0
+                            };
+                            let failed_processing_seconds = processing_seconds.saturating_mul(2);
+                            let normal_total_seconds = round_trip_seconds
+                                .saturating_add(collection_seconds.max(processing_seconds));
+                            let failed_total_seconds = round_trip_seconds
+                                .saturating_add(collection_seconds.max(failed_processing_seconds));
+                            fuel_timings.push(FuelOperationTiming {
+                                step_index: index as u16,
+                                round_trip_seconds,
+                                collection_seconds,
+                                processing_seconds,
+                                failed_processing_seconds,
+                                normal_total_seconds,
+                                failed_total_seconds,
+                                output_refined: refine_collected,
+                            });
+                            elapsed_seconds = elapsed_seconds.saturating_add(normal_total_seconds);
+                            if !refine_collected {
+                                available_unrefined_millitons = available_unrefined_millitons
+                                    .saturating_add(quantity_millitons);
+                            }
                             at_primary_port = true;
                         }
                     }
                     available_fuel_millitons += quantity_millitons;
+                }
+                FlightPlanAction::RefineFuel { quantity_millitons } => {
+                    if quantity_millitons == 0
+                        || quantity_millitons % MILLITONS_PER_TON != 0
+                        || quantity_millitons > available_unrefined_millitons
+                    {
+                        return Ok(RuleResult::Rejected(format!(
+                            "waypoint {} must refine an available positive whole-ton quantity",
+                            index + 1
+                        )));
+                    }
+                    if spec.fuel_processing_millitons_per_day == 0 {
+                        return Ok(RuleResult::Rejected(
+                            "this ship has no fuel processor".into(),
+                        ));
+                    }
+                    let safe_locus = if at_primary_port {
+                        matches!(step.locus, FlightLocus::Port { system_id: port_system, .. } if port_system == system_id)
+                    } else {
+                        matches!(
+                            step.locus,
+                            FlightLocus::JumpLocus { system_id: locus_system }
+                                if locus_system == system_id
+                        ) || matches!(step.locus, FlightLocus::DeepSpace { .. })
+                    };
+                    if !safe_locus {
+                        return Ok(RuleResult::Rejected(format!(
+                            "waypoint {} must process fuel at a berth or safe holding locus",
+                            index + 1
+                        )));
+                    }
+                    let processing_seconds = milliton_service_seconds(
+                        quantity_millitons,
+                        spec.fuel_processing_millitons_per_day,
+                    );
+                    let failed_processing_seconds = processing_seconds.saturating_mul(2);
+                    fuel_timings.push(FuelOperationTiming {
+                        step_index: index as u16,
+                        round_trip_seconds: 0,
+                        collection_seconds: 0,
+                        processing_seconds,
+                        failed_processing_seconds,
+                        normal_total_seconds: processing_seconds,
+                        failed_total_seconds: failed_processing_seconds,
+                        output_refined: true,
+                    });
+                    if !at_primary_port {
+                        let reserve = crate::mining::power_fuel_for_duration(
+                            spec.power_fuel_millitons,
+                            spec.power_plant_endurance_seconds,
+                            failed_processing_seconds,
+                        );
+                        let fuel_outside_batch =
+                            available_fuel_millitons.saturating_sub(quantity_millitons);
+                        if fuel_outside_batch < reserve {
+                            return Ok(RuleResult::Rejected(format!(
+                                "waypoint {} needs {:.1} tons of fuel outside the selected batch for power-plant reserve",
+                                index + 1,
+                                reserve as f64 / 1_000.0
+                            )));
+                        }
+                        let normal_power_burn = crate::mining::power_fuel_for_duration(
+                            spec.power_fuel_millitons,
+                            spec.power_plant_endurance_seconds,
+                            processing_seconds,
+                        );
+                        let unrefined_outside_batch =
+                            available_unrefined_millitons.saturating_sub(quantity_millitons);
+                        let (_, unrefined_power_burn) = proportional_fuel_burn(
+                            fuel_outside_batch,
+                            unrefined_outside_batch,
+                            normal_power_burn,
+                        );
+                        available_fuel_millitons =
+                            available_fuel_millitons.saturating_sub(normal_power_burn);
+                        available_unrefined_millitons =
+                            available_unrefined_millitons.saturating_sub(unrefined_power_burn);
+                    }
+                    available_unrefined_millitons =
+                        available_unrefined_millitons.saturating_sub(quantity_millitons);
+                    elapsed_seconds = elapsed_seconds.saturating_add(processing_seconds);
                 }
                 FlightPlanAction::Dock {
                     world_id,
@@ -6432,6 +6690,7 @@ impl Store {
             carriage_offers,
             carriage_revenue_credits,
             carriage_broker_fees_credits,
+            fuel_timings,
         }))
     }
 
@@ -6799,6 +7058,46 @@ impl Store {
             ))
     }
 
+    fn resolve_fuel_processing_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+        ship_id: u64,
+        entropy: u64,
+        quantity_millitons: u64,
+        processing_rate_millitons_per_day: u64,
+    ) -> Result<(i16, u64, bool), StoreError> {
+        let normal_seconds =
+            milliton_service_seconds(quantity_millitons, processing_rate_millitons_per_day);
+        let (engineer, condition_dm) = self.best_watch_operator_in(
+            txn,
+            identity,
+            ship_id,
+            crate::wire::SkillId::EngineerPower,
+        )?;
+        let result = crate::task_resolution::resolve(
+            &engineer,
+            crate::task_resolution::TaskRequest {
+                characteristic: engineer.characteristics.education,
+                skill: crate::wire::SkillId::EngineerPower,
+                difficulty: 8,
+                equipment_dm: 0,
+                condition_dm,
+                assistance_dm: 0,
+                entropy: entropy ^ 0x4655_454c_5052_4f43,
+            },
+        );
+        Ok((
+            result.effect,
+            if result.success {
+                normal_seconds
+            } else {
+                normal_seconds.saturating_mul(2)
+            },
+            result.effect <= -6,
+        ))
+    }
+
     fn crew_role_catalog_in(
         &self,
         txn: &heed::RoTxn<'_>,
@@ -7085,6 +7384,7 @@ impl Store {
                 FlightPlanAction::Fuel {
                     operation,
                     quantity_millitons,
+                    refine_collected,
                 } => {
                     if matches!(
                         operation,
@@ -7105,6 +7405,8 @@ impl Store {
                             );
                         };
                         let (_, ship) = self.player_and_ship_in(txn, identity)?;
+                        let can_refine_purchase = creation::ship_status_spec(ship.catalog_id)
+                            .is_some_and(|spec| spec.fuel_processing_millitons_per_day != 0);
                         let at_plotted_port = matches!(
                             ship.location,
                             ShipLocationRecord::Docked {
@@ -7142,6 +7444,35 @@ impl Store {
                                 hold_on_rejection,
                             );
                         }
+                        if operation == FuelOperation::BuyUnrefined
+                            && refine_collected
+                            && can_refine_purchase
+                        {
+                            match self.begin_fuel_processing_in(
+                                txn,
+                                identity,
+                                quantity_millitons,
+                            )? {
+                                RuleResult::Rejected(message) => {
+                                    return self.reject_or_hold_plan_in(
+                                        txn,
+                                        &key,
+                                        plan,
+                                        &message,
+                                        hold_on_rejection,
+                                    );
+                                }
+                                RuleResult::Applied(_) => {
+                                    plan.state = FlightPlanState::Active;
+                                    self.flight_plans.put(
+                                        txn,
+                                        &key,
+                                        &encode_flight_plan_snapshot(&plan)?,
+                                    )?;
+                                    return Ok(RuleResult::Applied(plan));
+                                }
+                            }
+                        }
                         continue;
                     }
                     let FlightLocus::Body { system_id, body_id } = step.locus else {
@@ -7173,6 +7504,7 @@ impl Store {
                         identity,
                         quantity_millitons,
                         gas_giant,
+                        Some(refine_collected),
                         Some(body_id),
                     )? {
                         RuleResult::Rejected(message) => {
@@ -7206,6 +7538,25 @@ impl Store {
                         }
                     }
                 }
+                FlightPlanAction::RefineFuel { quantity_millitons } => match self
+                    .begin_fuel_processing_in(txn, identity, quantity_millitons)?
+                {
+                    RuleResult::Rejected(message) => {
+                        return self.reject_or_hold_plan_in(
+                            txn,
+                            &key,
+                            plan,
+                            &message,
+                            hold_on_rejection,
+                        );
+                    }
+                    RuleResult::Applied(_) => {
+                        plan.state = FlightPlanState::Active;
+                        self.flight_plans
+                            .put(txn, &key, &encode_flight_plan_snapshot(&plan)?)?;
+                        return Ok(RuleResult::Applied(plan));
+                    }
+                },
                 FlightPlanAction::BeltCycle { body_id } => {
                     match self.begin_belt_cycle_in(txn, identity, body_id)? {
                         RuleResult::Rejected(message) => {
@@ -14716,12 +15067,15 @@ impl Store {
                     ShipActivityKind::ProperRepair { subsystem_id } => {
                         WireShipActivityKind::ProperRepair { subsystem_id }
                     }
-                    ShipActivityKind::GasGiantSkim { quantity_millitons } => {
-                        WireShipActivityKind::GasGiantSkim { quantity_millitons }
-                    }
-                    ShipActivityKind::WildernessWater { quantity_millitons } => {
-                        WireShipActivityKind::WildernessWater { quantity_millitons }
-                    }
+                    ShipActivityKind::GasGiantSkim {
+                        quantity_millitons, ..
+                    } => WireShipActivityKind::GasGiantSkim { quantity_millitons },
+                    ShipActivityKind::WildernessWater {
+                        quantity_millitons, ..
+                    } => WireShipActivityKind::WildernessWater { quantity_millitons },
+                    ShipActivityKind::FuelProcessing {
+                        quantity_millitons, ..
+                    } => WireShipActivityKind::FuelProcessing { quantity_millitons },
                     ShipActivityKind::Refurbishment {
                         ref subsystem_ids, ..
                     } => WireShipActivityKind::Refurbishment {
@@ -14737,6 +15091,16 @@ impl Store {
                 started_second: activity.started_second,
                 due_second: activity.due_second,
                 cost_credits: activity.cost_credits,
+                refine_collected: match activity.kind {
+                    ShipActivityKind::GasGiantSkim {
+                        refine_collected, ..
+                    }
+                    | ShipActivityKind::WildernessWater {
+                        refine_collected, ..
+                    } => refine_collected,
+                    ShipActivityKind::FuelProcessing { .. } => true,
+                    _ => false,
+                },
                 source_body_id: match activity.site {
                     ShipActivitySite::Frontier { source_body_id, .. } => Some(source_body_id),
                     _ => None,
@@ -21243,7 +21607,9 @@ impl Store {
             label: "Refined starship fuel".into(),
             source_body_id: None,
             available: refined && remaining != 0,
-            unavailable_reason: if refined {
+            unavailable_reason: if remaining == 0 {
+                "The ship's fuel tanks are full.".into()
+            } else if refined {
                 String::new()
             } else {
                 "No refined-fuel depot operates at this port.".into()
@@ -21251,6 +21617,9 @@ impl Store {
             price_per_ton_credits: REFINED_FUEL_PRICE_PER_TON,
             maximum_millitons: remaining,
             service_seconds: 0,
+            body_kind: FuelSourceBodyKind::NotApplicable,
+            access_kind: FuelAccessKind::PortSale,
+            can_refine: spec.fuel_processing_millitons_per_day != 0,
         });
         let unrefined = facility.operational && facility.unrefined_fuel;
         fuel.push(DockedFuelService {
@@ -21258,7 +21627,9 @@ impl Store {
             label: "Unrefined bulk fuel".into(),
             source_body_id: None,
             available: unrefined && remaining != 0,
-            unavailable_reason: if unrefined {
+            unavailable_reason: if remaining == 0 {
+                "The ship's fuel tanks are full.".into()
+            } else if unrefined {
                 String::new()
             } else {
                 "No bulk-fuel depot operates at this port.".into()
@@ -21266,18 +21637,23 @@ impl Store {
             price_per_ton_credits: UNREFINED_FUEL_PRICE_PER_TON,
             maximum_millitons: remaining,
             service_seconds: 0,
+            body_kind: FuelSourceBodyKind::NotApplicable,
+            access_kind: FuelAccessKind::PortSale,
+            can_refine: spec.fuel_processing_millitons_per_day != 0,
         });
-        let equipped = spec.has_fuel_scoop && spec.fuel_processing_millitons_per_day != 0;
+        let equipped = spec.has_fuel_scoop;
         for source in gas_giant_fuel_sources(&celestial, days, f64::from(spec.thrust_g)) {
             fuel.push(DockedFuelService {
                 kind: DockedFuelServiceKind::GasGiant,
                 label: format!("Skim {}", source.body_name),
                 source_body_id: Some(source.body_local_id),
                 available: equipped && remaining != 0,
-                unavailable_reason: if equipped {
+                unavailable_reason: if remaining == 0 {
+                    "The ship's fuel tanks are full.".into()
+                } else if equipped {
                     String::new()
                 } else {
-                    "The ship lacks a complete scoop and processing plant.".into()
+                    "The ship lacks fuel-scooping equipment.".into()
                 },
                 price_per_ton_credits: 0,
                 maximum_millitons: remaining,
@@ -21288,6 +21664,9 @@ impl Store {
                         remaining,
                         spec.fuel_processing_millitons_per_day,
                     )),
+                body_kind: fuel_source_body_kind(source.body_kind),
+                access_kind: FuelAccessKind::RoutineWilderness,
+                can_refine: spec.fuel_processing_millitons_per_day != 0,
             });
         }
         for source in wilderness_water_sources(&celestial, days, f64::from(spec.thrust_g)) {
@@ -21296,10 +21675,12 @@ impl Store {
                 label: format!("Collect water or ice at {}", source.body_name),
                 source_body_id: Some(source.body_local_id),
                 available: equipped && remaining != 0,
-                unavailable_reason: if equipped {
+                unavailable_reason: if remaining == 0 {
+                    "The ship's fuel tanks are full.".into()
+                } else if equipped {
                     String::new()
                 } else {
-                    "The ship lacks a complete scoop and processing plant.".into()
+                    "The ship lacks fuel-scooping equipment.".into()
                 },
                 price_per_ton_credits: 0,
                 maximum_millitons: remaining,
@@ -21307,6 +21688,9 @@ impl Store {
                     * crate::simulation::SECONDS_PER_DAY as f64)
                     .ceil() as u64
                     + milliton_service_seconds(remaining, spec.fuel_processing_millitons_per_day),
+                body_kind: fuel_source_body_kind(source.body_kind),
+                access_kind: FuelAccessKind::RoutineWilderness,
+                can_refine: spec.fuel_processing_millitons_per_day != 0,
             });
         }
         let required = crate::ship_condition::minimum_refit_starport(spec.displacement_millitons);
@@ -21703,6 +22087,7 @@ impl Store {
                 identity,
                 *quantity_millitons,
                 true,
+                None,
                 Some(*source_body_id),
             )? {
                 RuleResult::Applied(_) => {}
@@ -21717,6 +22102,7 @@ impl Store {
                 identity,
                 *quantity_millitons,
                 false,
+                None,
                 Some(*source_body_id),
             )? {
                 RuleResult::Applied(_) => {}
@@ -22129,6 +22515,7 @@ impl Store {
         identity: &PlayerIdentity,
         quantity_millitons: u64,
         gas_giant: bool,
+        requested_refining: Option<bool>,
         selected_body_id: Option<u32>,
     ) -> Result<RuleResult<TravelStatus>, StoreError> {
         if quantity_millitons == 0 || quantity_millitons % MILLITONS_PER_TON != 0 {
@@ -22157,6 +22544,13 @@ impl Store {
         if !spec.has_fuel_scoop {
             return Ok(RuleResult::Rejected(
                 "the ship has no fuel-scooping equipment".into(),
+            ));
+        }
+        let refine_collected =
+            requested_refining.unwrap_or(spec.fuel_processing_millitons_per_day != 0);
+        if refine_collected && spec.fuel_processing_millitons_per_day == 0 {
+            return Ok(RuleResult::Rejected(
+                "the ship has no operational fuel processor".into(),
             ));
         }
         if ship
@@ -22220,8 +22614,28 @@ impl Store {
         } else {
             0
         };
-        let processing_seconds =
-            milliton_service_seconds(quantity_millitons, spec.fuel_processing_millitons_per_day);
+        let activity_id = crate::ship_condition::mix64(
+            ship.ship_id
+                ^ current
+                ^ if gas_giant {
+                    0x0047_4153_534b_494d
+                } else {
+                    0x5741_5445_5249_4345
+                },
+        );
+        let (processing_effect, processing_seconds, processing_damages_jump_drive) =
+            if refine_collected {
+                self.resolve_fuel_processing_in(
+                    txn,
+                    identity,
+                    ship.ship_id,
+                    activity_id,
+                    quantity_millitons,
+                    spec.fuel_processing_millitons_per_day,
+                )?
+            } else {
+                (0, 0, false)
+            };
         let service_seconds = collection_seconds.max(processing_seconds);
         for subsystem in &mut ship.subsystems {
             if matches!(
@@ -22237,15 +22651,6 @@ impl Store {
                     .saturating_add(collection_seconds.max(processing_seconds));
             }
         }
-        let activity_id = crate::ship_condition::mix64(
-            ship.ship_id
-                ^ current
-                ^ if gas_giant {
-                    0x0047_4153_534b_494d
-                } else {
-                    0x5741_5445_5249_4345
-                },
-        );
         let outbound_seconds = (travel_seconds / 2).max(1);
         let return_seconds = travel_seconds.saturating_sub(outbound_seconds).max(1);
         let outbound_due = current
@@ -22261,9 +22666,19 @@ impl Store {
         ship.activity = Some(ShipActivityRecord {
             activity_id,
             kind: if gas_giant {
-                ShipActivityKind::GasGiantSkim { quantity_millitons }
+                ShipActivityKind::GasGiantSkim {
+                    quantity_millitons,
+                    refine_collected,
+                    processing_effect,
+                    processing_damages_jump_drive,
+                }
             } else {
-                ShipActivityKind::WildernessWater { quantity_millitons }
+                ShipActivityKind::WildernessWater {
+                    quantity_millitons,
+                    refine_collected,
+                    processing_effect,
+                    processing_damages_jump_drive,
+                }
             },
             started_second: current,
             due_second: due,
@@ -22317,6 +22732,116 @@ impl Store {
             &encode_player_record(&player),
         )?;
         Ok(RuleResult::Applied(self.travel_status_in(txn, identity)?))
+    }
+
+    fn begin_fuel_processing_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        quantity_millitons: u64,
+    ) -> Result<RuleResult<ShipStatusSnapshot>, StoreError> {
+        if quantity_millitons == 0 || quantity_millitons % MILLITONS_PER_TON != 0 {
+            return Ok(RuleResult::Rejected(
+                "fuel processing requires a positive whole-ton quantity".into(),
+            ));
+        }
+        let (_, mut ship) = self.player_and_ship_in(txn, identity)?;
+        if ship.activity.is_some() || matches!(ship.location, ShipLocationRecord::InFlight(_)) {
+            return Ok(RuleResult::Rejected(
+                "fuel can only be processed while safely docked or holding".into(),
+            ));
+        }
+        if quantity_millitons > ship.unrefined_fuel_millitons {
+            return Ok(RuleResult::Rejected(
+                "the selected quantity exceeds the unrefined fuel aboard".into(),
+            ));
+        }
+        let spec = creation::ship_status_spec(ship.catalog_id)
+            .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
+        if spec.fuel_processing_millitons_per_day == 0 {
+            return Ok(RuleResult::Rejected(
+                "the ship has no operational fuel processor".into(),
+            ));
+        }
+        let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        let activity_id = crate::ship_condition::mix64(
+            ship.ship_id ^ current ^ quantity_millitons ^ 0x4655_454c_5245_4649,
+        );
+        let (processing_effect, processing_seconds, processing_damages_jump_drive) = self
+            .resolve_fuel_processing_in(
+                txn,
+                identity,
+                ship.ship_id,
+                activity_id,
+                quantity_millitons,
+                spec.fuel_processing_millitons_per_day,
+            )?;
+        if !matches!(ship.location, ShipLocationRecord::Docked { .. }) {
+            let worst_case_processing_seconds = milliton_service_seconds(
+                quantity_millitons,
+                spec.fuel_processing_millitons_per_day,
+            )
+            .saturating_mul(2);
+            let reserve = crate::mining::power_fuel_for_duration(
+                spec.power_fuel_millitons,
+                spec.power_plant_endurance_seconds,
+                worst_case_processing_seconds,
+            );
+            if ship
+                .current_fuel_millitons
+                .saturating_sub(quantity_millitons)
+                < reserve
+            {
+                return Ok(RuleResult::Rejected(format!(
+                    "processing away from port needs {:.1} tons of fuel outside the selected batch for power-plant reserve",
+                    reserve as f64 / 1_000.0
+                )));
+            }
+        }
+        let site = match ship.location {
+            ShipLocationRecord::Docked {
+                world_id,
+                facility_id,
+                ..
+            } => ShipActivitySite::Dockyard {
+                system_id: ship.system_id,
+                world_id,
+                facility_id,
+            },
+            ShipLocationRecord::Holding { .. } => ShipActivitySite::Field {
+                system_id: ship.system_id,
+            },
+            ShipLocationRecord::InFlight(_) => unreachable!(),
+        };
+        let due = current
+            .checked_add(processing_seconds)
+            .ok_or(StoreError::Corrupt("fuel-processing due time overflow"))?;
+        ship.activity = Some(ShipActivityRecord {
+            activity_id,
+            kind: ShipActivityKind::FuelProcessing {
+                quantity_millitons,
+                processing_effect,
+                processing_damages_jump_drive,
+            },
+            started_second: current,
+            due_second: due,
+            cost_credits: 0,
+            site,
+        });
+        if let Some(subsystem) = ship
+            .subsystems
+            .iter_mut()
+            .find(|subsystem| subsystem.kind == ShipSubsystemKind::FuelSystem)
+        {
+            subsystem.operating_seconds = subsystem
+                .operating_seconds
+                .saturating_add(processing_seconds);
+        }
+        ship.revision = ship.revision.saturating_add(1);
+        self.schedule_ship_activity_in(txn, ship.ship_id, due)?;
+        self.ships
+            .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+        Ok(RuleResult::Applied(self.ship_status_in(txn, identity)?))
     }
 
     fn begin_belt_cycle_in(
@@ -22571,6 +23096,9 @@ impl Store {
                             }
                             Some(ShipActivityKind::WildernessWater { .. }) => {
                                 TravelStage::WildernessWater
+                            }
+                            Some(ShipActivityKind::FuelProcessing { .. }) => {
+                                TravelStage::FuelProcessing
                             }
                             _ => {
                                 return Err(StoreError::Corrupt(
@@ -23140,14 +23668,7 @@ impl Store {
         }
 
         let game_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
-        let refined = ship
-            .current_fuel_millitons
-            .saturating_sub(ship.unrefined_fuel_millitons);
-        let unrefined_consumed = required_fuel.saturating_sub(refined);
-        ship.current_fuel_millitons -= required_fuel;
-        ship.unrefined_fuel_millitons = ship
-            .unrefined_fuel_millitons
-            .saturating_sub(unrefined_consumed);
+        let unrefined_consumed = consume_ship_fuel(&mut ship, required_fuel);
         let jump_drive_hits = ship
             .subsystems
             .iter()
@@ -28645,16 +29166,24 @@ impl Store {
                     begin_offline_recovery(&mut ship, due_second);
                 }
             }
-            ShipActivityKind::GasGiantSkim { quantity_millitons }
-            | ShipActivityKind::WildernessWater { quantity_millitons } => {
+            ShipActivityKind::GasGiantSkim {
+                quantity_millitons,
+                refine_collected,
+                processing_damages_jump_drive,
+                ..
+            }
+            | ShipActivityKind::WildernessWater {
+                quantity_millitons,
+                refine_collected,
+                processing_damages_jump_drive,
+                ..
+            } => {
                 let gas_giant = matches!(&activity.kind, ShipActivityKind::GasGiantSkim { .. });
-                let spec = creation::ship_status_spec(ship.catalog_id)
-                    .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
                 ship.current_fuel_millitons = ship
                     .current_fuel_millitons
                     .checked_add(*quantity_millitons)
                     .ok_or(StoreError::Corrupt("fuel quantity overflow"))?;
-                if spec.fuel_processing_millitons_per_day == 0 {
+                if !refine_collected {
                     ship.unrefined_fuel_millitons = ship
                         .unrefined_fuel_millitons
                         .checked_add(*quantity_millitons)
@@ -28662,6 +29191,9 @@ impl Store {
                 }
                 if gas_giant {
                     ship.maintenance.warranty_voided = true;
+                }
+                if *processing_damages_jump_drive {
+                    apply_fuel_processing_damage(&mut ship);
                 }
                 for subsystem in &mut ship.subsystems {
                     if matches!(
@@ -28713,6 +29245,39 @@ impl Store {
                     return Err(StoreError::Corrupt(
                         "frontier return disagrees with activity site",
                     ));
+                }
+            }
+            ShipActivityKind::FuelProcessing {
+                quantity_millitons,
+                processing_damages_jump_drive,
+                ..
+            } => {
+                if ship.unrefined_fuel_millitons < *quantity_millitons {
+                    return Err(StoreError::Corrupt(
+                        "fuel-processing batch is no longer aboard",
+                    ));
+                }
+                let spec = creation::ship_status_spec(ship.catalog_id)
+                    .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
+                if matches!(activity.site, ShipActivitySite::Field { .. }) {
+                    ship.current_fuel_millitons = ship
+                        .current_fuel_millitons
+                        .saturating_sub(*quantity_millitons);
+                    ship.unrefined_fuel_millitons = ship
+                        .unrefined_fuel_millitons
+                        .saturating_sub(*quantity_millitons);
+                    settle_power_fuel(&mut ship, &spec, due_second);
+                    ship.current_fuel_millitons = ship
+                        .current_fuel_millitons
+                        .saturating_add(*quantity_millitons);
+                } else {
+                    settle_power_fuel(&mut ship, &spec, due_second);
+                    ship.unrefined_fuel_millitons = ship
+                        .unrefined_fuel_millitons
+                        .saturating_sub(*quantity_millitons);
+                }
+                if *processing_damages_jump_drive {
+                    apply_fuel_processing_damage(&mut ship);
                 }
             }
             ShipActivityKind::Refurbishment {
@@ -28829,6 +29394,7 @@ impl Store {
                 ShipActivityKind::ProperRepair { .. } => "Proper repair",
                 ShipActivityKind::GasGiantSkim { .. } => "Gas-giant skimming",
                 ShipActivityKind::WildernessWater { .. } => "Wilderness fueling",
+                ShipActivityKind::FuelProcessing { .. } => "Fuel processing",
                 ShipActivityKind::Refurbishment { .. } => "Refurbishment",
                 ShipActivityKind::EscortDuty { .. } => "Escort duty",
                 ShipActivityKind::FieldRecovery { .. } => "Crew field recovery",
@@ -28841,7 +29407,9 @@ impl Store {
         if was_automatic_recovery && continue_automatic_recovery {
             self.start_post_combat_recovery_in(txn, &command)?;
         }
-        if completed_frontier_plan {
+        if completed_frontier_plan
+            || matches!(activity.kind, ShipActivityKind::FuelProcessing { .. })
+        {
             let key = encode_identity(&command);
             if let Some(plan) = self
                 .flight_plans
@@ -28851,10 +29419,12 @@ impl Store {
             {
                 let current = usize::from(plan.current_step);
                 if plan.state == FlightPlanState::Active
-                    && plan
-                        .steps
-                        .get(current)
-                        .is_some_and(|step| matches!(step.action, FlightPlanAction::Fuel { .. }))
+                    && plan.steps.get(current).is_some_and(|step| {
+                        matches!(
+                            step.action,
+                            FlightPlanAction::Fuel { .. } | FlightPlanAction::RefineFuel { .. }
+                        )
+                    })
                 {
                     let _ =
                         self.activate_flight_plan_from_in(txn, &command, plan, current + 1, true)?;
@@ -29150,14 +29720,7 @@ impl Store {
                         "scheduled ship lacks reserved jump fuel",
                     ));
                 }
-                let refined_fuel = ship
-                    .current_fuel_millitons
-                    .saturating_sub(ship.unrefined_fuel_millitons);
-                let unrefined_consumed = required_fuel.saturating_sub(refined_fuel);
-                ship.current_fuel_millitons -= required_fuel;
-                ship.unrefined_fuel_millitons = ship
-                    .unrefined_fuel_millitons
-                    .saturating_sub(unrefined_consumed);
+                let unrefined_consumed = consume_ship_fuel(&mut ship, required_fuel);
                 let jump_drive_hits = ship
                     .subsystems
                     .iter()
@@ -29328,14 +29891,7 @@ impl Store {
                         "coordinate-jump fuel reservation failed",
                     ));
                 }
-                let refined = ship
-                    .current_fuel_millitons
-                    .saturating_sub(ship.unrefined_fuel_millitons);
-                let unrefined_consumed = required_fuel.saturating_sub(refined);
-                ship.current_fuel_millitons -= required_fuel;
-                ship.unrefined_fuel_millitons = ship
-                    .unrefined_fuel_millitons
-                    .saturating_sub(unrefined_consumed);
+                let unrefined_consumed = consume_ship_fuel(&mut ship, required_fuel);
                 let jump_drive_hits = ship
                     .subsystems
                     .iter()
@@ -31470,6 +32026,15 @@ fn milliton_service_seconds(quantity_millitons: u64, rate_per_day: u64) -> u64 {
         .unwrap_or(u64::MAX)
 }
 
+const fn fuel_source_body_kind(kind: FrontierFuelBodyKind) -> FuelSourceBodyKind {
+    match kind {
+        FrontierFuelBodyKind::GasGiant => FuelSourceBodyKind::GasGiant,
+        FrontierFuelBodyKind::Planet => FuelSourceBodyKind::Planet,
+        FrontierFuelBodyKind::Moon => FuelSourceBodyKind::Moon,
+        FrontierFuelBodyKind::IcyBelt => FuelSourceBodyKind::IcyBelt,
+    }
+}
+
 fn mean_skimming_seconds(quantity_millitons: u64) -> u64 {
     // CE specifies 1D6 hours per 40 tons. A planning estimate uses the 3.5-hour
     // mean while actual operations will roll their own authoritative duration.
@@ -33188,10 +33753,12 @@ fn encode_flight_plan_step_record(bytes: &mut Vec<u8>, step: &FlightPlanStep) {
         FlightPlanAction::Fuel {
             operation,
             quantity_millitons,
+            refine_collected,
         } => {
             bytes.push(3);
             bytes.push(operation as u8);
             bytes.extend_from_slice(&quantity_millitons.to_be_bytes());
+            bytes.push(u8::from(refine_collected));
         }
         FlightPlanAction::JumpCoordinates {
             destination,
@@ -33216,6 +33783,10 @@ fn encode_flight_plan_step_record(bytes: &mut Vec<u8>, step: &FlightPlanStep) {
             bytes.push(5);
             bytes.extend_from_slice(&body_id.to_be_bytes());
         }
+        FlightPlanAction::RefineFuel { quantity_millitons } => {
+            bytes.push(6);
+            bytes.extend_from_slice(&quantity_millitons.to_be_bytes());
+        }
     }
 }
 fn decode_flight_plan_step_record(
@@ -33228,8 +33799,8 @@ fn decode_flight_plan_step_record(
         (1, 0) => (WaypointAuthority::Hold, false),
         (1, 1) => (WaypointAuthority::Hold, true),
         (1, 2) => (WaypointAuthority::Through, false),
-        (2 | 3, 0) => (WaypointAuthority::Hold, decoder.u8()? != 0),
-        (2 | 3, 1) => (WaypointAuthority::Through, decoder.u8()? != 0),
+        (2..=4, 0) => (WaypointAuthority::Hold, decoder.u8()? != 0),
+        (2..=4, 1) => (WaypointAuthority::Through, decoder.u8()? != 0),
         _ => return Err(StoreError::Corrupt("unknown waypoint authority")),
     };
     let action = match decoder.u8()? {
@@ -33247,16 +33818,28 @@ fn decode_flight_plan_step_record(
             world_id: decoder.u64()?,
             facility_id: decoder.u64()?,
         },
-        3 => FlightPlanAction::Fuel {
-            operation: match decoder.u8()? {
+        3 => {
+            let operation = match decoder.u8()? {
                 0 => FuelOperation::GasGiant,
                 1 => FuelOperation::WildernessWater,
                 2 => FuelOperation::BuyRefined,
                 3 => FuelOperation::BuyUnrefined,
                 _ => return Err(StoreError::Corrupt("unknown fuel operation")),
-            },
-            quantity_millitons: decoder.u64()?,
-        },
+            };
+            let quantity_millitons = decoder.u64()?;
+            FlightPlanAction::Fuel {
+                operation,
+                quantity_millitons,
+                refine_collected: if version >= 4 {
+                    decoder.u8()? != 0
+                } else {
+                    matches!(
+                        operation,
+                        FuelOperation::GasGiant | FuelOperation::WildernessWater
+                    )
+                },
+            }
+        }
         4 => FlightPlanAction::JumpCoordinates {
             destination: crate::wire::Coordinate3 {
                 coreward_bits: decoder.u64()?,
@@ -33273,6 +33856,9 @@ fn decode_flight_plan_step_record(
         5 if version >= 3 => FlightPlanAction::BeltCycle {
             body_id: decoder.u32()?,
         },
+        6 if version >= 4 => FlightPlanAction::RefineFuel {
+            quantity_millitons: decoder.u64()?,
+        },
         _ => return Err(StoreError::Corrupt("unknown flight-plan action")),
     };
     Ok(FlightPlanStep {
@@ -33287,7 +33873,7 @@ fn encode_flight_plan_proposal_record(
     proposal: &FlightPlanProposal,
 ) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(3);
+    bytes.push(4);
     bytes.extend_from_slice(&proposal.expected_plan_revision.to_be_bytes());
     let count = u16::try_from(proposal.steps.len())
         .map_err(|_| StoreError::Corrupt("too many flight-plan steps"))?;
@@ -33302,7 +33888,7 @@ fn decode_flight_plan_proposal_record(
     decoder: &mut Decoder<'_>,
 ) -> Result<FlightPlanProposal, StoreError> {
     let version = decoder.u8()?;
-    if version != 1 && version != 2 && version != 3 {
+    if !matches!(version, 1..=4) {
         return Err(StoreError::Corrupt("unsupported flight-plan proposal"));
     }
     let expected_plan_revision = decoder.u64()?;
@@ -33343,7 +33929,7 @@ fn flight_plan_preview_hash(
 
 fn encode_flight_plan_snapshot(value: &FlightPlanSnapshot) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(3);
+    bytes.push(4);
     bytes.extend_from_slice(&value.plan_id.to_be_bytes());
     bytes.extend_from_slice(&value.revision.to_be_bytes());
     bytes.extend_from_slice(&value.current_step.to_be_bytes());
@@ -33361,7 +33947,7 @@ fn encode_flight_plan_snapshot(value: &FlightPlanSnapshot) -> Result<Vec<u8>, St
 fn decode_flight_plan_snapshot(bytes: &[u8]) -> Result<FlightPlanSnapshot, StoreError> {
     let mut decoder = Decoder::new(bytes);
     let version = decoder.u8()?;
-    if version != 1 && version != 2 && version != 3 {
+    if !matches!(version, 1..=4) {
         return Err(StoreError::Corrupt("unsupported flight-plan record"));
     }
     let plan_id = decoder.u64()?;
@@ -36581,7 +37167,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(17);
+    bytes.push(18);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -36684,6 +37270,21 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
                 for step_index in &warning.step_indices {
                     bytes.extend_from_slice(&step_index.to_be_bytes());
                 }
+            }
+            bytes.extend_from_slice(
+                &u16::try_from(preview.fuel_timings.len())
+                    .map_err(|_| StoreError::Corrupt("too many fuel timings"))?
+                    .to_be_bytes(),
+            );
+            for timing in &preview.fuel_timings {
+                bytes.extend_from_slice(&timing.step_index.to_be_bytes());
+                bytes.extend_from_slice(&timing.round_trip_seconds.to_be_bytes());
+                bytes.extend_from_slice(&timing.collection_seconds.to_be_bytes());
+                bytes.extend_from_slice(&timing.processing_seconds.to_be_bytes());
+                bytes.extend_from_slice(&timing.failed_processing_seconds.to_be_bytes());
+                bytes.extend_from_slice(&timing.normal_total_seconds.to_be_bytes());
+                bytes.extend_from_slice(&timing.failed_total_seconds.to_be_bytes());
+                bytes.push(u8::from(timing.output_refined));
             }
         }
         OutcomeKind::Checkpoint(value) => {
@@ -36848,6 +37449,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 15
         && version != 16
         && version != 17
+        && version != 18
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -36889,7 +37491,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         7 => OutcomeKind::StartingShipOptions(decode_starting_ship_options(&mut decoder)?),
         8 => OutcomeKind::StartingCrewPlan(decode_starting_crew_plan(&mut decoder)?),
         9 => OutcomeKind::CrewManagement(decode_crew_management(&mut decoder, version)?),
-        10 => OutcomeKind::ShipStatus(decode_ship_status(&mut decoder)?),
+        10 => OutcomeKind::ShipStatus(decode_ship_status(&mut decoder, version)?),
         11 => OutcomeKind::DockedSnapshot(decode_docked_snapshot(&mut decoder, version)?),
         12 => OutcomeKind::KnownDestinations(decode_known_destinations(&mut decoder, version)?),
         13 => OutcomeKind::Market(decode_market_snapshot(&mut decoder, version)?),
@@ -36929,6 +37531,25 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
                     },
                 });
             }
+            let fuel_timings = if version >= 18 {
+                let count = decoder.u16()? as usize;
+                let mut timings = Vec::with_capacity(count);
+                for _ in 0..count {
+                    timings.push(FuelOperationTiming {
+                        step_index: decoder.u16()?,
+                        round_trip_seconds: decoder.u64()?,
+                        collection_seconds: decoder.u64()?,
+                        processing_seconds: decoder.u64()?,
+                        failed_processing_seconds: decoder.u64()?,
+                        normal_total_seconds: decoder.u64()?,
+                        failed_total_seconds: decoder.u64()?,
+                        output_refined: decoder.u8()? != 0,
+                    });
+                }
+                timings
+            } else {
+                Vec::new()
+            };
             OutcomeKind::FlightPlanPreview(FlightPlanPreview {
                 proposal,
                 preview_hash,
@@ -36938,6 +37559,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
                 carriage_offers: Vec::new(),
                 carriage_revenue_credits: 0,
                 carriage_broker_fees_credits: 0,
+                fuel_timings,
             })
         }
         21 => {
@@ -37034,7 +37656,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
                 known_warrants,
             })
         }
-        31 => OutcomeKind::DockedServices(decode_docked_services(&mut decoder)?),
+        31 => OutcomeKind::DockedServices(decode_docked_services(&mut decoder, version)?),
         32 => OutcomeKind::Fleet(decode_fleet(&mut decoder, version)?),
         33 => OutcomeKind::SystemRadio(decode_system_radio(&mut decoder)?),
         34 => OutcomeKind::RadioContent(crate::wire::RadioContent {
@@ -39043,11 +39665,35 @@ fn encode_ship_record(record: &ShipRecord) -> Result<Vec<u8>, StoreError> {
                 ShipActivityKind::Refurbishment { .. } => 4,
                 ShipActivityKind::EscortDuty { .. } => 5,
                 ShipActivityKind::FieldRecovery { .. } => 6,
+                ShipActivityKind::FuelProcessing { .. } => 8,
             });
-            if let ShipActivityKind::GasGiantSkim { quantity_millitons }
-            | ShipActivityKind::WildernessWater { quantity_millitons } = &activity.kind
+            if let ShipActivityKind::GasGiantSkim {
+                quantity_millitons,
+                refine_collected,
+                processing_effect,
+                processing_damages_jump_drive,
+            }
+            | ShipActivityKind::WildernessWater {
+                quantity_millitons,
+                refine_collected,
+                processing_effect,
+                processing_damages_jump_drive,
+            } = &activity.kind
             {
                 bytes.extend_from_slice(&quantity_millitons.to_be_bytes());
+                bytes.push(u8::from(*refine_collected));
+                bytes.extend_from_slice(&processing_effect.to_be_bytes());
+                bytes.push(u8::from(*processing_damages_jump_drive));
+            }
+            if let ShipActivityKind::FuelProcessing {
+                quantity_millitons,
+                processing_effect,
+                processing_damages_jump_drive,
+            } = &activity.kind
+            {
+                bytes.extend_from_slice(&quantity_millitons.to_be_bytes());
+                bytes.extend_from_slice(&processing_effect.to_be_bytes());
+                bytes.push(u8::from(*processing_damages_jump_drive));
             }
             if let ShipActivityKind::ProperRepair { subsystem_id } = &activity.kind {
                 bytes.extend_from_slice(&subsystem_id.to_be_bytes());
@@ -39159,7 +39805,7 @@ fn encode_ship_record(record: &ShipRecord) -> Result<Vec<u8>, StoreError> {
 fn decode_ship_record(bytes: &[u8]) -> Result<ShipRecord, StoreError> {
     let mut decoder = Decoder::new(bytes);
     let version = decoder.u8()?;
-    if !matches!(version, 1 | SHIP_RECORD_CODEC_VERSION) {
+    if !matches!(version, 1..=SHIP_RECORD_CODEC_VERSION) {
         return Err(StoreError::Corrupt("unsupported ship record version"));
     }
     let ship_id = decoder.u64()?;
@@ -39359,9 +40005,31 @@ fn decode_ship_record(bytes: &[u8]) -> Result<ShipRecord, StoreError> {
                 0 => ShipActivityKind::Refit,
                 1 => ShipActivityKind::GasGiantSkim {
                     quantity_millitons: decoder.u64()?,
+                    refine_collected: if version >= 3 {
+                        decoder.u8()? != 0
+                    } else {
+                        true
+                    },
+                    processing_effect: if version >= 3 { decoder.i16()? } else { 0 },
+                    processing_damages_jump_drive: if version >= 3 {
+                        decoder.u8()? != 0
+                    } else {
+                        false
+                    },
                 },
                 2 => ShipActivityKind::WildernessWater {
                     quantity_millitons: decoder.u64()?,
+                    refine_collected: if version >= 3 {
+                        decoder.u8()? != 0
+                    } else {
+                        true
+                    },
+                    processing_effect: if version >= 3 { decoder.i16()? } else { 0 },
+                    processing_damages_jump_drive: if version >= 3 {
+                        decoder.u8()? != 0
+                    } else {
+                        false
+                    },
                 },
                 3 => ShipActivityKind::ProperRepair {
                     subsystem_id: decoder.u16()?,
@@ -39387,6 +40055,11 @@ fn decode_ship_record(bytes: &[u8]) -> Result<ShipRecord, StoreError> {
                     successful: decoder.u8()? != 0,
                 },
                 7 => ShipActivityKind::Construction,
+                8 if version >= 3 => ShipActivityKind::FuelProcessing {
+                    quantity_millitons: decoder.u64()?,
+                    processing_effect: decoder.i16()?,
+                    processing_damages_jump_drive: decoder.u8()? != 0,
+                },
                 _ => return Err(StoreError::Corrupt("unknown ship activity kind")),
             },
             started_second: decoder.u64()?,
@@ -40293,6 +40966,7 @@ fn encode_ship_status_into(
                 WireShipActivityKind::WildernessWater { .. } => 3,
                 WireShipActivityKind::EscortDuty { .. } => 5,
                 WireShipActivityKind::FieldRecovery { .. } => 6,
+                WireShipActivityKind::FuelProcessing { .. } => 8,
             });
             match activity.kind {
                 WireShipActivityKind::Construction => {}
@@ -40313,6 +40987,9 @@ fn encode_ship_status_into(
                 WireShipActivityKind::FieldRecovery { subsystem_id } => {
                     bytes.extend_from_slice(&subsystem_id.to_be_bytes());
                 }
+                WireShipActivityKind::FuelProcessing { quantity_millitons } => {
+                    bytes.extend_from_slice(&quantity_millitons.to_be_bytes());
+                }
             }
             bytes.extend_from_slice(&activity.started_second.to_be_bytes());
             bytes.extend_from_slice(&activity.due_second.to_be_bytes());
@@ -40324,6 +41001,7 @@ fn encode_ship_status_into(
                 }
                 None => bytes.push(0),
             }
+            bytes.push(u8::from(activity.refine_collected));
         }
     }
     bytes.extend_from_slice(&snapshot.unrefined_fuel_millitons.to_be_bytes());
@@ -40381,7 +41059,10 @@ fn encode_ship_status_into(
     Ok(())
 }
 
-fn decode_ship_status(decoder: &mut Decoder<'_>) -> Result<ShipStatusSnapshot, StoreError> {
+fn decode_ship_status(
+    decoder: &mut Decoder<'_>,
+    outcome_version: u8,
+) -> Result<ShipStatusSnapshot, StoreError> {
     let ship_id = decoder.u64()?;
     let ship_name = decoder.text()?;
     let catalog_id = decoder.u32()?;
@@ -40433,6 +41114,9 @@ fn decode_ship_status(decoder: &mut Decoder<'_>) -> Result<ShipStatusSnapshot, S
                     subsystem_id: decoder.u16()?,
                 },
                 7 => WireShipActivityKind::Construction,
+                8 if outcome_version >= 18 => WireShipActivityKind::FuelProcessing {
+                    quantity_millitons: decoder.u64()?,
+                },
                 _ => return Err(StoreError::Corrupt("unknown cached ship activity kind")),
             };
             let started_second = decoder.u64()?;
@@ -40443,6 +41127,15 @@ fn decode_ship_status(decoder: &mut Decoder<'_>) -> Result<ShipStatusSnapshot, S
                 1 => Some(decoder.u32()?),
                 _ => return Err(StoreError::Corrupt("invalid cached source body")),
             };
+            let refine_collected = if outcome_version >= 18 {
+                decoder.u8()? != 0
+            } else {
+                matches!(
+                    kind,
+                    WireShipActivityKind::GasGiantSkim { .. }
+                        | WireShipActivityKind::WildernessWater { .. }
+                )
+            };
             Some(ShipActivityStatus {
                 activity_id,
                 kind,
@@ -40450,6 +41143,7 @@ fn decode_ship_status(decoder: &mut Decoder<'_>) -> Result<ShipStatusSnapshot, S
                 due_second,
                 cost_credits,
                 source_body_id,
+                refine_collected,
             })
         }
         _ => return Err(StoreError::Corrupt("invalid cached ship activity state")),
@@ -40633,6 +41327,18 @@ fn encode_docked_services_into(
         bytes.extend_from_slice(&item.price_per_ton_credits.to_be_bytes());
         bytes.extend_from_slice(&item.maximum_millitons.to_be_bytes());
         bytes.extend_from_slice(&item.service_seconds.to_be_bytes());
+        bytes.push(match item.body_kind {
+            FuelSourceBodyKind::NotApplicable => 0,
+            FuelSourceBodyKind::GasGiant => 1,
+            FuelSourceBodyKind::Planet => 2,
+            FuelSourceBodyKind::Moon => 3,
+            FuelSourceBodyKind::IcyBelt => 4,
+        });
+        bytes.push(match item.access_kind {
+            FuelAccessKind::PortSale => 0,
+            FuelAccessKind::RoutineWilderness => 1,
+        });
+        bytes.push(u8::from(item.can_refine));
     }
     bytes.extend_from_slice(
         &u16::try_from(value.ammunition.len())
@@ -40670,7 +41376,10 @@ fn encode_docked_services_into(
     Ok(())
 }
 
-fn decode_docked_services(decoder: &mut Decoder<'_>) -> Result<DockedServices, StoreError> {
+fn decode_docked_services(
+    decoder: &mut Decoder<'_>,
+    outcome_version: u8,
+) -> Result<DockedServices, StoreError> {
     let ship_revision = decoder.u64()?;
     let current_game_second = decoder.u64()?;
     let count = decoder.u16()? as usize;
@@ -40686,15 +41395,56 @@ fn decode_docked_services(decoder: &mut Decoder<'_>) -> Result<DockedServices, S
         let label = decoder.text()?;
         let has_body = decoder.u8()? != 0;
         let body = decoder.u32()?;
+        let available = decoder.u8()? != 0;
+        let unavailable_reason = decoder.text()?;
+        let price_per_ton_credits = decoder.u64()?;
+        let maximum_millitons = decoder.u64()?;
+        let service_seconds = decoder.u64()?;
+        let (body_kind, access_kind, can_refine) = if outcome_version >= 18 {
+            let body_kind = match decoder.u8()? {
+                0 => FuelSourceBodyKind::NotApplicable,
+                1 => FuelSourceBodyKind::GasGiant,
+                2 => FuelSourceBodyKind::Planet,
+                3 => FuelSourceBodyKind::Moon,
+                4 => FuelSourceBodyKind::IcyBelt,
+                _ => return Err(StoreError::Corrupt("unknown fuel-source body kind")),
+            };
+            let access_kind = match decoder.u8()? {
+                0 => FuelAccessKind::PortSale,
+                1 => FuelAccessKind::RoutineWilderness,
+                _ => return Err(StoreError::Corrupt("unknown fuel-access kind")),
+            };
+            (body_kind, access_kind, decoder.u8()? != 0)
+        } else {
+            (
+                match kind {
+                    DockedFuelServiceKind::GasGiant => FuelSourceBodyKind::GasGiant,
+                    DockedFuelServiceKind::WildernessWater => FuelSourceBodyKind::Planet,
+                    _ => FuelSourceBodyKind::NotApplicable,
+                },
+                if matches!(
+                    kind,
+                    DockedFuelServiceKind::GasGiant | DockedFuelServiceKind::WildernessWater
+                ) {
+                    FuelAccessKind::RoutineWilderness
+                } else {
+                    FuelAccessKind::PortSale
+                },
+                false,
+            )
+        };
         fuel.push(DockedFuelService {
             kind,
             label,
             source_body_id: has_body.then_some(body),
-            available: decoder.u8()? != 0,
-            unavailable_reason: decoder.text()?,
-            price_per_ton_credits: decoder.u64()?,
-            maximum_millitons: decoder.u64()?,
-            service_seconds: decoder.u64()?,
+            available,
+            unavailable_reason,
+            price_per_ton_credits,
+            maximum_millitons,
+            service_seconds,
+            body_kind,
+            access_kind,
+            can_refine,
         });
     }
     let count = decoder.u16()? as usize;
@@ -40823,7 +41573,7 @@ fn decode_docked_service_receipt(
     decoder: &mut Decoder<'_>,
     outcome_version: u8,
 ) -> Result<DockedServiceReceipt, StoreError> {
-    let ship_status = decode_ship_status(decoder)?;
+    let ship_status = decode_ship_status(decoder, outcome_version)?;
     let detail = if outcome_version == 11 {
         if decoder.u8()? != 0 {
             DockedServiceReceiptDetail::FuelPurchase(decode_fuel_purchase_receipt(decoder)?)
@@ -41507,6 +42257,7 @@ fn encode_travel_status_into(
         TravelStage::BeltRefining => 13,
         TravelStage::BeltRecovery => 14,
         TravelStage::BeltEgress => 15,
+        TravelStage::FuelProcessing => 16,
     });
     for value in [
         snapshot.current_game_second,
@@ -41548,6 +42299,7 @@ fn decode_travel_status(decoder: &mut Decoder<'_>) -> Result<TravelStatus, Store
         13 => TravelStage::BeltRefining,
         14 => TravelStage::BeltRecovery,
         15 => TravelStage::BeltEgress,
+        16 => TravelStage::FuelProcessing,
         _ => return Err(StoreError::Corrupt("unknown cached travel stage")),
     };
     let current_game_second = decoder.u64()?;
@@ -42551,6 +43303,101 @@ mod tests {
     use crate::bbs_polity::BBS_POLITY_TOTAL_SEEDED_SYSTEMS;
 
     #[test]
+    fn mixed_tank_burns_are_proportional_and_trigger_unrefined_jump_dm() {
+        assert_eq!(proportional_fuel_burn(10_000, 4_000, 5_000), (3_000, 2_000));
+        assert_eq!(proportional_fuel_burn(10_000, 0, 5_000), (5_000, 0));
+        assert_eq!(proportional_fuel_burn(10_000, 10_000, 5_000), (0, 5_000));
+
+        let entropy = 42;
+        let clean = crate::jump::resolve(entropy, 2, 0, 0, false, false);
+        let mixed = crate::jump::resolve(
+            entropy,
+            2,
+            0,
+            0,
+            proportional_fuel_burn(10_000, 4_000, 5_000).1 != 0,
+            false,
+        );
+        assert_eq!(clean.total - mixed.total, 2);
+    }
+
+    #[test]
+    fn exceptional_fuel_processing_damage_uses_drive_then_fuel_system_fallbacks() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let player = store.player_record(&identity()).unwrap().unwrap();
+        let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+
+        let jump_id = ship
+            .subsystems
+            .iter()
+            .filter(|subsystem| subsystem.kind == ShipSubsystemKind::JumpDrive)
+            .map(|subsystem| subsystem.subsystem_id)
+            .min()
+            .expect("fixture ship needs a Jump drive");
+        let jump_hits = ship
+            .subsystems
+            .iter()
+            .find(|subsystem| subsystem.subsystem_id == jump_id)
+            .unwrap()
+            .sustained_hits;
+        apply_fuel_processing_damage(&mut ship);
+        assert_eq!(
+            ship.subsystems
+                .iter()
+                .find(|subsystem| subsystem.subsystem_id == jump_id)
+                .unwrap()
+                .sustained_hits,
+            jump_hits + 1
+        );
+
+        for subsystem in &mut ship.subsystems {
+            if subsystem.kind == ShipSubsystemKind::JumpDrive {
+                subsystem.sustained_hits = subsystem.maximum_hits;
+            }
+        }
+        let maneuver_id = ship
+            .subsystems
+            .iter()
+            .filter(|subsystem| subsystem.kind == ShipSubsystemKind::ManeuverDrive)
+            .map(|subsystem| subsystem.subsystem_id)
+            .min()
+            .expect("fixture ship needs a maneuver drive");
+        apply_fuel_processing_damage(&mut ship);
+        assert_eq!(
+            ship.subsystems
+                .iter()
+                .find(|subsystem| subsystem.subsystem_id == maneuver_id)
+                .unwrap()
+                .sustained_hits,
+            1
+        );
+
+        for subsystem in &mut ship.subsystems {
+            if subsystem.kind == ShipSubsystemKind::ManeuverDrive {
+                subsystem.sustained_hits = subsystem.maximum_hits;
+            }
+        }
+        let fuel_system_id = ship
+            .subsystems
+            .iter()
+            .filter(|subsystem| subsystem.kind == ShipSubsystemKind::FuelSystem)
+            .map(|subsystem| subsystem.subsystem_id)
+            .min()
+            .expect("fixture ship needs a fuel system");
+        apply_fuel_processing_damage(&mut ship);
+        assert_eq!(
+            ship.subsystems
+                .iter()
+                .find(|subsystem| subsystem.subsystem_id == fuel_system_id)
+                .unwrap()
+                .sustained_hits,
+            1
+        );
+    }
+
+    #[test]
     fn absolute_market_ranges_are_not_captain_specific() {
         assert_eq!(
             absolute_purchase_price_distribution(1_000),
@@ -42703,6 +43550,7 @@ mod tests {
                 carriage_offers: Vec::new(),
                 carriage_revenue_credits: 0,
                 carriage_broker_fees_credits: 0,
+                fuel_timings: Vec::new(),
             }),
         };
         assert_eq!(
@@ -45784,6 +46632,7 @@ mod tests {
                     action: FlightPlanAction::Fuel {
                         operation: FuelOperation::BuyRefined,
                         quantity_millitons: MILLITONS_PER_TON,
+                        refine_collected: false,
                     },
                     terminal: false,
                 },
@@ -45822,6 +46671,65 @@ mod tests {
             RuleResult::Applied(preview) => preview,
             RuleResult::Rejected(message) => panic!("fuel-purchase plan was rejected: {message}"),
         };
+        let mut bought_unrefined_then_refined = proposal.clone();
+        if let FlightPlanAction::Fuel {
+            operation,
+            refine_collected,
+            ..
+        } = &mut bought_unrefined_then_refined.steps[0].action
+        {
+            *operation = FuelOperation::BuyUnrefined;
+            *refine_collected = true;
+        }
+        let bought_unrefined_then_refined_preview = match store
+            .preview_flight_plan_in(
+                &store.env.read_txn().unwrap(),
+                &identity(),
+                &bought_unrefined_then_refined,
+            )
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => {
+                panic!("buy-and-refine plan was rejected: {message}")
+            }
+        };
+        assert!(
+            bought_unrefined_then_refined_preview
+                .fuel_timings
+                .iter()
+                .any(|timing| timing.step_index == 0 && timing.output_refined)
+        );
+        assert!(
+            !bought_unrefined_then_refined_preview
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "UNREFINED_JUMP_FUEL")
+        );
+
+        let mut bought_unrefined = bought_unrefined_then_refined;
+        if let FlightPlanAction::Fuel {
+            refine_collected, ..
+        } = &mut bought_unrefined.steps[0].action
+        {
+            *refine_collected = false;
+        }
+        let bought_unrefined_preview = match store
+            .preview_flight_plan_in(
+                &store.env.read_txn().unwrap(),
+                &identity(),
+                &bought_unrefined,
+            )
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => {
+                panic!("unrefined-purchase plan was rejected: {message}")
+            }
+        };
+        assert!(bought_unrefined_preview.warnings.iter().any(|warning| {
+            warning.code == "UNREFINED_JUMP_FUEL" && warning.step_indices == vec![1]
+        }));
         store
             .enqueue(&QueuedCommand {
                 identity: identity(),
@@ -45913,6 +46821,7 @@ mod tests {
                     action: FlightPlanAction::Fuel {
                         operation,
                         quantity_millitons: MILLITONS_PER_TON,
+                        refine_collected: true,
                     },
                     terminal: false,
                 },
@@ -45951,6 +46860,81 @@ mod tests {
             RuleResult::Applied(preview) => preview,
             RuleResult::Rejected(message) => panic!("fuel plan was rejected: {message}"),
         };
+        assert!(preview.fuel_timings.iter().any(|timing| {
+            timing.step_index == 0
+                && timing.output_refined
+                && timing.failed_processing_seconds == timing.processing_seconds.saturating_mul(2)
+        }));
+        assert!(
+            !preview
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "UNREFINED_JUMP_FUEL")
+        );
+
+        let mut unrefined_then_refined = proposal.clone();
+        if let FlightPlanAction::Fuel {
+            refine_collected, ..
+        } = &mut unrefined_then_refined.steps[0].action
+        {
+            *refine_collected = false;
+        }
+        unrefined_then_refined.steps.insert(
+            1,
+            FlightPlanStep {
+                locus: FlightLocus::Port {
+                    system_id: known.current_system_id,
+                    world_id: known.current_system_id,
+                    facility_id: known.current_system_id,
+                },
+                authority: WaypointAuthority::Through,
+                action: FlightPlanAction::RefineFuel {
+                    quantity_millitons: MILLITONS_PER_TON,
+                },
+                terminal: false,
+            },
+        );
+        let refined_before_jump = match store
+            .preview_flight_plan_in(
+                &store.env.read_txn().unwrap(),
+                &identity(),
+                &unrefined_then_refined,
+            )
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => {
+                panic!("refine-before-Jump plan was rejected: {message}")
+            }
+        };
+        assert!(
+            !refined_before_jump
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "UNREFINED_JUMP_FUEL")
+        );
+
+        let mut unrefined_at_jump = proposal.clone();
+        if let FlightPlanAction::Fuel {
+            refine_collected, ..
+        } = &mut unrefined_at_jump.steps[0].action
+        {
+            *refine_collected = false;
+        }
+        let unrefined_preview = match store
+            .preview_flight_plan_in(
+                &store.env.read_txn().unwrap(),
+                &identity(),
+                &unrefined_at_jump,
+            )
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("unrefined plan was rejected: {message}"),
+        };
+        assert!(unrefined_preview.warnings.iter().any(|warning| {
+            warning.code == "UNREFINED_JUMP_FUEL" && warning.step_indices == vec![1]
+        }));
         store
             .enqueue(&QueuedCommand {
                 identity: identity(),

@@ -256,8 +256,10 @@ fresh monotonic process clock there.
 
 Gas-giant skimming and lawful wilderness water/ice collection use the same
 typed scheduling machinery. The accepted command fixes a whole-ton quantity
-and creates three explicit legs: port to source body, collection/processing at
-the body, and body to the original port. Completion of the return leg places
+and whether the collected batch is to be refined, then creates three explicit
+legs: port to source body, collection/optional processing at the body, and body
+to the original port. Collection and processing overlap where possible; the
+service phase lasts the longer of the two. Completion of the return leg places
 the ship at the port; the same-minute activity event then fills the tanks,
 records relevant duty and skimming cycles, voids the ordinary warranty after
 gas skimming, and consumes the activity atomically. These bounded operations
@@ -266,6 +268,14 @@ operation, projected tank capacity, equipment, time, and fuel state. Execution
 uses that exact source rather than silently substituting the nearest body; on
 return to port, the activity completion transaction starts the next authorized
 plan step or leaves the plan held with the validation failure.
+
+Preview reports the exact selected-quantity travel, collection, normal
+processing, failed processing, and resulting total durations. It does not
+reveal the deterministic task roll before commitment. Standalone processing
+of fuel already aboard is a separate stationary Flight Plan action allowed at
+a berth or safe holding locus. Failure doubles processing time; Effect -6 or
+worse damages the Jump drive, with maneuver-drive and fuel-system fallbacks for
+hulls without an operational Jump drive.
 
 The two collection phases have different encounter geography. A gas skimmer
 remains spaceborne at the body locus and may be intercepted during skimming.

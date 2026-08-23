@@ -319,7 +319,26 @@ will actually travel; changing a route does not rewrite an obligation.
 ### Fuel, provisions, and port costs
 
 Refined and unrefined fuel are distinct, and availability depends on the port
-or selected collection method. Away from a berth, provisions are consumed by
+or selected collection method. The source list identifies planets, moons, gas
+giants, and icy belts; ordinary wilderness entries are unoccupied routine-
+access sources, and unavailable entries are not numbered. The displayed
+maximum is remaining tank room.
+
+A ship with scoops may collect without a processor. When a processor is fitted,
+Flight Plan defaults to refining the selected batch, but you may keep it
+unrefined. Preview shows travel, collection, processing, normal total, and the
+longer failed-check total. Refining is Engineer (Power)/EDU 8+; failure doubles
+processing time and exceptional failure can damage the Jump drive. Purchased or
+collected unrefined fuel may be refined later while docked or safely holding.
+An unrefined purchase already embedded in a Flight Plan defaults to processing
+that batch before the next step when the ship has a processor.
+
+Mixed tanks are consumed proportionally. Ordinary power use has no separate
+unrefined-fuel roll, but a Jump that actually burns any unrefined fuel takes the
+normal -2 success DM. Preview warns on that Jump; if a prior refining step
+removes all unrefined fuel, the warning is omitted.
+
+Away from a berth, provisions are consumed by
 crew and awake passengers; passengers travelling in low berths do not consume
 them while frozen. Docked ordinary crew arrange their own food. The captain
 uses one ship person-day or, when stores are empty, automatically buys a meal

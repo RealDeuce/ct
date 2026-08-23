@@ -410,6 +410,7 @@ enum class ShipActivityKind {
    WildernessWater,
    EscortDuty,
    FieldRecovery,
+   FuelProcessing,
 };
 
 struct ShipActivityStatus {
@@ -422,6 +423,7 @@ struct ShipActivityStatus {
    uint64_t due_second;
    uint64_t cost_credits;
    std::optional<uint32_t> source_body_id;
+   bool refine_collected;
 };
 
 struct ShipStatusSnapshot {
@@ -472,6 +474,17 @@ enum class DockedFuelServiceKind {
    GasGiant,
    WildernessWater,
 };
+enum class FuelSourceBodyKind {
+   NotApplicable,
+   GasGiant,
+   Planet,
+   Moon,
+   IcyBelt,
+};
+enum class FuelAccessKind {
+   PortSale,
+   RoutineWilderness,
+};
 struct DockedFuelService {
    DockedFuelServiceKind kind;
    std::string label;
@@ -481,6 +494,9 @@ struct DockedFuelService {
    uint64_t price_per_ton_credits;
    uint64_t maximum_millitons;
    uint64_t service_seconds;
+   FuelSourceBodyKind body_kind;
+   FuelAccessKind access_kind;
+   bool can_refine;
 };
 struct DockedRepairService {
    uint16_t subsystem_id;
@@ -1109,6 +1125,7 @@ enum class TravelStage {
    BeltRefining,
    BeltRecovery,
    BeltEgress,
+   FuelProcessing,
 };
 
 enum class FlightLocusKind {
@@ -1165,6 +1182,7 @@ enum class FlightPlanActionKind {
    Fuel,
    JumpCoordinates,
    BeltCycle,
+   RefineFuel,
 };
 
 enum class JumpNavigationMethod {
@@ -1204,6 +1222,7 @@ struct FlightPlanAction {
    uint32_t body_id = 0;
    JumpNavigationMethod jump_navigation = JumpNavigationMethod::Onboard;
    bool proceed_on_known_bad_plot = false;
+   bool refine_collected = true;
    double coreward_parsecs = 0.0;
    double spinward_parsecs = 0.0;
    double north_parsecs = 0.0;
@@ -1232,6 +1251,16 @@ struct FlightPlanWarning {
    std::string message;
    std::vector<uint16_t> step_indices;
 };
+struct FuelOperationTiming {
+   uint16_t step_index;
+   uint64_t round_trip_seconds;
+   uint64_t collection_seconds;
+   uint64_t processing_seconds;
+   uint64_t failed_processing_seconds;
+   uint64_t normal_total_seconds;
+   uint64_t failed_total_seconds;
+   bool output_refined;
+};
 struct FlightPlanPreview {
    FlightPlanProposal proposal;
    std::vector<uint8_t> preview_hash;
@@ -1241,6 +1270,7 @@ struct FlightPlanPreview {
    std::vector<TaskOffer> carriage_offers;
    uint64_t carriage_revenue_credits;
    uint64_t carriage_broker_fees_credits;
+   std::vector<FuelOperationTiming> fuel_timings;
 };
 enum class FlightPlanState {
    Inactive,

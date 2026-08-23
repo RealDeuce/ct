@@ -100,13 +100,29 @@ than treating all fuel as interchangeable bookkeeping.
 
 The Fuel and Supplies screen can instead schedule a bounded gas-giant or
 wilderness water/ice expedition. The server lists every qualifying named body
-at its current orbital position, calculates the round trip at catalogued
-thrust, and quotes the maximum-fill time including CE skimming or installed
-processing. The captain chooses the body and amount; the order is rejected if
-it does not name the quoted body. Completion occurs exactly once. Installed
-processors return refined fuel; without them the collected quantity remains
-unrefined. Gas skimming adds drive/fuel-system duty and a skimming cycle and
-voids the standard warranty.
+with its type (gas giant, planet, moon, or icy belt) and marks routine sources
+as unoccupied wilderness access. Unavailable sources are explanatory only and
+are not numbered. The displayed maximum is the remaining tank room, not a
+promise that every body can supply an arbitrary amount.
+
+The server calculates the exact selected-quantity round trip at catalogued
+thrust and separately previews travel, collection, processing, normal total,
+and failed-processing total. A captain with an installed processor explicitly
+chooses whether to refine during collection; a ship without one can still
+collect with scoops, but receives unrefined fuel. Refining is an Average (8+)
+Engineer (Power)/EDU task. Failure doubles processing time, and Effect -6 or
+worse also damages the Jump drive (falling back to the maneuver drive, then
+fuel system, if no operational Jump drive exists). Completion occurs exactly
+once. Gas skimming adds drive/fuel-system duty and a skimming cycle and voids
+the standard warranty.
+
+Purchased or collected unrefined fuel may also be refined later as a Flight
+Plan action while docked or safely holding. It cannot overlap active travel,
+Jump, an encounter, or another ship activity. Away from a berth, the server
+protects the selected batch and requires enough other fuel for the worst-case
+processing-time power-plant burn. An unrefined purchase embedded in a Flight
+Plan defaults to processing that purchased batch before continuing; a plan can
+explicitly retain it as unrefined instead.
 
 Installed life-support provisions and catalogued ammunition are physical
 quantities in the ship record. Provisions are bought in physical

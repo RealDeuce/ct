@@ -246,8 +246,13 @@ source-defined monthly upkeep allowance; no unsupported per-hit starship
 material price was invented.
 
 The door lists refined and unrefined port fuel plus every lawful, named gas-
-giant and unoccupied water/ice source, with exact availability and maximum-
-fill time. Hostile extraction from an inhabited or claimed water source still
+giant and unoccupied water/ice source, identifies each body type and routine
+access status, and numbers only sources that are actually usable. Exact-
+quantity preview separates travel, collection, processing, and failed-check
+time. Captains may keep a collected batch unrefined or process it during the
+operation, and can later file stationary onboard refining. Mixed fuel burns
+proportionally so the existing unrefined-fuel Jump/misjump DM follows the fuel
+actually consumed. Hostile extraction from an inhabited or claimed water source still
 requires the contact, law, and combat machinery of Milestones 4 and 6.
 Physical-store transfer between separately owned ships follows multi-ship
 ownership rather than blocking this one-commanded-ship milestone.

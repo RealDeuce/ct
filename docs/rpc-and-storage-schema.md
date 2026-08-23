@@ -130,8 +130,10 @@ transaction outcomes carry independent format revisions so a restart cannot
 reinterpret a previously committed purpose.
 
 Docked-service quotations return the ship revision, exact named fuel sources,
-physical provision and ammunition state, repair/replacement choices, facility
-reasons, prices, and elapsed times. One commit presents that revision and a
+their body type, port-sale or routine-wilderness access class, whether onboard
+refining is possible, tank-room maximum, physical provision and ammunition
+state, repair/replacement choices, facility reasons, prices, and elapsed times.
+One commit presents that revision and a
 closed union selecting exactly one order. Its retained receipt contains the
 resulting ship status and a closed detail union. A port-fuel receipt additionally
 records the fuel kind, quantity, tank state, price, exact restricted-versus-liquid
@@ -160,8 +162,11 @@ leg states. Global `resource-lodes` records own composition, grade, extent,
 and depletion; `resource-observations` separately key private captain
 knowledge. No record grants an exclusive claim. Ship records retain exact
 power-fuel settlement time and fractional burn, while mined cargo lots retain
-source body and lode IDs. Ship codec version 2 reads version 1 with zero cargo
-provenance and a no-retroactive-burn timestamp sentinel.
+source body and lode IDs. Ship codec version 3 reads versions 1 and 2 with zero
+cargo provenance, a no-retroactive-burn timestamp sentinel, and legacy frontier
+work interpreted as refined with no recorded processing Effect. Version 3
+stores explicit collection output, processing Effect/damage, and standalone
+processing work.
 
 `FlightPlanSnapshot` is stored separately from the ship's current physical
 leg. It owns ordered typed waypoints, bounded actions, hold/through checkpoint
@@ -170,6 +175,11 @@ reason. An outbound revision may replace the not-yet-started Jump destination
 without replacing the port-to-locus leg. Once the Jump begins, that physical
 leg is immutable until its next checkpoint. Cargo and sealed mail remain on
 the ship and generate preview warnings; replanning never edits obligations.
+Flight Plan codec version 4 adds the per-collection refine choice and the
+standalone refine action; readers retain versions 1 through 3. Authoritative
+preview includes per-step normal and failed fuel-operation timings. Retained
+outcome codec version 18 preserves those timings and the added quotation and
+activity metadata for idempotent replay.
 
 Arrival does not directly rewrite an approaching ship as docked. It creates a
 durable checkpoint at the exact port locus. Hold authority waits for an

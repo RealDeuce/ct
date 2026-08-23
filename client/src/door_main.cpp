@@ -700,6 +700,8 @@ const char* travel_stage_name(const ct::TravelStage stage)
       return "Mining-drone field recovery";
    case ct::TravelStage::BeltEgress:
       return "Returning from the belt";
+   case ct::TravelStage::FuelProcessing:
+      return "Fuel processing in progress";
    }
    return "Unknown";
 }
@@ -723,8 +725,27 @@ const char* ship_activity_name(const ct::ShipActivityKind kind)
       return "Escort duty";
    case ct::ShipActivityKind::FieldRecovery:
       return "Crew field recovery";
+   case ct::ShipActivityKind::FuelProcessing:
+      return "Fuel processing";
    }
    return "Unknown";
+}
+
+const char* fuel_source_body_name(const ct::FuelSourceBodyKind kind)
+{
+   switch(kind) {
+   case ct::FuelSourceBodyKind::NotApplicable:
+      return "port service";
+   case ct::FuelSourceBodyKind::GasGiant:
+      return "gas giant";
+   case ct::FuelSourceBodyKind::Planet:
+      return "planet";
+   case ct::FuelSourceBodyKind::Moon:
+      return "moon";
+   case ct::FuelSourceBodyKind::IcyBelt:
+      return "icy belt";
+   }
+   return "body";
 }
 
 // Keep the page code readable while routing every byte through the
@@ -8574,38 +8595,139 @@ std::optional<ct::TravelStatus> run_fuel_service(
    order.expected_ship_revision = services.ship_revision;
    if(key == 'F') {
       output().resume_paging();
-      for(size_t index = 0; index < services.fuel.size(); ++index) {
-         const auto& item = services.fuel[index];
+      std::vector<const ct::DockedFuelService*> available_sources;
+      for(const auto& item : services.fuel) {
+         if(!item.available) {
+            continue;
+         }
+         available_sources.push_back(&item);
+         const auto index = available_sources.size() - 1;
          door_number("%zu", index + 1);
          door_label(". ");
-         if(item.available) {
-            door_identifier("%s", safe_field(item.label).c_str());
-            if(item.price_per_ton_credits) {
-               door_number("  Cr%llu/t", static_cast<unsigned long long>(item.price_per_ton_credits));
-            } else {
-               door_number("  %s", course_duration(item.service_seconds).c_str());
-            }
-            od_printf("\n\r");
+         door_identifier("%s", safe_field(item.label).c_str());
+         if(item.price_per_ton_credits) {
+            door_number("  Cr%llu/t", static_cast<unsigned long long>(item.price_per_ton_credits));
          } else {
-            door_warning("%s — %s\n\r", safe_field(item.label).c_str(),
+            door_label("  (");
+            door_value("%s", fuel_source_body_name(item.body_kind));
+            door_label(", unoccupied routine-access source)");
+         }
+         door_label("  tank room ");
+         door_number("%.1f t\n\r", item.maximum_millitons / 1000.0);
+      }
+      for(const auto& item : services.fuel) {
+         if(!item.available) {
+            door_warning("Unavailable: %s — %s\n\r", safe_field(item.label).c_str(),
                          safe_field(item.unavailable_reason).c_str());
          }
       }
-      const auto choice = input_number("Fuel source", 1, static_cast<unsigned>(services.fuel.size()));
-      if(!choice) {
-         return std::nullopt;
-      }
-      const auto& item = services.fuel[*choice - 1];
-      if(!item.available) {
-         door_warning("That service is not available.\n\r");
+      if(available_sources.empty()) {
+         door_warning("No fuel source is currently usable.\n\r");
          wait_for_enter();
          return std::nullopt;
       }
+      const auto choice = input_number(
+                             "Fuel source", 1,
+                             static_cast<unsigned>(available_sources.size()));
+      if(!choice) {
+         return std::nullopt;
+      }
+      const auto& item = *available_sources[*choice - 1];
       const auto max_tons = std::min<uint64_t>(item.maximum_millitons / 1000,
          std::numeric_limits<unsigned>::max());
       const auto tons = input_number("Tonnes", 1, static_cast<unsigned>(max_tons));
       if(!tons) {
          return std::nullopt;
+      }
+      const bool frontier = item.kind == ct::DockedFuelServiceKind::GasGiant ||
+                            item.kind == ct::DockedFuelServiceKind::WildernessWater;
+      if(frontier) {
+         bool refine_collected = item.can_refine;
+         if(item.can_refine) {
+            door_information(
+               "\n\rRefining uses Engineer (Power) EDU 8+. Failure doubles processing "
+               "time; exceptional failure can damage the Jump drive.\n\r");
+            door_option_prompt({"[R/Enter] Refine during collection", "[U] Keep unrefined", "[Q] Cancel"});
+            auto refining = static_cast<char>(
+                                     std::toupper(static_cast<unsigned char>(door_get_live_key())));
+            if(refining == 'Q') {
+               return std::nullopt;
+            }
+            if(refining == '\r' || refining == '\n') {
+               refining = 'R';
+            }
+            if(refining != 'R' && refining != 'U') {
+               door_warning("Choose R or U.\n\r");
+               wait_for_enter();
+               return std::nullopt;
+            }
+            refine_collected = refining == 'R';
+         } else {
+            door_warning("This ship has no fuel processor; the collected fuel will remain unrefined.\n\r");
+         }
+         try {
+            const auto plan = ct::get_flight_plan(
+                                connection, session_epoch, random_command_id(random), request_id++);
+            ct::FlightPlanProposal proposal{
+               .expected_plan_revision = plan.revision,
+               .steps = {ct::FlightPlanStep{
+                  .locus = ct::FlightLocus{
+                     .kind = ct::FlightLocusKind::Body,
+                     .system_id = account.system_id,
+                     .world_id = 0,
+                     .facility_id = 0,
+                     .body_id = *item.source_body_id},
+                  .authority = ct::WaypointAuthority::Through,
+                  .action = ct::FlightPlanAction{
+                     .kind = ct::FlightPlanActionKind::Fuel,
+                     .fuel_operation = item.kind == ct::DockedFuelServiceKind::GasGiant
+                        ? ct::FuelOperation::GasGiant
+                        : ct::FuelOperation::WildernessWater,
+                     .quantity_millitons = uint64_t{*tons} * 1000,
+                     .refine_collected = refine_collected},
+                  .terminal = true}},
+               .policy = plan.policy,
+            };
+            const auto preview = ct::preview_flight_plan(
+                                    connection, session_epoch, proposal,
+                                    random_command_id(random), request_id++);
+            if(!preview.fuel_timings.empty()) {
+               const auto& timing = preview.fuel_timings.front();
+               door_label("\n\rRound trip: ");
+               door_number("%s\n\r", course_duration(timing.round_trip_seconds).c_str());
+               door_label("Collection: ");
+               door_number("%s\n\r", course_duration(timing.collection_seconds).c_str());
+               door_label("Processing: ");
+               door_number("%s", course_duration(timing.processing_seconds).c_str());
+               if(refine_collected) {
+                  door_label(" (failed check: ");
+                  door_number("%s", course_duration(timing.failed_processing_seconds).c_str());
+                  door_label(")");
+               }
+               door_label("\n\rNormal total: ");
+               door_number("%s", course_duration(timing.normal_total_seconds).c_str());
+               if(refine_collected) {
+                  door_label("; failed-check total: ");
+                  door_number("%s", course_duration(timing.failed_total_seconds).c_str());
+               }
+               door_label("\n\r");
+            }
+            door_option_prompt({"[F] File operation", "[Q/Enter] Cancel"});
+            const auto confirm = static_cast<char>(
+                                    std::toupper(static_cast<unsigned char>(door_get_live_key())));
+            if(confirm != 'F') {
+               return std::nullopt;
+            }
+            ct::commit_flight_plan(
+               connection, session_epoch, proposal, preview.preview_hash, true,
+               random_command_id(random), request_id++);
+            return ct::get_travel_status(
+                      connection, session_epoch, random_command_id(random), request_id++);
+         } catch(const std::exception& error) {
+            door_error("%s\n\r", safe_field(error.what()).c_str());
+            wait_for_enter();
+            return std::nullopt;
+         }
       }
       order.kind = ct::DockedServiceOrder::Kind::Fuel;
       order.fuel_kind = item.kind;
@@ -8817,7 +8939,8 @@ std::string flight_plan_action_name(
                 " t refined fuel";
       case ct::FuelOperation::BuyUnrefined:
          return "Buy " + std::to_string(action.quantity_millitons / 1000) +
-                " t unrefined fuel";
+                " t unrefined fuel" +
+                (action.refine_collected ? "; refine if equipped" : "");
       }
       return "Acquire fuel";
    case ct::FlightPlanActionKind::BeltCycle: {
@@ -8827,6 +8950,9 @@ std::string flight_plan_action_name(
       return "Belt cycle at " + (found == destinations.belts.end()
                                   ? std::string("catalogued belt") : found->name);
    }
+   case ct::FlightPlanActionKind::RefineFuel:
+      return "Refine " + std::to_string(action.quantity_millitons / 1000) +
+             " t of fuel aboard";
    }
    return "Unknown action";
 }
@@ -9125,6 +9251,7 @@ FlightPlanEditorResult run_flight_plan_editor(
          "[R] Route all assigned tasks",
          "[J] Add task destination",
          "[G] Add frontier fuel stop",
+         "[U] Refine fuel aboard",
          "[B] Add belt cycle",
          "[X] Explore coordinates",
          "[D] Delete last leg",
@@ -9384,7 +9511,9 @@ FlightPlanEditorResult run_flight_plan_editor(
                door_number("%zu", index + 1);
                door_label(". ");
                door_identifier("%s", safe_field(sources[index]->label).c_str());
-               door_label("  maximum ");
+               door_label("  (");
+               door_value("%s", fuel_source_body_name(sources[index]->body_kind));
+               door_label(", unoccupied routine access)  tank room ");
                door_number("%.1f t\n\r", sources[index]->maximum_millitons / 1000.0);
             }
             const auto selected = input_number(
@@ -9399,6 +9528,24 @@ FlightPlanEditorResult run_flight_plan_editor(
             const auto tons = input_number("Whole tons to collect", 1, maximum_tons);
             if(!tons) {
                continue;
+            }
+            bool refine_collected = source->can_refine;
+            if(source->can_refine) {
+               door_information(
+                  "Refining uses Engineer (Power) EDU 8+. Failure doubles processing "
+                  "time; exceptional failure can damage the Jump drive.\n\r");
+               door_option_prompt({"[R/Enter] Refine during collection", "[U] Keep unrefined"});
+               auto choice = static_cast<char>(
+                                      std::toupper(static_cast<unsigned char>(door_get_live_key())));
+               if(choice == '\r' || choice == '\n') {
+                  choice = 'R';
+               }
+               if(choice != 'R' && choice != 'U') {
+                  continue;
+               }
+               refine_collected = choice == 'R';
+            } else {
+               door_warning("No processor is fitted; this operation produces unrefined fuel.\n\r");
             }
             proposal.steps.push_back(ct::FlightPlanStep{
                .locus = ct::FlightLocus{
@@ -9416,13 +9563,41 @@ FlightPlanEditorResult run_flight_plan_editor(
                   .fuel_operation = source->kind == ct::DockedFuelServiceKind::GasGiant
                   ? ct::FuelOperation::GasGiant
                   : ct::FuelOperation::WildernessWater,
-                  .quantity_millitons = uint64_t{*tons} * 1000},
+                  .quantity_millitons = uint64_t{*tons} * 1000,
+                  .refine_collected = refine_collected},
                .terminal = true,
             });
          } catch(const std::exception& error) {
             door_error("%s\n\r", safe_field(error.what()).c_str());
             wait_for_enter();
          }
+      } else if(key == 'U') {
+         if(!proposal.steps.empty()) {
+            door_warning("Standalone refining can currently be filed only as the first step.\n\r");
+            wait_for_enter();
+            continue;
+         }
+         const auto maximum_tons = static_cast<unsigned>(
+                                      std::min<uint64_t>(
+                                         ship.unrefined_fuel_millitons / 1000,
+                                         std::numeric_limits<unsigned>::max()));
+         if(maximum_tons == 0) {
+            door_information("There is no whole ton of unrefined fuel aboard.\n\r");
+            wait_for_enter();
+            continue;
+         }
+         const auto tons = input_number("Whole tons to refine", 1, maximum_tons);
+         if(!tons) {
+            continue;
+         }
+         proposal.steps.push_back(ct::FlightPlanStep{
+            .locus = travel.origin,
+            .authority = ct::WaypointAuthority::Through,
+            .action = ct::FlightPlanAction{
+               .kind = ct::FlightPlanActionKind::RefineFuel,
+               .quantity_millitons = uint64_t{*tons} * 1000},
+            .terminal = true,
+         });
       } else if(key == 'X') {
          if(!proposal.steps.empty() || destinations.current_system_id == 0) {
             door_warning(
@@ -9524,6 +9699,31 @@ FlightPlanEditorResult run_flight_plan_editor(
                   }
                }
                door_label("\n\r");
+            }
+            for(const auto& timing : preview.fuel_timings) {
+                  door_label("   Step ");
+                  door_number("%u", unsigned(timing.step_index) + 1);
+                  door_label(": travel ");
+                  door_number("%s", course_duration(timing.round_trip_seconds).c_str());
+                  door_label(", collect ");
+                  door_number("%s", course_duration(timing.collection_seconds).c_str());
+                  door_label(", process ");
+                  door_number("%s", course_duration(timing.processing_seconds).c_str());
+                  if(timing.processing_seconds != 0) {
+                     door_label(" (failed check ");
+                     door_number("%s",
+                                 course_duration(timing.failed_processing_seconds).c_str());
+                     door_label(")");
+                  }
+                  door_label("; total ");
+                  door_number("%s", course_duration(timing.normal_total_seconds).c_str());
+                  if(timing.failed_total_seconds != timing.normal_total_seconds) {
+                     door_label(" or ");
+                     door_number("%s", course_duration(timing.failed_total_seconds).c_str());
+                     door_label(" on failure");
+                  }
+                  door_label("; output ");
+                  door_value("%s\n\r", timing.output_refined ? "refined" : "unrefined");
             }
             if(!preview.warnings.empty()) {
                door_label("\n\r");

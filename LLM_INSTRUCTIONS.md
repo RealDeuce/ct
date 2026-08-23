@@ -1597,17 +1597,22 @@ onboard conversion step:
   hours per 40 tons and identifies gas giants as common pirate ambush points.
 - **Processing:** fuel processors convert unrefined fuel to refined fuel at a
   rate determined by installed equipment, consuming time and ship capacity;
-  refined fuel reduces power-plant, maneuver-drive, and Jump-drive problems.
+  the captain explicitly chooses whether to process a collected batch and may
+  later process unrefined fuel while docked or safely holding. CE describes
+  refined fuel as reducing drive problems, but its explicit resolution rule is
+  the Jump DM. Cepheus Trader therefore applies no separate unrefined-fuel roll
+  to ordinary power-plant consumption.
 
 The Clement expansion adds the failure model that makes frontier refueling a
 real risk: a Difficult Pilot/DEX task for gas-giant entry can cause 1D6 ship
 damage on failure or 3D6 on exceptional failure; a Difficult water-landing task
-has the same damage consequences. Refining is an Average Engineer/EDU task;
-failure doubles the time, while exceptional failure damages the drive. These
+has the same damage consequences. Refining is an Average Engineer (Power)/EDU
+task; failure doubles the time, while Effect -6 or worse damages the Jump drive,
+falling back to the maneuver drive and then fuel system if necessary. These
 are supplemental adaptations, not direct CE core rules. Their original damage
 text is written for the Zimm drive, so Cepheus Trader must translate it to
-standard CE power-plant, maneuver-drive, Jump-drive, and hull/system damage
-before implementation.
+standard CE machinery. That refining translation is implemented; the separate
+gas-entry and water-landing damage checks remain deferred.
 
 Streamlined hulls include scoops and are better at atmospheric operations;
 standard hulls can perform them with difficulty and distributed hulls cannot
@@ -2339,6 +2344,7 @@ economy behavior.
 | 2026-08-09 | Ship attachment is orthogonal to traffic locus. A berthed or landed vessel is present at its port/body locus but cannot be attacked inside the attachment through ordinary interception. Selecting an attached player vessel creates a named departure watch after the interceptor clears its own berth and settles accrued charges. Ships holding at a modeled locus may also keep persistent all-craft or exact-catalog-class pickets; matching deterministic traffic and player arrivals or departures enter the ordinary combat path. Gas skimming is spaceborne and exposed, while wilderness surface fueling is landed until liftoff. | Current |
 | 2026-08-22 | A capable operational yard may accept a player commission for any admitted runtime starship whose TL and displacement fit that facility. The contract takes a 20% deposit and creates a persistent undelivered fleet hull with 80% secured principal; the hull cannot receive command, crew, or stores until its catalog construction time completes. Maintenance, warranty, finance payments, and berth aging begin at delivery. Newly materialized BBS capitals require an A/B/C starport as well as TL12, guaranteeing a local capable yard without changing existing universes. CT-RPC 8 carries the commission catalog and order; outcome codec 15 reads older ship-market outcomes as having no commission list. `ship-214` Leavitt is the TL11, 200-ton minimum exact J-3 pathfinder: two J-3 fuel loads, four plant weeks, five actual crew positions in three staterooms, integral scoop, six tons of processors, one ammo-free beam laser, and five tons cargo. | Current |
 | 2026-08-22 | Asteroid extraction is a Flight Plan Belt Cycle, not an instantaneous dock action. Generated lodes are persistent shared physical resources, observations are private, and discovery grants no exclusive claim. Mining drones handle 1D6 x 10 tons of feedstock per set per day; Trade (Prospector) governs six-hour searches and daily extraction, mineral refineries produce composition-specific trade goods, and an unrefined operation stows Basic Unrefined Ore. Off-berth power fuel burns continuously. The protected egress reserve prices every remaining filed Jump at its 184-hour maximum plus one day. Field recovery success resumes the loop; failure immediately takes the prevalidated egress. `ship-215` Humboldt Foundry is the TL11 commissionable 200-ton refinery conversion. Manual mining, laser drills, and formal claims/licenses remain deferred. Closed MgT2 material is not cited or added to OGL provenance; the implemented mechanics and prose are independently expressed. | Current |
+| 2026-08-23 | Routine fuel quotations identify gas giants, planets, moons, and icy belts; only usable sources are selectable, and wilderness entries explicitly represent unoccupied routine access. A scoop can collect without a processor. The captain explicitly chooses whether to refine a collected batch, and may later refine unrefined fuel while docked or safely holding. Preview reports exact selected-quantity travel/collection/processing and both normal and failed totals without exposing the roll. Refining is Average (8+) Engineer (Power)/EDU; failure doubles time and Effect -6 or worse damages the Jump drive, falling back to maneuver drive then fuel system. Mixed tanks burn refined and unrefined fuel proportionally, and every Jump applies the normal -2 DM whenever its actual proportional burn includes unrefined fuel. | Current |
 | 2026-08-09 | Interception intent is explicit. Armed attacks enter combat immediately; boarding/inspection pickets issue a heave-to demand and enter combat only on refusal, including the offline inspection-response-to-combat-policy cascade. Lawful inspection authority is institutional: a refusing target receives a warrant, the local picket withdraws, and capable enforcement traffic responds on modeled movement time. Pirate admission follows security geography from incoming Jump loci through gas giants to exclusion from safe systems, and pirates decline targets that clearly overmatch them. | Current |
 | 2026-08-03 | A satisfied or revoked warrant is not removed by omniscient state change. The resolving authority files a second signed public-service instrument, and each system continues enforcing the original until that resolution physically arrives. Unpaid customs assessments and mutiny or theft of an institution-owned command enter the same delayed warrant pipeline. | Current |
 | 2026-08-03 | Terminal command loss retains a surviving captain through rescue, custody, or parole and applies a seven-, fourteen-, or thirty-day recovery interval according to disposition. Death requires a named successor. Docked irrecoverable bankruptcy is allowed only on an actually defaulted secured account; it liquidates the complete managed fleet and all balances/stores before issuing the named successor the original starting-offer class under a fresh 80-percent lien. Career, reputation, and legal consequences remain attached to the BBS/player identity. | Current |
