@@ -751,7 +751,7 @@ fn complete_arrival_and_trade(
             fuel_sources.contains("Unavailable: Unrefined bulk fuel"),
             "fuel sources: {fuel_sources:?}"
         );
-        session.send_to_menu(b"q", "Docked Operations");
+        session.send_to_menu(b"q\r", "Docked Operations");
     }
 
     // Exercise the facility-backed provision service when the destination
