@@ -46,7 +46,10 @@ const CONNECTION_QUEUE_DEPTH: usize = 64;
 const ENGINE_QUEUE_DEPTH: usize = 256;
 const AUTHENTICATION_TIMEOUT: Duration = Duration::from_secs(10);
 const LIVE_CLOCK_PULSE: Duration = Duration::from_secs(1);
-const LIVE_CLOCK_EVENT_SLICE: u64 = 1_024;
+// Scheduled events are durable transactions and some include substantial mail
+// processing. Yield between them so live-clock catch-up cannot monopolize the
+// authoritative thread ahead of an interactive request.
+const LIVE_CLOCK_EVENT_QUANTUM: u64 = 1;
 const MAX_PENDING_GAME_AUTHENTICATIONS: usize = 64;
 const MAX_ACTIVE_GAME_SESSIONS: usize = 256;
 const MAX_ACTIVE_GAME_SESSIONS_PER_BBS: usize = 64;
@@ -740,6 +743,7 @@ fn spawn_engine(
                 let mut live_clock = crate::clock::LiveClock::now(engine.game_second()?);
                 let mut observers = HashMap::<PlayerIdentity, Observer>::new();
                 let mut last_lag_report = Instant::now() - Duration::from_secs(60);
+                let mut pending_clock_target = None::<u64>;
                 if let Some(sender) = ready_sender.take() {
                     let _ = sender.send(Ok(()));
                 }
@@ -756,29 +760,56 @@ fn spawn_engine(
                         return Ok(());
                     }
                 }
-                while let Some(message) = input_receiver.blocking_recv() {
+                loop {
+                    // Foreground work already in the queue takes precedence.
+                    // When it is empty, keep advancing toward the most recent
+                    // sampled target without waiting for another clock pulse.
+                    let message = match input_receiver.try_recv() {
+                        Ok(message) => message,
+                        Err(mpsc::error::TryRecvError::Empty) => {
+                            if let Some(target) = pending_clock_target {
+                                let advance = engine.advance_simulation_toward(
+                                    target,
+                                    LIVE_CLOCK_EVENT_QUANTUM,
+                                )?;
+                                if advance.ending_second >= target {
+                                    pending_clock_target = None;
+                                } else if last_lag_report.elapsed() >= Duration::from_secs(60) {
+                                    server_log!(
+                                        "live clock lag: target={} committed={} lag={}m events={} wall={}ns cpu={}ns",
+                                        target,
+                                        advance.ending_second,
+                                        target - advance.ending_second,
+                                        advance.processed_events,
+                                        advance.wall_nanoseconds,
+                                        advance.thread_cpu_nanoseconds.unwrap_or(0),
+                                    );
+                                    last_lag_report = Instant::now();
+                                }
+                                if !emit_advance(
+                                    &engine,
+                                    &event_sender,
+                                    &mut observers,
+                                    advance,
+                                )? {
+                                    return Ok(());
+                                }
+                                continue;
+                            }
+                            let Some(message) = input_receiver.blocking_recv() else {
+                                break;
+                            };
+                            message
+                        }
+                        Err(mpsc::error::TryRecvError::Disconnected) => break,
+                    };
                     match message {
                         EngineMessage::ClockPulse { sampled_at } => {
                             let target = live_clock.target_second(sampled_at);
-                            let advance =
-                                engine.advance_simulation_toward(target, LIVE_CLOCK_EVENT_SLICE)?;
-                            if advance.ending_second < target
-                                && last_lag_report.elapsed() >= Duration::from_secs(60)
-                            {
-                                server_log!(
-                                    "live clock lag: target={} committed={} lag={}m events={} wall={}ns cpu={}ns",
-                                    target,
-                                    advance.ending_second,
-                                    target - advance.ending_second,
-                                    advance.processed_events,
-                                    advance.wall_nanoseconds,
-                                    advance.thread_cpu_nanoseconds.unwrap_or(0),
-                                );
-                                last_lag_report = Instant::now();
-                            }
-                            if !emit_advance(&engine, &event_sender, &mut observers, advance)? {
-                                return Ok(());
-                            }
+                            pending_clock_target = Some(
+                                pending_clock_target
+                                    .map_or(target, |pending| pending.max(target)),
+                            );
                         }
                         EngineMessage::OpenSession { identity, reply } => {
                             match engine.issue_session(&identity) {
@@ -914,6 +945,7 @@ fn spawn_engine(
                             match engine.initialize_universe(command_id) {
                                 Ok(initialization) => {
                                     live_clock.reanchor(engine.game_second()?, Instant::now());
+                                    pending_clock_target = None;
                                     observers.clear();
                                     if event_sender
                                         .blocking_send(EngineEvent::UniverseReset)
