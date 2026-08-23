@@ -4076,13 +4076,23 @@ impl Store {
         event: ScheduledInput,
     ) -> Result<ProcessedEngineInput, StoreError> {
         let current_second = get_meta_u64(self.meta, &txn, META_GAME_SECOND)?.unwrap_or(0);
-        if event.due_second() < current_second {
+        let scheduled_second = event.due_second();
+        let due_second = if matches!(&event, ScheduledInput::EncounterTurn { .. }) {
+            // A posture can remain unanswered while the authoritative clock
+            // advances. Older servers scheduled its first turn from the
+            // encounter's start, leaving a valid encounter turn behind the
+            // clock. Preserve the stored timestamp for state validation, but
+            // resolve that overdue turn at the current authoritative second.
+            scheduled_second.max(current_second)
+        } else {
+            scheduled_second
+        };
+        if due_second < current_second {
             return Err(StoreError::SimulationTimeReversal {
                 current: current_second,
-                target: event.due_second(),
+                target: due_second,
             });
         }
-        let due_second = event.due_second();
         let revision = get_meta_u64(self.meta, &txn, META_REVISION)?
             .unwrap_or(0)
             .checked_add(1)
@@ -4238,12 +4248,17 @@ impl Store {
                 encode_timed_object_event_journal(0x57, due_second, ship_id)
             }
             ScheduledInput::EncounterTurn {
-                due_second,
                 identity,
                 encounter_id,
                 ..
             } => {
-                self.process_encounter_turn_in(&mut txn, due_second, &identity, encounter_id)?;
+                self.process_encounter_turn_in(
+                    &mut txn,
+                    scheduled_second,
+                    due_second,
+                    &identity,
+                    encounter_id,
+                )?;
                 let phase = self.player_phase_in(&txn, &identity)?;
                 let status = self.travel_status_in(&txn, &identity)?;
                 player_transitions.push(PlayerTravelTransition {
@@ -8408,7 +8423,10 @@ impl Store {
         record.snapshot.revision += 1;
         record.snapshot.state = EncounterState::Resolving;
         record.snapshot.turn = 1;
-        record.snapshot.next_turn_second = record.snapshot.started_second.saturating_add(1_000);
+        let response_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?
+            .unwrap_or(0)
+            .max(record.snapshot.started_second);
+        record.snapshot.next_turn_second = response_second.saturating_add(1_000);
         let refusal_escalates = matches!(
             record.snapshot.kind,
             EncounterKind::Hostile | EncounterKind::Inspection | EncounterKind::Military
@@ -8440,7 +8458,7 @@ impl Store {
                         warrant_id,
                         stellar.polity_id,
                         ship.system_id,
-                        record.snapshot.started_second,
+                        response_second,
                         100_000,
                         100,
                     );
@@ -8454,7 +8472,7 @@ impl Store {
                         .collect::<Vec<_>>();
                     let (message_id, _) = self.simulation.dispatch_message(
                         txn,
-                        record.snapshot.started_second,
+                        response_second,
                         ship.system_id,
                         crate::simulation::MessageClass::PublicService,
                         crate::simulation::MessageImportance::Important,
@@ -8508,7 +8526,7 @@ impl Store {
                 combat_id: record.snapshot.encounter_id,
                 revision: 1,
                 round: 1,
-                round_started_second: record.snapshot.started_second,
+                round_started_second: response_second,
                 range: crate::combat::RangeBand::Short,
                 vessels: vec![player_vessel, opponent],
                 missiles: Vec::new(),
@@ -8524,7 +8542,7 @@ impl Store {
             record.pending_interventions = self.pending_interventions_for_combat(
                 txn,
                 &simulation_system,
-                record.snapshot.started_second,
+                response_second,
                 record.snapshot.contact.contact_id,
                 !matches!(
                     record.snapshot.kind,
@@ -12845,6 +12863,7 @@ impl Store {
     fn process_encounter_turn_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
+        scheduled_second: u64,
         due_second: u64,
         identity: &PlayerIdentity,
         encounter_id: u64,
@@ -12860,14 +12879,19 @@ impl Store {
         };
         if record.snapshot.encounter_id != encounter_id
             || record.snapshot.state != EncounterState::Resolving
-            || record.snapshot.next_turn_second != due_second
+            || record.snapshot.next_turn_second != scheduled_second
         {
             return Err(StoreError::Corrupt(
                 "encounter turn disagrees with encounter state",
             ));
         }
+        record.snapshot.next_turn_second = due_second;
         let mut career = self.career_state_in(txn, identity)?;
-        if let Some(combat) = record.combat.clone() {
+        if let Some(mut combat) = record.combat.clone() {
+            if scheduled_second < due_second {
+                combat.round_started_second =
+                    due_second.saturating_sub(crate::combat::COMBAT_TURN_SECONDS);
+            }
             let (mut player, mut ship) = self.player_and_ship_in(txn, identity)?;
             let player_order = if let Some(order) = record.player_order.take() {
                 order
@@ -44033,6 +44057,44 @@ mod tests {
         }
     }
 
+    fn test_encounter_record(
+        state: EncounterState,
+        started_second: u64,
+        next_turn_second: u64,
+        posture: Option<EncounterPosture>,
+    ) -> EncounterRecord {
+        EncounterRecord {
+            snapshot: EncounterSnapshot {
+                encounter_id: 7_710,
+                revision: 1,
+                kind: EncounterKind::Hostile,
+                state,
+                started_second,
+                next_turn_second,
+                turn: u16::from(state == EncounterState::Resolving),
+                contact: EncounterContact {
+                    contact_id: 55,
+                    ship_name: "Unlit contact".into(),
+                    class_name: "Samarkand".into(),
+                    transponder: "No response".into(),
+                    role: "interceptor".into(),
+                    range: "local traffic range".into(),
+                    confidence_percent: 75,
+                },
+                summary: "An armed contact alters course to intercept.".into(),
+            },
+            opponent_catalog_id: 128,
+            posture,
+            fallbacks: vec![EncounterFallback::Surrender],
+            result: None,
+            combat: None,
+            player_order: None,
+            automation_decision: None,
+            combat_log: Vec::new(),
+            pending_interventions: Vec::new(),
+        }
+    }
+
     fn test_task_offer(
         offer_id: u64,
         origin_system_id: u64,
@@ -44552,6 +44614,165 @@ mod tests {
             OutcomeKind::PlayerCreated(_)
         ));
         epoch
+    }
+
+    #[test]
+    fn delayed_encounter_response_schedules_from_the_current_second() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let epoch = initialize_player_fixture(&store);
+        let current_second = 5_000;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .encounters
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_encounter_record(&test_encounter_record(
+                    EncounterState::AwaitingPosture,
+                    100,
+                    0,
+                    None,
+                ))
+                .unwrap(),
+            )
+            .unwrap();
+        put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, current_second).unwrap();
+        txn.commit().unwrap();
+
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(
+                    epoch,
+                    201,
+                    Command::ResolveEncounter(crate::wire::ResolveEncounterRequest {
+                        encounter_id: 7_710,
+                        expected_revision: 1,
+                        posture: EncounterPosture::Comply,
+                        fallbacks: vec![EncounterFallback::Surrender],
+                    }),
+                ),
+            })
+            .unwrap();
+        assert!(matches!(
+            store.process_next().unwrap().unwrap().outcome.kind,
+            OutcomeKind::EncounterResult(_)
+        ));
+
+        let txn = store.env.read_txn().unwrap();
+        let encounter = store.encounter_in(&txn, &identity()).unwrap().unwrap();
+        assert_eq!(encounter.snapshot.next_turn_second, current_second + 1_000);
+        let (_, due_second, _, event_identity, encounter_id) =
+            first_encounter_event(store.encounter_events, &txn)
+                .unwrap()
+                .unwrap();
+        assert_eq!(due_second, current_second + 1_000);
+        assert_eq!(event_identity, identity());
+        assert_eq!(encounter_id, encounter.snapshot.encounter_id);
+    }
+
+    #[test]
+    fn delayed_hostile_refusal_starts_combat_at_the_current_second() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let epoch = initialize_player_fixture(&store);
+        let current_second = 5_000;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .encounters
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_encounter_record(&test_encounter_record(
+                    EncounterState::AwaitingPosture,
+                    100,
+                    0,
+                    None,
+                ))
+                .unwrap(),
+            )
+            .unwrap();
+        put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, current_second).unwrap();
+        txn.commit().unwrap();
+
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(
+                    epoch,
+                    201,
+                    Command::ResolveEncounter(crate::wire::ResolveEncounterRequest {
+                        encounter_id: 7_710,
+                        expected_revision: 1,
+                        posture: EncounterPosture::Fight,
+                        fallbacks: vec![EncounterFallback::Surrender],
+                    }),
+                ),
+            })
+            .unwrap();
+        store.process_next().unwrap().unwrap();
+
+        let txn = store.env.read_txn().unwrap();
+        let encounter = store.encounter_in(&txn, &identity()).unwrap().unwrap();
+        assert_eq!(encounter.snapshot.next_turn_second, current_second + 1_000);
+        assert_eq!(
+            encounter.combat.unwrap().round_started_second,
+            current_second
+        );
+    }
+
+    #[test]
+    fn restart_recovers_an_overdue_encounter_turn_without_reversing_time() {
+        let dir = TempDir::new().unwrap();
+        let current_second = 5_000;
+        {
+            let store = Store::open(dir.path()).unwrap();
+            initialize_player_fixture(&store);
+            let mut txn = store.env.write_txn().unwrap();
+            store
+                .encounters
+                .put(
+                    &mut txn,
+                    &encode_identity(&identity()),
+                    &encode_encounter_record(&test_encounter_record(
+                        EncounterState::Resolving,
+                        0,
+                        1_000,
+                        Some(EncounterPosture::Comply),
+                    ))
+                    .unwrap(),
+                )
+                .unwrap();
+            put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, current_second).unwrap();
+            store
+                .enqueue_engine_input_in(
+                    &mut txn,
+                    &EngineInput::Scheduled(ScheduledInput::EncounterTurn {
+                        event_id: 17,
+                        due_second: 1_000,
+                        identity: identity(),
+                        encounter_id: 7_710,
+                    }),
+                )
+                .unwrap();
+            txn.commit().unwrap();
+        }
+
+        let engine =
+            crate::engine::Engine::open(dir.path(), crate::engine::BbsRegistry::default()).unwrap();
+        let recovered = engine.recover().unwrap();
+        assert!(recovered.deliveries.is_empty());
+        assert_eq!(recovered.player_transitions.len(), 1);
+        drop(engine);
+
+        let store = Store::open(dir.path()).unwrap();
+        assert_eq!(store.game_second().unwrap(), current_second);
+        assert_eq!(store.queued_count().unwrap(), 0);
+        let txn = store.env.read_txn().unwrap();
+        let encounter = store.encounter_in(&txn, &identity()).unwrap().unwrap();
+        assert_eq!(encounter.snapshot.state, EncounterState::Resolved);
+        assert_eq!(encounter.snapshot.next_turn_second, current_second);
     }
 
     #[test]
@@ -54719,7 +54940,7 @@ mod tests {
             )
             .unwrap();
         store
-            .process_encounter_turn_in(&mut txn, 100, &identity(), encounter_id)
+            .process_encounter_turn_in(&mut txn, 100, 100, &identity(), encounter_id)
             .unwrap();
         let career = store.career_state_in(&txn, &identity()).unwrap();
         let warrant = career
