@@ -4124,6 +4124,14 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("Task delivery occurs when docking completes", page)
         self.assertIn("Warnings are numbered once below the route", page)
 
+    def test_game_rules_limit_buyer_searches_to_speculative_cargo_aboard(self) -> None:
+        page = SITE_BUILD.rules_page()
+        self.assertIn(
+            "buyer search requires matching player-owned speculative", page
+        )
+        self.assertIn("Freight, contract cargo, and unique objects", page)
+        self.assertIn("cannot cover more matching cargo", page)
+
     def test_game_rules_define_the_world_profile_terms_they_use(self) -> None:
         page = SITE_BUILD.rules_page()
         for section_id in (

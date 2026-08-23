@@ -185,7 +185,8 @@ or refit, compare the world's TL with its port and the displayed facility. A
 world below TL9 can have a working port but no locally eligible ships for sale.
 
 - `C` — **Cargo Exchange:** inspect the hold, buy finite local stock, sell
-  cargo carried from another system, and research suppliers or buyers.
+  cargo carried from another system, research suppliers, and locate buyers for
+  player-owned speculative cargo aboard.
 - `J` — **Jobs and Passage:** inspect and accept freight, passenger, mail,
   charter, courier, service, or other local offers.
 - `F` — **Fuel and Supplies:** buy available fuel, provisions, and ammunition,

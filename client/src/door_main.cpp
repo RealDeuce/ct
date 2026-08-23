@@ -8162,6 +8162,12 @@ void run_cargo_exchange(
             uint16_t id;
             std::string name;
          };
+         constexpr uint8_t PLAYER_OWNED_CARGO_TITLE = 0;
+         door_information("\n\r1. Locate a supplier\n\r2. Locate a buyer\n\r");
+         const auto kind = input_number("Search", 1, 2);
+         if(!kind) {
+            continue;
+         }
          std::vector<SearchGood> goods;
          const auto add_good = [&goods](const uint16_t id, const std::string& name) {
             const auto exists = std::any_of(
@@ -8177,20 +8183,27 @@ void run_cargo_exchange(
                });
             }
          };
-         for(const auto& offer : market.offers) {
-            add_good(offer.commodity_id, offer.commodity_name);
-         }
-         for(const auto& lot : market.cargo) {
-            add_good(lot.commodity_id, lot.commodity_name);
+         if(*kind == 1) {
+            for(const auto& offer : market.offers) {
+               add_good(offer.commodity_id, offer.commodity_name);
+            }
+            for(const auto& lot : market.cargo) {
+               add_good(lot.commodity_id, lot.commodity_name);
+            }
+         } else {
+            for(const auto& lot : market.cargo) {
+               if(lot.title == PLAYER_OWNED_CARGO_TITLE && lot.quantity_millitons != 0) {
+                  add_good(lot.commodity_id, lot.commodity_name);
+               }
+            }
          }
          if(goods.empty()) {
-            door_warning("No commodity is available to identify the requested market.\n\r");
+            if(*kind == 2) {
+               door_warning("No player-owned speculative cargo is available for a buyer search.\n\r");
+            } else {
+               door_warning("No commodity is available to identify the requested market.\n\r");
+            }
             wait_for_enter();
-            continue;
-         }
-         door_information("\n\r1. Locate a supplier\n\r2. Locate a buyer\n\r");
-         const auto kind = input_number("Search", 1, 2);
-         if(!kind) {
             continue;
          }
          output().resume_paging();

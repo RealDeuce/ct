@@ -52,6 +52,13 @@ engine-input queue and records a dated, sourced confidence range in Known
 Universe. Cancelling work changes the assignment state; a later
 already-indexed completion safely becomes a no-op.
 
+A buyer search requires a positive quantity of matching player-owned
+speculative cargo aboard the commanded ship. Freight, contract cargo, and
+unique objects cannot be used to begin one. The server applies this check
+before charging a hired broker's commission. When the work finishes, its lead
+cannot cover more matching cargo than remains aboard; no lead is produced if
+none remains.
+
 Completed research produces a finite lead rather than an endlessly reusable
 hint. The lead records its observed and acquired dates, confidence, quantity,
 price range, source, expiry, and revision. Reserving it places ten percent of

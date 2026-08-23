@@ -715,6 +715,12 @@ named crewmember remains liaison. Physical, black-market, and hired searches
 use CHA; online research uses INT and Computer. All other searches use Broker.
 The assigned crewmember must be fit and on watch.
 
+A commodity-specific buyer search requires matching player-owned speculative
+cargo aboard the commanded ship. Freight, contract cargo, and unique objects
+do not qualify. This eligibility check occurs before any hired-broker
+commission is charged. A completed buyer lead cannot cover more matching cargo
+than remains aboard, and produces no lead if none remains.
+
 Research is an Average task. Effect below -5 produces no reliable lead.
 Otherwise a commodity-specific supplier or buyer search records confidence
 **70% + three times Effect**, limited to 40%-100%. Its quoted price and

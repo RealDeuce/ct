@@ -430,8 +430,11 @@ persistent-door policy:
   passengers, mail, charters, fuel, port services, and ship revenue. It does
   not provide a persistent macroeconomic production/consumption model, banking
   network, or polity budgets—and we do not need one for a single ship to move
-  planetary prices. A single ship's cargo capacity should remain too small to
-  swing a planetary economy; CE's local trading layer is the intended baseline.
+  planetary prices. Buyer searches are inventory-backed negotiations: they
+  require matching player-owned speculative cargo aboard, and their leads
+  cannot exceed the matching quantity still carried when the search completes.
+  A single ship's cargo capacity should remain too small to swing a planetary
+  economy; CE's local trading layer is the intended baseline.
 
 ### TL14 Dreadnought affordability audit (working estimate)
 

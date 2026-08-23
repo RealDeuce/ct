@@ -20652,6 +20652,18 @@ impl Store {
         if commodity_id != 0 && crate::commerce::commodity(commodity_id).is_none() {
             return Ok(RuleResult::Rejected("unknown commodity".into()));
         }
+        if kind == crate::wire::MarketSearchKind::Buyer
+            && !ship.cargo.iter().any(|lot| {
+                lot.commodity_id == commodity_id
+                    && lot.quantity_millitons != 0
+                    && lot.title == CargoTitle::PlayerOwned
+            })
+        {
+            return Ok(RuleResult::Rejected(
+                "buyer searches require matching player-owned speculative cargo aboard the commanded ship"
+                    .into(),
+            ));
+        }
         if method == crate::wire::MarketSearchMethod::HiredBroker {
             const LOCAL_BROKER_COMMISSION: u64 = 500;
             if player.credits < LOCAL_BROKER_COMMISSION {
@@ -26747,7 +26759,28 @@ impl Store {
             stored.assignment.result_text = "The search produced no reliable lead".into();
         } else {
             stored.assignment.state = crate::wire::WorkState::Completed;
-            if matches!(
+            let buyer_cargo_quantity =
+                if stored.assignment.kind == crate::wire::MarketSearchKind::Buyer {
+                    let (_, ship) = self.player_and_ship_in(txn, &stored.identity)?;
+                    ship.cargo
+                        .iter()
+                        .filter(|lot| {
+                            lot.commodity_id == stored.assignment.commodity_id
+                                && lot.title == CargoTitle::PlayerOwned
+                        })
+                        .fold(0_u64, |quantity, lot| {
+                            quantity.saturating_add(lot.quantity_millitons)
+                        })
+                } else {
+                    u64::MAX
+                };
+            if stored.assignment.kind == crate::wire::MarketSearchKind::Buyer
+                && buyer_cargo_quantity == 0
+            {
+                stored.assignment.state = crate::wire::WorkState::Failed;
+                stored.assignment.result_text =
+                    "No matching player-owned speculative cargo remained aboard".into();
+            } else if matches!(
                 stored.assignment.kind,
                 crate::wire::MarketSearchKind::Supplier | crate::wire::MarketSearchKind::Buyer
             ) && stored.assignment.commodity_id != 0
@@ -26813,10 +26846,11 @@ impl Store {
                             } else {
                                 crate::wire::MarketLeadSide::Buyer
                             };
-                        let quantity = q
+                        let market_quantity = q
                             .available_millitons
                             .saturating_mul((100_i16 + effect.clamp(-5, 10) * 3).max(25) as u64)
                             / 100;
+                        let quantity = market_quantity.min(buyer_cargo_quantity);
                         let lead = StoredMarketLead {
                             identity: stored.identity.clone(),
                             lead: crate::wire::MarketLead {
@@ -53024,6 +53058,155 @@ mod tests {
     }
 
     #[test]
+    fn buyer_search_requires_owned_speculative_cargo_before_charging_a_broker() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let epoch = initialize_player_fixture(&store);
+        let before = store.player_record(&identity()).unwrap().unwrap();
+        let request_buyer_search = |request_id| QueuedCommand {
+            identity: identity(),
+            request: request(
+                epoch,
+                request_id,
+                Command::BeginMarketSearch {
+                    kind: crate::wire::MarketSearchKind::Buyer,
+                    method: crate::wire::MarketSearchMethod::HiredBroker,
+                    person_id: before.captain_person_id,
+                    commodity_id: 1,
+                    destination_system_id: 0,
+                },
+            ),
+        };
+
+        store.enqueue(&request_buyer_search(204)).unwrap();
+        let rejection = store.process_next().unwrap().unwrap();
+        assert!(matches!(
+            rejection.outcome.kind,
+            OutcomeKind::Error { message, .. }
+                if message == "buyer searches require matching player-owned speculative cargo aboard the commanded ship"
+        ));
+        assert_eq!(
+            store.player_record(&identity()).unwrap().unwrap().credits,
+            before.credits,
+            "an ineligible buyer search must not charge the broker commission"
+        );
+
+        let mut ship = store.ship_record(before.ship_id).unwrap().unwrap();
+        let system_id = ship.system_id;
+        let cargo_lot = |cargo_lot_id, title| CargoLot {
+            cargo_lot_id,
+            commodity_id: 1,
+            commodity_name: "Basic Unrefined Ore".into(),
+            quantity_millitons: MILLITONS_PER_TON,
+            purchase_price_per_ton: 1,
+            origin_system_id: system_id,
+            acquired_second: 0,
+            title,
+            task_id: 0,
+            unique_object_id: 0,
+            condition_percent: 100,
+            destination_system_id: 0,
+            source_body_id: 0,
+            source_lode_id: 0,
+        };
+        ship.cargo.push(cargo_lot(90, CargoTitle::Freight));
+        ship.cargo.push(cargo_lot(91, CargoTitle::Contract));
+        ship.cargo.push(cargo_lot(92, CargoTitle::UniqueObject));
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        txn.commit().unwrap();
+
+        store.enqueue(&request_buyer_search(205)).unwrap();
+        assert!(matches!(
+            store.process_next().unwrap().unwrap().outcome.kind,
+            OutcomeKind::Error { message, .. }
+                if message == "buyer searches require matching player-owned speculative cargo aboard the commanded ship"
+        ));
+        assert_eq!(
+            store.player_record(&identity()).unwrap().unwrap().credits,
+            before.credits
+        );
+
+        ship.cargo.push(cargo_lot(93, CargoTitle::PlayerOwned));
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        txn.commit().unwrap();
+
+        store.enqueue(&request_buyer_search(206)).unwrap();
+        let market = match store.process_next().unwrap().unwrap().outcome.kind {
+            OutcomeKind::Market(value) => value,
+            other => panic!("expected market after eligible buyer search, got {other:?}"),
+        };
+        assert_eq!(market.credits, before.credits - 500);
+        assert_eq!(market.work_assignments.len(), 1);
+        assert_eq!(
+            market.work_assignments[0].kind,
+            crate::wire::MarketSearchKind::Buyer
+        );
+        let first_assignment_id = market.work_assignments[0].assignment_id;
+        let first_due_second = market.work_assignments[0].due_second;
+
+        ship.cargo
+            .retain(|lot| lot.title != CargoTitle::PlayerOwned);
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        txn.commit().unwrap();
+        store.advance_simulation_to(first_due_second).unwrap();
+        let market = store
+            .market_snapshot_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let first_assignment = market
+            .work_assignments
+            .iter()
+            .find(|assignment| assignment.assignment_id == first_assignment_id)
+            .unwrap();
+        assert_eq!(first_assignment.state, crate::wire::WorkState::Failed);
+        assert_eq!(
+            first_assignment.result_text,
+            "No matching player-owned speculative cargo remained aboard"
+        );
+        assert!(market.leads.is_empty());
+
+        ship.cargo.push(cargo_lot(94, CargoTitle::PlayerOwned));
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        txn.commit().unwrap();
+        store.enqueue(&request_buyer_search(207)).unwrap();
+        let market = match store.process_next().unwrap().unwrap().outcome.kind {
+            OutcomeKind::Market(value) => value,
+            other => panic!("expected market after second eligible buyer search, got {other:?}"),
+        };
+        let second_assignment = market
+            .work_assignments
+            .iter()
+            .find(|assignment| assignment.state == crate::wire::WorkState::Scheduled)
+            .unwrap();
+        store
+            .advance_simulation_to(second_assignment.due_second)
+            .unwrap();
+        let market = store
+            .market_snapshot_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        assert_eq!(market.credits, before.credits - 1_000);
+        assert_eq!(market.leads.len(), 1);
+        assert_eq!(market.leads[0].side, crate::wire::MarketLeadSide::Buyer);
+        assert!(market.leads[0].quantity_millitons > 0);
+        assert!(market.leads[0].quantity_millitons <= MILLITONS_PER_TON);
+    }
+
+    #[test]
     fn hired_broker_charges_a_commission_and_supplies_professional_skill() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
@@ -53036,7 +53219,7 @@ mod tests {
                     epoch,
                     204,
                     Command::BeginMarketSearch {
-                        kind: crate::wire::MarketSearchKind::Buyer,
+                        kind: crate::wire::MarketSearchKind::Supplier,
                         method: crate::wire::MarketSearchMethod::HiredBroker,
                         person_id: before.captain_person_id,
                         commodity_id: 1,
