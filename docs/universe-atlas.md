@@ -10,13 +10,15 @@ files.
 The atlas uses a dependency-free Canvas renderer rather than a hosted script
 or WebGL framework. In a modern browser it provides three-dimensional
 orbiting, panning, zooming, system search and selection, world details, and
-configurable jump-range links. Its route computer accepts typed endpoints or
-two systems picked directly from the map, finds a reproducible fewest-jump
-route at the current jump setting, and displays every leg and its total
-distance. It replots automatically when the jump setting changes. The route
-uses geometric reachability among systems visible in that snapshot; it does
-not account for fuel availability, travel time, hazards, or information hidden
-by the selected visibility scope.
+configurable jump-range links. A **Mark frontier systems** toggle outlines in
+violet every plotted system that no player has yet visited, and the selected-
+system panel reports its visited status. Its route computer accepts typed
+endpoints or two systems picked directly from the map, finds a reproducible
+fewest-jump route at the current jump setting, and displays every leg and its
+total distance. It replots automatically when the jump setting changes. The
+route uses geometric reachability among systems visible in that snapshot; it
+does not account for fuel availability, travel time, hazards, or information
+hidden by the selected visibility scope.
 
 Coordinates follow the game axes: +X is coreward, +Y is spinward, and +Z is
 galactic north. The data export contains derived public world characteristics,
@@ -61,6 +63,15 @@ the viewer. On a storage-format-1 database that predates publication tracking,
 omniscient mode still exports every stored system. The conservative
 universally-known compatibility view exports the fixed 43-system baseline
 until the current server has backfilled the publication index.
+
+Frontier status is independent of publication. The server retains only the
+first player-visit time per system, never the visiting captain's identity. The
+exporter reduces that aggregate to a visited/unvisited flag in both visibility
+modes. Opening an older storage-format-1 universe with the current server
+backfills visits from the fixed initial catalogue, current arrivals, committed
+disclosure choices, and mapping publications. A visit that left none of that
+durable evidence in an older database cannot be reconstructed and remains
+marked as frontier.
 
 For a documentation site or a new universe without a database, generate the
 fixed initial map with:

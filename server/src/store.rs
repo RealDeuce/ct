@@ -98,6 +98,7 @@ const META_NEXT_RADIO_TRANSMISSION_ID: &str = "next-radio-transmission-id";
 const META_NEXT_RADIO_RECEPTION_ID: &str = "next-radio-reception-id";
 const META_NEXT_RESOURCE_LODE_ID: &str = "next-resource-lode-id";
 const META_PENDING_SYSTEM_PUBLICATIONS: &str = "pending-system-publications";
+const META_SYSTEM_VISITS_BACKFILL_VERSION: &str = "system-visits-backfill-version";
 const META_GAME_SECOND: &str = "game-second";
 const META_CLOCK_FORMAT_VERSION: &str = "clock-format-version";
 const META_CLOCK_RATE_GAME_SECONDS: &str = "clock-rate-game-seconds";
@@ -106,6 +107,7 @@ const META_STORAGE_FORMAT_VERSION: &str = "storage-format-version";
 pub const STORAGE_FORMAT_VERSION: u64 = 1;
 const META_ACCOMMODATION_CAPACITY_VERSION: &str = "accommodation-capacity-version";
 const ACCOMMODATION_CAPACITY_VERSION: u64 = 1;
+const SYSTEM_VISITS_BACKFILL_VERSION: u64 = 1;
 const SHIP_RECORD_CODEC_VERSION: u8 = 2;
 const CNS5_COVERAGE_DISTRIBUTION_VERSION: u16 = 1;
 const CNS5_COVERAGE_SAMPLER_VERSION: u16 = 1;
@@ -959,6 +961,11 @@ struct PlayerSystemMappingRecord {
     state: SystemMappingState,
     dispatch_message_id: Option<u64>,
     changed_second: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct SystemVisitRecord {
+    pub first_visited_second: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -3001,6 +3008,118 @@ fn reconcile_initial_system_publications_in(
     Ok(())
 }
 
+fn record_first_system_visit_in(
+    visits: UniverseDatabase,
+    txn: &mut heed::RwTxn<'_>,
+    system_id: u64,
+    visited_second: u64,
+) -> Result<(), StoreError> {
+    let existing = visits
+        .get(txn, &system_id)?
+        .map(decode_system_visit)
+        .transpose()?;
+    if existing.is_some_and(|record| record.first_visited_second <= visited_second) {
+        return Ok(());
+    }
+    visits.put(
+        txn,
+        &system_id,
+        &encode_system_visit(&SystemVisitRecord {
+            first_visited_second: visited_second,
+        }),
+    )?;
+    Ok(())
+}
+
+fn reconcile_system_visits_in(
+    meta: Database<Str, Bytes>,
+    systems: UniverseDatabase,
+    player_arrivals: Database<Bytes, Bytes>,
+    player_system_mappings: Database<Bytes, Bytes>,
+    system_publications: UniverseDatabase,
+    system_visits: UniverseDatabase,
+    txn: &mut heed::RwTxn<'_>,
+) -> Result<(), StoreError> {
+    // This aggregate index was added while storage format 1 was current. The
+    // fixed catalogue is historical inhabited space; later rows are recovered
+    // from durable evidence that a player was physically present there.
+    if meta.get(txn, META_UNIVERSE_ID)?.is_none() {
+        return Ok(());
+    }
+    if get_meta_u64(meta, txn, META_SYSTEM_VISITS_BACKFILL_VERSION)?
+        == Some(SYSTEM_VISITS_BACKFILL_VERSION)
+    {
+        return Ok(());
+    }
+    for initial in INITIAL_SYSTEMS {
+        if systems.get(txn, &initial.id)?.is_some() {
+            record_first_system_visit_in(system_visits, txn, initial.id, 0)?;
+        }
+    }
+    let arrivals = player_arrivals
+        .iter(txn)?
+        .map(|entry| {
+            let (_, encoded) = entry?;
+            decode_player_arrival(encoded)
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    for arrival in arrivals {
+        record_first_system_visit_in(
+            system_visits,
+            txn,
+            arrival.system_id,
+            arrival.arrival_second,
+        )?;
+    }
+    let mappings = player_system_mappings
+        .iter(txn)?
+        .filter_map(|entry| match entry {
+            Ok((key, encoded)) => match decode_player_system_mapping(encoded) {
+                Ok(record)
+                    if matches!(
+                        record.state,
+                        SystemMappingState::PublicDispatched
+                            | SystemMappingState::DirectDispatched
+                            | SystemMappingState::Withheld
+                            | SystemMappingState::Secret
+                    ) =>
+                {
+                    Some(
+                        key.get(8..16)
+                            .ok_or(StoreError::Corrupt("invalid player system-mapping key"))
+                            .and_then(decode_u64)
+                            .map(|system_id| (system_id, record.changed_second)),
+                    )
+                }
+                Ok(_) => None,
+                Err(error) => Some(Err(error)),
+            },
+            Err(error) => Some(Err(StoreError::Heed(error))),
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    for (system_id, visited_second) in mappings {
+        record_first_system_visit_in(system_visits, txn, system_id, visited_second)?;
+    }
+    let publications = system_publications
+        .iter(txn)?
+        .map(|entry| {
+            let (system_id, encoded) = entry?;
+            let record = decode_system_publication(encoded)?;
+            Ok((system_id, record.dispatched_second))
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    for (system_id, visited_second) in publications {
+        record_first_system_visit_in(system_visits, txn, system_id, visited_second)?;
+    }
+    put_meta_u64(
+        meta,
+        txn,
+        META_SYSTEM_VISITS_BACKFILL_VERSION,
+        SYSTEM_VISITS_BACKFILL_VERSION,
+    )?;
+    Ok(())
+}
+
 fn new_ship_maintenance(
     spec: &creation::ShipStatusSpec,
     current_game_second: u64,
@@ -3154,6 +3273,7 @@ pub struct Store {
     player_feed_cursors: Database<Bytes, Bytes>,
     player_system_mappings: Database<Bytes, Bytes>,
     system_publications: UniverseDatabase,
+    system_visits: UniverseDatabase,
     discovery_claims: UniverseDatabase,
     flight_plans: Database<Bytes, Bytes>,
     checkpoints: Database<Bytes, Bytes>,
@@ -3262,6 +3382,7 @@ impl Store {
         let player_system_mappings =
             env.create_database(&mut txn, Some("player-system-mappings"))?;
         let system_publications = env.create_database(&mut txn, Some("system-publications"))?;
+        let system_visits = env.create_database(&mut txn, Some("system-visits"))?;
         let discovery_claims = env.create_database(&mut txn, Some("discovery-claims"))?;
         let flight_plans = env.create_database(&mut txn, Some("flight-plans"))?;
         let checkpoints = env.create_database(&mut txn, Some("arrival-checkpoints"))?;
@@ -3310,6 +3431,15 @@ impl Store {
         )?;
         reconcile_resource_lode_identifier_metadata_in(meta, resource_lodes, &mut txn)?;
         reconcile_initial_system_publications_in(meta, systems, system_publications, &mut txn)?;
+        reconcile_system_visits_in(
+            meta,
+            systems,
+            player_arrivals,
+            player_system_mappings,
+            system_publications,
+            system_visits,
+            &mut txn,
+        )?;
         reconcile_accommodation_capacity_in(ships, meta, &mut txn)?;
         txn.commit()?;
         Ok(Self {
@@ -3365,6 +3495,7 @@ impl Store {
             player_feed_cursors,
             player_system_mappings,
             system_publications,
+            system_visits,
             discovery_claims,
             flight_plans,
             checkpoints,
@@ -24141,6 +24272,12 @@ impl Store {
                 presented: false,
             }),
         )?;
+        record_first_system_visit_in(
+            self.system_visits,
+            txn,
+            home.capital_system_id,
+            current_game_second,
+        )?;
         Ok(())
     }
 
@@ -24652,6 +24789,51 @@ impl Store {
             .collect()
     }
 
+    fn survey_jump_arrival_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        target_parsecs: [f64; 3],
+        observed_second: u64,
+    ) -> Result<Vec<StellarSystem>, StoreError> {
+        let surveyed =
+            self.materialize_jump_arrival_volume_in(txn, target_parsecs, observed_second)?;
+        let identity_key = encode_identity(identity);
+        let mut player = self
+            .players
+            .get(txn, &identity_key)?
+            .map(decode_player_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("surveying player record is missing"))?;
+        for system in &surveyed {
+            if !player.known_system_ids.contains(&system.id) {
+                player.known_system_ids.push(system.id);
+            }
+            let mapping_key = player_system_mapping_key(identity, system.id);
+            if self
+                .player_system_mappings
+                .get(txn, &mapping_key)?
+                .is_none()
+            {
+                self.player_system_mappings.put(
+                    txn,
+                    &mapping_key,
+                    &encode_player_system_mapping(&PlayerSystemMappingRecord {
+                        state: SystemMappingState::Unresolved,
+                        dispatch_message_id: None,
+                        changed_second: observed_second,
+                    }),
+                )?;
+            }
+        }
+        player.known_system_ids.sort_unstable();
+        player.known_system_ids.dedup();
+        player.knowledge_observed_second = player.knowledge_observed_second.max(observed_second);
+        self.players
+            .put(txn, &identity_key, &encode_player_record(&player))?;
+        Ok(surveyed)
+    }
+
     pub fn initialize_universe(
         &self,
         command_id: &[u8; COMMAND_ID_BYTES],
@@ -24742,6 +24924,7 @@ impl Store {
         self.player_feed_cursors.clear(&mut txn)?;
         self.player_system_mappings.clear(&mut txn)?;
         self.system_publications.clear(&mut txn)?;
+        self.system_visits.clear(&mut txn)?;
         self.discovery_claims.clear(&mut txn)?;
         self.flight_plans.clear(&mut txn)?;
         self.checkpoints.clear(&mut txn)?;
@@ -24828,6 +25011,7 @@ impl Store {
                     state: SystemPublicationState::UniversallyKnown,
                 }),
             )?;
+            record_first_system_visit_in(self.system_visits, &mut txn, system.id, 0)?;
             self.put_primary_facility_in(&mut txn, &system)?;
         }
         put_meta_u64(
@@ -24857,6 +25041,12 @@ impl Store {
         put_meta_u64(self.meta, &mut txn, META_NEXT_RADIO_RECEPTION_ID, 1)?;
         put_meta_u64(self.meta, &mut txn, META_NEXT_RESOURCE_LODE_ID, 1)?;
         put_meta_u64(self.meta, &mut txn, META_GAME_SECOND, 0)?;
+        put_meta_u64(
+            self.meta,
+            &mut txn,
+            META_SYSTEM_VISITS_BACKFILL_VERSION,
+            SYSTEM_VISITS_BACKFILL_VERSION,
+        )?;
         let pie = UniqueCargoRecord {
             object_id: 1,
             name: "apple pie (made from scratch)".into(),
@@ -28904,43 +29094,13 @@ impl Store {
                         "deep-space Jump event disagrees with ship location",
                     ));
                 }
-                let surveyed =
-                    self.materialize_jump_arrival_volume_in(txn, position.parsecs(), due_second)?;
+                let surveyed = self.survey_jump_arrival_in(
+                    txn,
+                    &ship.command,
+                    position.parsecs(),
+                    due_second,
+                )?;
                 let identity_key = encode_identity(&ship.command);
-                let mut player = self
-                    .players
-                    .get(txn, &identity_key)?
-                    .map(decode_player_record)
-                    .transpose()?
-                    .ok_or(StoreError::Corrupt(
-                        "deep-space arrival player record is missing",
-                    ))?;
-                for system in &surveyed {
-                    if !player.known_system_ids.contains(&system.id) {
-                        player.known_system_ids.push(system.id);
-                    }
-                    let mapping_key = player_system_mapping_key(&ship.command, system.id);
-                    if self
-                        .player_system_mappings
-                        .get(txn, &mapping_key)?
-                        .is_none()
-                    {
-                        self.player_system_mappings.put(
-                            txn,
-                            &mapping_key,
-                            &encode_player_system_mapping(&PlayerSystemMappingRecord {
-                                state: SystemMappingState::Unresolved,
-                                dispatch_message_id: None,
-                                changed_second: due_second,
-                            }),
-                        )?;
-                    }
-                }
-                player.known_system_ids.sort_unstable();
-                player.known_system_ids.dedup();
-                player.knowledge_observed_second = due_second;
-                self.players
-                    .put(txn, &identity_key, &encode_player_record(&player))?;
                 ship.maintenance.transit_count = ship.maintenance.transit_count.saturating_add(1);
                 for subsystem in &mut ship.subsystems {
                     if matches!(
@@ -29023,6 +29183,12 @@ impl Store {
                     .map(decode_stellar_system)
                     .transpose()?
                     .ok_or(StoreError::Corrupt("jump destination system is missing"))?;
+                self.survey_jump_arrival_in(
+                    txn,
+                    &ship.command,
+                    destination.position_parsecs,
+                    due_second,
+                )?;
                 let FlightLegPurpose::Jump {
                     inaccurate_extra_days,
                     critical_transition,
@@ -29109,6 +29275,12 @@ impl Store {
                     txn,
                     &encode_identity(&ship.command),
                     &encode_player_arrival(&arrival),
+                )?;
+                record_first_system_visit_in(
+                    self.system_visits,
+                    txn,
+                    destination_system_id,
+                    due_second,
                 )?;
                 let celestial = derive_celestial_system(&destination)?;
                 let approach = primary_world_jump_safety(
@@ -32178,6 +32350,24 @@ fn decode_player_arrival(bytes: &[u8]) -> Result<PlayerArrivalRecord, StoreError
         mail_expired: decoder.u64()?,
         stipend_credits: decoder.u64()?,
         presented: decoder.u8()? != 0,
+    };
+    decoder.finish()?;
+    Ok(record)
+}
+
+fn encode_system_visit(record: &SystemVisitRecord) -> Vec<u8> {
+    let mut bytes = vec![1];
+    bytes.extend_from_slice(&record.first_visited_second.to_be_bytes());
+    bytes
+}
+
+pub(crate) fn decode_system_visit(bytes: &[u8]) -> Result<SystemVisitRecord, StoreError> {
+    let mut decoder = Decoder::new(bytes);
+    if decoder.u8()? != 1 {
+        return Err(StoreError::Corrupt("unsupported system-visit record"));
+    }
+    let record = SystemVisitRecord {
+        first_visited_second: decoder.u64()?,
     };
     decoder.finish()?;
     Ok(record)
@@ -45820,6 +46010,161 @@ mod tests {
             store.simulation.systems(&txn).unwrap().len(),
             store.systems.len(&txn).unwrap() as usize
         );
+    }
+
+    #[test]
+    fn stellar_system_jump_breakout_resolves_six_parsecs_and_updates_charts() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let player = store.player_record(&identity()).unwrap().unwrap();
+        let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        let jump_rating = creation::ship_status_spec(ship.catalog_id)
+            .unwrap()
+            .jump_rating;
+        let all_before = store.stellar_systems().unwrap();
+        let destination = player
+            .known_system_ids
+            .iter()
+            .filter(|system_id| **system_id != ship.system_id)
+            .filter_map(|system_id| all_before.iter().find(|system| system.id == *system_id))
+            .find(|system| {
+                matches!(
+                    store.mapping_coverage(system.position_parsecs).unwrap(),
+                    MappingCoverage::NeedsMaterialization { .. }
+                )
+            })
+            .expect("fixture needs a known destination with unresolved surrounding volume")
+            .clone();
+        let before_ids = all_before
+            .iter()
+            .map(|system| system.id)
+            .collect::<HashSet<_>>();
+        let due_second = 100;
+        ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: 91,
+            plan_revision: 1,
+            leg_index: 1,
+            origin: ShipLocusRecord::JumpLocus {
+                system_id: ship.system_id,
+            },
+            destination: ShipLocusRecord::JumpLocus {
+                system_id: destination.id,
+            },
+            started_second: 0,
+            due_second,
+            purpose: FlightLegPurpose::Jump {
+                inaccurate_extra_days: 0,
+                critical_transition: false,
+            },
+        });
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, due_second).unwrap();
+        let (system_id, stage, _) = store
+            .process_player_travel_in(&mut txn, due_second, ship.ship_id)
+            .unwrap();
+        assert_eq!(system_id, destination.id);
+        assert_eq!(stage, 1);
+        txn.commit().unwrap();
+
+        assert!(matches!(
+            store
+                .mapping_coverage(destination.position_parsecs)
+                .unwrap(),
+            MappingCoverage::FullyMapped { .. }
+        ));
+        let all_after = store.stellar_systems().unwrap();
+        let generated = all_after
+            .iter()
+            .filter(|system| !before_ids.contains(&system.id))
+            .collect::<Vec<_>>();
+        assert!(!generated.is_empty());
+        assert!(generated.iter().any(|system| {
+            system
+                .position_parsecs
+                .iter()
+                .zip(destination.position_parsecs)
+                .map(|(left, right)| (left - right).powi(2))
+                .sum::<f64>()
+                .sqrt()
+                > f64::from(jump_rating) + 1.0e-9
+        }));
+        let player = store.player_record(&identity()).unwrap().unwrap();
+        let radius_squared = crate::coverage::JUMP_ARRIVAL_MAPPING_RADIUS_PARSECS.powi(2) + 1.0e-9;
+        for system in &all_after {
+            let distance_squared = system
+                .position_parsecs
+                .iter()
+                .zip(destination.position_parsecs)
+                .map(|(left, right)| (left - right).powi(2))
+                .sum::<f64>();
+            if distance_squared <= radius_squared {
+                assert!(player.known_system_ids.contains(&system.id));
+            }
+        }
+        let txn = store.env.read_txn().unwrap();
+        for system in generated {
+            let mapping = store
+                .player_system_mappings
+                .get(&txn, &player_system_mapping_key(&identity(), system.id))
+                .unwrap()
+                .map(decode_player_system_mapping)
+                .transpose()
+                .unwrap()
+                .unwrap();
+            assert_eq!(mapping.state, SystemMappingState::Unresolved);
+            assert!(store.system_visits.get(&txn, &system.id).unwrap().is_none());
+        }
+        assert!(
+            store
+                .system_visits
+                .get(&txn, &destination.id)
+                .unwrap()
+                .is_some()
+        );
+        let coverage_revision = get_meta_u64(store.meta, &txn, META_COVERAGE_REVISION).unwrap();
+        let system_count = store.systems.len(&txn).unwrap();
+        drop(txn);
+
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .survey_jump_arrival_in(
+                &mut txn,
+                &identity(),
+                destination.position_parsecs,
+                due_second + 1,
+            )
+            .unwrap();
+        assert_eq!(
+            get_meta_u64(store.meta, &txn, META_COVERAGE_REVISION).unwrap(),
+            coverage_revision
+        );
+        assert_eq!(store.systems.len(&txn).unwrap(), system_count);
+    }
+
+    #[test]
+    fn system_visit_index_keeps_the_earliest_arrival() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let mut txn = store.env.write_txn().unwrap();
+        record_first_system_visit_in(store.system_visits, &mut txn, 9_001, 50).unwrap();
+        record_first_system_visit_in(store.system_visits, &mut txn, 9_001, 80).unwrap();
+        record_first_system_visit_in(store.system_visits, &mut txn, 9_001, 30).unwrap();
+        let visit =
+            decode_system_visit(store.system_visits.get(&txn, &9_001).unwrap().unwrap()).unwrap();
+        assert_eq!(visit.first_visited_second, 30);
+        txn.commit().unwrap();
+        drop(store);
+
+        let reopened = Store::open(dir.path()).unwrap();
+        let txn = reopened.env.read_txn().unwrap();
+        let visit = decode_system_visit(reopened.system_visits.get(&txn, &9_001).unwrap().unwrap())
+            .unwrap();
+        assert_eq!(visit.first_visited_second, 30);
     }
 
     #[test]

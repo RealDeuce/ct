@@ -1,9 +1,9 @@
 # Settlement Envelope and System Survey
 
-*Status: design decisions recorded; the settlement falloff and deterministic
-capacity fixture are implemented, while survey gameplay, Federation discovery
-awards, live frontier integration, and colonization remain incomplete,
-2026-07-31*
+*Status: design decisions recorded; the settlement falloff, deterministic
+capacity fixture, Federation discovery awards, and six-parsec live frontier
+integration are implemented, while layered survey gameplay and colonization
+remain incomplete, 2026-08-23*
 
 This document defines how an arriving ship can discover a previously
 unvisited system, where ordinary inhabited worlds can be generated, and what

@@ -37,6 +37,7 @@ button {
 }
 
 button:hover { filter: brightness(1.12); }
+button:disabled { cursor: default; opacity: .48; filter: none; }
 button:focus-visible, input:focus-visible, canvas:focus-visible {
   outline: 2px solid var(--amber);
   outline-offset: 2px;
@@ -150,7 +151,8 @@ input[type="search"] {
 .control-grid output { color: var(--amber); font-size: .76rem; }
 .control-grid input { grid-column: 1 / -1; width: 100%; accent-color: var(--cyan); }
 .secondary { color: var(--cyan); background: transparent; }
-.wide { width: 100%; margin: 1rem 0; }
+.view-actions { display: grid; gap: .45rem; margin: 1rem 0; }
+.wide { width: 100%; }
 
 .details { border-top: 1px solid var(--line); padding-top: 1rem; }
 .details h2 { overflow-wrap: anywhere; color: var(--amber); }
@@ -166,6 +168,15 @@ dd { margin: 0; text-align: right; font-size: .72rem; overflow-wrap: anywhere; }
 .port-c { background: #ffca70; }
 .port-e { background: #ff806c; }
 .port-u { background: #8ca7a1; }
+.frontier-key { grid-column: 1 / -1; }
+.frontier-marker {
+  display: inline-block;
+  width: .55rem;
+  height: .55rem;
+  margin: 0 .35rem 0 .08rem;
+  border: 1px solid #d49cff;
+  transform: rotate(45deg);
+}
 .fatal { margin: 2rem; color: var(--red); }
 
 @media (max-width: 760px) {

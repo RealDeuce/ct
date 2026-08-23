@@ -19,6 +19,7 @@
   const routeStatus = document.getElementById("route-status");
   const routePath = document.getElementById("route-path");
   const pickRouteButton = document.getElementById("pick-route");
+  const frontierButton = document.getElementById("mark-frontiers");
 
   const detail = {
     title: document.getElementById("details-title"),
@@ -29,6 +30,7 @@
     tech: document.getElementById("detail-tech"),
     polity: document.getElementById("detail-polity"),
     neighbors: document.getElementById("detail-neighbors"),
+    visited: document.getElementById("detail-visited"),
     known: document.getElementById("detail-known")
   };
 
@@ -42,6 +44,8 @@
   let routePickStage = null;
   let routeRequest = 0;
   let routeTimer = null;
+  let markFrontiers = false;
+  let frontierCount = 0;
   let projected = [];
   let width = 1;
   let height = 1;
@@ -81,6 +85,8 @@
       .then((snapshot) => {
         systems = validateSnapshot(snapshot);
         systemIndexById = new Map(systems.map((system, index) => [system.id, index]));
+        frontierCount = systems.filter((system) => system.visited === false).length;
+        updateFrontierButton();
         const visibility = snapshot.visibility === "omniscient" ? "OMNISCIENT" : "UNIVERSALLY KNOWN";
         scope.textContent = `${visibility} · ${systems.length.toLocaleString()} SYSTEMS · ${formatGameTime(snapshot.gameSecond)}`;
         populateSearch();
@@ -122,6 +128,16 @@
     if (port === "C" || port === "D") return "#ffca70";
     if (port === "E" || port === "X") return "#ff806c";
     return "#8ca7a1";
+  }
+
+  function updateFrontierButton() {
+    frontierButton.disabled = frontierCount === 0;
+    frontierButton.setAttribute("aria-pressed", String(markFrontiers));
+    frontierButton.textContent = frontierCount === 0
+      ? "No frontier systems"
+      : markFrontiers
+        ? `Hide frontier markers (${frontierCount.toLocaleString()})`
+        : `Mark frontier systems (${frontierCount.toLocaleString()})`;
   }
 
   function rotate(position) {
@@ -271,6 +287,19 @@
       context.beginPath();
       context.arc(point.x, point.y, radius, 0, Math.PI * 2);
       context.fill();
+      if (markFrontiers && system.visited === false) {
+        const markerRadius = Math.max(5, radius + 3.5);
+        context.strokeStyle = "#d49cff";
+        context.lineWidth = 1.5;
+        context.globalAlpha = 0.95;
+        context.beginPath();
+        context.moveTo(point.x, point.y - markerRadius);
+        context.lineTo(point.x + markerRadius, point.y);
+        context.lineTo(point.x, point.y + markerRadius);
+        context.lineTo(point.x - markerRadius, point.y);
+        context.closePath();
+        context.stroke();
+      }
     }
     context.globalAlpha = 1;
 
@@ -328,6 +357,13 @@
     detail.tech.textContent = Number.isInteger(system?.techLevel) ? String(system.techLevel) : "Uncatalogued";
     detail.polity.textContent = system ? `#${system.polityId}` : "—";
     detail.neighbors.textContent = system ? `${neighborsOf(system)} within ${Number(jumpRange.value).toFixed(1)} pc` : "—";
+    detail.visited.textContent = !system
+      ? "—"
+      : system.visited === false
+        ? "No — frontier"
+        : system.visited === true
+          ? "Yes"
+          : "Unknown";
     detail.known.textContent = system?.universallyKnownSecond == null ? "No" : formatGameTime(system.universallyKnownSecond);
   }
 
@@ -542,6 +578,12 @@
   });
   pointSize.addEventListener("input", () => {
     pointSizeValue.textContent = `${Number(pointSize.value).toFixed(1).replace(".0", "")} px`;
+    requestDraw();
+  });
+
+  frontierButton.addEventListener("click", () => {
+    markFrontiers = !markFrontiers;
+    updateFrontierButton();
     requestDraw();
   });
 

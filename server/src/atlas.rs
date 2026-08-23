@@ -15,7 +15,7 @@ use thiserror::Error;
 use crate::celestial::derive_primary_world;
 use crate::store::{
     STORAGE_FORMAT_VERSION, StoreError, SystemPublicationState, decode_stellar_system,
-    decode_system_publication,
+    decode_system_publication, decode_system_visit,
 };
 use crate::universe::INITIAL_SYSTEMS;
 
@@ -49,6 +49,7 @@ pub struct AtlasSystem {
     pub starport: Option<char>,
     pub population: Option<u8>,
     pub tech_level: Option<u8>,
+    pub visited: bool,
     pub universally_known_second: Option<u64>,
 }
 
@@ -114,6 +115,8 @@ pub fn read_snapshot(
         .ok_or(AtlasError::MissingDatabaseTable("stellar-systems"))?;
     let publications: Option<Database<U64<BE>, Bytes>> =
         env.open_database(&txn, Some("system-publications"))?;
+    let visits: Option<Database<U64<BE>, Bytes>> =
+        env.open_database(&txn, Some("system-visits"))?;
     let storage_format = metadata_u64(meta, &txn, "storage-format-version")?
         .ok_or(AtlasError::CorruptMetadata("storage-format-version"))?;
     if storage_format != STORAGE_FORMAT_VERSION {
@@ -130,13 +133,25 @@ pub fn read_snapshot(
         .iter()
         .map(|system| (system.id, 0))
         .collect::<std::collections::HashMap<_, _>>();
+    let mut visited = INITIAL_SYSTEMS
+        .iter()
+        .map(|system| system.id)
+        .collect::<HashSet<_>>();
     if let Some(publications) = publications {
         for entry in publications.iter(&txn)? {
             let (system_id, bytes) = entry?;
             let record = decode_system_publication(bytes)?;
+            visited.insert(system_id);
             if record.state == SystemPublicationState::UniversallyKnown {
                 universally_known.insert(system_id, record.completed_second);
             }
+        }
+    }
+    if let Some(visits) = visits {
+        for entry in visits.iter(&txn)? {
+            let (system_id, bytes) = entry?;
+            decode_system_visit(bytes)?;
+            visited.insert(system_id);
         }
     }
     let included = universally_known.keys().copied().collect::<HashSet<_>>();
@@ -164,6 +179,7 @@ pub fn read_snapshot(
             starport: Some(world.starport.code()),
             population: Some(world.population),
             tech_level: Some(world.tech_level),
+            visited: visited.contains(&system_id),
             universally_known_second: universally_known.get(&system_id).copied(),
         });
     }
@@ -194,6 +210,7 @@ pub fn initial_snapshot() -> AtlasSnapshot {
                 starport: (system.id == 1).then_some('A'),
                 population: (system.id == 1).then_some(9),
                 tech_level: (system.id == 1).then_some(13),
+                visited: true,
                 universally_known_second: Some(0),
             })
             .collect(),
@@ -274,6 +291,11 @@ fn write_snapshot_json(snapshot: &AtlasSnapshot, writer: &mut impl Write) -> io:
         write_json_option_number(writer, system.population)?;
         writer.write_all(b",\"techLevel\":")?;
         write_json_option_number(writer, system.tech_level)?;
+        writer.write_all(if system.visited {
+            b",\"visited\":true"
+        } else {
+            b",\"visited\":false"
+        })?;
         writer.write_all(b",\"universallyKnownSecond\":")?;
         match system.universally_known_second {
             Some(second) => write!(writer, "{second}")?,
@@ -336,6 +358,7 @@ mod tests {
         assert!(json.contains("\"visibility\":\"universally-known\""));
         assert!(json.contains("\"x\":\"coreward\""));
         assert!(json.contains("Alpha Centauri A"));
+        assert!(json.contains("\"visited\":true"));
         assert!(!json.contains("seed"));
         assert_eq!(snapshot.systems.len(), INITIAL_SYSTEMS.len());
     }
@@ -352,7 +375,7 @@ mod tests {
     }
 
     #[test]
-    fn generated_site_contains_the_route_computer() {
+    fn generated_site_contains_route_and_frontier_controls() {
         let parent = tempfile::tempdir().unwrap();
         let output = parent.path().join("atlas");
         write_site(&initial_snapshot(), &output).unwrap();
@@ -360,6 +383,8 @@ mod tests {
         let html = fs::read_to_string(output.join("index.html")).unwrap();
         assert!(html.contains("id=\"route-origin\""));
         assert!(html.contains("id=\"route-destination\""));
+        assert!(html.contains("id=\"mark-frontiers\""));
+        assert!(html.contains("id=\"detail-visited\""));
         assert!(html.contains("src=\"atlas-routes.js\""));
     }
 
@@ -406,11 +431,13 @@ mod tests {
                 .iter()
                 .all(|system| system.universally_known_second == Some(0))
         );
+        assert!(known.systems.iter().all(|system| system.visited));
         assert!(
             omniscient
                 .systems
                 .iter()
                 .any(|system| system.universally_known_second.is_none())
         );
+        assert!(omniscient.systems.iter().any(|system| !system.visited));
     }
 }

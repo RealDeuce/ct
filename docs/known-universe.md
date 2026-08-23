@@ -260,10 +260,11 @@ own knowledge records rather than expanding the player row.
 The browser exposes exact Galactic coordinates, newly resolved survey
 contacts, editable pre-dispatch Secret Systems entries, and course plotting.
 Fastest or cheapest course results can be copied into Flight Plan without
-making Known Universe the owner of the active route. A coordinate Jump
-materializes the six-parsec arrival volume and adds its resolved stellar
-contacts as private carried observations; a later Jump can depart the
-deep-space hold for one of those candidates.
+making Known Universe the owner of the active route. Every Jump breakout at a
+stellar system or at plotted deep-space coordinates materializes the
+six-parsec arrival volume and adds its resolved stellar contacts as private
+carried observations; a later Jump can depart a deep-space hold for one of
+those candidates.
 
 On request, the server also suggests a single fast-to-compute course through
 all active accepted-task stops assigned to the commanded ship. Its bounded beam

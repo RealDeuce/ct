@@ -79,7 +79,11 @@
         <input id="point-size" type="range" min="1" max="5" step="0.5" value="2">
       </div>
 
-      <button id="reset-view" class="secondary wide" type="button">Reset view</button>
+      <div class="view-actions">
+        <button id="mark-frontiers" class="secondary wide" type="button"
+                aria-pressed="false">Mark frontier systems</button>
+        <button id="reset-view" class="secondary wide" type="button">Reset view</button>
+      </div>
 
       <section class="details" aria-labelledby="details-title">
         <p class="eyebrow">SELECTED SYSTEM</p>
@@ -92,16 +96,18 @@
           <div><dt>Tech level</dt><dd id="detail-tech">—</dd></div>
           <div><dt>Polity</dt><dd id="detail-polity">—</dd></div>
           <div><dt>Jump neighbors</dt><dd id="detail-neighbors">—</dd></div>
+          <div><dt>Visited</dt><dd id="detail-visited">—</dd></div>
           <div><dt>Universally known</dt><dd id="detail-known">—</dd></div>
         </dl>
       </section>
 
       <section class="legend" aria-labelledby="legend-title">
-        <h2 id="legend-title">Starport</h2>
+        <h2 id="legend-title">Map key</h2>
         <div><i class="port port-a"></i>A/B</div>
         <div><i class="port port-c"></i>C/D</div>
         <div><i class="port port-e"></i>E/X</div>
         <div><i class="port port-u"></i>Uncatalogued</div>
+        <div class="frontier-key"><i class="frontier-marker"></i>Plotted, not visited</div>
       </section>
     </aside>
   </main>

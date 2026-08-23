@@ -1,8 +1,8 @@
 # Resolved Stellar Volume
 
-*Status: coverage oracle, persistent materialization bits, and bounded bulk
-capacity sampling implemented; ordinary Jump-arrival integration pending,
-2026-07-31*
+*Status: coverage oracle, persistent materialization bits, bounded bulk
+capacity sampling, and six-parsec coordinate and stellar-system Jump-arrival
+integration implemented, 2026-08-23*
 
 The server must decide stellar existence before a Jump completes into a new
 region. This requires a fast authoritative test:
