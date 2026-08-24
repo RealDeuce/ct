@@ -32614,10 +32614,24 @@ impl Store {
         let tie_salt = stream.next_u64()?;
         let mut candidates = Vec::new();
         for site in candidate_sites(&existing) {
+            if site.reused_frontier_system_id.is_some() {
+                let anchor = existing
+                    .iter()
+                    .find(|system| system.id == site.anchor_system_id)
+                    .ok_or(StoreError::Corrupt("BBS candidate anchor is missing"))?;
+                let anchor_world = derive_primary_world(anchor)?;
+                if self.system_visits.get(txn, &anchor.id)?.is_some()
+                    || !anchor_world.is_inhabited()
+                    || anchor_world.tech_level > 12
+                {
+                    continue;
+                }
+            }
             let mut unresolved = true;
             for position in site
                 .cluster_positions_parsecs
                 .iter()
+                .skip(usize::from(site.reused_frontier_system_id.is_some()))
                 .chain(std::iter::once(&site.frontier_stub_position_parsecs))
             {
                 if self.point_is_resolved_in(txn, *position)? {
@@ -32632,6 +32646,12 @@ impl Store {
         candidates.sort_by(|left, right| {
             left.nearest_polity_distance_parsecs
                 .total_cmp(&right.nearest_polity_distance_parsecs)
+                .then_with(|| {
+                    right
+                        .reused_frontier_system_id
+                        .is_some()
+                        .cmp(&left.reused_frontier_system_id.is_some())
+                })
                 .then_with(|| left.conditioning_cost.total_cmp(&right.conditioning_cost))
                 .then_with(|| site_tie_key(tie_salt, left).cmp(&site_tie_key(tie_salt, right)))
         });
@@ -32649,12 +32669,9 @@ impl Store {
         ))?;
 
         let polity_id = take_next_id(self.meta, txn, META_NEXT_POLITY_ID)?;
-        let first_system_id = take_id_range(
-            self.meta,
-            txn,
-            META_NEXT_SYSTEM_ID,
-            BBS_POLITY_SYSTEM_COUNT as u64 + 1,
-        )?;
+        let reused_frontier = site.reused_frontier_system_id.is_some();
+        let new_system_count = BBS_POLITY_SYSTEM_COUNT as u64 + u64::from(!reused_frontier);
+        let first_system_id = take_id_range(self.meta, txn, META_NEXT_SYSTEM_ID, new_system_count)?;
         let naming_profile_id = polity_profile(placement_seed)?;
         let mut name_stream = naming_stream(placement_seed, b"place-naming/bbs-polity/v1")?;
         let mut used_system_names = existing
@@ -32670,9 +32687,28 @@ impl Store {
             .put(txn, &polity.id, &encode_polity(&polity)?)?;
 
         let mut cluster_system_ids = [0; BBS_POLITY_SYSTEM_COUNT];
+        if reused_frontier {
+            cluster_system_ids[0] = site.anchor_system_id;
+            let mut inward_gateway = existing
+                .iter()
+                .find(|system| system.id == site.anchor_system_id)
+                .cloned()
+                .ok_or(StoreError::Corrupt("BBS candidate anchor is missing"))?;
+            inward_gateway.polity_id = polity_id;
+            self.systems.put(
+                txn,
+                &inward_gateway.id,
+                &encode_stellar_system(&inward_gateway)?,
+            )?;
+        }
         let mut capital_world_id = 0;
-        for (index, position) in site.cluster_positions_parsecs.iter().enumerate() {
-            let system_id = first_system_id + index as u64;
+        for (index, position) in site
+            .cluster_positions_parsecs
+            .iter()
+            .enumerate()
+            .skip(usize::from(reused_frontier))
+        {
+            let system_id = first_system_id + index as u64 - u64::from(reused_frontier);
             let world_id = system_id;
             let role = match index {
                 CAPITAL_INDEX => SeedRole::Capital,
@@ -32707,7 +32743,8 @@ impl Store {
             }
         }
 
-        let frontier_stub_system_id = first_system_id + BBS_POLITY_SYSTEM_COUNT as u64;
+        let frontier_stub_system_id =
+            first_system_id + BBS_POLITY_SYSTEM_COUNT as u64 - u64::from(reused_frontier);
         let frontier_stub_world_id = frontier_stub_system_id;
         let frontier_profile_id = regional_profile(site.frontier_stub_position_parsecs);
         let frontier_system_name = unique_system_name(
@@ -32811,8 +32848,19 @@ impl Store {
     ) -> Result<(), StoreError> {
         let mut system_ids = home.cluster_system_ids.to_vec();
         system_ids.push(home.frontier_stub_system_id);
+        let existing_simulation_ids = self
+            .simulation
+            .systems(txn)?
+            .into_iter()
+            .map(|system| system.system_id)
+            .collect::<HashSet<_>>();
         let mut systems = Vec::with_capacity(system_ids.len());
         for system_id in &system_ids {
+            if existing_simulation_ids.contains(system_id) {
+                self.simulation
+                    .set_system_polity(txn, *system_id, home.polity_id)?;
+                continue;
+            }
             let encoded = self
                 .systems
                 .get(txn, system_id)?
@@ -32823,6 +32871,10 @@ impl Store {
                 home.cluster_system_ids.contains(system_id),
             )?);
         }
+        let added_system_ids = systems
+            .iter()
+            .map(|system| system.system_id)
+            .collect::<Vec<_>>();
         let current_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
         self.simulation.add_systems(txn, systems, current_second)?;
         let visited_system_ids = self
@@ -32836,7 +32888,7 @@ impl Store {
             .collect::<Result<std::collections::BTreeSet<_>, StoreError>>()?;
         self.simulation
             .reconcile_generated_traffic(txn, &visited_system_ids)?;
-        self.extend_pending_system_publications_in(txn, &system_ids, current_second)?;
+        self.extend_pending_system_publications_in(txn, &added_system_ids, current_second)?;
         Ok(())
     }
 
@@ -44977,7 +45029,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::bbs_polity::BBS_POLITY_TOTAL_SEEDED_SYSTEMS;
+    use crate::bbs_polity::BBS_POLITY_MINIMUM_NEW_SYSTEMS;
 
     #[test]
     fn mixed_tank_burns_are_proportional_and_trigger_unrefined_jump_dm() {
@@ -49904,7 +49956,7 @@ mod tests {
         assert_eq!(initialized.polity_count, 2);
         assert!(
             initialized.system_count
-                > (INITIAL_SYSTEMS.len() + BBS_POLITY_TOTAL_SEEDED_SYSTEMS) as u32
+                > (INITIAL_SYSTEMS.len() + BBS_POLITY_MINIMUM_NEW_SYSTEMS) as u32
         );
         assert_eq!(
             initialized.system_count as usize,
@@ -49964,21 +50016,58 @@ mod tests {
                 chaos_order: 25,
             };
             let existing_before = store.stellar_systems().unwrap();
-            let candidate_distance = candidate_sites(&existing_before)
+            let mut eligible_candidates = candidate_sites(&existing_before)
                 .into_iter()
                 .filter(|site| {
-                    site.cluster_positions_parsecs
+                    let anchor = existing_before
                         .iter()
-                        .chain(std::iter::once(&site.frontier_stub_position_parsecs))
-                        .all(|position| {
-                            !store
-                                .point_is_resolved_in(&store.env.read_txn().unwrap(), *position)
+                        .find(|system| system.id == site.anchor_system_id)
+                        .unwrap();
+                    let reusable_anchor = if site.reused_frontier_system_id.is_some() {
+                        let anchor_world = derive_primary_world(anchor).unwrap();
+                        anchor_world.is_inhabited()
+                            && anchor_world.tech_level <= 12
+                            && store
+                                .system_visits
+                                .get(&store.env.read_txn().unwrap(), &anchor.id)
                                 .unwrap()
-                        })
+                                .is_none()
+                    } else {
+                        true
+                    };
+                    reusable_anchor
+                        && site
+                            .cluster_positions_parsecs
+                            .iter()
+                            .skip(usize::from(site.reused_frontier_system_id.is_some()))
+                            .chain(std::iter::once(&site.frontier_stub_position_parsecs))
+                            .all(|position| {
+                                !store
+                                    .point_is_resolved_in(&store.env.read_txn().unwrap(), *position)
+                                    .unwrap()
+                            })
                 })
-                .map(|site| site.nearest_polity_distance_parsecs)
-                .min_by(f64::total_cmp)
-                .unwrap();
+                .collect::<Vec<_>>();
+            let tie_salt = SeedStream::new([0x91; 32]).next_u64().unwrap();
+            eligible_candidates.sort_by(|left, right| {
+                left.nearest_polity_distance_parsecs
+                    .total_cmp(&right.nearest_polity_distance_parsecs)
+                    .then_with(|| {
+                        right
+                            .reused_frontier_system_id
+                            .is_some()
+                            .cmp(&left.reused_frontier_system_id.is_some())
+                    })
+                    .then_with(|| left.conditioning_cost.total_cmp(&right.conditioning_cost))
+                    .then_with(|| site_tie_key(tie_salt, left).cmp(&site_tie_key(tie_salt, right)))
+            });
+            let candidate = eligible_candidates.into_iter().next().unwrap();
+            let candidate_distance = candidate.nearest_polity_distance_parsecs;
+            let reused_anchor_before = existing_before
+                .iter()
+                .find(|system| system.id == candidate.anchor_system_id)
+                .unwrap()
+                .clone();
             store
                 .configure_bbs(
                     credential.bbs_id,
@@ -50002,7 +50091,7 @@ mod tests {
                     .naming_profile_id,
                 polity_profile([0x91; 32]).unwrap()
             );
-            let expected_minimum_systems = existing_before.len() + BBS_POLITY_TOTAL_SEEDED_SYSTEMS;
+            let expected_minimum_systems = existing_before.len() + BBS_POLITY_MINIMUM_NEW_SYSTEMS;
             let actual_systems = store.stellar_systems().unwrap().len();
             assert!(actual_systems > expected_minimum_systems);
             assert_eq!(store.worlds().unwrap().len(), actual_systems);
@@ -50031,6 +50120,26 @@ mod tests {
 
             let systems = store.stellar_systems().unwrap();
             let worlds = store.worlds().unwrap();
+            let reused_anchor = systems
+                .iter()
+                .find(|system| system.id == reused_anchor_before.id)
+                .unwrap();
+            assert_eq!(
+                home.cluster_system_ids.contains(&reused_anchor.id),
+                candidate.reused_frontier_system_id.is_some()
+            );
+            if candidate.reused_frontier_system_id.is_some() {
+                assert_eq!(reused_anchor.name, reused_anchor_before.name);
+                assert_eq!(
+                    reused_anchor.primary_world_name,
+                    reused_anchor_before.primary_world_name
+                );
+                assert_eq!(
+                    reused_anchor.generation_seed,
+                    reused_anchor_before.generation_seed
+                );
+                assert_eq!(reused_anchor.polity_id, home.polity_id);
+            }
             assert_eq!(
                 systems
                     .iter()

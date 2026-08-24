@@ -486,6 +486,25 @@ impl SimulationDatabases {
         Ok(())
     }
 
+    pub fn set_system_polity(
+        &self,
+        txn: &mut RwTxn<'_>,
+        system_id: u64,
+        polity_id: u64,
+    ) -> Result<(), SimulationError> {
+        let key = record_key(RECORD_SYSTEM, system_id);
+        let encoded = self
+            .records
+            .get(txn, &key)?
+            .ok_or(SimulationError::Corrupt(
+                "updated simulation system is missing",
+            ))?;
+        let mut system = decode_system(system_id, encoded)?;
+        system.polity_id = polity_id;
+        self.records.put(txn, &key, &encode_system(&system)?)?;
+        Ok(())
+    }
+
     pub fn reconcile_generated_traffic(
         &self,
         txn: &mut RwTxn<'_>,
@@ -3076,6 +3095,32 @@ mod tests {
                 .unwrap()
                 .generated_traffic_enabled
         );
+    }
+
+    #[test]
+    fn existing_simulation_system_can_join_a_polity() {
+        let directory = TempDir::new().unwrap();
+        // SAFETY: this test owns the temporary directory and opens it once.
+        let env = unsafe {
+            EnvOpenOptions::new()
+                .map_size(16 * 1024 * 1024)
+                .max_dbs(4)
+                .open(directory.path())
+                .unwrap()
+        };
+        let mut txn = env.write_txn().unwrap();
+        let simulation = SimulationDatabases::create(&env, &mut txn).unwrap();
+        let mut frontier = test_system(7, 0.0);
+        frontier.polity_id = 0;
+        frontier.generated_traffic_enabled = false;
+        simulation.initialize(&mut txn, vec![frontier]).unwrap();
+
+        simulation.set_system_polity(&mut txn, 7, 23).unwrap();
+
+        let updated = simulation.systems(&txn).unwrap();
+        assert_eq!(updated[0].polity_id, 23);
+        assert!(!updated[0].generated_traffic_enabled);
+        assert_eq!(updated[0].jump_two_neighbors, Vec::<u64>::new());
     }
 
     #[test]
