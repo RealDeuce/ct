@@ -1121,6 +1121,7 @@ pub enum TaskState {
     Cancelled,
     Defaulted,
     Disputed,
+    LossDocumented,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1169,6 +1170,7 @@ pub enum TaskActionKind {
     DefaultTask,
     FileDispute,
     WithdrawClaim,
+    FileLossClaim,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1194,6 +1196,14 @@ pub struct TaskRecord {
     pub dispute_effect: i16,
     pub adjudication_message_id: u64,
     pub performing_ship_id: u64,
+    pub piracy_encounter_id: u64,
+    pub piracy_incident_second: u64,
+    pub piracy_contact_id: u64,
+    pub piracy_threat: EncounterThreat,
+    pub piracy_posture: EncounterPosture,
+    pub piracy_quantity_millitons: u64,
+    pub loss_claim_deadline_second: u64,
+    pub loss_claim_effect: i16,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1572,6 +1582,8 @@ pub enum EncounterPosture {
     Comply,
     Surrender,
     Board,
+    Pursue,
+    ContinueCourse,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1703,6 +1715,7 @@ pub enum EncounterKind {
     Hazard,
     Hostile,
     Military,
+    DepartingContact,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1721,6 +1734,46 @@ pub struct EncounterContact {
     pub role: String,
     pub range: String,
     pub confidence_percent: u8,
+    pub resolution: EncounterResolution,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EncounterResolution {
+    RadioOnly,
+    TransponderOnly,
+    Approximate,
+    Identified,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EncounterAuthority {
+    None,
+    Pirate,
+    TrafficControl,
+    Customs,
+    Naval,
+    Warrant,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
+pub enum EncounterThreat {
+    #[default]
+    Unknown,
+    Favorable,
+    Comparable,
+    Dangerous,
+    Overwhelming,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct EncounterDemand {
+    pub present: bool,
+    pub player_owned_percent: u8,
+    pub player_owned_millitons: u64,
+    pub entrusted_millitons: u64,
+    pub unique_object_count: u16,
+    pub text: String,
+    pub entrusted_liability_credits: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1734,6 +1787,12 @@ pub struct EncounterSnapshot {
     pub turn: u16,
     pub contact: EncounterContact,
     pub summary: String,
+    pub authority: EncounterAuthority,
+    pub threat: EncounterThreat,
+    pub demand: EncounterDemand,
+    pub available_postures: Vec<EncounterPosture>,
+    pub available_fallbacks: Vec<EncounterFallback>,
+    pub response_deadline_second: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1776,6 +1835,7 @@ pub enum CombatActionKind {
     OfferSurrender,
     AcceptSurrender,
     InspectContact,
+    Pursuit,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1808,6 +1868,8 @@ pub struct CombatOrderSet {
     pub actions: Vec<CombatAction>,
     pub reactions: Vec<CombatReactionOrder>,
     pub use_tactical_controller: bool,
+    pub speed_adjustment: i16,
+    pub speed_actor_person_id: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1844,6 +1906,9 @@ pub struct CombatParticipant {
     pub commanded: bool,
     pub player_owned: bool,
     pub online_controlled: bool,
+    pub speed: i16,
+    pub pursuit_target_vessel_id: u64,
+    pub pursuit_attack_bonus: u8,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2097,7 +2162,7 @@ pub enum RadioTransmissionKind {
     PlayerBroadcast,
     InspectionOrder,
     BoardingOrder,
-    SurrenderDemand,
+    PirateDemand,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2598,6 +2663,8 @@ fn decode_encounter_posture(value: crate::ct_rpc_capnp::EncounterPosture) -> Enc
         crate::ct_rpc_capnp::EncounterPosture::Comply => EncounterPosture::Comply,
         crate::ct_rpc_capnp::EncounterPosture::Surrender => EncounterPosture::Surrender,
         crate::ct_rpc_capnp::EncounterPosture::Board => EncounterPosture::Board,
+        crate::ct_rpc_capnp::EncounterPosture::Pursue => EncounterPosture::Pursue,
+        crate::ct_rpc_capnp::EncounterPosture::ContinueCourse => EncounterPosture::ContinueCourse,
     }
 }
 
@@ -3278,6 +3345,9 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
                     crate::ct_rpc_capnp::TaskActionKind::FileDispute => TaskActionKind::FileDispute,
                     crate::ct_rpc_capnp::TaskActionKind::WithdrawClaim => {
                         TaskActionKind::WithdrawClaim
+                    }
+                    crate::ct_rpc_capnp::TaskActionKind::FileLossClaim => {
+                        TaskActionKind::FileLossClaim
                     }
                 },
                 explanation: value
@@ -4266,6 +4336,7 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
                 TaskActionKind::DefaultTask => crate::ct_rpc_capnp::TaskActionKind::DefaultTask,
                 TaskActionKind::FileDispute => crate::ct_rpc_capnp::TaskActionKind::FileDispute,
                 TaskActionKind::WithdrawClaim => crate::ct_rpc_capnp::TaskActionKind::WithdrawClaim,
+                TaskActionKind::FileLossClaim => crate::ct_rpc_capnp::TaskActionKind::FileLossClaim,
             });
             value.set_explanation(explanation);
         }
@@ -5255,6 +5326,7 @@ fn schema_task_state(value: TaskState) -> crate::ct_rpc_capnp::TaskState {
         TaskState::Cancelled => Wire::Cancelled,
         TaskState::Defaulted => Wire::Defaulted,
         TaskState::Disputed => Wire::Disputed,
+        TaskState::LossDocumented => Wire::LossDocumented,
     }
 }
 
@@ -5320,6 +5392,20 @@ fn set_task_record(mut builder: crate::ct_rpc_capnp::task_record::Builder<'_>, t
     builder.set_dispute_effect(task.dispute_effect);
     builder.set_adjudication_message_id(task.adjudication_message_id);
     builder.set_performing_ship_id(task.performing_ship_id);
+    builder.set_piracy_encounter_id(task.piracy_encounter_id);
+    builder.set_piracy_incident_second(task.piracy_incident_second);
+    builder.set_piracy_contact_id(task.piracy_contact_id);
+    builder.set_piracy_threat(match task.piracy_threat {
+        EncounterThreat::Unknown => crate::ct_rpc_capnp::EncounterThreat::Unknown,
+        EncounterThreat::Favorable => crate::ct_rpc_capnp::EncounterThreat::Favorable,
+        EncounterThreat::Comparable => crate::ct_rpc_capnp::EncounterThreat::Comparable,
+        EncounterThreat::Dangerous => crate::ct_rpc_capnp::EncounterThreat::Dangerous,
+        EncounterThreat::Overwhelming => crate::ct_rpc_capnp::EncounterThreat::Overwhelming,
+    });
+    builder.set_piracy_posture(encode_encounter_posture(task.piracy_posture));
+    builder.set_piracy_quantity_millitons(task.piracy_quantity_millitons);
+    builder.set_loss_claim_deadline_second(task.loss_claim_deadline_second);
+    builder.set_loss_claim_effect(task.loss_claim_effect);
 }
 
 fn set_carriage(
@@ -5852,6 +5938,8 @@ fn encode_encounter_posture(value: EncounterPosture) -> crate::ct_rpc_capnp::Enc
         EncounterPosture::Comply => Wire::Comply,
         EncounterPosture::Surrender => Wire::Surrender,
         EncounterPosture::Board => Wire::Board,
+        EncounterPosture::Pursue => Wire::Pursue,
+        EncounterPosture::ContinueCourse => Wire::ContinueCourse,
     }
 }
 
@@ -6091,6 +6179,7 @@ fn set_encounter_snapshot(
         EncounterKind::Hazard => crate::ct_rpc_capnp::EncounterKind::Hazard,
         EncounterKind::Hostile => crate::ct_rpc_capnp::EncounterKind::Hostile,
         EncounterKind::Military => crate::ct_rpc_capnp::EncounterKind::Military,
+        EncounterKind::DepartingContact => crate::ct_rpc_capnp::EncounterKind::DepartingContact,
     });
     builder.set_state(match value.state {
         EncounterState::AwaitingPosture => crate::ct_rpc_capnp::EncounterState::AwaitingPosture,
@@ -6108,7 +6197,53 @@ fn set_encounter_snapshot(
     contact.set_role(&value.contact.role);
     contact.set_range(&value.contact.range);
     contact.set_confidence_percent(value.contact.confidence_percent);
+    contact.set_resolution(match value.contact.resolution {
+        EncounterResolution::RadioOnly => crate::ct_rpc_capnp::EncounterResolution::RadioOnly,
+        EncounterResolution::TransponderOnly => {
+            crate::ct_rpc_capnp::EncounterResolution::TransponderOnly
+        }
+        EncounterResolution::Approximate => crate::ct_rpc_capnp::EncounterResolution::Approximate,
+        EncounterResolution::Identified => crate::ct_rpc_capnp::EncounterResolution::Identified,
+    });
     builder.set_summary(&value.summary);
+    builder.set_authority(match value.authority {
+        EncounterAuthority::None => crate::ct_rpc_capnp::EncounterAuthority::None,
+        EncounterAuthority::Pirate => crate::ct_rpc_capnp::EncounterAuthority::Pirate,
+        EncounterAuthority::TrafficControl => {
+            crate::ct_rpc_capnp::EncounterAuthority::TrafficControl
+        }
+        EncounterAuthority::Customs => crate::ct_rpc_capnp::EncounterAuthority::Customs,
+        EncounterAuthority::Naval => crate::ct_rpc_capnp::EncounterAuthority::Naval,
+        EncounterAuthority::Warrant => crate::ct_rpc_capnp::EncounterAuthority::Warrant,
+    });
+    builder.set_threat(match value.threat {
+        EncounterThreat::Unknown => crate::ct_rpc_capnp::EncounterThreat::Unknown,
+        EncounterThreat::Favorable => crate::ct_rpc_capnp::EncounterThreat::Favorable,
+        EncounterThreat::Comparable => crate::ct_rpc_capnp::EncounterThreat::Comparable,
+        EncounterThreat::Dangerous => crate::ct_rpc_capnp::EncounterThreat::Dangerous,
+        EncounterThreat::Overwhelming => crate::ct_rpc_capnp::EncounterThreat::Overwhelming,
+    });
+    let mut demand = builder.reborrow().init_demand();
+    demand.set_present(value.demand.present);
+    demand.set_player_owned_percent(value.demand.player_owned_percent);
+    demand.set_player_owned_millitons(value.demand.player_owned_millitons);
+    demand.set_entrusted_millitons(value.demand.entrusted_millitons);
+    demand.set_unique_object_count(value.demand.unique_object_count);
+    demand.set_text(&value.demand.text);
+    demand.set_entrusted_liability_credits(value.demand.entrusted_liability_credits);
+    let mut postures = builder
+        .reborrow()
+        .init_available_postures(value.available_postures.len() as u32);
+    for (index, posture) in value.available_postures.iter().enumerate() {
+        postures.set(index as u32, encode_encounter_posture(*posture));
+    }
+    let mut fallbacks = builder
+        .reborrow()
+        .init_available_fallbacks(value.available_fallbacks.len() as u32);
+    for (index, fallback) in value.available_fallbacks.iter().enumerate() {
+        fallbacks.set(index as u32, encode_encounter_fallback(*fallback));
+    }
+    builder.set_response_deadline_second(value.response_deadline_second);
 }
 
 fn set_encounter_result(
@@ -6146,6 +6281,7 @@ fn decode_combat_action_kind(value: crate::ct_rpc_capnp::CombatActionKind) -> Co
         Wire::OfferSurrender => CombatActionKind::OfferSurrender,
         Wire::AcceptSurrender => CombatActionKind::AcceptSurrender,
         Wire::InspectContact => CombatActionKind::InspectContact,
+        Wire::Pursuit => CombatActionKind::Pursuit,
     }
 }
 
@@ -6170,6 +6306,7 @@ fn encode_combat_action_kind(value: CombatActionKind) -> crate::ct_rpc_capnp::Co
         CombatActionKind::OfferSurrender => Wire::OfferSurrender,
         CombatActionKind::AcceptSurrender => Wire::AcceptSurrender,
         CombatActionKind::InspectContact => Wire::InspectContact,
+        CombatActionKind::Pursuit => Wire::Pursuit,
     }
 }
 
@@ -6254,6 +6391,8 @@ fn decode_combat_order(
         actions,
         reactions,
         use_tactical_controller: reader.get_use_tactical_controller(),
+        speed_adjustment: reader.get_speed_adjustment(),
+        speed_actor_person_id: reader.get_speed_actor_person_id(),
     })
 }
 
@@ -6264,6 +6403,8 @@ fn set_combat_order(
     builder.set_combat_id(order.combat_id);
     builder.set_view_revision(order.view_revision);
     builder.set_use_tactical_controller(order.use_tactical_controller);
+    builder.set_speed_adjustment(order.speed_adjustment);
+    builder.set_speed_actor_person_id(order.speed_actor_person_id);
     let mut actions = builder.reborrow().init_actions(
         u32::try_from(order.actions.len())
             .map_err(|_| WireError::Expected("fewer combat actions"))?,
@@ -6312,7 +6453,8 @@ fn combat_role_allows_action(actor: &CombatActor, kind: CombatActionKind) -> boo
         | CombatActionKind::LaunchEscapeCraft => false,
         CombatActionKind::EvasiveManeuvers
         | CombatActionKind::LineUpShot
-        | CombatActionKind::BreakPursuit => role == CrewRoleKind::Pilot,
+        | CombatActionKind::BreakPursuit
+        | CombatActionKind::Pursuit => role == CrewRoleKind::Pilot,
         CombatActionKind::RangeCheckClose
         | CombatActionKind::RangeCheckOpen
         | CombatActionKind::PrepareJump => role == CrewRoleKind::Navigator,
@@ -6402,6 +6544,9 @@ fn set_combat_snapshot(
         item.set_commanded(participant.commanded);
         item.set_player_owned(participant.player_owned);
         item.set_online_controlled(participant.online_controlled);
+        item.set_speed(participant.speed);
+        item.set_pursuit_target_vessel_id(participant.pursuit_target_vessel_id);
+        item.set_pursuit_attack_bonus(participant.pursuit_attack_bonus);
         let mut mounts = item.reborrow().init_weapons(
             u32::try_from(participant.weapons.len())
                 .map_err(|_| WireError::Expected("fewer combat mounts"))?,
@@ -6445,7 +6590,7 @@ fn set_combat_snapshot(
         item.set_station(&actor.station);
         item.set_available(actor.available);
         item.set_action_budget(actor.action_budget);
-        const ACTIONS: [CombatActionKind; 18] = [
+        const ACTIONS: [CombatActionKind; 19] = [
             CombatActionKind::Hold,
             CombatActionKind::Coordinate,
             CombatActionKind::IncreaseInitiative,
@@ -6464,6 +6609,7 @@ fn set_combat_snapshot(
             CombatActionKind::OfferSurrender,
             CombatActionKind::AcceptSurrender,
             CombatActionKind::InspectContact,
+            CombatActionKind::Pursuit,
         ];
         let allowed_actions = ACTIONS
             .iter()
@@ -6967,8 +7113,8 @@ fn schema_radio_kind(kind: RadioTransmissionKind) -> crate::ct_rpc_capnp::RadioT
         RadioTransmissionKind::BoardingOrder => {
             crate::ct_rpc_capnp::RadioTransmissionKind::BoardingOrder
         }
-        RadioTransmissionKind::SurrenderDemand => {
-            crate::ct_rpc_capnp::RadioTransmissionKind::SurrenderDemand
+        RadioTransmissionKind::PirateDemand => {
+            crate::ct_rpc_capnp::RadioTransmissionKind::PirateDemand
         }
     }
 }

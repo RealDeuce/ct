@@ -526,6 +526,28 @@ fn settle_pending_arrival_encounter_with_engine(
         };
         let before = encounter.clone();
         if encounter.state == EncounterState::AwaitingPosture {
+            let posture = if encounter
+                .available_postures
+                .contains(&EncounterPosture::Comply)
+            {
+                EncounterPosture::Comply
+            } else if encounter
+                .available_postures
+                .contains(&EncounterPosture::ContinueCourse)
+            {
+                EncounterPosture::ContinueCourse
+            } else {
+                *encounter
+                    .available_postures
+                    .first()
+                    .expect("awaiting encounter advertises a legal posture")
+            };
+            let fallbacks = encounter
+                .available_fallbacks
+                .contains(&EncounterFallback::Surrender)
+                .then_some(EncounterFallback::Surrender)
+                .into_iter()
+                .collect();
             engine
                 .submit(
                     identity.clone(),
@@ -535,8 +557,8 @@ fn settle_pending_arrival_encounter_with_engine(
                         WireCommand::ResolveEncounter(ResolveEncounterRequest {
                             encounter_id: encounter.encounter_id,
                             expected_revision: encounter.revision,
-                            posture: EncounterPosture::Comply,
-                            fallbacks: vec![EncounterFallback::Surrender],
+                            posture,
+                            fallbacks,
                         }),
                     ),
                 )

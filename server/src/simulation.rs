@@ -321,7 +321,6 @@ pub struct ScheduledEventHead {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct QueuedSimulationEvent {
     pub event_id: u64,
-    pub due_second: u64,
     entity_id: u64,
     encoded_kind: Vec<u8>,
 }
@@ -576,7 +575,6 @@ impl SimulationDatabases {
         self.events.delete(txn, &key)?;
         Ok(QueuedSimulationEvent {
             event_id: event.event_id,
-            due_second: event.due_second,
             entity_id: event.entity_id,
             encoded_kind: encode_event_kind(&event),
         })
@@ -586,8 +584,9 @@ impl SimulationDatabases {
         &self,
         txn: &mut RwTxn<'_>,
         queued: &QueuedSimulationEvent,
+        current_second: u64,
     ) -> Result<ProcessedEvent, SimulationError> {
-        let event = decode_queued_event(queued)?;
+        let event = decode_queued_event(queued, current_second)?;
         let (system_id, kind, summary) = match event.kind.clone() {
             EventKind::SystemDay { system_id, day } => (
                 system_id,
@@ -2874,10 +2873,13 @@ fn decode_event(key: &[u8], bytes: &[u8]) -> Result<ScheduledEvent, SimulationEr
     decode_event_parts(event_id, due_second, entity_id, encoded_kind)
 }
 
-fn decode_queued_event(queued: &QueuedSimulationEvent) -> Result<ScheduledEvent, SimulationError> {
+fn decode_queued_event(
+    queued: &QueuedSimulationEvent,
+    current_second: u64,
+) -> Result<ScheduledEvent, SimulationError> {
     decode_event_parts(
         queued.event_id,
-        queued.due_second,
+        current_second,
         queued.entity_id,
         &queued.encoded_kind,
     )
@@ -2952,7 +2954,6 @@ fn decode_event_parts(
 impl QueuedSimulationEvent {
     pub fn encode(&self, bytes: &mut Vec<u8>) -> Result<(), SimulationError> {
         bytes.extend_from_slice(&self.event_id.to_be_bytes());
-        bytes.extend_from_slice(&self.due_second.to_be_bytes());
         bytes.extend_from_slice(&self.entity_id.to_be_bytes());
         let length = u32::try_from(self.encoded_kind.len())
             .map_err(|_| SimulationError::Corrupt("scheduled event is too large"))?;
@@ -2964,18 +2965,16 @@ impl QueuedSimulationEvent {
     pub fn decode(bytes: &[u8]) -> Result<Self, SimulationError> {
         let mut decoder = Decoder::new(bytes);
         let event_id = decoder.u64()?;
-        let due_second = decoder.u64()?;
         let entity_id = decoder.u64()?;
         let length = decoder.u32()? as usize;
         let encoded_kind = decoder.take(length)?.to_vec();
         decoder.finish()?;
         let queued = Self {
             event_id,
-            due_second,
             entity_id,
             encoded_kind,
         };
-        decode_queued_event(&queued)?;
+        decode_queued_event(&queued, 0)?;
         Ok(queued)
     }
 }

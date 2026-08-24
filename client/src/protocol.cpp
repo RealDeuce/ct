@@ -1436,8 +1436,8 @@ RadioTransmissionKind decode_radio_kind(const rpc::RadioTransmissionKind kind)
       return RadioTransmissionKind::InspectionOrder;
    case rpc::RadioTransmissionKind::BOARDING_ORDER:
       return RadioTransmissionKind::BoardingOrder;
-   case rpc::RadioTransmissionKind::SURRENDER_DEMAND:
-      return RadioTransmissionKind::SurrenderDemand;
+   case rpc::RadioTransmissionKind::PIRATE_DEMAND:
+      return RadioTransmissionKind::PirateDemand;
    }
    throw std::runtime_error("unknown radio transmission kind");
 }
@@ -1549,6 +1549,14 @@ TaskRecord decode_task_record(const rpc::TaskRecord::Reader source)
       .dispute_effect = source.getDisputeEffect(),
       .adjudication_message_id = source.getAdjudicationMessageId(),
       .performing_ship_id = source.getPerformingShipId(),
+      .piracy_encounter_id = source.getPiracyEncounterId(),
+      .piracy_incident_second = source.getPiracyIncidentSecond(),
+      .piracy_contact_id = source.getPiracyContactId(),
+      .piracy_threat = static_cast<uint8_t>(source.getPiracyThreat()),
+      .piracy_posture = static_cast<uint8_t>(source.getPiracyPosture()),
+      .piracy_quantity_millitons = source.getPiracyQuantityMillitons(),
+      .loss_claim_deadline_second = source.getLossClaimDeadlineSecond(),
+      .loss_claim_effect = source.getLossClaimEffect(),
    };
 }
 
@@ -3259,7 +3267,7 @@ EncounterSnapshot get_encounter(TlsConnection& connection, const uint64_t epoch,
    }
    auto s = response.getEncounter();
    auto c = s.getContact();
-   return {
+   EncounterSnapshot result{
       .encounter_id = s.getEncounterId(),
       .revision = s.getRevision(),
       .kind = static_cast<EncounterKind>(s.getKind()),
@@ -3275,10 +3283,32 @@ EncounterSnapshot get_encounter(TlsConnection& connection, const uint64_t epoch,
          .role = c.getRole().cStr(),
          .range = c.getRange().cStr(),
          .confidence_percent = c.getConfidencePercent(),
+         .resolution = static_cast<EncounterResolution>(c.getResolution()),
       },
       .summary = s.getSummary().cStr(),
+      .authority = static_cast<EncounterAuthority>(s.getAuthority()),
+      .threat = static_cast<EncounterThreat>(s.getThreat()),
+      .demand = {
+         .present = s.getDemand().getPresent(),
+         .player_owned_percent = s.getDemand().getPlayerOwnedPercent(),
+         .player_owned_millitons = s.getDemand().getPlayerOwnedMillitons(),
+         .entrusted_millitons = s.getDemand().getEntrustedMillitons(),
+         .unique_object_count = s.getDemand().getUniqueObjectCount(),
+         .text = s.getDemand().getText().cStr(),
+         .entrusted_liability_credits = s.getDemand().getEntrustedLiabilityCredits(),
+      },
+      .available_postures = {},
+      .available_fallbacks = {},
+      .response_deadline_second = s.getResponseDeadlineSecond(),
       .phase = decode_response_phase(response.getPhase()),
    };
+   for(const auto posture : s.getAvailablePostures()) {
+      result.available_postures.push_back(static_cast<EncounterPosture>(posture));
+   }
+   for(const auto fallback : s.getAvailableFallbacks()) {
+      result.available_fallbacks.push_back(static_cast<EncounterFallback>(fallback));
+   }
+   return result;
 }
 
 EncounterResult resolve_encounter(TlsConnection& connection, const uint64_t epoch,
@@ -3327,6 +3357,8 @@ void encode_combat_order(rpc::CombatOrderSet::Builder target, const CombatOrderS
    target.setCombatId(source.combat_id);
    target.setViewRevision(source.view_revision);
    target.setUseTacticalController(source.use_tactical_controller);
+   target.setSpeedAdjustment(source.speed_adjustment);
+   target.setSpeedActorPersonId(source.speed_actor_person_id);
    auto actions = target.initActions(source.actions.size());
    for(size_t index = 0; index < source.actions.size(); ++index) {
       auto item = actions[index];
@@ -3382,6 +3414,9 @@ CombatSnapshot decode_combat(const rpc::Response::Reader response)
          .commanded = participant.getCommanded(),
          .player_owned = participant.getPlayerOwned(),
          .online_controlled = participant.getOnlineControlled(),
+         .speed = participant.getSpeed(),
+         .pursuit_target_vessel_id = participant.getPursuitTargetVesselId(),
+         .pursuit_attack_bonus = participant.getPursuitAttackBonus(),
       };
       for(auto mount : participant.getWeapons()) {
          CombatWeaponMount fitted{
@@ -3406,6 +3441,8 @@ CombatSnapshot decode_combat(const rpc::Response::Reader response)
       .actions = {},
       .reactions = {},
       .use_tactical_controller = order.getUseTacticalController(),
+      .speed_adjustment = order.getSpeedAdjustment(),
+      .speed_actor_person_id = order.getSpeedActorPersonId(),
    };
 
    for(auto action : order.getActions()) {
@@ -4235,10 +4272,33 @@ std::optional<PlayerEvent> poll_event(TlsConnection& connection,
             .role = c.getRole().cStr(),
             .range = c.getRange().cStr(),
             .confidence_percent = c.getConfidencePercent(),
+            .resolution = static_cast<EncounterResolution>(c.getResolution()),
          },
          .summary = s.getSummary().cStr(),
+         .authority = static_cast<EncounterAuthority>(s.getAuthority()),
+         .threat = static_cast<EncounterThreat>(s.getThreat()),
+         .demand = {
+            .present = s.getDemand().getPresent(),
+            .player_owned_percent = s.getDemand().getPlayerOwnedPercent(),
+            .player_owned_millitons = s.getDemand().getPlayerOwnedMillitons(),
+            .entrusted_millitons = s.getDemand().getEntrustedMillitons(),
+            .unique_object_count = s.getDemand().getUniqueObjectCount(),
+            .text = s.getDemand().getText().cStr(),
+            .entrusted_liability_credits = s.getDemand().getEntrustedLiabilityCredits(),
+         },
+         .available_postures = {},
+         .available_fallbacks = {},
+         .response_deadline_second = s.getResponseDeadlineSecond(),
          .phase = PlayerPhase::Encounter,
       };
+      for(const auto posture : s.getAvailablePostures()) {
+         result.encounter->available_postures.push_back(
+            static_cast<EncounterPosture>(posture));
+      }
+      for(const auto fallback : s.getAvailableFallbacks()) {
+         result.encounter->available_fallbacks.push_back(
+            static_cast<EncounterFallback>(fallback));
+      }
    } else if(event.isRadioUnread()) {
       result.kind = PlayerEventKind::RadioUnread;
       const auto unread = event.getRadioUnread();

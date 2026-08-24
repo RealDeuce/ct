@@ -1191,7 +1191,7 @@ Hysteresis is required. Port-level conspicuousness and encounters use the
 union of its route schedules. Persist lightweight traffic calls and cargo lots
 without materializing a complete NPC ship until observation or consequences
 require it. Player and background loading draw from the same inventory.
-Scheduled background mail handoffs remain authoritative due-time queue events;
+Scheduled background mail handoffs remain authoritative due-time events;
 they may not wait for a later player market query.
 
 Every materialized star system has a durable `SystemDay` job for every game
@@ -1203,16 +1203,16 @@ each system's next daily job; processing it advances `last_processed_day` and
 schedules the next. Empty systems retain the logical heartbeat but normally
 take a cheap no-activity path. Derived celestial positions do not need a tick.
 
-Daily jobs, exact-time scheduled events, clock advances, and player commands
-use one serialized authoritative input queue. Future-event indexes establish
-eligibility only. A clock pulse is an out-of-band scheduler wake-up, not a
-queue entry: it moves eligible work into durable ingress and commits before
-the ordinary queue consumer executes it. With no due event, it may produce an
-explicit logical-time-advance input. Once admitted, queue sequence is the
-entire execution order; event kind, entity ID, and due time never reorder
-inputs. Simultaneously eligible future work uses its global creation ID as a
-stable admission order, not a semantic priority. Dependencies must be causal:
-commit the prerequisite before scheduling its consequence.
+Player commands and due scheduled events use one serialized authoritative
+input queue. Future-event indexes establish eligibility only. While ingress is
+empty, the scheduler advances logical time directly in a durable journalled
+transaction; future work remains in its due-time index during that commit. A
+following transaction admits the now-due timestamp-free payload, and the
+ordinary queue consumer executes it later. Once admitted, queue sequence is
+the entire execution order; event kind and entity ID never reorder inputs.
+Simultaneously eligible future work uses its global creation ID as a stable
+admission order, not a semantic priority. Dependencies must be causal: commit
+the prerequisite before scheduling its consequence.
 
 The daily checkpoint is not the last player arrival. Passing through, viewing
 navigation data, or using a remote refuelling point does not consume cargo or
@@ -2291,7 +2291,7 @@ economy behavior.
 | 2026-07-31 | Capacity baselines may deterministically provision multiple configured BBS polities and report LMDB used bytes in addition to event and CPU rates. The ten-BBS settlement-edge fixture fixes `E = 28.993534 pc`, resolves the full `3E = 86.980601 pc` sphere with the Galactic inhomogeneous Poisson sampler, and contains 238,812 systems in 77,991,936 initial LMDB bytes. A 10,000-event day-zero prefix retained 5,914,624 bytes and projected at least 87.4 million system-day transactions plus enough departures/arrivals for roughly 752 million total events and 34.5 wall-days for one year under the current individual-commit model. These are measured-prefix projections, not authorization to change simulation semantics. Because messages are retained, storage must be reported at an age and as growth per game day/year rather than as a timeless maximum. Full results are in `docs/non-interactive-universe-tour.md`. | Current |
 | 2026-07-31 | Internal persistent encodings may remove facts already determined by ordered LMDB keys or immutable parent records, provided logical records, event IDs, due-time eligibility, public reports, and transaction boundaries are unchanged. During undeployed development only the current encoding is readable; incompatible edits advance the storage format rather than adding dead migration paths. The implemented pass uses hybrid coverage encodings, key-derived record/event fields, compact deterministic frontier names, typed journal records, inferred origin delivery, and packed future-departure plans. A plan reserves every logical departure ID up front and yields one ordinary input at each original due time; it is storage packing, not event batching. | Current |
 | 2026-07-31 | The deployment target is approximately USD 50 per month on a mainstream cloud provider for a ten-BBS universe with fifty active players. The 238,812-system fully materialized settlement-edge fixture is a stress ceiling, not an expected provisioned footprint; production remains generate-on-demand and storage grows incrementally. At four game weeks per real day, the current compact-schema lower bound after two real years is about 2.89 TB at full materialization, 720 GB at 25%, and 290 GB at 10%. Telemetry and capacity planning must expose materialized-system count, retained growth, event throughput, and projected budget exhaustion. The cost target does not authorize deletion of retained facts or changes to simulation semantics. | Current |
-| 2026-07-29 | Daily jobs, exact-time events, logical-time advances, and player commands pass through one durable ordered input queue. Future-event indexes establish eligibility only. A clock pulse is an out-of-band scheduler wake-up, not a queue item: it commits eligible work into durable ingress without executing it, after which only the ordinary queue consumer applies it. With no due event it may produce a logical-time-advance input. Admitted queue sequence is final and event category never reorders it. Simultaneously eligible schedules use their global creation IDs solely for stable admission. Rule dependencies are expressed causally by scheduling a consequence after its prerequisite commits. | Current |
+| 2026-08-23 | Player commands and due scheduled events pass through one durable ordered input queue; logical-time advancement does not. Future-event indexes establish eligibility only. While ingress is empty, the scheduler advances the authoritative clock directly in its own journalled transaction and leaves future work indexed. A following transaction admits the now-due timestamp-free payload, after which only the ordinary queue consumer applies it. Admitted queue sequence is final and event category never reorders it. Simultaneously eligible schedules use their global creation IDs solely for stable admission. Rule dependencies are expressed causally by scheduling a consequence after its prerequisite commits. This supersedes the 2026-07-29 queued-clock formulation. | Current |
 | 2026-07-25 | CE sector/subsector/hex star mapping is not used; navigation and placement use the game's 3D map model. | Current |
 | 2026-07-25 | Interstellar travel uses the standard CE Jump drive; alternative drives are out of scope. | Current |
 | 2026-08-13 | Flight Plan can request one server-generated route through every active accepted-task stop assigned to the commanded ship. A bounded beam-search heuristic, capped at 48 partial candidates, preserves pickup-before-delivery precedence, ranks deadline risk before estimated travel time, consolidates shared stops, and permits revisits. It is intentionally fast rather than factorial or provably optimal. The selected order is then plotted with the authoritative known-system, ship, elapsed-time, and continuously carried-fuel model using directly importable carried or port fuel; Flight Plan preview remains the authoritative deadline check. | Current |
@@ -2491,6 +2491,42 @@ Track unresolved choices explicitly rather than allowing accidental defaults:
 - banking-house competition, bills/letters/drafts, branch access, courier
   security, robbery, blockade, and political influence;
 - test strategy and continuous-integration environment.
+
+## Stable encounter-intelligence and pursuit decisions (2026-08-23)
+
+- Arrival and en-route encounters require one real local traffic projection;
+  never fabricate a fallback hull when the projected set is empty.
+- Contact hull data is sensor-qualified. Radio-only and transponder-only
+  results expose no hull class, approximate results expose a generic size
+  class, and positive identification still exposes only that generic size
+  class alongside any identified vessel or transponder identity. The server
+  never sends an exact hostile catalog identity or hull class, including in
+  combat views.
+- Pirates assess the player with their own sensor result and break off when the
+  estimate does not support at least even odds. A detected break-off offers
+  Pursue and Continue Course; a Through course defaults to Continue Course only
+  after one combat-turn response window.
+- Pirate demands take all entrusted freight plus a tiered, milliton-rounded
+  percentage of owned lots, limited by the pirate hull's available cargo
+  capacity. Allocate by realizable value per ton. Unique objects are
+  indivisible and are skipped when they do not fit. Only physical freight loss
+  creates authenticated claim evidence.
+- Running and chasing use the same CE spacecraft-pursuit relation with roles
+  reversed. Establish and break are opposed Pilot tasks; ties preserve the
+  status quo. Maintaining pursuit is a significant action, adds +1 attack DM
+  after the first maintained turn to a maximum +4, and ends at Medium range, a
+  seven-point target speed advantage, departure, or a successful break. A ship
+  may change speed each turn by no more than effective maneuver thrust.
+- Documented entrusted-freight loss is filed from the Task ledger by the best
+  of Admin or Advocate against difficulty 8. Authenticated encounter/custody
+  evidence supplies +2; voluntary fight, flight, or boarding before loss adds
+  +1; threat adjusts the task from -1 favorable through +2 overwhelming.
+  Sustained claims excuse performance and release collateral; denied claims
+  use the existing capped default path.
+- These additive fields remain CT-RPC version 8 for the current unreleased
+  line; do not bump the protocol solely for this work. The radio ordinal
+  formerly named `surrenderDemand` is semantically `pirateDemand` without
+  changing its numeric value.
 
 ## Instructions for LLM-assisted work
 

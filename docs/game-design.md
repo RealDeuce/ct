@@ -342,6 +342,14 @@ automatically attempts feasible repair in the order Life Support, Maneuver
 drive, Jump drive, then weapons. Full semantics are in
 [`combat-control-and-automation.md`](combat-control-and-automation.md).
 
+Ship pursuit is symmetric: fleeing an interceptor makes that interceptor the
+pursuer, while chasing a detected contact that abandoned poor odds makes the
+player the pursuer. Establishment and breaking are opposed Pilot tasks; a
+maintained pursuit accumulates the CE attack bonus, and range or a seven-point
+speed advantage ends it. The door exposes current speed, effective thrust,
+pursuit relation, and minor-action speed controls instead of resolving escape
+as an unopposed posture switch.
+
 Co-located player vessels use the same authoritative combat. Every directly
 commanded participant submits against one shared revision; disconnected and
 separately commanded ships use their own staffed persistent policies. Damage,

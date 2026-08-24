@@ -116,6 +116,15 @@ its 16-byte preview hash so intervening state cannot silently change a warned
 choice. Reliable checkpoint and encounter events are emitted on transition and
 replayed from current state when a session opens.
 
+Encounter snapshots carry sensor resolution, apparent authority, coarse
+threat, a capacity-limited cargo-demand breakdown, the exact legal posture and
+fallback sets, and any response deadline. These fields are authoritative data,
+not client reconstructions from prose. Combat orders add a signed speed change
+and helm actor; combat participants add current speed and the visible pursuit
+target/attack bonus. Task records carry authenticated piracy-loss evidence and
+claim timing. All additions remain within CT-RPC version 8 because that version
+was already reserved for the unreleased protocol and the changes are additive.
+
 Traffic contacts carry a closed attachment value (`spaceborne`, `berthed`, or
 `landed`) separately from their locus. Combat-career snapshots optionally
 carry a typed interception watch with its filter and locus. A direct intercept
@@ -242,18 +251,19 @@ each member system when its physical policy mail arrives.
 
 ## Transaction recovery
 
-Player commands, admitted scheduled work, and clock advances use one durable
-engine-input queue and one monotonically increasing queue sequence. Future
-event indexes determine eligibility but never execution priority. A clock
-pulse itself is not stored; it produces scheduled-work admissions or, when no
-event remains due, an explicit logical-time-advance input. Moving a future
-event from its index into ingress commits separately from execution, so the
-queued state is crash-recoverable. Authoritative mutation, journal append,
-result retention where applicable, outbox publication, and removal from
-ingress then share the execution transaction. Rule rejection is a successful
-transaction with an error outcome. An unexpected transactional failure is
-fatal to queue processing; the server does not roll one input back and
-continue with later inputs.
+Player commands and admitted scheduled work use one durable engine-input queue
+and one monotonically increasing queue sequence. Clock advancement is not an
+engine input. Future-event indexes determine eligibility but never execution
+priority. While ingress is empty, the scheduler advances logical time directly
+in a journalled transaction and leaves future work indexed. A following
+transaction moves the now-due timestamp-free payload from its index into
+ingress, separately from execution, so both the pre-admission schedule and the
+post-admission queued state are crash-recoverable. Authoritative mutation,
+journal append, result retention where applicable, outbox publication, and
+removal from ingress then share the execution transaction. Rule rejection is a
+successful transaction with an error outcome. An unexpected transactional
+failure is fatal to queue processing; the server does not roll one input back
+and continue with later inputs.
 
 Observation journals retain the encoded request and an explicit marker that
 no snapshot follows. Transaction journals retain the encoded request and its

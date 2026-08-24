@@ -635,10 +635,37 @@ extra prompt.
 
 ## Encounters and combat
 
-An encounter presents the actions legal in that situation, such as fighting,
-running, complying, surrendering, or boarding. Vessel combat supplies a
+An encounter presents only the actions legal in that situation, such as fighting,
+running, complying, surrendering, boarding, pursuing a contact that has broken
+off, or continuing the filed course. Contact identity is sensor-qualified:
+a radio hail, transponder return, approximate size class, and positively
+identified vessel are different levels of information. The contact screen also
+shows the apparent authority, range, confidence, and a coarse threat assessment;
+it does not silently substitute an exact hull class for an uncertain return.
+
+Pirate demands state the owned cargo and entrusted freight actually exposed.
+The demand does not imply that pirates already possess your manifest: it states
+what their boarding search will take, while the displayed exposure comes from
+your own cargo ledger. They demand all entrusted freight and a stated,
+milliton-rounded share of each owned lot, but cannot take more than fits in
+their own cargo hold.
+They pack the most valuable cargo per ton first; an indivisible unique object is
+skipped if it cannot fit. A documented loss of entrusted freight can be filed
+from the Task ledger. The authenticated encounter, custody record, response,
+and assessed threat affect adjudication; only cargo physically taken is claimed.
+
+Vessel combat supplies a
 conservative default order, an optional tactical controller, and detailed
 joint-order editing for players who want direct control.
+
+Running from an intercept and chasing a departing contact use the same pursuit
+rules in opposite directions. At Short or Close range and matched speed, the
+pursuer uses a significant Pilot action to establish pursuit. Maintaining it
+uses the same action and improves attacks after the first maintained turn, to a
+maximum +4. The target can oppose with Break Pursuit. Opening to Medium range,
+becoming seven speed points faster, leaving the fight, or winning the opposed
+break ends pursuit. Speed may change up or down by no more than currently
+effective maneuver thrust each combat turn.
 
 Standing combat policy matters when you are absent or do not submit an order
 before the decision window closes. Review its objective and risk threshold

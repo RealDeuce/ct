@@ -56,18 +56,18 @@ use crate::wire::{
     CheckpointSnapshot, Command, CommandPersistence, CommandRequest, CommitFlightPlanRequest,
     CommodityLegality, CourseFuelSource, CoursePlan, CoursePlot, CourseWaypoint, DockedFuelService,
     DockedFuelServiceKind, DockedRepairService, DockedServiceOrderKind, DockedServiceReceipt,
-    DockedServiceReceiptDetail, DockedServices, DockedSnapshot, EncounterContact,
-    EncounterFallback, EncounterKind, EncounterPolicy, EncounterPosture, EncounterResult,
-    EncounterSnapshot, EncounterState, ErrorCode, FlightLocus, FlightPlanAction, FlightPlanPreview,
-    FlightPlanProposal, FlightPlanSnapshot, FlightPlanState, FlightPlanStep, FlightPlanWarning,
-    FuelAccessKind, FuelOperation, FuelOperationTiming, FuelPurchaseReceipt, FuelSourceBodyKind,
-    KnownBelt, KnownDestinations, KnownSystemSummary, MarketOffer, MarketSnapshot,
-    MessageClassification, MessageItem, MessageManagement, OriginDossier, Outcome, OutcomeKind,
-    PlayerCreation, PlayerIdentity, PlayerPhase, PriceDistribution, ProvisionPurchaseReceipt,
-    ShipActivityKind as WireShipActivityKind, ShipActivityStatus, ShipAmmunitionStatus,
-    ShipProvisionStatus, ShipStatusSnapshot, ShipSubsystemKind, ShipSubsystemStatus,
-    SystemMappingChoice, SystemMappingState, SystemMappingStatus, TaskRouteAssessment, TravelStage,
-    TravelStatus, WaypointAuthority,
+    DockedServiceReceiptDetail, DockedServices, DockedSnapshot, EncounterAuthority,
+    EncounterContact, EncounterFallback, EncounterKind, EncounterPolicy, EncounterPosture,
+    EncounterResult, EncounterSnapshot, EncounterState, EncounterThreat, ErrorCode, FlightLocus,
+    FlightPlanAction, FlightPlanPreview, FlightPlanProposal, FlightPlanSnapshot, FlightPlanState,
+    FlightPlanStep, FlightPlanWarning, FuelAccessKind, FuelOperation, FuelOperationTiming,
+    FuelPurchaseReceipt, FuelSourceBodyKind, KnownBelt, KnownDestinations, KnownSystemSummary,
+    MarketOffer, MarketSnapshot, MessageClassification, MessageItem, MessageManagement,
+    OriginDossier, Outcome, OutcomeKind, PlayerCreation, PlayerIdentity, PlayerPhase,
+    PriceDistribution, ProvisionPurchaseReceipt, ShipActivityKind as WireShipActivityKind,
+    ShipActivityStatus, ShipAmmunitionStatus, ShipProvisionStatus, ShipStatusSnapshot,
+    ShipSubsystemKind, ShipSubsystemStatus, SystemMappingChoice, SystemMappingState,
+    SystemMappingStatus, TaskRouteAssessment, TravelStage, TravelStatus, WaypointAuthority,
 };
 
 type SequenceDatabase = Database<U64<BE>, Bytes>;
@@ -248,69 +248,43 @@ enum ScheduledInput {
     Simulation(QueuedSimulationEvent),
     PlayerTravel {
         event_id: u64,
-        due_second: u64,
         ship_id: u64,
     },
     ShipCondition {
         event_id: u64,
-        due_second: u64,
         ship_id: u64,
     },
     PersonTraining {
         event_id: u64,
-        due_second: u64,
         person_id: u64,
     },
     ShipActivity {
         event_id: u64,
-        due_second: u64,
         ship_id: u64,
     },
     EncounterTurn {
         event_id: u64,
-        due_second: u64,
         identity: PlayerIdentity,
         encounter_id: u64,
     },
     SharedCombatTurn {
         event_id: u64,
-        due_second: u64,
         combat_id: u64,
     },
     ContactCheck {
         event_id: u64,
-        due_second: u64,
         ship_id: u64,
     },
     MerchantWork {
         event_id: u64,
-        due_second: u64,
         assignment_id: u64,
     },
-}
-
-impl ScheduledInput {
-    fn due_second(&self) -> u64 {
-        match self {
-            Self::Simulation(event) => event.due_second,
-            Self::PlayerTravel { due_second, .. }
-            | Self::ShipCondition { due_second, .. }
-            | Self::PersonTraining { due_second, .. }
-            | Self::ShipActivity { due_second, .. }
-            | Self::EncounterTurn { due_second, .. }
-            | Self::SharedCombatTurn { due_second, .. } => *due_second,
-            Self::ContactCheck { due_second, .. } | Self::MerchantWork { due_second, .. } => {
-                *due_second
-            }
-        }
-    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum EngineInput {
     Player(QueuedCommand),
     Scheduled(ScheduledInput),
-    TimeAdvance { target_second: u64 },
 }
 
 #[derive(Clone, Debug)]
@@ -413,6 +387,13 @@ impl ScheduledCandidate {
             } => (*due_second, *event_id),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ScheduledAdmission {
+    None,
+    ClockAdvance,
+    Event,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2003,6 +1984,9 @@ fn wire_combat_order(
                 Kind::InspectContact => crate::combat::CrewAction::InspectContact {
                     target_id: action.target_vessel_id,
                 },
+                Kind::Pursuit => crate::combat::CrewAction::Pursuit {
+                    target_id: action.target_vessel_id,
+                },
             })
         })
         .collect::<Result<Vec<_>, StoreError>>()?;
@@ -2031,6 +2015,7 @@ fn wire_combat_order(
         reactions,
         reaction_dms,
         automated: false,
+        speed_adjustment: request.speed_adjustment,
     })
 }
 
@@ -2050,53 +2035,66 @@ fn combat_snapshot(
     let participants = combat
         .vessels
         .iter()
-        .map(|vessel| crate::wire::CombatParticipant {
-            vessel_id: vessel.vessel_id,
-            side: vessel.side,
-            name: vessel.name.clone(),
-            class_name: catalog
-                .get(&vessel.catalog_id)
-                .cloned()
-                .unwrap_or_else(|| "Unclassified vessel".into()),
-            initiative: vessel.initiative,
-            thrust: vessel.thrust,
-            hull_remaining: vessel.hull_remaining,
-            structure_remaining: vessel.structure_remaining,
-            armor_remaining: vessel.armor_remaining,
-            disposition: vessel.disposition,
-            weapons: vessel
-                .weapons
+        .map(|vessel| {
+            let pursuit = combat
+                .pursuits
                 .iter()
-                .map(|mount| {
-                    let ammunition_remaining = mount
-                        .weapons
-                        .iter()
-                        .filter_map(|weapon| weapon.ammunition_id.as_ref())
-                        .filter_map(|id| {
-                            vessel
-                                .ammunition
-                                .iter()
-                                .find(|lot| &lot.ammunition_id == id)
-                                .map(|lot| lot.remaining)
-                        })
-                        .min()
-                        .unwrap_or(u32::MAX);
-                    crate::wire::CombatWeaponMount {
-                        mount_id: mount.mount_id,
-                        label: mount.catalog_mount_id.clone(),
-                        weapons: mount
+                .find(|pursuit| pursuit.pursuer_id == vessel.vessel_id);
+            crate::wire::CombatParticipant {
+                vessel_id: vessel.vessel_id,
+                side: vessel.side,
+                name: vessel.name.clone(),
+                class_name: if player_owned_ship_ids.contains(&vessel.vessel_id) {
+                    catalog
+                        .get(&vessel.catalog_id)
+                        .cloned()
+                        .unwrap_or_else(|| "Unclassified vessel".into())
+                } else {
+                    traffic_size_class(vessel.displacement_millitons).into()
+                },
+                initiative: vessel.initiative,
+                thrust: crate::combat::effective_thrust(vessel),
+                hull_remaining: vessel.hull_remaining,
+                structure_remaining: vessel.structure_remaining,
+                armor_remaining: vessel.armor_remaining,
+                disposition: vessel.disposition,
+                weapons: vessel
+                    .weapons
+                    .iter()
+                    .map(|mount| {
+                        let ammunition_remaining = mount
                             .weapons
                             .iter()
-                            .map(|weapon| weapon.id.clone())
-                            .collect(),
-                        damage_hits: mount.damage_hits,
-                        ammunition_remaining,
-                    }
-                })
-                .collect(),
-            commanded: vessel.vessel_id == ship.ship_id,
-            player_owned: player_owned_ship_ids.contains(&vessel.vessel_id),
-            online_controlled: false,
+                            .filter_map(|weapon| weapon.ammunition_id.as_ref())
+                            .filter_map(|id| {
+                                vessel
+                                    .ammunition
+                                    .iter()
+                                    .find(|lot| &lot.ammunition_id == id)
+                                    .map(|lot| lot.remaining)
+                            })
+                            .min()
+                            .unwrap_or(u32::MAX);
+                        crate::wire::CombatWeaponMount {
+                            mount_id: mount.mount_id,
+                            label: mount.catalog_mount_id.clone(),
+                            weapons: mount
+                                .weapons
+                                .iter()
+                                .map(|weapon| weapon.id.clone())
+                                .collect(),
+                            damage_hits: mount.damage_hits,
+                            ammunition_remaining,
+                        }
+                    })
+                    .collect(),
+                commanded: vessel.vessel_id == ship.ship_id,
+                player_owned: player_owned_ship_ids.contains(&vessel.vessel_id),
+                online_controlled: false,
+                speed: vessel.speed,
+                pursuit_target_vessel_id: pursuit.map_or(0, |value| value.target_id),
+                pursuit_attack_bonus: pursuit.map_or(0, |value| value.attack_bonus),
+            }
         })
         .collect();
     crate::wire::CombatSnapshot {
@@ -2196,6 +2194,9 @@ fn combat_order_wire(
                 crate::combat::CrewAction::InspectContact { target_id } => {
                     (crate::wire::CombatActionKind::InspectContact, 0, *target_id)
                 }
+                crate::combat::CrewAction::Pursuit { target_id } => {
+                    (crate::wire::CombatActionKind::Pursuit, 0, *target_id)
+                }
             };
             let actor_person_id = preferred_combat_actor(actors, kind, &assigned)?;
             assigned.insert(actor_person_id);
@@ -2231,12 +2232,24 @@ fn combat_order_wire(
             })
         })
         .collect();
+    let speed_actor_person_id = if order.speed_adjustment == 0 {
+        0
+    } else {
+        preferred_combat_actor(
+            actors,
+            crate::wire::CombatActionKind::Pursuit,
+            &HashSet::new(),
+        )
+        .unwrap_or(0)
+    };
     crate::wire::CombatOrderSet {
         combat_id,
         view_revision: order.view_revision,
         actions,
         reactions,
         use_tactical_controller: false,
+        speed_adjustment: order.speed_adjustment,
+        speed_actor_person_id,
     }
 }
 
@@ -2256,6 +2269,7 @@ fn preferred_combat_actor(
             crate::wire::CombatActionKind::EvasiveManeuvers
             | crate::wire::CombatActionKind::LineUpShot
             | crate::wire::CombatActionKind::BreakPursuit => station.contains("pilot"),
+            crate::wire::CombatActionKind::Pursuit => station.contains("pilot"),
             crate::wire::CombatActionKind::RangeCheckClose
             | crate::wire::CombatActionKind::RangeCheckOpen
             | crate::wire::CombatActionKind::PrepareJump => {
@@ -2366,6 +2380,7 @@ fn combat_action_role_matches(role: &str, kind: crate::wire::CombatActionKind) -
         crate::wire::CombatActionKind::EvasiveManeuvers
         | crate::wire::CombatActionKind::LineUpShot
         | crate::wire::CombatActionKind::BreakPursuit => role.contains("pilot"),
+        crate::wire::CombatActionKind::Pursuit => role.contains("pilot"),
         crate::wire::CombatActionKind::RangeCheckClose
         | crate::wire::CombatActionKind::RangeCheckOpen
         | crate::wire::CombatActionKind::PrepareJump => {
@@ -2409,7 +2424,7 @@ fn combat_action_task_dm(
         Kind::Coordinate | Kind::IncreaseInitiative => {
             Some((person.person.characteristics.charisma, SkillId::Leadership))
         }
-        Kind::EvasiveManeuvers | Kind::LineUpShot | Kind::BreakPursuit => {
+        Kind::EvasiveManeuvers | Kind::LineUpShot | Kind::BreakPursuit | Kind::Pursuit => {
             Some((person.current_dexterity, SkillId::PilotSpacecraft))
         }
         Kind::RangeCheckClose | Kind::RangeCheckOpen | Kind::PrepareJump => Some((
@@ -3878,6 +3893,52 @@ impl Store {
         Ok(sequence)
     }
 
+    fn advance_clock_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        target_second: u64,
+    ) -> Result<bool, StoreError> {
+        let queued = self.queue.len(txn)?;
+        if queued != 0 {
+            return Err(StoreError::PendingIngress(queued));
+        }
+        let current_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        if target_second < current_second {
+            return Err(StoreError::SimulationTimeReversal {
+                current: current_second,
+                target: target_second,
+            });
+        }
+        if target_second == current_second {
+            return Ok(false);
+        }
+        let sequence = get_meta_u64(self.meta, txn, META_NEXT_INGRESS)?.unwrap_or(1);
+        let next = sequence
+            .checked_add(1)
+            .ok_or(StoreError::Corrupt("ingress sequence overflow"))?;
+        let revision = get_meta_u64(self.meta, txn, META_REVISION)?
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or(StoreError::Corrupt("revision overflow"))?;
+        self.journal
+            .put(txn, &sequence, &encode_clock_advance_journal(target_second))?;
+        put_meta_u64(self.meta, txn, META_GAME_SECOND, target_second)?;
+        put_meta_u64(self.meta, txn, META_NEXT_INGRESS, next)?;
+        put_meta_u64(self.meta, txn, META_COMMITTED_SEQUENCE, sequence)?;
+        put_meta_u64(self.meta, txn, META_REVISION, revision)?;
+        Ok(true)
+    }
+
+    fn advance_clock_to(&self, target_second: u64) -> Result<(), StoreError> {
+        let mut txn = self.env.write_txn()?;
+        if self.advance_clock_in(&mut txn, target_second)? {
+            txn.commit()?;
+        } else {
+            txn.abort();
+        }
+        Ok(())
+    }
+
     pub fn process_next(&self) -> Result<Option<Delivery>, StoreError> {
         let mut txn = self.env.write_txn()?;
         let queued = {
@@ -4043,7 +4104,6 @@ impl Store {
                 }))
             }
             EngineInput::Scheduled(_) => self.process_next_scheduled_input(),
-            EngineInput::TimeAdvance { .. } => self.process_next_time_advance_input(),
         }
     }
 
@@ -4076,34 +4136,18 @@ impl Store {
         event: ScheduledInput,
     ) -> Result<ProcessedEngineInput, StoreError> {
         let current_second = get_meta_u64(self.meta, &txn, META_GAME_SECOND)?.unwrap_or(0);
-        let scheduled_second = event.due_second();
-        let due_second = if matches!(&event, ScheduledInput::EncounterTurn { .. }) {
-            // A posture can remain unanswered while the authoritative clock
-            // advances. Older servers scheduled its first turn from the
-            // encounter's start, leaving a valid encounter turn behind the
-            // clock. Preserve the stored timestamp for state validation, but
-            // resolve that overdue turn at the current authoritative second.
-            scheduled_second.max(current_second)
-        } else {
-            scheduled_second
-        };
-        if due_second < current_second {
-            return Err(StoreError::SimulationTimeReversal {
-                current: current_second,
-                target: due_second,
-            });
-        }
         let revision = get_meta_u64(self.meta, &txn, META_REVISION)?
             .unwrap_or(0)
             .checked_add(1)
             .ok_or(StoreError::Corrupt("revision overflow"))?;
-        put_meta_u64(self.meta, &mut txn, META_GAME_SECOND, due_second)?;
         let mut player_transitions = Vec::new();
         let mut scheduled_event = None;
         let mut category = None;
         let journal = match event {
             ScheduledInput::Simulation(event) => {
-                let processed = self.simulation.process_queued(&mut txn, &event)?;
+                let processed = self
+                    .simulation
+                    .process_queued(&mut txn, &event, current_second)?;
                 if processed.kind == SimulationEventKind::SystemDay {
                     self.materialize_contract_offers_in(
                         &mut txn,
@@ -4166,13 +4210,9 @@ impl Store {
                 scheduled_event = Some(processed);
                 journal
             }
-            ScheduledInput::PlayerTravel {
-                due_second,
-                ship_id,
-                ..
-            } => {
+            ScheduledInput::PlayerTravel { ship_id, .. } => {
                 let (system_id, stage, identity) =
-                    self.process_player_travel_in(&mut txn, due_second, ship_id)?;
+                    self.process_player_travel_in(&mut txn, current_second, ship_id)?;
                 let phase = self.player_phase_in(&txn, &identity)?;
                 let status = self.travel_status_in(&txn, &identity)?;
                 player_transitions.push(PlayerTravelTransition {
@@ -4197,68 +4237,50 @@ impl Store {
                     );
                 }
                 category = Some(ProcessedScheduledCategory::PlayerTravel);
-                encode_player_travel_event_journal(due_second, system_id, stage)
+                encode_player_travel_event_journal(current_second, system_id, stage)
             }
-            ScheduledInput::ShipCondition {
-                due_second,
-                ship_id,
-                ..
-            } => {
-                self.process_ship_condition_in(&mut txn, due_second, ship_id)?;
+            ScheduledInput::ShipCondition { ship_id, .. } => {
+                self.process_ship_condition_in(&mut txn, current_second, ship_id)?;
                 category = Some(ProcessedScheduledCategory::ShipCondition);
-                encode_timed_object_event_journal(0x43, due_second, ship_id)
+                encode_timed_object_event_journal(0x43, current_second, ship_id)
             }
-            ScheduledInput::PersonTraining {
-                due_second,
-                person_id,
-                ..
-            } => {
+            ScheduledInput::PersonTraining { person_id, .. } => {
                 let journal_kind = if person_id & PERSON_TREATMENT_EVENT_BIT != 0 {
                     self.process_person_treatment_in(
                         &mut txn,
-                        due_second,
+                        current_second,
                         person_id & !PERSON_TREATMENT_EVENT_BIT,
                     )?;
                     0x54
                 } else if person_id & PERSON_PRISONER_RELEASE_EVENT_BIT != 0 {
                     self.process_prisoner_release_in(
                         &mut txn,
-                        due_second,
+                        current_second,
                         person_id & !PERSON_PRISONER_RELEASE_EVENT_BIT,
                     )?;
                     0x50
                 } else {
-                    self.process_person_training_in(&mut txn, due_second, person_id)?;
+                    self.process_person_training_in(&mut txn, current_second, person_id)?;
                     0x4b
                 };
                 category = Some(ProcessedScheduledCategory::PersonTraining);
                 encode_timed_object_event_journal(
                     journal_kind,
-                    due_second,
+                    current_second,
                     person_id & !PERSON_TREATMENT_EVENT_BIT & !PERSON_PRISONER_RELEASE_EVENT_BIT,
                 )
             }
-            ScheduledInput::ShipActivity {
-                due_second,
-                ship_id,
-                ..
-            } => {
-                self.process_ship_activity_in(&mut txn, due_second, ship_id)?;
+            ScheduledInput::ShipActivity { ship_id, .. } => {
+                self.process_ship_activity_in(&mut txn, current_second, ship_id)?;
                 category = Some(ProcessedScheduledCategory::ShipActivity);
-                encode_timed_object_event_journal(0x57, due_second, ship_id)
+                encode_timed_object_event_journal(0x57, current_second, ship_id)
             }
             ScheduledInput::EncounterTurn {
                 identity,
                 encounter_id,
                 ..
             } => {
-                self.process_encounter_turn_in(
-                    &mut txn,
-                    scheduled_second,
-                    due_second,
-                    &identity,
-                    encounter_id,
-                )?;
+                self.process_encounter_turn_in(&mut txn, current_second, &identity, encounter_id)?;
                 let phase = self.player_phase_in(&txn, &identity)?;
                 let status = self.travel_status_in(&txn, &identity)?;
                 player_transitions.push(PlayerTravelTransition {
@@ -4269,15 +4291,11 @@ impl Store {
                     status,
                 });
                 category = Some(ProcessedScheduledCategory::EncounterTurn);
-                encode_timed_object_event_journal(0x45, due_second, encounter_id)
+                encode_timed_object_event_journal(0x45, current_second, encounter_id)
             }
-            ScheduledInput::SharedCombatTurn {
-                due_second,
-                combat_id,
-                ..
-            } => {
+            ScheduledInput::SharedCombatTurn { combat_id, .. } => {
                 let identities =
-                    self.process_shared_combat_turn_in(&mut txn, due_second, combat_id)?;
+                    self.process_shared_combat_turn_in(&mut txn, current_second, combat_id)?;
                 for identity in identities {
                     let phase = self.player_phase_in(&txn, &identity)?;
                     let status = self.travel_status_in(&txn, &identity)?;
@@ -4290,15 +4308,11 @@ impl Store {
                     });
                 }
                 category = Some(ProcessedScheduledCategory::EncounterTurn);
-                encode_timed_object_event_journal(0x50, due_second, combat_id)
+                encode_timed_object_event_journal(0x50, current_second, combat_id)
             }
-            ScheduledInput::ContactCheck {
-                due_second,
-                ship_id,
-                ..
-            } => {
+            ScheduledInput::ContactCheck { ship_id, .. } => {
                 if let Some(identity) =
-                    self.process_contact_check_in(&mut txn, due_second, ship_id)?
+                    self.process_contact_check_in(&mut txn, current_second, ship_id)?
                 {
                     let phase = self.player_phase_in(&txn, &identity)?;
                     let status = self.travel_status_in(&txn, &identity)?;
@@ -4311,16 +4325,12 @@ impl Store {
                     });
                 }
                 category = Some(ProcessedScheduledCategory::ContactCheck);
-                encode_timed_object_event_journal(0x58, due_second, ship_id)
+                encode_timed_object_event_journal(0x58, current_second, ship_id)
             }
-            ScheduledInput::MerchantWork {
-                due_second,
-                assignment_id,
-                ..
-            } => {
-                self.process_merchant_work_in(&mut txn, due_second, assignment_id)?;
+            ScheduledInput::MerchantWork { assignment_id, .. } => {
+                self.process_merchant_work_in(&mut txn, current_second, assignment_id)?;
                 category = Some(ProcessedScheduledCategory::MerchantWork);
-                encode_timed_object_event_journal(0x4d, due_second, assignment_id)
+                encode_timed_object_event_journal(0x4d, current_second, assignment_id)
             }
         };
         self.journal.put(&mut txn, &sequence, &journal)?;
@@ -4333,52 +4343,6 @@ impl Store {
             scheduled_event,
             category,
         })
-    }
-
-    fn process_next_time_advance_input(&self) -> Result<Option<ProcessedEngineInput>, StoreError> {
-        let mut txn = self.env.write_txn()?;
-        let queued = {
-            let mut queue = self.queue.iter(&txn)?;
-            match queue.next() {
-                Some(entry) => {
-                    let (sequence, bytes) = entry?;
-                    Some((sequence, decode_engine_input(bytes)?))
-                }
-                None => None,
-            }
-        };
-        let Some((sequence, EngineInput::TimeAdvance { target_second })) = queued else {
-            return Err(StoreError::Corrupt(
-                "time-advance queue processor selected a different input",
-            ));
-        };
-        let current_second = get_meta_u64(self.meta, &txn, META_GAME_SECOND)?.unwrap_or(0);
-        if target_second < current_second {
-            return Err(StoreError::SimulationTimeReversal {
-                current: current_second,
-                target: target_second,
-            });
-        }
-        let revision = get_meta_u64(self.meta, &txn, META_REVISION)?
-            .unwrap_or(0)
-            .checked_add(1)
-            .ok_or(StoreError::Corrupt("revision overflow"))?;
-        self.journal.put(
-            &mut txn,
-            &sequence,
-            &encode_clock_advance_journal(target_second),
-        )?;
-        self.queue.delete(&mut txn, &sequence)?;
-        put_meta_u64(self.meta, &mut txn, META_GAME_SECOND, target_second)?;
-        put_meta_u64(self.meta, &mut txn, META_COMMITTED_SEQUENCE, sequence)?;
-        put_meta_u64(self.meta, &mut txn, META_REVISION, revision)?;
-        txn.commit()?;
-        Ok(Some(ProcessedEngineInput {
-            delivery: None,
-            player_transitions: Vec::new(),
-            scheduled_event: None,
-            category: None,
-        }))
     }
 
     fn apply_command(
@@ -7713,24 +7677,60 @@ impl Store {
                 );
         if roll < threshold || enforcement_picket || pirate_picket {
             let encounter_id = take_next_id(self.meta, txn, META_NEXT_ENCOUNTER_ID)?;
-            let kind = if enforcement_picket {
+            let mut kind = if enforcement_picket {
                 EncounterKind::Inspection
             } else if pirate_picket {
                 EncounterKind::Hostile
             } else {
                 encounter_kind_for_policy(contact_roll, policy.as_ref())
             };
-            let hostile = kind == EncounterKind::Hostile;
-            let projected = candidates.get(contact_roll as usize % candidates.len().max(1));
-            let opponent_catalog_id = projected.map_or(72, |contact| contact.catalog_id);
-            if hostile && security >= 70
-                || hostile
-                    && catalog_combat_power(ship.catalog_id).saturating_mul(2)
-                        >= catalog_combat_power(opponent_catalog_id).saturating_mul(3)
-            {
+            let Some(projected) = candidates.get(contact_roll as usize % candidates.len().max(1))
+            else {
                 self.finish_checkpoint_arrival_in(txn, identity, &checkpoint)?;
                 return Ok(RuleResult::Applied(checkpoint));
+            };
+            let opponent_catalog_id = projected.catalog_id;
+            let mut pirate_share = None;
+            if kind == EncounterKind::Hostile {
+                let estimate = pirate_target_estimate(projected, &ship);
+                let share = estimate.map(|target_power| {
+                    let pirate_power = catalog_combat_power(projected.catalog_id);
+                    u8::try_from(
+                        pirate_power.saturating_mul(100)
+                            / pirate_power.saturating_add(target_power).max(1),
+                    )
+                    .unwrap_or(100)
+                });
+                if security >= 70 || share.is_none_or(|value| value < 50) {
+                    kind = EncounterKind::DepartingContact;
+                } else {
+                    pirate_share = share;
+                }
             }
+            let hostile = kind == EncounterKind::Hostile;
+            let departing = kind == EncounterKind::DepartingContact;
+            let Some(observed_contact) = observed_encounter_contact(
+                &ship,
+                projected,
+                hostile || departing,
+                hostile,
+                "contact range",
+            ) else {
+                self.finish_checkpoint_arrival_in(txn, identity, &checkpoint)?;
+                return Ok(RuleResult::Applied(checkpoint));
+            };
+            let demand = if let Some(share) = pirate_share {
+                self.pirate_demand_in(
+                    txn,
+                    identity,
+                    &ship.cargo,
+                    pirate_demand_percent(share, contact_roll.rotate_left(31)),
+                    creation::ship_status_spec(projected.catalog_id)
+                        .map_or(0, |spec| spec.cargo_capacity_millitons),
+                )?
+            } else {
+                crate::wire::EncounterDemand::default()
+            };
             let summary = match kind {
                 EncounterKind::Hostile => {
                     "An armed contact is matching course and demanding that you heave to."
@@ -7754,6 +7754,9 @@ impl Store {
                 EncounterKind::RoutineTraffic => {
                     "A vessel crosses your arrival lane and exchanges routine identification."
                 }
+                EncounterKind::DepartingContact => {
+                    "An unlit armed contact abandons its intercept and accelerates away."
+                }
             };
             let snapshot = EncounterSnapshot {
                 encounter_id,
@@ -7763,47 +7766,64 @@ impl Store {
                 started_second: checkpoint.ready_second,
                 next_turn_second: 0,
                 turn: 0,
-                contact: EncounterContact {
-                    contact_id: projected.map_or_else(
-                        || crate::ship_condition::mix64(encounter_id),
-                        |contact| contact.contact_id,
-                    ),
-                    ship_name: if hostile {
-                        "Unlit contact".into()
-                    } else {
-                        projected
-                            .map_or("Passing merchant", |contact| contact.ship_name.as_str())
-                            .into()
-                    },
-                    class_name: projected
-                        .map_or(
-                            if hostile {
-                                "Armed vessel"
-                            } else {
-                                "Free trader"
-                            },
-                            |contact| contact.class_name.as_str(),
-                        )
-                        .into(),
-                    transponder: if hostile {
-                        "No response".into()
-                    } else {
-                        projected.map_or_else(
-                            || format!("CT-{:08X}", contact_roll as u32),
-                            |contact| contact.transponder.clone(),
-                        )
-                    },
-                    role: if hostile {
-                        "interceptor".into()
-                    } else {
-                        projected
-                            .map_or("traffic", |contact| contact.role.as_str())
-                            .into()
-                    },
-                    range: "contact range".into(),
-                    confidence_percent: 75,
+                contact: observed_contact.clone(),
+                summary: if hostile {
+                    demand.text.clone()
+                } else {
+                    summary.into()
                 },
-                summary: summary.into(),
+                authority: match kind {
+                    EncounterKind::Hostile | EncounterKind::DepartingContact => {
+                        EncounterAuthority::Pirate
+                    }
+                    EncounterKind::Inspection => EncounterAuthority::Customs,
+                    EncounterKind::TrafficControl => EncounterAuthority::TrafficControl,
+                    EncounterKind::Military => EncounterAuthority::Naval,
+                    _ => EncounterAuthority::None,
+                },
+                threat: encounter_threat(
+                    match observed_contact.resolution {
+                        crate::wire::EncounterResolution::Identified => {
+                            Some(catalog_combat_power(projected.catalog_id))
+                        }
+                        crate::wire::EncounterResolution::Approximate => {
+                            Some(size_class_combat_power(projected.displacement_millitons))
+                        }
+                        _ => None,
+                    },
+                    ship.catalog_id,
+                ),
+                demand,
+                available_postures: if departing {
+                    vec![EncounterPosture::Pursue, EncounterPosture::ContinueCourse]
+                } else if hostile {
+                    vec![
+                        EncounterPosture::Fight,
+                        EncounterPosture::Flee,
+                        EncounterPosture::Comply,
+                        EncounterPosture::Surrender,
+                        EncounterPosture::Board,
+                    ]
+                } else {
+                    vec![EncounterPosture::Comply, EncounterPosture::Flee]
+                },
+                available_fallbacks: if hostile {
+                    vec![
+                        EncounterFallback::Surrender,
+                        EncounterFallback::Abandon,
+                        EncounterFallback::JettisonCargo,
+                        EncounterFallback::BreakOff,
+                    ]
+                } else {
+                    Vec::new()
+                },
+                response_deadline_second: if departing {
+                    checkpoint
+                        .ready_second
+                        .saturating_add(crate::combat::COMBAT_TURN_SECONDS)
+                } else {
+                    0
+                },
             };
             self.encounters.put(
                 txn,
@@ -7826,6 +7846,7 @@ impl Store {
                 &ship,
                 &snapshot.contact,
                 snapshot.kind,
+                snapshot.authority,
                 encounter_id,
                 checkpoint.ready_second,
                 true,
@@ -7955,11 +7976,22 @@ impl Store {
                         role: "warrant enforcement".into(),
                         range: "port-control range".into(),
                         confidence_percent: 100,
+                        resolution: crate::wire::EncounterResolution::Identified,
                     },
                     summary: format!(
                         "Port enforcement has received warrant {}. A law-level {} boarding detail automatically searches the arriving ship, confirms the wanted captain is aboard, and orders this command to submit.",
                         warrant.warrant_id, law
                     ),
+                    authority: EncounterAuthority::Warrant,
+                    threat: EncounterThreat::Dangerous,
+                    demand: crate::wire::EncounterDemand::default(),
+                    available_postures: vec![
+                        EncounterPosture::Comply,
+                        EncounterPosture::Flee,
+                        EncounterPosture::Surrender,
+                    ],
+                    available_fallbacks: vec![EncounterFallback::Surrender],
+                    response_deadline_second: 0,
                 },
                 opponent_catalog_id: 144,
                 posture: None,
@@ -7978,6 +8010,7 @@ impl Store {
                 &ship,
                 &record.snapshot.contact,
                 record.snapshot.kind,
+                record.snapshot.authority,
                 encounter_id,
                 arrived_second,
                 true,
@@ -8418,6 +8451,24 @@ impl Store {
                 "standing orders have already been submitted for this encounter".into(),
             ));
         }
+        if !record
+            .snapshot
+            .available_postures
+            .contains(&request.posture)
+        {
+            return Ok(RuleResult::Rejected(
+                "that response is not available for this contact".into(),
+            ));
+        }
+        if request
+            .fallbacks
+            .iter()
+            .any(|fallback| !record.snapshot.available_fallbacks.contains(fallback))
+        {
+            return Ok(RuleResult::Rejected(
+                "that fallback is not available for this contact".into(),
+            ));
+        }
         record.posture = Some(request.posture);
         record.fallbacks = request.fallbacks.clone();
         record.snapshot.revision += 1;
@@ -8433,7 +8484,8 @@ impl Store {
         ) && !matches!(
             request.posture,
             EncounterPosture::Comply | EncounterPosture::Surrender
-        );
+        ) || record.snapshot.kind == EncounterKind::DepartingContact
+            && request.posture == EncounterPosture::Pursue;
         if refusal_escalates {
             let (_, mut ship) = self.player_and_ship_in(txn, identity)?;
             if matches!(
@@ -8522,6 +8574,24 @@ impl Store {
                 opponent_initiative,
             )
             .map_err(|_| StoreError::Corrupt("contact combat loadout is invalid"))?;
+            let mut pursuits = Vec::new();
+            if record.snapshot.kind == EncounterKind::Hostile
+                && request.posture == EncounterPosture::Flee
+            {
+                pursuits.push(crate::combat::PursuitState {
+                    pursuer_id: opponent_id,
+                    target_id: ship.ship_id,
+                    attack_bonus: 0,
+                });
+            } else if record.snapshot.kind == EncounterKind::DepartingContact
+                && request.posture == EncounterPosture::Pursue
+            {
+                pursuits.push(crate::combat::PursuitState {
+                    pursuer_id: ship.ship_id,
+                    target_id: opponent_id,
+                    attack_bonus: 0,
+                });
+            }
             record.combat = Some(crate::combat::CombatState {
                 combat_id: record.snapshot.encounter_id,
                 revision: 1,
@@ -8531,6 +8601,7 @@ impl Store {
                 vessels: vec![player_vessel, opponent],
                 missiles: Vec::new(),
                 boarding: Vec::new(),
+                pursuits,
                 complete: false,
             });
             let simulation_system = self
@@ -8550,7 +8621,9 @@ impl Store {
                 ),
                 entropy,
             )?;
-            record.snapshot.summary = if matches!(
+            record.snapshot.summary = if record.snapshot.kind == EncounterKind::DepartingContact {
+                "The unlit vessel refuses identification and accelerates away. The chase begins at Short range and matched speed; joint crew orders are due."
+            } else if matches!(
                 record.snapshot.kind,
                 EncounterKind::Inspection | EncounterKind::Military
             ) {
@@ -8574,6 +8647,7 @@ impl Store {
         };
         self.encounters
             .put(txn, &key, &encode_encounter_record(&record)?)?;
+        self.remove_encounter_turns_in(txn, identity, record.snapshot.encounter_id)?;
         self.schedule_encounter_turn_in(
             txn,
             identity,
@@ -8712,6 +8786,25 @@ impl Store {
         }
         let mut used = HashSet::new();
         let mut order = wire_combat_order(request, ship.ship_id)?;
+        if request.speed_adjustment != 0 {
+            let Some((service, person)) = roster.get(&request.speed_actor_person_id) else {
+                return Ok(Err(
+                    "the named helm watchstander is not aboard this vessel".into()
+                ));
+            };
+            if !combat_actor_available(service, person) {
+                return Ok(Err(format!(
+                    "{} is off watch or incapacitated",
+                    person.person.name
+                )));
+            }
+            if !combat_action_role_matches(&service.role, crate::wire::CombatActionKind::Pursuit) {
+                return Ok(Err(format!(
+                    "{} is not assigned to a pilot station that can change speed",
+                    person.person.name
+                )));
+            }
+        }
         for (index, action) in request.actions.iter().enumerate() {
             let Some((service, person)) = roster.get(&action.actor_person_id) else {
                 return Ok(Err(
@@ -9842,18 +9935,19 @@ impl Store {
                     contact.resolution = crate::traffic::TrafficContactResolution::Identified;
                     contact.confidence_percent =
                         u8::try_from(80 + (total - 10) * 5).unwrap_or(100).min(100);
+                    contact.catalog_id = 0;
+                    contact.class_name = traffic_size_class(contact.displacement_millitons).into();
+                    let tons = contact.displacement_millitons.div_ceil(1_000);
+                    contact.displacement_millitons = tons
+                        .saturating_add(50)
+                        .div_euclid(100)
+                        .saturating_mul(100_000);
                 } else if total >= 6 {
                     contact.resolution = crate::traffic::TrafficContactResolution::Approximate;
                     contact.confidence_percent =
                         u8::try_from(45 + (total - 6) * 10).unwrap_or(75).min(75);
                     contact.catalog_id = 0;
-                    contact.class_name = match contact.displacement_millitons {
-                        0..=99_999 => "small craft",
-                        100_000..=499_999 => "small ship",
-                        500_000..=1_999_999 => "medium ship",
-                        _ => "large ship",
-                    }
-                    .into();
+                    contact.class_name = traffic_size_class(contact.displacement_millitons).into();
                     let tons = contact.displacement_millitons.div_ceil(1_000);
                     contact.displacement_millitons = tons
                         .saturating_add(50)
@@ -10971,6 +11065,7 @@ impl Store {
                 vessels: vec![player_vessel, target_vessel],
                 missiles: Vec::new(),
                 boarding: Vec::new(),
+                pursuits: Vec::new(),
                 complete: false,
             };
             let shared = SharedCombatRecord {
@@ -11022,17 +11117,38 @@ impl Store {
                     contact: EncounterContact {
                         contact_id: target_ship.ship_id,
                         ship_name: target_ship.name.clone(),
-                        class_name: contact.class_name.clone(),
+                        class_name: traffic_size_class(contact.displacement_millitons).into(),
                         transponder: contact.transponder.clone(),
                         role: contact.role.clone(),
                         range: "short".into(),
                         confidence_percent: contact.confidence_percent,
+                        resolution: match contact.resolution {
+                            crate::traffic::TrafficContactResolution::Identified => {
+                                crate::wire::EncounterResolution::Identified
+                            }
+                            crate::traffic::TrafficContactResolution::Approximate => {
+                                crate::wire::EncounterResolution::Approximate
+                            }
+                            crate::traffic::TrafficContactResolution::TransponderOnly => {
+                                crate::wire::EncounterResolution::TransponderOnly
+                            }
+                        },
                     },
                     summary: if boarding_inspection {
                         "The intercepted captain refuses boarding. Combat begins; joint crew orders are required."
                     } else {
                         "Your command initiates an armed intercept against another captain. Joint crew orders are required."
                     }.into(),
+                    authority: if authorized {
+                        EncounterAuthority::Naval
+                    } else {
+                        EncounterAuthority::None
+                    },
+                    threat: EncounterThreat::Unknown,
+                    demand: crate::wire::EncounterDemand::default(),
+                    available_postures: Vec::new(),
+                    available_fallbacks: Vec::new(),
+                    response_deadline_second: 0,
                 },
                 opponent_catalog_id: target_ship.catalog_id,
                 posture: Some(EncounterPosture::Fight),
@@ -11063,13 +11179,10 @@ impl Store {
                         contact: EncounterContact {
                             contact_id: ship.ship_id,
                             ship_name: ship.name.clone(),
-                            class_name: creation::ship_market_catalog()
-                                .into_iter()
-                                .find(|entry| entry.catalog_id == ship.catalog_id)
-                                .map_or_else(
-                                    || "Unclassified vessel".into(),
-                                    |entry| entry.class_name,
-                                ),
+                            class_name: creation::ship_status_spec(ship.catalog_id).map_or_else(
+                                || "unclassified vessel".into(),
+                                |spec| traffic_size_class(spec.displacement_millitons).into(),
+                            ),
                             transponder: crate::traffic::transponder_for_id(ship.ship_id),
                             role: if boarding_inspection {
                                 "boarding picket"
@@ -11079,6 +11192,7 @@ impl Store {
                             .into(),
                             range: "short".into(),
                             confidence_percent: 100,
+                            resolution: crate::wire::EncounterResolution::Identified,
                         },
                         summary: format!(
                             "{} has {}. Joint crew orders are required.",
@@ -11089,6 +11203,16 @@ impl Store {
                                 "initiated an armed intercept against your command"
                             }
                         ),
+                        authority: if authorized {
+                            EncounterAuthority::Naval
+                        } else {
+                            EncounterAuthority::None
+                        },
+                        threat: EncounterThreat::Unknown,
+                        demand: crate::wire::EncounterDemand::default(),
+                        available_postures: Vec::new(),
+                        available_fallbacks: Vec::new(),
+                        response_deadline_second: 0,
                     },
                     opponent_catalog_id: ship.catalog_id,
                     posture: Some(EncounterPosture::Fight),
@@ -11160,6 +11284,7 @@ impl Store {
             vessels: vec![player_vessel, opponent],
             missiles: Vec::new(),
             boarding: Vec::new(),
+            pursuits: Vec::new(),
             complete: false,
         };
         let default = crate::combat::conservative_order(&combat, ship.ship_id)
@@ -11176,11 +11301,12 @@ impl Store {
                 contact: EncounterContact {
                     contact_id: contact.contact_id,
                     ship_name: contact.ship_name,
-                    class_name: contact.class_name,
+                    class_name: traffic_size_class(contact.displacement_millitons).into(),
                     transponder: contact.transponder,
                     role: contact.role,
                     range: "short".into(),
                     confidence_percent: 100,
+                    resolution: crate::wire::EncounterResolution::Identified,
                 },
                 summary: if boarding_inspection {
                     "The contact refuses boarding. Combat begins; joint crew orders are required."
@@ -11188,6 +11314,16 @@ impl Store {
                     "Your command initiates an armed intercept. Joint crew orders are required."
                 }
                 .into(),
+                authority: if authorized {
+                    EncounterAuthority::Naval
+                } else {
+                    EncounterAuthority::None
+                },
+                threat: EncounterThreat::Unknown,
+                demand: crate::wire::EncounterDemand::default(),
+                available_postures: Vec::new(),
+                available_fallbacks: Vec::new(),
+                response_deadline_second: 0,
             },
             opponent_catalog_id: contact.catalog_id,
             posture: Some(EncounterPosture::Fight),
@@ -11960,9 +12096,16 @@ impl Store {
                     role: "bankruptcy receiver".into(),
                     range: "port jurisdiction".into(),
                     confidence_percent: 100,
+                    resolution: crate::wire::EncounterResolution::Identified,
                 },
                 summary: "The secured-credit court has accepted an irrecoverable bankruptcy petition."
                     .into(),
+                authority: EncounterAuthority::Warrant,
+                threat: EncounterThreat::Unknown,
+                demand: crate::wire::EncounterDemand::default(),
+                available_postures: Vec::new(),
+                available_fallbacks: Vec::new(),
+                response_deadline_second: 0,
             },
             opponent_catalog_id: 0,
             posture: Some(EncounterPosture::Comply),
@@ -12860,11 +13003,154 @@ impl Store {
         Ok(RuleResult::Applied(self.fleet_snapshot_in(txn, identity)?))
     }
 
+    fn pirate_demand_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+        cargo: &[CargoLot],
+        percent: u8,
+        hold_capacity_millitons: u64,
+    ) -> Result<crate::wire::EncounterDemand, StoreError> {
+        let mut demand = pirate_demand(cargo, percent, hold_capacity_millitons);
+        let allocations = pirate_cargo_allocations(cargo, percent, hold_capacity_millitons);
+        let mut affected_tasks = HashSet::new();
+        for allocation in allocations {
+            let Some(lot) = cargo
+                .iter()
+                .find(|lot| lot.cargo_lot_id == allocation.cargo_lot_id)
+            else {
+                return Err(StoreError::Corrupt(
+                    "pirate cargo allocation references a missing lot",
+                ));
+            };
+            if allocation.quantity_millitons != 0
+                && matches!(lot.title, CargoTitle::Freight | CargoTitle::Contract)
+                && lot.task_id != 0
+            {
+                affected_tasks.insert(lot.task_id);
+            }
+        }
+        for task_id in affected_tasks {
+            let Some(stored) = self
+                .tasks
+                .get(txn, &task_id.to_be_bytes())?
+                .map(decode_stored_task)
+                .transpose()?
+            else {
+                continue;
+            };
+            if stored.identity == *identity {
+                demand.entrusted_liability_credits = demand
+                    .entrusted_liability_credits
+                    .saturating_add(stored.task.offer.non_delivery_liability_credits);
+            }
+        }
+        Ok(demand)
+    }
+
+    fn apply_pirate_demand_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        ship: &mut ShipRecord,
+        snapshot: &EncounterSnapshot,
+        posture: EncounterPosture,
+    ) -> Result<u64, StoreError> {
+        if !snapshot.demand.present || snapshot.authority != EncounterAuthority::Pirate {
+            return Ok(0);
+        }
+        let capacity_millitons = snapshot
+            .demand
+            .player_owned_millitons
+            .saturating_add(snapshot.demand.entrusted_millitons);
+        let allocations = pirate_cargo_allocations(
+            &ship.cargo,
+            snapshot.demand.player_owned_percent,
+            capacity_millitons,
+        );
+        let mut removed = 0_u64;
+        let mut task_losses = HashMap::<u64, u64>::new();
+        let mut unique_losses = Vec::new();
+        for allocation in allocations {
+            let Some(lot) = ship
+                .cargo
+                .iter_mut()
+                .find(|lot| lot.cargo_lot_id == allocation.cargo_lot_id)
+            else {
+                return Err(StoreError::Corrupt(
+                    "pirate cargo demand references a missing lot",
+                ));
+            };
+            let taken = allocation.quantity_millitons.min(lot.quantity_millitons);
+            lot.quantity_millitons = lot.quantity_millitons.saturating_sub(taken);
+            removed = removed.saturating_add(taken);
+            if matches!(lot.title, CargoTitle::Freight | CargoTitle::Contract) && lot.task_id != 0 {
+                let task_loss = task_losses.entry(lot.task_id).or_default();
+                *task_loss = task_loss.saturating_add(taken);
+            }
+            if lot.title == CargoTitle::UniqueObject && lot.unique_object_id != 0 {
+                unique_losses.push(lot.unique_object_id);
+            }
+        }
+        ship.cargo.retain(|lot| lot.quantity_millitons != 0);
+        for object_id in unique_losses {
+            if let Some(mut object) = self
+                .unique_cargo
+                .get(txn, &object_id)?
+                .map(decode_unique_cargo)
+                .transpose()?
+            {
+                object.location = if posture == EncounterPosture::Comply {
+                    UniqueCargoLocation::TrafficShip {
+                        traffic_ship_id: snapshot.contact.contact_id,
+                    }
+                } else {
+                    UniqueCargoLocation::Wreckage {
+                        system_id: ship.system_id,
+                    }
+                };
+                self.unique_cargo
+                    .put(txn, &object_id, &encode_unique_cargo(&object)?)?;
+            }
+        }
+        for (task_id, quantity) in task_losses {
+            let key = task_id.to_be_bytes();
+            let Some(mut stored) = self
+                .tasks
+                .get(txn, &key)?
+                .map(decode_stored_task)
+                .transpose()?
+            else {
+                continue;
+            };
+            if stored.identity != *identity || stored.task.performing_ship_id != ship.ship_id {
+                continue;
+            }
+            stored.task.state = crate::wire::TaskState::LossDocumented;
+            stored.task.status_text =
+                "Entrusted cargo lost to a documented pirate boarding; a loss claim may be filed"
+                    .into();
+            stored.task.piracy_encounter_id = snapshot.encounter_id;
+            stored.task.piracy_incident_second = snapshot.started_second;
+            stored.task.piracy_contact_id = snapshot.contact.contact_id;
+            stored.task.piracy_threat = snapshot.threat;
+            stored.task.piracy_posture = posture;
+            stored.task.piracy_quantity_millitons = quantity;
+            stored.task.loss_claim_deadline_second = stored
+                .task
+                .offer
+                .delivery_deadline_second
+                .max(snapshot.started_second.saturating_add(7 * 86_400));
+            stored.task.revision = stored.task.revision.saturating_add(1);
+            self.tasks.put(txn, &key, &encode_stored_task(&stored)?)?;
+        }
+        Ok(removed)
+    }
+
     fn process_encounter_turn_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
-        scheduled_second: u64,
-        due_second: u64,
+        current_second: u64,
         identity: &PlayerIdentity,
         encounter_id: u64,
     ) -> Result<(), StoreError> {
@@ -12877,20 +13163,31 @@ impl Store {
         else {
             return Err(StoreError::Corrupt("scheduled encounter is missing"));
         };
+        let scheduled_second = record.snapshot.next_turn_second;
+        let departing_timeout = record.snapshot.kind == EncounterKind::DepartingContact
+            && record.snapshot.state == EncounterState::AwaitingPosture
+            && record.snapshot.response_deadline_second != 0
+            && record.snapshot.response_deadline_second <= current_second;
         if record.snapshot.encounter_id != encounter_id
-            || record.snapshot.state != EncounterState::Resolving
-            || record.snapshot.next_turn_second != scheduled_second
+            || (!departing_timeout && record.snapshot.state != EncounterState::Resolving)
+            || scheduled_second == 0
+            || scheduled_second > current_second
         {
             return Err(StoreError::Corrupt(
                 "encounter turn disagrees with encounter state",
             ));
         }
-        record.snapshot.next_turn_second = due_second;
+        if departing_timeout {
+            record.posture = Some(EncounterPosture::ContinueCourse);
+            record.snapshot.state = EncounterState::Resolving;
+            record.snapshot.turn = 1;
+        }
+        record.snapshot.next_turn_second = current_second;
         let mut career = self.career_state_in(txn, identity)?;
         if let Some(mut combat) = record.combat.clone() {
-            if scheduled_second < due_second {
+            if scheduled_second < current_second {
                 combat.round_started_second =
-                    due_second.saturating_sub(crate::combat::COMBAT_TURN_SECONDS);
+                    current_second.saturating_sub(crate::combat::COMBAT_TURN_SECONDS);
             }
             let (mut player, mut ship) = self.player_and_ship_in(txn, identity)?;
             let player_order = if let Some(order) = record.player_order.take() {
@@ -12955,14 +13252,14 @@ impl Store {
                 }) {
                     opportunity.evidence_kind =
                         crate::careers::ObjectiveEvidenceKind::InspectionRecord;
-                    opportunity.evidence_second = due_second;
+                    opportunity.evidence_second = current_second;
                     career.revision = career.revision.saturating_add(1);
                 }
             }
             let mut next_state = resolution.state;
             let mut waiting = Vec::new();
             for intervention in record.pending_interventions.drain(..) {
-                if intervention.due_second <= due_second {
+                if intervention.due_second <= current_second {
                     let vessel_id = intervention.contact_id | (1_u64 << 62);
                     if !next_state
                         .vessels
@@ -13052,7 +13349,7 @@ impl Store {
                             &ship,
                             captured,
                             title,
-                            due_second,
+                            current_second,
                         )?;
                     career.prizes.push(crate::careers::PrizeRecord {
                         prize_id: encounter_id,
@@ -13068,7 +13365,7 @@ impl Store {
                         } else {
                             crate::careers::PrizeStatus::Secured
                         },
-                        secured_second: due_second,
+                        secured_second: current_second,
                         claim_message_id: 0,
                         settlement_credits: terms.settlement_credits,
                         advance_credits: 0,
@@ -13097,7 +13394,7 @@ impl Store {
                     identity,
                     ship.ship_id,
                     player_vessel.crew_hits,
-                    due_second,
+                    current_second,
                     encounter_id,
                 )?;
                 let hostile_defeated = next_state.vessels.iter().any(|vessel| {
@@ -13130,7 +13427,7 @@ impl Store {
                         continue;
                     };
                     opportunity.evidence_kind = evidence;
-                    opportunity.evidence_second = due_second;
+                    opportunity.evidence_second = current_second;
                     if matches!(
                         evidence,
                         crate::careers::ObjectiveEvidenceKind::TargetCaptured
@@ -13146,7 +13443,7 @@ impl Store {
                         identity,
                         &mut player,
                         ship.system_id,
-                        due_second,
+                        current_second,
                     )?;
                 }
                 record.snapshot.state = EncounterState::Resolved;
@@ -13201,7 +13498,7 @@ impl Store {
                     damage_hits,
                 });
                 if !command_lost {
-                    begin_offline_recovery(&mut ship, due_second);
+                    begin_offline_recovery(&mut ship, current_second);
                     self.ships
                         .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
                 }
@@ -13242,7 +13539,7 @@ impl Store {
                 if let Some(watch) = self.interception_watch_in(txn, ship.ship_id)? {
                     self.remove_contact_schedules_in(txn, ship.ship_id)?;
                     if !command_lost && Self::ship_traffic_locus(&ship) == Some(watch.locus) {
-                        self.schedule_next_interception_watch_in(txn, &watch, due_second)?;
+                        self.schedule_next_interception_watch_in(txn, &watch, current_second)?;
                     } else {
                         self.interception_watches.delete(txn, &ship.ship_id)?;
                     }
@@ -13291,7 +13588,7 @@ impl Store {
             })
             .unwrap_or(0);
         let turn = record.snapshot.turn;
-        let entropy = crate::ship_condition::mix64(encounter_id ^ due_second ^ u64::from(turn));
+        let entropy = crate::ship_condition::mix64(encounter_id ^ current_second ^ u64::from(turn));
         let die = |shift: u32| -> i16 { (((entropy >> shift) % 6) + 1) as i16 };
         let posture = record.posture.unwrap_or(EncounterPosture::Flee);
         let posture_dm = match posture {
@@ -13299,6 +13596,8 @@ impl Store {
             EncounterPosture::Flee => 2,
             EncounterPosture::Comply => 3,
             EncounterPosture::Surrender => -6,
+            EncounterPosture::Pursue => 1,
+            EncounterPosture::ContinueCourse => 0,
         };
         let intervention = if turn >= 2 {
             let system = self
@@ -13369,7 +13668,7 @@ impl Store {
                     let warrant_id = career.warrants[warrant_index].warrant_id;
                     let (resolution_message_id, _) = self.simulation.dispatch_message(
                         txn,
-                        due_second,
+                        current_second,
                         ship.system_id,
                         crate::simulation::MessageClass::PublicService,
                         crate::simulation::MessageImportance::Important,
@@ -13383,7 +13682,7 @@ impl Store {
                     let warrant = &mut career.warrants[warrant_index];
                     warrant.status = crate::careers::WarrantStatus::Satisfied;
                     warrant.resolution_message_id = resolution_message_id;
-                    warrant.resolved_second = due_second;
+                    warrant.resolved_second = current_second;
                     warrant.resolving_system_id = ship.system_id;
                     career.revision = career.revision.saturating_add(1);
                     if corrupt_accommodation {
@@ -13423,7 +13722,7 @@ impl Store {
                         warrant_id,
                         system.polity_id,
                         ship.system_id,
-                        due_second,
+                        current_second,
                         unpaid.saturating_mul(10),
                         100,
                     );
@@ -13440,7 +13739,7 @@ impl Store {
                         .collect::<Vec<_>>();
                     let (message_id, _) = self.simulation.dispatch_message(
                         txn,
-                        due_second,
+                        current_second,
                         ship.system_id,
                         crate::simulation::MessageClass::PublicService,
                         crate::simulation::MessageImportance::Important,
@@ -13467,7 +13766,22 @@ impl Store {
                     )
                 }
             } else if record.snapshot.kind == EncounterKind::Hostile {
-                "The demand is satisfied and the contact releases the ship.".to_string()
+                cargo_lost = self.apply_pirate_demand_in(
+                    txn,
+                    identity,
+                    &mut ship,
+                    &record.snapshot,
+                    posture,
+                )?;
+                if cargo_lost == 0 {
+                    "The boarding party finds no cargo covered by its demand and releases the ship."
+                        .to_string()
+                } else {
+                    format!(
+                        "The boarding party takes {:.3} tons under its demand and releases the ship.",
+                        cargo_lost as f64 / MILLITONS_PER_TON as f64
+                    )
+                }
             } else {
                 "Identification is exchanged and both vessels continue on course.".to_string()
             };
@@ -13515,48 +13829,13 @@ impl Store {
             if record.fallbacks.contains(&EncounterFallback::JettisonCargo)
                 && !ship.cargo.is_empty()
             {
-                let unique_before = ship
-                    .cargo
-                    .iter()
-                    .filter(|lot| lot.title == CargoTitle::UniqueObject)
-                    .map(|lot| lot.unique_object_id)
-                    .collect::<Vec<_>>();
-                cargo_lost = ship
-                    .cargo
-                    .iter()
-                    .map(|lot| lot.quantity_millitons)
-                    .sum::<u64>()
-                    / 2;
-                let mut discard = cargo_lost;
-                for lot in &mut ship.cargo {
-                    let taken = discard.min(lot.quantity_millitons);
-                    lot.quantity_millitons -= taken;
-                    discard -= taken;
-                }
-                ship.cargo.retain(|lot| lot.quantity_millitons != 0);
-                for object_id in unique_before {
-                    if !ship
-                        .cargo
-                        .iter()
-                        .any(|lot| lot.unique_object_id == object_id)
-                    {
-                        if let Some(mut object) = self
-                            .unique_cargo
-                            .get(txn, &object_id)?
-                            .map(decode_unique_cargo)
-                            .transpose()?
-                        {
-                            object.location = UniqueCargoLocation::Wreckage {
-                                system_id: ship.system_id,
-                            };
-                            self.unique_cargo.put(
-                                txn,
-                                &object_id,
-                                &encode_unique_cargo(&object)?,
-                            )?;
-                        }
-                    }
-                }
+                cargo_lost = self.apply_pirate_demand_in(
+                    txn,
+                    identity,
+                    &mut ship,
+                    &record.snapshot,
+                    posture,
+                )?;
                 resolved = true;
             }
             if !resolved && turn >= 4 {
@@ -13657,7 +13936,7 @@ impl Store {
         } else {
             record.snapshot.turn = record.snapshot.turn.saturating_add(1);
             record.snapshot.revision = record.snapshot.revision.saturating_add(1);
-            record.snapshot.next_turn_second = due_second.saturating_add(1_000);
+            record.snapshot.next_turn_second = current_second.saturating_add(1_000);
             record.snapshot.summary = outcome;
             self.encounters
                 .put(txn, &key, &encode_encounter_record(&record)?)?;
@@ -14769,7 +15048,9 @@ impl Store {
         if roll >= probability && !enforcement_picket && !pirate_picket {
             return Ok(None);
         }
-        let contact = &candidates[entropy as usize % candidates.len()];
+        let Some(contact) = candidates.get(entropy as usize % candidates.len().max(1)) else {
+            return Ok(None);
+        };
         let mut kind = if enforcement_picket {
             EncounterKind::Inspection
         } else if pirate_picket {
@@ -14777,6 +15058,7 @@ impl Store {
         } else {
             encounter_kind_for_policy(entropy, policy.as_ref())
         };
+        let mut pirate_win_share = None;
         if kind == EncounterKind::Hostile {
             let locus_allows_pirates = match encounter_locus {
                 Some(ShipLocusRecord::JumpLocus { .. }) => security < 45,
@@ -14784,17 +15066,39 @@ impl Store {
                 Some(ShipLocusRecord::Port { .. }) => security < 25,
                 _ => false,
             };
-            let target_overmatches = catalog_combat_power(ship.catalog_id).saturating_mul(2)
-                >= catalog_combat_power(contact.catalog_id).saturating_mul(3);
-            if !locus_allows_pirates || target_overmatches {
+            if !locus_allows_pirates {
                 kind = if security >= 60 {
                     EncounterKind::Inspection
                 } else {
                     EncounterKind::RoutineTraffic
                 };
+            } else if let Some(target_power) = pirate_target_estimate(contact, &ship) {
+                let pirate_power = catalog_combat_power(contact.catalog_id);
+                let share = u8::try_from(
+                    pirate_power.saturating_mul(100)
+                        / pirate_power.saturating_add(target_power).max(1),
+                )
+                .unwrap_or(100);
+                if share >= 50 {
+                    pirate_win_share = Some(share);
+                } else {
+                    kind = EncounterKind::DepartingContact;
+                }
+            } else {
+                kind = EncounterKind::DepartingContact;
             }
         }
         let hostile = kind == EncounterKind::Hostile;
+        let departing = kind == EncounterKind::DepartingContact;
+        let Some(observed_contact) = observed_encounter_contact(
+            &ship,
+            contact,
+            hostile || departing,
+            hostile,
+            "local traffic range",
+        ) else {
+            return Ok(None);
+        };
         let filed_plan = self
             .flight_plans
             .get(txn, &key)?
@@ -14820,6 +15124,57 @@ impl Store {
             }
         });
         let encounter_id = take_next_id(self.meta, txn, META_NEXT_ENCOUNTER_ID)?;
+        let demand = if let Some(share) = pirate_win_share {
+            self.pirate_demand_in(
+                txn,
+                &identity,
+                &ship.cargo,
+                pirate_demand_percent(share, entropy.rotate_left(31)),
+                creation::ship_status_spec(contact.catalog_id)
+                    .map_or(0, |spec| spec.cargo_capacity_millitons),
+            )?
+        } else {
+            crate::wire::EncounterDemand::default()
+        };
+        let observed_power = match observed_contact.resolution {
+            crate::wire::EncounterResolution::Identified => {
+                Some(catalog_combat_power(contact.catalog_id))
+            }
+            crate::wire::EncounterResolution::Approximate => {
+                Some(size_class_combat_power(contact.displacement_millitons))
+            }
+            _ => None,
+        };
+        let authority = match kind {
+            EncounterKind::Hostile | EncounterKind::DepartingContact => EncounterAuthority::Pirate,
+            EncounterKind::Inspection => EncounterAuthority::Customs,
+            EncounterKind::TrafficControl => EncounterAuthority::TrafficControl,
+            EncounterKind::Military => EncounterAuthority::Naval,
+            _ => EncounterAuthority::None,
+        };
+        let available_postures = match kind {
+            EncounterKind::Hostile => vec![
+                EncounterPosture::Fight,
+                EncounterPosture::Flee,
+                EncounterPosture::Comply,
+                EncounterPosture::Surrender,
+                EncounterPosture::Board,
+            ],
+            EncounterKind::DepartingContact => {
+                vec![EncounterPosture::Pursue, EncounterPosture::ContinueCourse]
+            }
+            _ => vec![EncounterPosture::Comply, EncounterPosture::Flee],
+        };
+        let available_fallbacks = if hostile {
+            vec![
+                EncounterFallback::Surrender,
+                EncounterFallback::Abandon,
+                EncounterFallback::JettisonCargo,
+                EncounterFallback::BreakOff,
+            ]
+        } else {
+            Vec::new()
+        };
         let mut snapshot = EncounterSnapshot {
             encounter_id,
             revision: 1,
@@ -14828,31 +15183,23 @@ impl Store {
             started_second: due_second,
             next_turn_second: 0,
             turn: 0,
-            contact: EncounterContact {
-                contact_id: contact.contact_id,
-                ship_name: if hostile {
-                    "Unlit contact".into()
-                } else {
-                    contact.ship_name.clone()
-                },
-                class_name: contact.class_name.clone(),
-                transponder: if hostile {
-                    "No response".into()
-                } else {
-                    contact.transponder.clone()
-                },
-                role: if hostile {
-                    "interceptor".into()
-                } else {
-                    contact.role.clone()
-                },
-                range: "local traffic range".into(),
-                confidence_percent: 75,
-            },
+            contact: observed_contact,
             summary: if hostile {
-                "An armed contact alters course to intercept.".into()
+                demand.text.clone()
+            } else if departing {
+                "An unlit armed contact abandons its intercept and accelerates away.".into()
             } else {
                 "A contact intersects the ship's local traffic solution.".into()
+            },
+            authority,
+            threat: encounter_threat(observed_power, ship.catalog_id),
+            demand,
+            available_postures,
+            available_fallbacks,
+            response_deadline_second: if departing {
+                due_second.saturating_add(crate::combat::COMBAT_TURN_SECONDS)
+            } else {
+                0
             },
         };
         self.emit_encounter_radio_in(
@@ -14860,12 +15207,13 @@ impl Store {
             &ship,
             &snapshot.contact,
             snapshot.kind,
+            snapshot.authority,
             encounter_id,
             due_second,
             !through_authorized,
             &snapshot.summary,
         )?;
-        if !hostile && through_authorized {
+        if !hostile && !departing && through_authorized {
             snapshot.state = EncounterState::Resolved;
             snapshot.summary = match kind {
                 EncounterKind::Inspection => {
@@ -14892,6 +15240,7 @@ impl Store {
                 EncounterKind::Military => {
                     "The naval challenge is answered and the picket releases the ship."
                 }
+                EncounterKind::DepartingContact => unreachable!(),
                 _ => "Identification is exchanged and both vessels continue.",
             }
             .into();
@@ -14955,6 +15304,32 @@ impl Store {
                 .put(txn, &key, &encode_flight_plan_snapshot(&plan)?)?;
         }
         if !through_authorized {
+            return Ok(Some(identity));
+        }
+        if departing {
+            snapshot.next_turn_second = snapshot.response_deadline_second;
+            self.encounters.put(
+                txn,
+                &key,
+                &encode_encounter_record(&EncounterRecord {
+                    snapshot: snapshot.clone(),
+                    opponent_catalog_id: contact.catalog_id,
+                    posture: None,
+                    fallbacks: Vec::new(),
+                    result: None,
+                    combat: None,
+                    player_order: None,
+                    automation_decision: None,
+                    combat_log: Vec::new(),
+                    pending_interventions: Vec::new(),
+                })?,
+            )?;
+            self.schedule_encounter_turn_in(
+                txn,
+                &identity,
+                encounter_id,
+                snapshot.response_deadline_second,
+            )?;
             return Ok(Some(identity));
         }
         let posture = match kind {
@@ -17506,14 +17881,135 @@ impl Store {
                 )?;
                 stored.task.dispute_message_id = message_id;
                 stored.task.dispute_effect = filing_effect;
+                stored.task.loss_claim_effect = filing_effect;
                 stored.task.state = crate::wire::TaskState::Disputed;
                 stored.task.status_text = format!(
                     "Sealed dispute filing {message_id} is in transit to the issuing office"
                 );
             }
+            crate::wire::TaskActionKind::FileLossClaim => {
+                if stored.task.state != crate::wire::TaskState::LossDocumented
+                    || stored.task.piracy_encounter_id == 0
+                {
+                    return Ok(RuleResult::Rejected(
+                        "this task has no documented pirate loss to claim".into(),
+                    ));
+                }
+                if current > stored.task.loss_claim_deadline_second {
+                    return Ok(RuleResult::Rejected(
+                        "the documented-loss claim deadline has passed".into(),
+                    ));
+                }
+                if stored.task.insurance_claim_id != 0 {
+                    return Ok(RuleResult::Rejected(
+                        "a documented-loss claim is already in transit".into(),
+                    ));
+                }
+                let systems = self.simulation.systems(txn)?;
+                if crate::simulation::shortest_route(
+                    &systems,
+                    ship.system_id,
+                    stored.task.offer.origin_system_id,
+                )
+                .is_none()
+                {
+                    return Ok(RuleResult::Rejected(
+                        "no known mail route reaches the issuing office".into(),
+                    ));
+                }
+                let captain_service = self
+                    .crew_services
+                    .get(txn, &ship.commanding_person_id)?
+                    .map(decode_crew_service)
+                    .transpose()?
+                    .ok_or(StoreError::Corrupt("commanding captain service is missing"))?;
+                let captain = self
+                    .persons
+                    .get(txn, &ship.commanding_person_id)?
+                    .map(decode_person_record)
+                    .transpose()?
+                    .ok_or(StoreError::Corrupt("commanding captain person is missing"))?;
+                if !service_available_for_duty(&captain_service, current)
+                    || person_incapacitated(&captain)
+                    || captain_service.assigned_slot_ids.is_empty()
+                {
+                    return Ok(RuleResult::Rejected(
+                        "a conscious commanding officer on watch must sign the claim".into(),
+                    ));
+                }
+                let posture_dm = i8::from(matches!(
+                    stored.task.piracy_posture,
+                    EncounterPosture::Fight | EncounterPosture::Flee | EncounterPosture::Board
+                ));
+                let threat_dm = match stored.task.piracy_threat {
+                    EncounterThreat::Favorable => -1,
+                    EncounterThreat::Comparable | EncounterThreat::Unknown => 0,
+                    EncounterThreat::Dangerous => 1,
+                    EncounterThreat::Overwhelming => 2,
+                };
+                let common = crate::task_resolution::TaskRequest {
+                    characteristic: captain.person.characteristics.education,
+                    skill: crate::wire::SkillId::Admin,
+                    difficulty: 8,
+                    equipment_dm: 0,
+                    condition_dm: person_condition_dm(&captain).saturating_add(
+                        crate::personnel::discretionary_morale_dm(captain_service.morale),
+                    ),
+                    assistance_dm: 2_i8.saturating_add(posture_dm).saturating_add(threat_dm),
+                    entropy: crate::ship_condition::mix64(
+                        task_id
+                            ^ current
+                            ^ stored.task.piracy_encounter_id.rotate_left(19)
+                            ^ captain.person_id.rotate_left(23),
+                    ),
+                };
+                let admin = crate::task_resolution::resolve(&captain.person, common);
+                let advocate = crate::task_resolution::resolve(
+                    &captain.person,
+                    crate::task_resolution::TaskRequest {
+                        skill: crate::wire::SkillId::Advocate,
+                        entropy: common.entropy ^ 0x4c4f_5353_434c_4149,
+                        ..common
+                    },
+                );
+                let (filing_skill, filing_effect) = if advocate.effect > admin.effect {
+                    ("Advocate", advocate.effect)
+                } else {
+                    ("Admin", admin.effect)
+                };
+                let (message_id, _) = self.simulation.dispatch_message(
+                    txn,
+                    current,
+                    ship.system_id,
+                    crate::simulation::MessageClass::Private,
+                    crate::simulation::MessageImportance::Important,
+                    &format!("Authenticated piracy-loss claim on task {}", stored.task.task_id),
+                    &format!(
+                        "The captain files encounter {}, contact {}, posture {:?}, and {:.3} tons of entrusted cargo lost. The custody record and authenticated incident evidence accompany the claim. {} effect: {:+}.",
+                        stored.task.piracy_encounter_id,
+                        stored.task.piracy_contact_id,
+                        stored.task.piracy_posture,
+                        stored.task.piracy_quantity_millitons as f64 / MILLITONS_PER_TON as f64,
+                        filing_skill,
+                        filing_effect,
+                    ),
+                    &[stored.task.offer.origin_system_id],
+                )?;
+                stored.task.insurance_claim_id = message_id;
+                stored.task.dispute_message_id = message_id;
+                stored.task.dispute_effect = filing_effect;
+                stored.task.loss_claim_effect = filing_effect;
+                stored.task.state = crate::wire::TaskState::Disputed;
+                stored.task.status_text = format!(
+                    "Authenticated loss claim {message_id} is in transit; default is suspended"
+                );
+            }
         }
         stored.task.revision = stored.task.revision.saturating_add(1);
-        if action != crate::wire::TaskActionKind::FileDispute {
+        if !matches!(
+            action,
+            crate::wire::TaskActionKind::FileDispute | crate::wire::TaskActionKind::FileLossClaim
+        ) {
             stored.task.reserved_credits = 0;
             stored.task.reserved_cargo_millitons = 0;
             stored.task.reserved_passenger_count = 0;
@@ -17619,12 +18115,21 @@ impl Store {
             .collect::<Vec<_>>();
         for (key, mut dispute) in disputes {
             let sustained = dispute.task.dispute_effect >= 0;
-            let subject = if sustained {
+            let piracy_loss = dispute.task.insurance_claim_id != 0;
+            let subject = if sustained && piracy_loss {
+                format!("Piracy-loss claim {} sustained", dispute.task.task_id)
+            } else if !sustained && piracy_loss {
+                format!("Piracy-loss claim {} denied", dispute.task.task_id)
+            } else if sustained {
                 format!("Dispute {} sustained", dispute.task.task_id)
             } else {
                 format!("Dispute {} denied", dispute.task.task_id)
             };
-            let body = if sustained {
+            let body = if sustained && piracy_loss {
+                "The issuing office authenticates the pirate incident and entrusted-cargo loss. Performance is excused, collateral is released, and no non-delivery assessment is imposed."
+            } else if !sustained && piracy_loss {
+                "The issuing office finds the submitted pirate-loss evidence insufficient to excuse performance. The contract's capped non-delivery assessment remains due."
+            } else if sustained {
                 "The issuing office accepts the signed filing and objective custody and delivery records. Collateral and reserved capacity are released without a non-performance assessment."
             } else {
                 "The issuing office finds that the signed filing and objective custody and delivery records do not excuse performance. The contractual assessment remains due."
@@ -17653,7 +18158,13 @@ impl Store {
                 }),
             )?;
             dispute.task.adjudication_message_id = message_id;
-            dispute.task.status_text = if sustained {
+            dispute.task.status_text = if sustained && piracy_loss {
+                "The issuing office sustained the piracy-loss claim; its sealed ruling is in transit"
+                    .into()
+            } else if !sustained && piracy_loss {
+                "The issuing office denied the piracy-loss claim; its sealed ruling is in transit"
+                    .into()
+            } else if sustained {
                 "The issuing office sustained the dispute; its sealed ruling is in transit".into()
             } else {
                 "The issuing office denied the dispute; its sealed ruling is in transit".into()
@@ -18092,8 +18603,12 @@ impl Store {
                 .ok_or(StoreError::Corrupt("task-dispute player is missing"))?;
             if stored.task.dispute_effect >= 0 {
                 stored.task.state = crate::wire::TaskState::Cancelled;
-                stored.task.status_text =
-                    "Dispute sustained; collateral and capacity released without assessment".into();
+                stored.task.status_text = if stored.task.insurance_claim_id != 0 {
+                    "Piracy-loss claim sustained; collateral and capacity released without assessment"
+                        .into()
+                } else {
+                    "Dispute sustained; collateral and capacity released without assessment".into()
+                };
             } else {
                 let assessment = stored
                     .task
@@ -18103,8 +18618,13 @@ impl Store {
                 let paid = assessment.min(player.credits);
                 player.credits -= paid;
                 stored.task.state = crate::wire::TaskState::Defaulted;
-                stored.task.status_text =
-                    format!("Dispute denied; Cr{paid} assessed against available local funds");
+                stored.task.status_text = if stored.task.insurance_claim_id != 0 {
+                    format!(
+                        "Piracy-loss claim denied; Cr{paid} assessed against available local funds"
+                    )
+                } else {
+                    format!("Dispute denied; Cr{paid} assessed against available local funds")
+                };
                 self.players.put(
                     txn,
                     &encode_identity(identity),
@@ -18376,15 +18896,21 @@ impl Store {
         target: &ShipRecord,
         contact: &EncounterContact,
         kind: EncounterKind,
+        authority: EncounterAuthority,
         encounter_id: u64,
         emitted_second: u64,
         actionable: bool,
         body: &str,
     ) -> Result<(), StoreError> {
-        let radio_kind = match kind {
-            EncounterKind::Hostile => crate::wire::RadioTransmissionKind::SurrenderDemand,
-            EncounterKind::Inspection => crate::wire::RadioTransmissionKind::InspectionOrder,
-            EncounterKind::Military => crate::wire::RadioTransmissionKind::BoardingOrder,
+        let radio_kind = match (kind, authority) {
+            (EncounterKind::Hostile, EncounterAuthority::Pirate) => {
+                crate::wire::RadioTransmissionKind::PirateDemand
+            }
+            (EncounterKind::Inspection, _) => crate::wire::RadioTransmissionKind::InspectionOrder,
+            (EncounterKind::Military, _)
+            | (EncounterKind::Hostile, EncounterAuthority::Warrant) => {
+                crate::wire::RadioTransmissionKind::BoardingOrder
+            }
             _ => return Ok(()),
         };
         let Some(source) = self.radio_position_au_in(txn, target, emitted_second)? else {
@@ -19228,6 +19754,14 @@ impl Store {
             dispute_effect: 0,
             adjudication_message_id: 0,
             performing_ship_id: ship.ship_id,
+            piracy_encounter_id: 0,
+            piracy_incident_second: 0,
+            piracy_contact_id: 0,
+            piracy_threat: EncounterThreat::Unknown,
+            piracy_posture: EncounterPosture::Comply,
+            piracy_quantity_millitons: 0,
+            loss_claim_deadline_second: 0,
+            loss_claim_effect: 0,
         };
         let mut task = task;
         task.reserved_credits = task.offer.collateral_credits;
@@ -26376,6 +26910,37 @@ impl Store {
         Ok(())
     }
 
+    fn remove_encounter_turns_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        encounter_id: u64,
+    ) -> Result<(), StoreError> {
+        let keys = self
+            .encounter_events
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((key, value)) => {
+                    if value.len() != 17 || value[0] != 1 {
+                        return Some(Err(StoreError::Corrupt("invalid scheduled encounter turn")));
+                    }
+                    let bbs_id = u32::from_be_bytes(value[1..5].try_into().ok()?);
+                    let player_id = u32::from_be_bytes(value[5..9].try_into().ok()?);
+                    let scheduled_encounter_id = u64::from_be_bytes(value[9..17].try_into().ok()?);
+                    (bbs_id == identity.bbs_id
+                        && player_id == identity.player_id
+                        && scheduled_encounter_id == encounter_id)
+                        .then(|| Ok(key.to_vec()))
+                }
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for key in keys {
+            self.encounter_events.delete(txn, &key)?;
+        }
+        Ok(())
+    }
+
     fn schedule_shared_combat_turn_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
@@ -26507,10 +27072,14 @@ impl Store {
         Ok(())
     }
 
-    /// Move the next eligible future event into durable ingress. Admission and
-    /// execution are deliberately separate commits: after this returns `true`,
-    /// the ordinary queue consumer is the only code which may apply the work.
-    fn admit_next_scheduled_through(&self, target_second: u64) -> Result<bool, StoreError> {
+    /// Advance to, then admit, the next eligible future event. The scheduled
+    /// event remains in its due-time index until the authoritative clock has
+    /// reached that second. Only then is its timestamp-free payload moved into
+    /// durable ingress for the ordinary queue consumer to apply.
+    fn admit_next_scheduled_through(
+        &self,
+        target_second: u64,
+    ) -> Result<ScheduledAdmission, StoreError> {
         let mut txn = self.env.write_txn()?;
         let mut candidates = Vec::with_capacity(8);
         if let Some(head) = self.simulation.scheduled_head(&txn)? {
@@ -26603,122 +27172,109 @@ impl Store {
             .min_by_key(ScheduledCandidate::admission_key)
         else {
             txn.abort();
-            return Ok(false);
+            return Ok(ScheduledAdmission::None);
         };
+        let due_second = candidate.admission_key().0;
+        let current_second = get_meta_u64(self.meta, &txn, META_GAME_SECOND)?.unwrap_or(0);
+        if current_second < due_second {
+            self.advance_clock_in(&mut txn, due_second)?;
+            txn.commit()?;
+            return Ok(ScheduledAdmission::ClockAdvance);
+        }
         let scheduled = match candidate {
             ScheduledCandidate::Simulation(head) => {
                 ScheduledInput::Simulation(self.simulation.take_scheduled(&mut txn, head)?)
             }
             ScheduledCandidate::PlayerTravel {
                 key,
-                due_second,
                 event_id,
                 ship_id,
+                ..
             } => {
                 self.player_events.delete(&mut txn, &key)?;
-                ScheduledInput::PlayerTravel {
-                    event_id,
-                    due_second,
-                    ship_id,
-                }
+                ScheduledInput::PlayerTravel { event_id, ship_id }
             }
             ScheduledCandidate::ShipCondition {
                 key,
-                due_second,
                 event_id,
                 ship_id,
+                ..
             } => {
                 self.ship_condition_events.delete(&mut txn, &key)?;
-                ScheduledInput::ShipCondition {
-                    event_id,
-                    due_second,
-                    ship_id,
-                }
+                ScheduledInput::ShipCondition { event_id, ship_id }
             }
             ScheduledCandidate::PersonTraining {
                 key,
-                due_second,
                 event_id,
                 person_id,
+                ..
             } => {
                 self.person_training_events.delete(&mut txn, &key)?;
                 ScheduledInput::PersonTraining {
                     event_id,
-                    due_second,
                     person_id,
                 }
             }
             ScheduledCandidate::ShipActivity {
                 key,
-                due_second,
                 event_id,
                 ship_id,
+                ..
             } => {
                 self.ship_activity_events.delete(&mut txn, &key)?;
-                ScheduledInput::ShipActivity {
-                    event_id,
-                    due_second,
-                    ship_id,
-                }
+                ScheduledInput::ShipActivity { event_id, ship_id }
             }
             ScheduledCandidate::EncounterTurn {
                 key,
-                due_second,
                 event_id,
                 identity,
                 encounter_id,
+                ..
             } => {
                 self.encounter_events.delete(&mut txn, &key)?;
                 ScheduledInput::EncounterTurn {
                     event_id,
-                    due_second,
                     identity,
                     encounter_id,
                 }
             }
             ScheduledCandidate::SharedCombatTurn {
                 key,
-                due_second,
                 event_id,
                 combat_id,
+                ..
             } => {
                 self.shared_combat_events.delete(&mut txn, &key)?;
                 ScheduledInput::SharedCombatTurn {
                     event_id,
-                    due_second,
                     combat_id,
                 }
             }
             ScheduledCandidate::ContactCheck {
                 key,
-                due_second,
                 event_id,
                 ship_id,
+                ..
             } => {
                 self.contact_events.delete(&mut txn, &key)?;
-                ScheduledInput::ContactCheck {
-                    event_id,
-                    due_second,
-                    ship_id,
-                }
+                ScheduledInput::ContactCheck { event_id, ship_id }
             }
             ScheduledCandidate::MerchantWork {
                 key,
-                due_second,
                 event_id,
                 assignment_id,
+                ..
             } => {
                 self.work_assignment_events.delete(&mut txn, &key)?;
                 ScheduledInput::MerchantWork {
                     event_id,
-                    due_second,
                     assignment_id,
                 }
             }
         };
         self.enqueue_engine_input_in(&mut txn, &EngineInput::Scheduled(scheduled))?;
         txn.commit()?;
-        Ok(true)
+        Ok(ScheduledAdmission::Event)
     }
 
     fn move_unique_cargo_with_traffic_in(
@@ -31016,19 +31572,16 @@ impl Store {
                 reached_target = false;
                 break;
             }
-            if !self.admit_next_scheduled_through(target_second)? {
-                let current = self.game_second()?;
-                if current != target_second {
-                    let mut txn = self.env.write_txn()?;
-                    self.enqueue_engine_input_in(
-                        &mut txn,
-                        &EngineInput::TimeAdvance { target_second },
-                    )?;
-                    txn.commit()?;
-                    self.process_next_engine_input()?
-                        .ok_or(StoreError::Corrupt("queued time advance disappeared"))?;
+            match self.admit_next_scheduled_through(target_second)? {
+                ScheduledAdmission::None => {
+                    let current = self.game_second()?;
+                    if current != target_second {
+                        self.advance_clock_to(target_second)?;
+                    }
+                    break;
                 }
-                break;
+                ScheduledAdmission::ClockAdvance => continue,
+                ScheduledAdmission::Event => {}
             }
             // Admission committed above. Execution begins in a new transaction
             // through exactly the same durable queue consumer as player work.
@@ -33196,6 +33749,290 @@ fn catalog_combat_power(catalog_id: u32) -> u64 {
         .max(1)
 }
 
+fn traffic_size_class(displacement_millitons: u64) -> &'static str {
+    match displacement_millitons {
+        0..=99_999 => "small craft",
+        100_000..=499_999 => "small ship",
+        500_000..=1_999_999 => "medium ship",
+        _ => "large ship",
+    }
+}
+
+fn size_class_combat_power(displacement_millitons: u64) -> u64 {
+    let class = traffic_size_class(displacement_millitons);
+    let mut powers = creation::ship_market_catalog()
+        .into_iter()
+        .filter(|entry| traffic_size_class(entry.displacement_millitons) == class)
+        .map(|entry| catalog_combat_power(entry.catalog_id))
+        .collect::<Vec<_>>();
+    powers.sort_unstable();
+    powers.get(powers.len() / 2).copied().unwrap_or(1)
+}
+
+fn sensor_total_for_contact(ship: &ShipRecord, contact: &crate::traffic::TrafficContact) -> i16 {
+    let electronics_dm = creation::ship_electronics_dm(ship.catalog_id).unwrap_or(0);
+    let sensor_damage = ship
+        .subsystems
+        .iter()
+        .find(|subsystem| subsystem.kind == ShipSubsystemKind::Sensors)
+        .map(|subsystem| {
+            subsystem
+                .sustained_hits
+                .saturating_sub(subsystem.battlefield_repair_hits)
+        })
+        .unwrap_or(0);
+    let entropy = crate::ship_condition::mix64(contact.contact_id ^ ship.ship_id.rotate_left(29));
+    let roll =
+        i16::try_from(2 + entropy % 6 + entropy.rotate_left(11) % 6).expect("two dice fit in i16");
+    let size_dm = match contact.displacement_millitons {
+        0..=99_999 => -1,
+        100_000..=999_999 => 0,
+        1_000_000..=4_999_999 => 1,
+        _ => 2,
+    };
+    roll + i16::from(electronics_dm) + size_dm
+        - 2 * i16::try_from(sensor_damage).unwrap_or(i16::MAX / 2)
+}
+
+fn observed_encounter_contact(
+    ship: &ShipRecord,
+    contact: &crate::traffic::TrafficContact,
+    dark: bool,
+    radio_hail: bool,
+    range: &str,
+) -> Option<EncounterContact> {
+    let total = sensor_total_for_contact(ship, contact);
+    let (resolution, confidence_percent, class_name) = if total >= 10 {
+        (
+            if dark {
+                crate::wire::EncounterResolution::Approximate
+            } else {
+                crate::wire::EncounterResolution::Identified
+            },
+            u8::try_from(80 + (total - 10) * 5).unwrap_or(100).min(100),
+            traffic_size_class(contact.displacement_millitons).into(),
+        )
+    } else if total >= 6 {
+        (
+            crate::wire::EncounterResolution::Approximate,
+            u8::try_from(45 + (total - 6) * 10).unwrap_or(75).min(75),
+            traffic_size_class(contact.displacement_millitons).into(),
+        )
+    } else if dark {
+        if !radio_hail {
+            return None;
+        }
+        (
+            crate::wire::EncounterResolution::RadioOnly,
+            25,
+            String::new(),
+        )
+    } else {
+        (
+            crate::wire::EncounterResolution::TransponderOnly,
+            25,
+            String::new(),
+        )
+    };
+    Some(EncounterContact {
+        contact_id: contact.contact_id,
+        ship_name: if dark {
+            "Unlit contact".into()
+        } else {
+            contact.ship_name.clone()
+        },
+        class_name,
+        transponder: if dark {
+            "No response".into()
+        } else {
+            contact.transponder.clone()
+        },
+        role: if dark {
+            "unidentified vessel".into()
+        } else {
+            contact.role.clone()
+        },
+        range: range.into(),
+        confidence_percent,
+        resolution,
+    })
+}
+
+fn pirate_target_estimate(
+    pirate: &crate::traffic::TrafficContact,
+    target: &ShipRecord,
+) -> Option<u64> {
+    let electronics_dm = creation::ship_electronics_dm(pirate.catalog_id).unwrap_or(0);
+    let displacement = creation::ship_status_spec(target.catalog_id)
+        .map_or(0, |status| status.displacement_millitons);
+    let size_dm = match displacement {
+        0..=99_999 => -1,
+        100_000..=999_999 => 0,
+        1_000_000..=4_999_999 => 1,
+        _ => 2,
+    };
+    let entropy = crate::ship_condition::mix64(
+        pirate.contact_id ^ target.ship_id.rotate_left(17) ^ 0x5049_5241_5445_0000,
+    );
+    let total = i16::try_from(2 + entropy % 6 + entropy.rotate_left(11) % 6)
+        .expect("two dice fit in i16")
+        + i16::from(electronics_dm)
+        + size_dm;
+    if total >= 10 {
+        Some(catalog_combat_power(target.catalog_id))
+    } else if total >= 6 {
+        Some(size_class_combat_power(displacement))
+    } else {
+        None
+    }
+}
+
+fn pirate_demand_percent(win_share: u8, entropy: u64) -> u8 {
+    let base = match win_share {
+        0..=59 => 10_i16,
+        60..=69 => 25,
+        70..=79 => 40,
+        80..=89 => 55,
+        _ => 75,
+    };
+    let jitter = match entropy % 3 {
+        0 => -1,
+        1 => 0,
+        _ => 1,
+    };
+    u8::try_from((base + jitter).clamp(1, 100)).unwrap_or(100)
+}
+
+fn encounter_threat(known_opponent_power: Option<u64>, player_catalog_id: u32) -> EncounterThreat {
+    let Some(opponent) = known_opponent_power else {
+        return EncounterThreat::Unknown;
+    };
+    let player = catalog_combat_power(player_catalog_id);
+    let share = opponent.saturating_mul(100) / opponent.saturating_add(player).max(1);
+    match share {
+        0..=39 => EncounterThreat::Favorable,
+        40..=59 => EncounterThreat::Comparable,
+        60..=74 => EncounterThreat::Dangerous,
+        _ => EncounterThreat::Overwhelming,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PirateCargoAllocation {
+    cargo_lot_id: u64,
+    quantity_millitons: u64,
+}
+
+fn pirate_cargo_value_per_ton(lot: &CargoLot) -> u64 {
+    lot.purchase_price_per_ton.max(
+        crate::commerce::commodity(lot.commodity_id)
+            .map_or(0, |commodity| commodity.base_price_per_ton),
+    )
+}
+
+fn pirate_cargo_allocations(
+    cargo: &[CargoLot],
+    percent: u8,
+    hold_capacity_millitons: u64,
+) -> Vec<PirateCargoAllocation> {
+    let mut candidates = cargo
+        .iter()
+        .filter_map(|lot| {
+            let quantity_millitons = match lot.title {
+                CargoTitle::Freight | CargoTitle::Contract => lot.quantity_millitons,
+                CargoTitle::PlayerOwned => lot
+                    .quantity_millitons
+                    .saturating_mul(u64::from(percent))
+                    .div_ceil(100),
+                CargoTitle::UniqueObject if percent != 0 => lot.quantity_millitons,
+                CargoTitle::UniqueObject => 0,
+            };
+            (quantity_millitons != 0).then_some((
+                lot,
+                quantity_millitons,
+                pirate_cargo_value_per_ton(lot),
+            ))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|(left, _, left_value), (right, _, right_value)| {
+        right_value
+            .cmp(left_value)
+            .then_with(|| left.cargo_lot_id.cmp(&right.cargo_lot_id))
+    });
+
+    let mut remaining = hold_capacity_millitons;
+    let mut allocations = Vec::new();
+    for (lot, requested, _) in candidates {
+        if remaining == 0 {
+            break;
+        }
+        let quantity_millitons = if lot.title == CargoTitle::UniqueObject {
+            // Unique objects cannot be divided merely to use the last corner
+            // of a hold. Skip one that does not fit and consider later lots.
+            if requested > remaining {
+                continue;
+            }
+            requested
+        } else {
+            requested.min(remaining)
+        };
+        remaining -= quantity_millitons;
+        allocations.push(PirateCargoAllocation {
+            cargo_lot_id: lot.cargo_lot_id,
+            quantity_millitons,
+        });
+    }
+    allocations
+}
+
+fn pirate_demand(
+    cargo: &[CargoLot],
+    percent: u8,
+    hold_capacity_millitons: u64,
+) -> crate::wire::EncounterDemand {
+    let mut player_owned_millitons = 0_u64;
+    let mut entrusted_millitons = 0_u64;
+    let mut unique_object_count = 0_u16;
+    let allocations = pirate_cargo_allocations(cargo, percent, hold_capacity_millitons);
+    for allocation in &allocations {
+        let Some(lot) = cargo
+            .iter()
+            .find(|lot| lot.cargo_lot_id == allocation.cargo_lot_id)
+        else {
+            continue;
+        };
+        match lot.title {
+            CargoTitle::Freight | CargoTitle::Contract => {
+                entrusted_millitons =
+                    entrusted_millitons.saturating_add(allocation.quantity_millitons);
+            }
+            CargoTitle::PlayerOwned => {
+                player_owned_millitons =
+                    player_owned_millitons.saturating_add(allocation.quantity_millitons)
+            }
+            CargoTitle::UniqueObject => {
+                player_owned_millitons =
+                    player_owned_millitons.saturating_add(allocation.quantity_millitons);
+                unique_object_count = unique_object_count.saturating_add(1);
+            }
+        }
+    }
+    let total_millitons = player_owned_millitons.saturating_add(entrusted_millitons);
+    crate::wire::EncounterDemand {
+        present: true,
+        player_owned_percent: percent,
+        player_owned_millitons,
+        entrusted_millitons,
+        unique_object_count,
+        text: format!(
+            "Demand received: heave to for a hold inspection; the boarding party will take all cargo carried in trust and {percent}% of each owned lot it finds, rounded up to 0.001 ton. Your own cargo ledger estimates that its {:.3}-ton hold can take {:.3} tons, highest value first.",
+            hold_capacity_millitons as f64 / 1_000.0,
+            total_millitons as f64 / 1_000.0,
+        ),
+        entrusted_liability_credits: 0,
+    }
+}
+
 fn price_with_import_tariff(price: u64, basis_points: u16) -> u64 {
     let numerator = u128::from(price) * u128::from(10_000_u16 + basis_points);
     u64::try_from(numerator.div_ceil(10_000)).unwrap_or(u64::MAX)
@@ -33715,6 +34552,8 @@ fn decode_posture(value: u8) -> Result<EncounterPosture, StoreError> {
         2 => Ok(EncounterPosture::Comply),
         3 => Ok(EncounterPosture::Surrender),
         4 => Ok(EncounterPosture::Board),
+        5 => Ok(EncounterPosture::Pursue),
+        6 => Ok(EncounterPosture::ContinueCourse),
         _ => Err(StoreError::Corrupt("unknown encounter posture")),
     }
 }
@@ -34188,6 +35027,10 @@ fn encode_combat_order_record(
                 bytes.push(17);
                 bytes.extend_from_slice(&target_id.to_be_bytes());
             }
+            crate::combat::CrewAction::Pursuit { target_id } => {
+                bytes.push(18);
+                bytes.extend_from_slice(&target_id.to_be_bytes());
+            }
         }
         bytes.push(*task_dm as u8);
     }
@@ -34199,11 +35042,13 @@ fn encode_combat_order_record(
         bytes.push(*reaction as u8);
         bytes.push(*task_dm as u8);
     }
+    bytes.extend_from_slice(&value.speed_adjustment.to_be_bytes());
     Ok(())
 }
 
 fn decode_combat_order_record(
     d: &mut Decoder<'_>,
+    version: u8,
 ) -> Result<crate::combat::JointOrder, StoreError> {
     let vessel_id = d.u64()?;
     let view_revision = d.u64()?;
@@ -34242,6 +35087,9 @@ fn decode_combat_order_record(
             17 => crate::combat::CrewAction::InspectContact {
                 target_id: d.u64()?,
             },
+            18 if version >= 2 => crate::combat::CrewAction::Pursuit {
+                target_id: d.u64()?,
+            },
             _ => return Err(StoreError::Corrupt("unknown combat action")),
         });
         action_dms.push(d.u8()? as i8);
@@ -34268,6 +35116,7 @@ fn decode_combat_order_record(
         reactions,
         reaction_dms,
         automated,
+        speed_adjustment: if version >= 2 { d.i16()? } else { 0 },
     })
 }
 
@@ -34293,6 +35142,8 @@ fn encode_combat_state(
         bytes.extend_from_slice(&vessel.catalog_id.to_be_bytes());
         bytes.extend_from_slice(&vessel.displacement_millitons.to_be_bytes());
         bytes.push(vessel.thrust);
+        bytes.extend_from_slice(&vessel.speed.to_be_bytes());
+        bytes.push(vessel.pilot_dm as u8);
         bytes.extend_from_slice(&vessel.initiative.to_be_bytes());
         for hits in [
             vessel.hull_remaining,
@@ -34379,10 +35230,23 @@ fn encode_combat_state(
         bytes.push(boarding.attacker_bonus as u8);
         bytes.push(boarding.defender_bonus as u8);
     }
+    bytes.extend_from_slice(
+        &u16::try_from(value.pursuits.len())
+            .map_err(|_| StoreError::Corrupt("too many pursuit relations"))?
+            .to_be_bytes(),
+    );
+    for pursuit in &value.pursuits {
+        bytes.extend_from_slice(&pursuit.pursuer_id.to_be_bytes());
+        bytes.extend_from_slice(&pursuit.target_id.to_be_bytes());
+        bytes.push(pursuit.attack_bonus);
+    }
     Ok(())
 }
 
-fn decode_combat_state(d: &mut Decoder<'_>) -> Result<crate::combat::CombatState, StoreError> {
+fn decode_combat_state(
+    d: &mut Decoder<'_>,
+    version: u8,
+) -> Result<crate::combat::CombatState, StoreError> {
     let combat_id = d.u64()?;
     let revision = d.u64()?;
     let round = d.u16()?;
@@ -34407,6 +35271,12 @@ fn decode_combat_state(d: &mut Decoder<'_>) -> Result<crate::combat::CombatState
         let catalog_id = d.u32()?;
         let displacement_millitons = d.u64()?;
         let thrust = d.u8()?;
+        let speed = if version >= 2 {
+            d.i16()?
+        } else {
+            i16::from(thrust)
+        };
+        let pilot_dm = if version >= 2 { d.u8()? as i8 } else { 0 };
         let initiative = d.i16()?;
         let hull_remaining = d.u16()?;
         let structure_remaining = d.u16()?;
@@ -34476,6 +35346,8 @@ fn decode_combat_state(d: &mut Decoder<'_>) -> Result<crate::combat::CombatState
             catalog_id,
             displacement_millitons,
             thrust,
+            speed,
+            pilot_dm,
             initiative,
             hull_remaining,
             structure_remaining,
@@ -34521,6 +35393,18 @@ fn decode_combat_state(d: &mut Decoder<'_>) -> Result<crate::combat::CombatState
             defender_bonus: d.u8()? as i8,
         });
     }
+    let mut pursuits = Vec::new();
+    if version >= 2 {
+        let pursuit_count = d.u16()? as usize;
+        pursuits.reserve(pursuit_count);
+        for _ in 0..pursuit_count {
+            pursuits.push(crate::combat::PursuitState {
+                pursuer_id: d.u64()?,
+                target_id: d.u64()?,
+                attack_bonus: d.u8()?.min(4),
+            });
+        }
+    }
     Ok(crate::combat::CombatState {
         combat_id,
         revision,
@@ -34530,12 +35414,13 @@ fn decode_combat_state(d: &mut Decoder<'_>) -> Result<crate::combat::CombatState
         vessels,
         missiles,
         boarding,
+        pursuits,
         complete,
     })
 }
 
 fn encode_encounter_record(value: &EncounterRecord) -> Result<Vec<u8>, StoreError> {
-    let mut bytes = vec![1];
+    let mut bytes = vec![3];
     let s = &value.snapshot;
     bytes.extend_from_slice(&s.encounter_id.to_be_bytes());
     bytes.extend_from_slice(&s.revision.to_be_bytes());
@@ -34551,7 +35436,26 @@ fn encode_encounter_record(value: &EncounterRecord) -> Result<Vec<u8>, StoreErro
     encode_text(&mut bytes, &s.contact.role)?;
     encode_text(&mut bytes, &s.contact.range)?;
     bytes.push(s.contact.confidence_percent);
+    bytes.push(s.contact.resolution as u8);
     encode_text(&mut bytes, &s.summary)?;
+    bytes.push(s.authority as u8);
+    bytes.push(s.threat as u8);
+    bytes.push(u8::from(s.demand.present));
+    bytes.push(s.demand.player_owned_percent);
+    bytes.extend_from_slice(&s.demand.player_owned_millitons.to_be_bytes());
+    bytes.extend_from_slice(&s.demand.entrusted_millitons.to_be_bytes());
+    bytes.extend_from_slice(&s.demand.unique_object_count.to_be_bytes());
+    encode_text(&mut bytes, &s.demand.text)?;
+    bytes.extend_from_slice(&s.demand.entrusted_liability_credits.to_be_bytes());
+    bytes.push(s.available_postures.len() as u8);
+    for posture in &s.available_postures {
+        bytes.push(*posture as u8);
+    }
+    bytes.push(s.available_fallbacks.len() as u8);
+    for fallback in &s.available_fallbacks {
+        bytes.push(*fallback as u8);
+    }
+    bytes.extend_from_slice(&s.response_deadline_second.to_be_bytes());
     bytes.push(value.posture.map_or(255, |p| p as u8));
     bytes.push(value.fallbacks.len() as u8);
     for fallback in &value.fallbacks {
@@ -34611,7 +35515,8 @@ fn encode_encounter_record(value: &EncounterRecord) -> Result<Vec<u8>, StoreErro
 }
 fn decode_encounter_record(bytes: &[u8]) -> Result<EncounterRecord, StoreError> {
     let mut d = Decoder::new(bytes);
-    if d.u8()? != 1 {
+    let version = d.u8()?;
+    if !matches!(version, 1 | 2 | 3) {
         return Err(StoreError::Corrupt("unsupported encounter record"));
     }
     let encounter_id = d.u64()?;
@@ -34625,6 +35530,7 @@ fn decode_encounter_record(bytes: &[u8]) -> Result<EncounterRecord, StoreError> 
         5 => EncounterKind::Hazard,
         6 => EncounterKind::Hostile,
         7 => EncounterKind::Military,
+        8 if version >= 2 => EncounterKind::DepartingContact,
         _ => return Err(StoreError::Corrupt("unknown encounter kind")),
     };
     let state = match d.u8()? {
@@ -34636,7 +35542,7 @@ fn decode_encounter_record(bytes: &[u8]) -> Result<EncounterRecord, StoreError> 
     let started_second = d.u64()?;
     let next_turn_second = d.u64()?;
     let turn = d.u16()?;
-    let contact = EncounterContact {
+    let mut contact = EncounterContact {
         contact_id: d.u64()?,
         ship_name: d.text()?,
         class_name: d.text()?,
@@ -34644,8 +35550,83 @@ fn decode_encounter_record(bytes: &[u8]) -> Result<EncounterRecord, StoreError> 
         role: d.text()?,
         range: d.text()?,
         confidence_percent: d.u8()?,
+        resolution: crate::wire::EncounterResolution::TransponderOnly,
     };
+    if version >= 2 {
+        contact.resolution = match d.u8()? {
+            0 => crate::wire::EncounterResolution::RadioOnly,
+            1 => crate::wire::EncounterResolution::TransponderOnly,
+            2 => crate::wire::EncounterResolution::Approximate,
+            3 => crate::wire::EncounterResolution::Identified,
+            _ => return Err(StoreError::Corrupt("unknown encounter resolution")),
+        };
+    } else if !contact.class_name.is_empty() {
+        contact.resolution = crate::wire::EncounterResolution::Approximate;
+        contact.class_name.clear();
+    }
     let summary = d.text()?;
+    let (
+        authority,
+        threat,
+        demand,
+        available_postures,
+        available_fallbacks,
+        response_deadline_second,
+    ) = if version >= 2 {
+        let authority = match d.u8()? {
+            0 => EncounterAuthority::None,
+            1 => EncounterAuthority::Pirate,
+            2 => EncounterAuthority::TrafficControl,
+            3 => EncounterAuthority::Customs,
+            4 => EncounterAuthority::Naval,
+            5 => EncounterAuthority::Warrant,
+            _ => return Err(StoreError::Corrupt("unknown encounter authority")),
+        };
+        let threat = match d.u8()? {
+            0 => EncounterThreat::Unknown,
+            1 => EncounterThreat::Favorable,
+            2 => EncounterThreat::Comparable,
+            3 => EncounterThreat::Dangerous,
+            4 => EncounterThreat::Overwhelming,
+            _ => return Err(StoreError::Corrupt("unknown encounter threat")),
+        };
+        let demand = crate::wire::EncounterDemand {
+            present: d.u8()? != 0,
+            player_owned_percent: d.u8()?,
+            player_owned_millitons: d.u64()?,
+            entrusted_millitons: d.u64()?,
+            unique_object_count: d.u16()?,
+            text: d.text()?,
+            entrusted_liability_credits: if version >= 3 { d.u64()? } else { 0 },
+        };
+        let posture_count = d.u8()? as usize;
+        let mut postures = Vec::with_capacity(posture_count);
+        for _ in 0..posture_count {
+            postures.push(decode_posture(d.u8()?)?);
+        }
+        let fallback_count = d.u8()? as usize;
+        let mut visible_fallbacks = Vec::with_capacity(fallback_count);
+        for _ in 0..fallback_count {
+            visible_fallbacks.push(decode_fallback(d.u8()?)?);
+        }
+        (
+            authority,
+            threat,
+            demand,
+            postures,
+            visible_fallbacks,
+            d.u64()?,
+        )
+    } else {
+        (
+            EncounterAuthority::None,
+            EncounterThreat::Unknown,
+            crate::wire::EncounterDemand::default(),
+            vec![EncounterPosture::Fight, EncounterPosture::Flee],
+            Vec::new(),
+            0,
+        )
+    };
     let posture = match d.u8()? {
         255 => None,
         value => Some(decode_posture(value)?),
@@ -34663,12 +35644,12 @@ fn decode_encounter_record(bytes: &[u8]) -> Result<EncounterRecord, StoreError> 
     let opponent_catalog_id = d.u32()?;
     let combat = match d.u8()? {
         0 => None,
-        1 => Some(decode_combat_state(&mut d)?),
+        1 => Some(decode_combat_state(&mut d, version)?),
         _ => return Err(StoreError::Corrupt("invalid encounter combat state")),
     };
     let player_order = match d.u8()? {
         0 => None,
-        1 => Some(decode_combat_order_record(&mut d)?),
+        1 => Some(decode_combat_order_record(&mut d, version)?),
         _ => return Err(StoreError::Corrupt("invalid encounter order state")),
     };
     let automation_decision = match d.u8()? {
@@ -34678,7 +35659,7 @@ fn decode_encounter_record(bytes: &[u8]) -> Result<EncounterRecord, StoreError> 
             view_revision: d.u64()?,
             estimated_success_percent: d.u8()?,
             branch: d.text()?,
-            order: decode_combat_order_record(&mut d)?,
+            order: decode_combat_order_record(&mut d, version)?,
         }),
         _ => return Err(StoreError::Corrupt("invalid encounter automation decision")),
     };
@@ -34710,6 +35691,12 @@ fn decode_encounter_record(bytes: &[u8]) -> Result<EncounterRecord, StoreError> 
             turn,
             contact,
             summary,
+            authority,
+            threat,
+            demand,
+            available_postures,
+            available_fallbacks,
+            response_deadline_second,
         },
         opponent_catalog_id,
         posture,
@@ -34724,7 +35711,7 @@ fn decode_encounter_record(bytes: &[u8]) -> Result<EncounterRecord, StoreError> 
 }
 
 fn encode_shared_combat_record(value: &SharedCombatRecord) -> Result<Vec<u8>, StoreError> {
-    let mut bytes = vec![1];
+    let mut bytes = vec![2];
     encode_combat_state(&mut bytes, &value.combat)?;
     bytes.extend_from_slice(&value.system_id.to_be_bytes());
     bytes.push(u8::from(value.authorized_attack));
@@ -34785,10 +35772,11 @@ fn encode_shared_combat_record(value: &SharedCombatRecord) -> Result<Vec<u8>, St
 
 fn decode_shared_combat_record(bytes: &[u8]) -> Result<SharedCombatRecord, StoreError> {
     let mut d = Decoder::new(bytes);
-    if d.u8()? != 1 {
+    let version = d.u8()?;
+    if !matches!(version, 1 | 2) {
         return Err(StoreError::Corrupt("unsupported shared-combat record"));
     }
-    let combat = decode_combat_state(&mut d)?;
+    let combat = decode_combat_state(&mut d, version)?;
     let system_id = d.u64()?;
     let authorized_attack = d.u8()? != 0;
     let participant_count = d.u16()? as usize;
@@ -34805,7 +35793,7 @@ fn decode_shared_combat_record(bytes: &[u8]) -> Result<SharedCombatRecord, Store
     let order_count = d.u16()? as usize;
     let mut orders = Vec::with_capacity(order_count);
     for _ in 0..order_count {
-        orders.push(decode_combat_order_record(&mut d)?);
+        orders.push(decode_combat_order_record(&mut d, version)?);
     }
     let decision_count = d.u16()? as usize;
     let mut automation_decisions = Vec::with_capacity(decision_count);
@@ -34815,7 +35803,7 @@ fn decode_shared_combat_record(bytes: &[u8]) -> Result<SharedCombatRecord, Store
             view_revision: d.u64()?,
             estimated_success_percent: d.u8()?,
             branch: d.text()?,
-            order: decode_combat_order_record(&mut d)?,
+            order: decode_combat_order_record(&mut d, version)?,
         });
     }
     let log_count = d.u16()? as usize;
@@ -34850,7 +35838,7 @@ fn decode_shared_combat_record(bytes: &[u8]) -> Result<SharedCombatRecord, Store
 fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
     let identity = encode_identity(&command.identity);
     let mut bytes = Vec::with_capacity(64 + identity.len());
-    bytes.push(2);
+    bytes.push(3);
     bytes.extend_from_slice(&identity);
     bytes.extend_from_slice(&command.request.request_id.to_be_bytes());
     bytes.extend_from_slice(&command.request.session_epoch.to_be_bytes());
@@ -35111,6 +36099,8 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
                 bytes.push(reaction.kind as u8);
                 bytes.extend_from_slice(&reaction.actor_person_id.to_be_bytes());
             }
+            bytes.extend_from_slice(&order.speed_adjustment.to_be_bytes());
+            bytes.extend_from_slice(&order.speed_actor_person_id.to_be_bytes());
         }
         Command::SetCombatAutomationPolicy(ref policy) => {
             bytes.push(49);
@@ -35267,6 +36257,7 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
                 crate::wire::TaskActionKind::DefaultTask => 2,
                 crate::wire::TaskActionKind::FileDispute => 3,
                 crate::wire::TaskActionKind::WithdrawClaim => 4,
+                crate::wire::TaskActionKind::FileLossClaim => 5,
             });
             encode_text(&mut bytes, explanation)?;
         }
@@ -35411,7 +36402,7 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
 fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
     let mut decoder = Decoder::new(bytes);
     let queue_version = decoder.u8()?;
-    if queue_version != 1 && queue_version != 2 {
+    if !matches!(queue_version, 1 | 2 | 3) {
         return Err(StoreError::Corrupt("unsupported queue record version"));
     }
     let identity = decode_identity(&mut decoder)?;
@@ -35604,6 +36595,16 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
                 actions,
                 reactions,
                 use_tactical_controller,
+                speed_adjustment: if queue_version >= 3 {
+                    decoder.i16()?
+                } else {
+                    0
+                },
+                speed_actor_person_id: if queue_version >= 3 {
+                    decoder.u64()?
+                } else {
+                    0
+                },
             })
         }
         49 => Command::SetCombatAutomationPolicy(crate::wire::CombatAutomationPolicy {
@@ -35729,6 +36730,7 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
                 2 => crate::wire::TaskActionKind::DefaultTask,
                 3 => crate::wire::TaskActionKind::FileDispute,
                 4 => crate::wire::TaskActionKind::WithdrawClaim,
+                5 if queue_version >= 3 => crate::wire::TaskActionKind::FileLossClaim,
                 _ => return Err(StoreError::Corrupt("unknown task action")),
             },
             explanation: decoder.text()?,
@@ -35881,7 +36883,7 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
 }
 
 fn encode_engine_input(input: &EngineInput) -> Result<Vec<u8>, StoreError> {
-    let mut bytes = vec![1];
+    let mut bytes = vec![2];
     match input {
         EngineInput::Player(command) => {
             bytes.push(0);
@@ -35903,94 +36905,62 @@ fn encode_engine_input(input: &EngineInput) -> Result<Vec<u8>, StoreError> {
                     bytes.extend_from_slice(&length.to_be_bytes());
                     bytes.extend_from_slice(&encoded);
                 }
-                ScheduledInput::PlayerTravel {
-                    event_id,
-                    due_second,
-                    ship_id,
-                } => {
+                ScheduledInput::PlayerTravel { event_id, ship_id } => {
                     bytes.push(1);
                     bytes.extend_from_slice(&event_id.to_be_bytes());
-                    bytes.extend_from_slice(&due_second.to_be_bytes());
                     bytes.extend_from_slice(&ship_id.to_be_bytes());
                 }
                 ScheduledInput::MerchantWork {
                     event_id,
-                    due_second,
                     assignment_id,
                 } => {
                     bytes.push(7);
                     bytes.extend_from_slice(&event_id.to_be_bytes());
-                    bytes.extend_from_slice(&due_second.to_be_bytes());
                     bytes.extend_from_slice(&assignment_id.to_be_bytes());
                 }
                 ScheduledInput::EncounterTurn {
                     event_id,
-                    due_second,
                     identity,
                     encounter_id,
                 } => {
                     bytes.push(5);
                     bytes.extend_from_slice(&event_id.to_be_bytes());
-                    bytes.extend_from_slice(&due_second.to_be_bytes());
                     bytes.extend_from_slice(&identity.bbs_id.to_be_bytes());
                     bytes.extend_from_slice(&identity.player_id.to_be_bytes());
                     bytes.extend_from_slice(&encounter_id.to_be_bytes());
                 }
                 ScheduledInput::SharedCombatTurn {
                     event_id,
-                    due_second,
                     combat_id,
                 } => {
                     bytes.push(8);
                     bytes.extend_from_slice(&event_id.to_be_bytes());
-                    bytes.extend_from_slice(&due_second.to_be_bytes());
                     bytes.extend_from_slice(&combat_id.to_be_bytes());
                 }
-                ScheduledInput::ContactCheck {
-                    event_id,
-                    due_second,
-                    ship_id,
-                } => {
+                ScheduledInput::ContactCheck { event_id, ship_id } => {
                     bytes.push(6);
                     bytes.extend_from_slice(&event_id.to_be_bytes());
-                    bytes.extend_from_slice(&due_second.to_be_bytes());
                     bytes.extend_from_slice(&ship_id.to_be_bytes());
                 }
-                ScheduledInput::ShipCondition {
-                    event_id,
-                    due_second,
-                    ship_id,
-                } => {
+                ScheduledInput::ShipCondition { event_id, ship_id } => {
                     bytes.push(2);
                     bytes.extend_from_slice(&event_id.to_be_bytes());
-                    bytes.extend_from_slice(&due_second.to_be_bytes());
                     bytes.extend_from_slice(&ship_id.to_be_bytes());
                 }
                 ScheduledInput::PersonTraining {
                     event_id,
-                    due_second,
                     person_id,
                 } => {
                     bytes.push(3);
                     bytes.extend_from_slice(&event_id.to_be_bytes());
-                    bytes.extend_from_slice(&due_second.to_be_bytes());
                     bytes.extend_from_slice(&person_id.to_be_bytes());
                 }
-                ScheduledInput::ShipActivity {
-                    event_id,
-                    due_second,
-                    ship_id,
-                } => {
+                ScheduledInput::ShipActivity { event_id, ship_id } => {
                     bytes.push(4);
                     bytes.extend_from_slice(&event_id.to_be_bytes());
-                    bytes.extend_from_slice(&due_second.to_be_bytes());
                     bytes.extend_from_slice(&ship_id.to_be_bytes());
                 }
             }
-        }
-        EngineInput::TimeAdvance { target_second } => {
-            bytes.push(2);
-            bytes.extend_from_slice(&target_second.to_be_bytes());
         }
     }
     Ok(bytes)
@@ -35998,7 +36968,7 @@ fn encode_engine_input(input: &EngineInput) -> Result<Vec<u8>, StoreError> {
 
 fn decode_engine_input(bytes: &[u8]) -> Result<EngineInput, StoreError> {
     let mut decoder = Decoder::new(bytes);
-    if decoder.u8()? != 1 {
+    if decoder.u8()? != 2 {
         return Err(StoreError::Corrupt("unsupported engine-input record"));
     }
     let input = match decoder.u8()? {
@@ -36016,27 +36986,22 @@ fn decode_engine_input(bytes: &[u8]) -> Result<EngineInput, StoreError> {
                 }
                 kind @ 1..=4 => {
                     let event_id = decoder.u64()?;
-                    let due_second = decoder.u64()?;
                     let object_id = decoder.u64()?;
                     match kind {
                         1 => ScheduledInput::PlayerTravel {
                             event_id,
-                            due_second,
                             ship_id: object_id,
                         },
                         2 => ScheduledInput::ShipCondition {
                             event_id,
-                            due_second,
                             ship_id: object_id,
                         },
                         3 => ScheduledInput::PersonTraining {
                             event_id,
-                            due_second,
                             person_id: object_id,
                         },
                         4 => ScheduledInput::ShipActivity {
                             event_id,
-                            due_second,
                             ship_id: object_id,
                         },
                         _ => unreachable!(),
@@ -36044,7 +37009,6 @@ fn decode_engine_input(bytes: &[u8]) -> Result<EngineInput, StoreError> {
                 }
                 5 => ScheduledInput::EncounterTurn {
                     event_id: decoder.u64()?,
-                    due_second: decoder.u64()?,
                     identity: PlayerIdentity {
                         bbs_id: decoder.u32()?,
                         player_id: decoder.u32()?,
@@ -36053,26 +37017,20 @@ fn decode_engine_input(bytes: &[u8]) -> Result<EngineInput, StoreError> {
                 },
                 6 => ScheduledInput::ContactCheck {
                     event_id: decoder.u64()?,
-                    due_second: decoder.u64()?,
                     ship_id: decoder.u64()?,
                 },
                 7 => ScheduledInput::MerchantWork {
                     event_id: decoder.u64()?,
-                    due_second: decoder.u64()?,
                     assignment_id: decoder.u64()?,
                 },
                 8 => ScheduledInput::SharedCombatTurn {
                     event_id: decoder.u64()?,
-                    due_second: decoder.u64()?,
                     combat_id: decoder.u64()?,
                 },
                 _ => return Err(StoreError::Corrupt("unknown scheduled engine input")),
             };
             EngineInput::Scheduled(event)
         }
-        2 => EngineInput::TimeAdvance {
-            target_second: decoder.u64()?,
-        },
         _ => return Err(StoreError::Corrupt("unknown engine input")),
     };
     decoder.finish()?;
@@ -36133,7 +37091,10 @@ fn encode_task_ledger_into(
     }
     Ok(())
 }
-fn decode_task_ledger(d: &mut Decoder<'_>) -> Result<crate::wire::TaskLedger, StoreError> {
+fn decode_task_ledger(
+    d: &mut Decoder<'_>,
+    outcome_version: u8,
+) -> Result<crate::wire::TaskLedger, StoreError> {
     let current_second = d.u64()?;
     let available_credits = d.u64()?;
     let reserved_credits = d.u64()?;
@@ -36141,7 +37102,10 @@ fn decode_task_ledger(d: &mut Decoder<'_>) -> Result<crate::wire::TaskLedger, St
     let reserved_passenger_count = d.u16()?;
     let mut tasks = Vec::with_capacity(d.u32()? as usize);
     for _ in 0..tasks.capacity() {
-        tasks.push(decode_task_record(d)?);
+        tasks.push(decode_task_record(
+            d,
+            if outcome_version >= 19 { 3 } else { 2 },
+        )?);
     }
     let mut local_offers = Vec::with_capacity(d.u32()? as usize);
     for _ in 0..local_offers.capacity() {
@@ -36360,7 +37324,7 @@ fn encode_system_radio_into(
             crate::wire::RadioTransmissionKind::PlayerBroadcast => 0,
             crate::wire::RadioTransmissionKind::InspectionOrder => 1,
             crate::wire::RadioTransmissionKind::BoardingOrder => 2,
-            crate::wire::RadioTransmissionKind::SurrenderDemand => 3,
+            crate::wire::RadioTransmissionKind::PirateDemand => 3,
         });
         bytes.push(u8::from(entry.actionable));
         bytes.extend_from_slice(&entry.action_reference_id.to_be_bytes());
@@ -36402,7 +37366,7 @@ fn decode_system_radio(
                 0 => crate::wire::RadioTransmissionKind::PlayerBroadcast,
                 1 => crate::wire::RadioTransmissionKind::InspectionOrder,
                 2 => crate::wire::RadioTransmissionKind::BoardingOrder,
-                3 => crate::wire::RadioTransmissionKind::SurrenderDemand,
+                3 => crate::wire::RadioTransmissionKind::PirateDemand,
                 _ => return Err(StoreError::Corrupt("unknown radio inbox kind")),
             },
             actionable: decoder.u8()? != 0,
@@ -36758,11 +37722,14 @@ fn encode_wire_combat_order(
         bytes.push(reaction.kind as u8);
         bytes.extend_from_slice(&reaction.actor_person_id.to_be_bytes());
     }
+    bytes.extend_from_slice(&order.speed_adjustment.to_be_bytes());
+    bytes.extend_from_slice(&order.speed_actor_person_id.to_be_bytes());
     Ok(())
 }
 
 fn decode_wire_combat_order(
     d: &mut Decoder<'_>,
+    version: u8,
 ) -> Result<crate::wire::CombatOrderSet, StoreError> {
     let combat_id = d.u64()?;
     let view_revision = d.u64()?;
@@ -36791,6 +37758,8 @@ fn decode_wire_combat_order(
         actions,
         reactions,
         use_tactical_controller,
+        speed_adjustment: if version >= 19 { d.i16()? } else { 0 },
+        speed_actor_person_id: if version >= 19 { d.u64()? } else { 0 },
     })
 }
 
@@ -36842,6 +37811,9 @@ fn encode_combat_snapshot_record(
                 encode_text(bytes, weapon)?;
             }
         }
+        bytes.extend_from_slice(&participant.speed.to_be_bytes());
+        bytes.extend_from_slice(&participant.pursuit_target_vessel_id.to_be_bytes());
+        bytes.push(participant.pursuit_attack_bonus);
     }
     encode_wire_combat_order(bytes, &value.default_order)?;
     bytes.extend_from_slice(&value.policy.expected_revision.to_be_bytes());
@@ -36874,6 +37846,7 @@ fn encode_combat_snapshot_record(
 
 fn decode_combat_snapshot_record(
     d: &mut Decoder<'_>,
+    version: u8,
 ) -> Result<crate::wire::CombatSnapshot, StoreError> {
     let combat_id = d.u64()?;
     let revision = d.u64()?;
@@ -36951,9 +37924,16 @@ fn decode_combat_snapshot_record(
             commanded,
             player_owned: commanded,
             online_controlled: false,
+            speed: if version >= 19 {
+                d.i16()?
+            } else {
+                i16::from(thrust)
+            },
+            pursuit_target_vessel_id: if version >= 19 { d.u64()? } else { 0 },
+            pursuit_attack_bonus: if version >= 19 { d.u8()? } else { 0 },
         });
     }
-    let default_order = decode_wire_combat_order(d)?;
+    let default_order = decode_wire_combat_order(d, version)?;
     let policy = crate::wire::CombatAutomationPolicy {
         expected_revision: d.u64()?,
         minimum_victory_percent: d.u8()?,
@@ -37192,7 +38172,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(18);
+    bytes.push(19);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -37475,6 +38455,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 16
         && version != 17
         && version != 18
+        && version != 19
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -37596,12 +38577,12 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
             OutcomeKind::Encounter(decode_encounter_record(decoder.take(length)?)?.snapshot)
         }
         23 => OutcomeKind::EncounterResult(decode_encounter_result_record(&mut decoder)?),
-        24 => OutcomeKind::TaskLedger(decode_task_ledger(&mut decoder)?),
+        24 => OutcomeKind::TaskLedger(decode_task_ledger(&mut decoder, version)?),
         25 => OutcomeKind::Finance(decode_finance(&mut decoder)?),
         26 => OutcomeKind::MarketKnowledge(decode_market_knowledge(&mut decoder)?),
         27 => OutcomeKind::ShipMarket(decode_ship_market(&mut decoder, version)?),
         28 => OutcomeKind::CrewMarket(decode_crew_market(&mut decoder)?),
-        29 => OutcomeKind::Combat(decode_combat_snapshot_record(&mut decoder)?),
+        29 => OutcomeKind::Combat(decode_combat_snapshot_record(&mut decoder, version)?),
         30 => {
             let state = decode_career_state(&mut decoder)?;
             let rank = decoder.text()?;
@@ -37867,6 +38848,7 @@ fn decode_task_state(value: u8) -> Result<crate::wire::TaskState, StoreError> {
         8 => Cancelled,
         9 => Defaulted,
         10 => Disputed,
+        11 => LossDocumented,
         _ => return Err(StoreError::Corrupt("unknown task state")),
     })
 }
@@ -37938,11 +38920,22 @@ fn encode_task_record_into(
     bytes.extend_from_slice(&task.dispute_effect.to_be_bytes());
     bytes.extend_from_slice(&task.adjudication_message_id.to_be_bytes());
     bytes.extend_from_slice(&task.performing_ship_id.to_be_bytes());
+    bytes.extend_from_slice(&task.piracy_encounter_id.to_be_bytes());
+    bytes.extend_from_slice(&task.piracy_incident_second.to_be_bytes());
+    bytes.extend_from_slice(&task.piracy_contact_id.to_be_bytes());
+    bytes.push(task.piracy_threat as u8);
+    bytes.push(task.piracy_posture as u8);
+    bytes.extend_from_slice(&task.piracy_quantity_millitons.to_be_bytes());
+    bytes.extend_from_slice(&task.loss_claim_deadline_second.to_be_bytes());
+    bytes.extend_from_slice(&task.loss_claim_effect.to_be_bytes());
     Ok(())
 }
 
-fn decode_task_record(decoder: &mut Decoder<'_>) -> Result<crate::wire::TaskRecord, StoreError> {
-    Ok(crate::wire::TaskRecord {
+fn decode_task_record(
+    decoder: &mut Decoder<'_>,
+    version: u8,
+) -> Result<crate::wire::TaskRecord, StoreError> {
+    let mut task = crate::wire::TaskRecord {
         task_id: decoder.u64()?,
         offer: decode_task_offer(decoder)?,
         state: decode_task_state(decoder.u8()?)?,
@@ -37964,7 +38957,33 @@ fn decode_task_record(decoder: &mut Decoder<'_>) -> Result<crate::wire::TaskReco
         dispute_effect: decoder.i16()?,
         adjudication_message_id: decoder.u64()?,
         performing_ship_id: decoder.u64()?,
-    })
+        piracy_encounter_id: 0,
+        piracy_incident_second: 0,
+        piracy_contact_id: 0,
+        piracy_threat: EncounterThreat::Unknown,
+        piracy_posture: EncounterPosture::Comply,
+        piracy_quantity_millitons: 0,
+        loss_claim_deadline_second: 0,
+        loss_claim_effect: 0,
+    };
+    if version >= 3 {
+        task.piracy_encounter_id = decoder.u64()?;
+        task.piracy_incident_second = decoder.u64()?;
+        task.piracy_contact_id = decoder.u64()?;
+        task.piracy_threat = match decoder.u8()? {
+            0 => EncounterThreat::Unknown,
+            1 => EncounterThreat::Favorable,
+            2 => EncounterThreat::Comparable,
+            3 => EncounterThreat::Dangerous,
+            4 => EncounterThreat::Overwhelming,
+            _ => return Err(StoreError::Corrupt("unknown task piracy threat")),
+        };
+        task.piracy_posture = decode_posture(decoder.u8()?)?;
+        task.piracy_quantity_millitons = decoder.u64()?;
+        task.loss_claim_deadline_second = decoder.u64()?;
+        task.loss_claim_effect = decoder.i16()?;
+    }
+    Ok(task)
 }
 
 fn encode_work_assignment_into(
@@ -38167,7 +39186,7 @@ fn decode_unique_cargo(bytes: &[u8]) -> Result<UniqueCargoRecord, StoreError> {
 }
 
 fn encode_stored_task(record: &StoredTask) -> Result<Vec<u8>, StoreError> {
-    let mut bytes = vec![2];
+    let mut bytes = vec![3];
     bytes.extend_from_slice(&encode_identity(&record.identity));
     encode_task_record_into(&mut bytes, &record.task)?;
     bytes.extend_from_slice(&record.settlement_message_id.to_be_bytes());
@@ -38178,11 +39197,11 @@ fn encode_stored_task(record: &StoredTask) -> Result<Vec<u8>, StoreError> {
 fn decode_stored_task(bytes: &[u8]) -> Result<StoredTask, StoreError> {
     let mut d = Decoder::new(bytes);
     let version = d.u8()?;
-    if !matches!(version, 1 | 2) {
+    if !matches!(version, 1 | 2 | 3) {
         return Err(StoreError::Corrupt("unsupported task record version"));
     }
     let identity = decode_identity(&mut d)?;
-    let task = decode_task_record(&mut d)?;
+    let task = decode_task_record(&mut d, version)?;
     let (settlement_message_id, remittance_message_id, pending_payment_credits) = if version >= 2 {
         (d.u64()?, d.u64()?, d.u64()?)
     } else {
@@ -38389,7 +39408,7 @@ fn encode_radio_transmission(record: &RadioTransmissionRecord) -> Result<Vec<u8>
         crate::wire::RadioTransmissionKind::PlayerBroadcast => 0,
         crate::wire::RadioTransmissionKind::InspectionOrder => 1,
         crate::wire::RadioTransmissionKind::BoardingOrder => 2,
-        crate::wire::RadioTransmissionKind::SurrenderDemand => 3,
+        crate::wire::RadioTransmissionKind::PirateDemand => 3,
     });
     bytes.extend_from_slice(&record.action_ship_id.to_be_bytes());
     bytes.extend_from_slice(&record.action_reference_id.to_be_bytes());
@@ -38417,7 +39436,7 @@ fn decode_radio_transmission(bytes: &[u8]) -> Result<RadioTransmissionRecord, St
         0 => crate::wire::RadioTransmissionKind::PlayerBroadcast,
         1 => crate::wire::RadioTransmissionKind::InspectionOrder,
         2 => crate::wire::RadioTransmissionKind::BoardingOrder,
-        3 => crate::wire::RadioTransmissionKind::SurrenderDemand,
+        3 => crate::wire::RadioTransmissionKind::PirateDemand,
         _ => return Err(StoreError::Corrupt("unknown radio-transmission kind")),
     };
     let action_ship_id = decoder.u64()?;
@@ -40215,6 +41234,8 @@ fn decode_wire_combat_action_kind(value: u8) -> Result<crate::wire::CombatAction
         14 => Kind::LaunchEscapeCraft,
         15 => Kind::OfferSurrender,
         16 => Kind::AcceptSurrender,
+        17 => Kind::InspectContact,
+        18 => Kind::Pursuit,
         _ => return Err(StoreError::Corrupt("unknown wire combat action")),
     })
 }
@@ -43462,6 +44483,7 @@ mod tests {
             vessels: vec![own, contact],
             missiles: Vec::new(),
             boarding: Vec::new(),
+            pursuits: Vec::new(),
             complete: false,
         };
         let text = combat_event_text(
@@ -44080,8 +45102,19 @@ mod tests {
                     role: "interceptor".into(),
                     range: "local traffic range".into(),
                     confidence_percent: 75,
+                    resolution: crate::wire::EncounterResolution::Approximate,
                 },
                 summary: "An armed contact alters course to intercept.".into(),
+                authority: EncounterAuthority::Pirate,
+                threat: EncounterThreat::Unknown,
+                demand: crate::wire::EncounterDemand::default(),
+                available_postures: vec![
+                    EncounterPosture::Fight,
+                    EncounterPosture::Flee,
+                    EncounterPosture::Comply,
+                ],
+                available_fallbacks: vec![EncounterFallback::Surrender],
+                response_deadline_second: 0,
             },
             opponent_catalog_id: 128,
             posture,
@@ -44159,6 +45192,14 @@ mod tests {
                 dispute_effect: 0,
                 adjudication_message_id: 0,
                 performing_ship_id: 1,
+                piracy_encounter_id: 0,
+                piracy_incident_second: 0,
+                piracy_contact_id: 0,
+                piracy_threat: EncounterThreat::Unknown,
+                piracy_posture: EncounterPosture::Comply,
+                piracy_quantity_millitons: 0,
+                loss_claim_deadline_second: 0,
+                loss_claim_effect: 0,
             },
             settlement_message_id: 0,
             remittance_message_id: 0,
@@ -44723,7 +45764,7 @@ mod tests {
     }
 
     #[test]
-    fn restart_recovers_an_overdue_encounter_turn_without_reversing_time() {
+    fn restart_recovers_a_timestamp_free_encounter_turn_at_the_current_second() {
         let dir = TempDir::new().unwrap();
         let current_second = 5_000;
         {
@@ -44738,7 +45779,7 @@ mod tests {
                     &encode_encounter_record(&test_encounter_record(
                         EncounterState::Resolving,
                         0,
-                        1_000,
+                        current_second,
                         Some(EncounterPosture::Comply),
                     ))
                     .unwrap(),
@@ -44750,7 +45791,6 @@ mod tests {
                     &mut txn,
                     &EngineInput::Scheduled(ScheduledInput::EncounterTurn {
                         event_id: 17,
-                        due_second: 1_000,
                         identity: identity(),
                         encounter_id: 7_710,
                     }),
@@ -45322,6 +46362,7 @@ mod tests {
             role: "customs inspection".into(),
             range: "local traffic range".into(),
             confidence_percent: 100,
+            resolution: crate::wire::EncounterResolution::Identified,
         };
         store
             .emit_encounter_radio_in(
@@ -45329,6 +46370,7 @@ mod tests {
                 &target_ship,
                 &contact,
                 EncounterKind::Inspection,
+                EncounterAuthority::Customs,
                 9001,
                 0,
                 true,
@@ -47443,7 +48485,20 @@ mod tests {
                 .schedule_ship_condition_in(&mut txn, ship_id, due)
                 .unwrap();
             txn.commit().unwrap();
-            assert!(store.admit_next_scheduled_through(due).unwrap());
+            assert_eq!(
+                store.admit_next_scheduled_through(due).unwrap(),
+                ScheduledAdmission::ClockAdvance
+            );
+            assert_eq!(store.queued_count().unwrap(), 0);
+            assert!(
+                first_simple_event(store.ship_condition_events, &store.env.read_txn().unwrap())
+                    .unwrap()
+                    .is_some()
+            );
+            assert_eq!(
+                store.admit_next_scheduled_through(due).unwrap(),
+                ScheduledAdmission::Event
+            );
             assert_eq!(store.queued_count().unwrap(), 1);
             assert!(
                 first_simple_event(store.ship_condition_events, &store.env.read_txn().unwrap())
@@ -47459,8 +48514,8 @@ mod tests {
             Some(ProcessedScheduledCategory::ShipCondition)
         );
         assert_eq!(reopened.queued_count().unwrap(), 0);
-        assert_eq!(reopened.committed_sequence().unwrap(), 1);
-        assert_eq!(reopened.journal_count().unwrap(), 1);
+        assert_eq!(reopened.committed_sequence().unwrap(), 2);
+        assert_eq!(reopened.journal_count().unwrap(), 2);
         assert_eq!(
             reopened
                 .ship_record(ship_id)
@@ -51363,14 +52418,11 @@ mod tests {
                 .unwrap();
         assert_eq!((scheduled_due, ship_id), (due, ship_before.ship_id));
         store.ship_condition_events.delete(&mut txn, &key).unwrap();
+        put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, due).unwrap();
         store
             .enqueue_engine_input_in(
                 &mut txn,
-                &EngineInput::Scheduled(ScheduledInput::ShipCondition {
-                    event_id,
-                    due_second: due,
-                    ship_id,
-                }),
+                &EngineInput::Scheduled(ScheduledInput::ShipCondition { event_id, ship_id }),
             )
             .unwrap();
         txn.commit().unwrap();
@@ -52738,14 +53790,11 @@ mod tests {
                     .unwrap()
                     .unwrap();
             store.ship_condition_events.delete(&mut txn, &key).unwrap();
+            put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, due_second).unwrap();
             store
                 .enqueue_engine_input_in(
                     &mut txn,
-                    &EngineInput::Scheduled(ScheduledInput::ShipCondition {
-                        event_id,
-                        due_second,
-                        ship_id,
-                    }),
+                    &EngineInput::Scheduled(ScheduledInput::ShipCondition { event_id, ship_id }),
                 )
                 .unwrap();
             txn.commit().unwrap();
@@ -52948,12 +53997,12 @@ mod tests {
         assert_eq!(due_second, offer.delivery_deadline_second);
         assert_eq!(assignment_id & !(1_u64 << 63), 1);
         store.work_assignment_events.delete(&mut txn, &key).unwrap();
+        put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, due_second).unwrap();
         store
             .enqueue_engine_input_in(
                 &mut txn,
                 &EngineInput::Scheduled(ScheduledInput::MerchantWork {
                     event_id,
-                    due_second,
                     assignment_id,
                 }),
             )
@@ -53049,7 +54098,7 @@ mod tests {
         let mut encoded = Vec::new();
         encode_task_ledger_into(&mut encoded, &ledger).unwrap();
         let mut decoder = Decoder::new(&encoded);
-        assert_eq!(decode_task_ledger(&mut decoder).unwrap(), ledger);
+        assert_eq!(decode_task_ledger(&mut decoder, 19).unwrap(), ledger);
         decoder.finish().unwrap();
     }
 
@@ -53922,6 +54971,106 @@ mod tests {
     }
 
     #[test]
+    fn documented_pirate_freight_loss_files_authenticated_claim_mail() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap()
+            .1;
+        let task_id = 91_030;
+        let mut stored = test_task(
+            identity(),
+            task_id,
+            test_task_offer(
+                91_031,
+                ship.system_id,
+                ship.system_id,
+                crate::wire::TaskKind::Freight,
+            ),
+            0,
+        );
+        stored.task.state = crate::wire::TaskState::LossDocumented;
+        stored.task.known_result = true;
+        stored.task.piracy_encounter_id = 7_700;
+        stored.task.piracy_contact_id = 55;
+        stored.task.piracy_incident_second = 1;
+        stored.task.piracy_threat = EncounterThreat::Dangerous;
+        stored.task.piracy_posture = EncounterPosture::Flee;
+        stored.task.piracy_quantity_millitons = 750;
+        stored.task.loss_claim_deadline_second = 7 * crate::simulation::SECONDS_PER_DAY;
+
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .tasks
+            .put(
+                &mut txn,
+                &task_id.to_be_bytes(),
+                &encode_stored_task(&stored).unwrap(),
+            )
+            .unwrap();
+        let exposed_freight = vec![CargoLot {
+            cargo_lot_id: 91_032,
+            commodity_id: 1,
+            commodity_name: "Entrusted ore".into(),
+            quantity_millitons: 750,
+            purchase_price_per_ton: 0,
+            origin_system_id: ship.system_id,
+            acquired_second: 0,
+            title: CargoTitle::Freight,
+            task_id,
+            unique_object_id: 0,
+            condition_percent: 100,
+            destination_system_id: ship.system_id,
+            source_body_id: 0,
+            source_lode_id: 0,
+        }];
+        let demand = store
+            .pirate_demand_in(&txn, &identity(), &exposed_freight, 50, 500)
+            .unwrap();
+        assert_eq!(demand.entrusted_millitons, 500);
+        assert_eq!(demand.entrusted_liability_credits, 30_000);
+        assert!(matches!(
+            store
+                .apply_task_action_in(
+                    &mut txn,
+                    &identity(),
+                    task_id,
+                    1,
+                    crate::wire::TaskActionKind::FileLossClaim,
+                    "",
+                )
+                .unwrap(),
+            RuleResult::Applied(_)
+        ));
+        let filed = decode_stored_task(
+            store
+                .tasks
+                .get(&txn, &task_id.to_be_bytes())
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(filed.task.state, crate::wire::TaskState::Disputed);
+        assert_ne!(filed.task.insurance_claim_id, 0);
+        assert_eq!(filed.task.dispute_message_id, filed.task.insurance_claim_id);
+        assert_eq!(filed.task.loss_claim_effect, filed.task.dispute_effect);
+        assert_eq!(filed.task.reserved_credits, 10_000);
+        assert_eq!(filed.task.reserved_cargo_millitons, 1_000);
+        let filings = store
+            .simulation
+            .available_messages(&txn, ship.system_id, 0, true)
+            .unwrap();
+        let filing = filings
+            .iter()
+            .find(|message| message.message.message_id == filed.task.insurance_claim_id)
+            .expect("authenticated claim mail must exist at the issuing office");
+        assert!(filing.message.subject.contains("Authenticated piracy-loss"));
+        assert!(filing.message.body.contains("0.750 tons"));
+    }
+
+    #[test]
     fn private_mail_tariff_ttl_and_destination_assistance_survive_reopen() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
@@ -54273,6 +55422,14 @@ mod tests {
                 dispute_effect: 0,
                 adjudication_message_id: 0,
                 performing_ship_id: ship.ship_id,
+                piracy_encounter_id: 0,
+                piracy_incident_second: 0,
+                piracy_contact_id: 0,
+                piracy_threat: EncounterThreat::Unknown,
+                piracy_posture: EncounterPosture::Comply,
+                piracy_quantity_millitons: 0,
+                loss_claim_deadline_second: 0,
+                loss_claim_effect: 0,
             },
             settlement_message_id: 0,
             remittance_message_id: 0,
@@ -54923,8 +56080,15 @@ mod tests {
                             role: "customs inspection".into(),
                             range: "alongside".into(),
                             confidence_percent: 100,
+                            resolution: crate::wire::EncounterResolution::Identified,
                         },
                         summary: "Customs requests the cargo manifest.".into(),
+                        authority: EncounterAuthority::Customs,
+                        threat: EncounterThreat::Unknown,
+                        demand: crate::wire::EncounterDemand::default(),
+                        available_postures: vec![EncounterPosture::Comply],
+                        available_fallbacks: Vec::new(),
+                        response_deadline_second: 0,
                     },
                     opponent_catalog_id: 0,
                     posture: Some(EncounterPosture::Comply),
@@ -54940,7 +56104,7 @@ mod tests {
             )
             .unwrap();
         store
-            .process_encounter_turn_in(&mut txn, 100, 100, &identity(), encounter_id)
+            .process_encounter_turn_in(&mut txn, 100, &identity(), encounter_id)
             .unwrap();
         let career = store.career_state_in(&txn, &identity()).unwrap();
         let warrant = career
@@ -55334,6 +56498,8 @@ mod tests {
                         ],
                         reactions: Vec::new(),
                         use_tactical_controller: false,
+                        speed_adjustment: 0,
+                        speed_actor_person_id: 0,
                     }),
                 ),
             })
@@ -57716,6 +58882,7 @@ mod tests {
                 vessels: vec![captor_vessel, loser_vessel],
                 missiles: Vec::new(),
                 boarding: Vec::new(),
+                pursuits: Vec::new(),
                 complete: true,
             },
             system_id: captor_ship.system_id,
@@ -57860,5 +59027,74 @@ mod tests {
             processed.player_transitions[0].phase,
             PlayerPhase::Encounter
         );
+    }
+
+    #[test]
+    fn pirate_boarding_packs_high_value_cargo_within_real_hold_space() {
+        let lot = |cargo_lot_id, title, quantity_millitons, price| CargoLot {
+            cargo_lot_id,
+            commodity_id: 1,
+            commodity_name: format!("Lot {cargo_lot_id}"),
+            quantity_millitons,
+            purchase_price_per_ton: price,
+            origin_system_id: 1,
+            acquired_second: 0,
+            title,
+            task_id: 0,
+            unique_object_id: u64::from(title == CargoTitle::UniqueObject) * cargo_lot_id,
+            condition_percent: 100,
+            destination_system_id: 0,
+            source_body_id: 0,
+            source_lode_id: 0,
+        };
+        let cargo = vec![
+            lot(1, CargoTitle::PlayerOwned, 20_000, 1_000),
+            lot(2, CargoTitle::Freight, 8_000, 50_000),
+            lot(3, CargoTitle::UniqueObject, 12_000, 100_000),
+            lot(4, CargoTitle::Contract, 4_000, 25_000),
+        ];
+
+        let allocations = pirate_cargo_allocations(&cargo, 50, 10_000);
+
+        assert_eq!(
+            allocations,
+            vec![
+                PirateCargoAllocation {
+                    cargo_lot_id: 2,
+                    quantity_millitons: 8_000,
+                },
+                PirateCargoAllocation {
+                    cargo_lot_id: 4,
+                    quantity_millitons: 2_000,
+                },
+            ],
+            "the more valuable unique object is indivisible and must be skipped when it cannot fit"
+        );
+        let demand = pirate_demand(&cargo, 50, 10_000);
+        assert_eq!(demand.entrusted_millitons, 10_000);
+        assert_eq!(demand.player_owned_millitons, 0);
+        assert_eq!(demand.unique_object_count, 0);
+    }
+
+    #[test]
+    fn pirate_owned_cargo_fraction_rounds_up_to_a_milliton() {
+        let cargo = vec![CargoLot {
+            cargo_lot_id: 7,
+            commodity_id: 1,
+            commodity_name: "Fractional ore".into(),
+            quantity_millitons: 1_001,
+            purchase_price_per_ton: 1_000,
+            origin_system_id: 1,
+            acquired_second: 0,
+            title: CargoTitle::PlayerOwned,
+            task_id: 0,
+            unique_object_id: 0,
+            condition_percent: 100,
+            destination_system_id: 0,
+            source_body_id: 0,
+            source_lode_id: 0,
+        }];
+
+        assert_eq!(pirate_demand(&cargo, 10, 1_000).player_owned_millitons, 101);
     }
 }

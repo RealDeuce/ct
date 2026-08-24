@@ -4519,6 +4519,8 @@ const char* task_state_name(const ct::TaskState state)
       return "Defaulted";
    case ct::TaskState::Disputed:
       return "Disputed";
+   case ct::TaskState::LossDocumented:
+      return "Pirate loss documented";
    }
    return "Unknown";
 }
@@ -4883,6 +4885,20 @@ void show_task_detail(const ct::TaskRecord& task,
          door_label("Current notice:\n\r");
          print_wrapped(task.status_text, "  ");
       }
+      if(task.piracy_encounter_id != 0) {
+         write_task_field(
+            "Piracy evidence:", label_column,
+            {{"encounter #" + std::to_string(task.piracy_encounter_id),
+              ct::DoorTextRole::Identifier}});
+         const auto lost = ct::format_tonnage(task.piracy_quantity_millitons) + " t";
+         write_task_field(
+            "Freight taken:", label_column,
+            {{lost, ct::DoorTextRole::Number}});
+         const auto deadline = game_date(task.loss_claim_deadline_second);
+         write_task_field(
+            "Claim by:", label_column,
+            {{deadline, ct::DoorTextRole::Number}});
+      }
       door_option_prompt({
          "[Q] Task ledger",
          "[?] Help",
@@ -5128,6 +5144,7 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
             "[D] Declare default",
             "[W] Withdraw pending claim",
             "[F] File dispute",
+            "[L] File piracy-loss claim",
             "[Q] Keep task",
          }, false);
          const auto action_key = od_get_key(TRUE);
@@ -5149,6 +5166,8 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
                continue;
             }
             explanation = *entered;
+         } else if(action_key == 'l' || action_key == 'L') {
+            action = ct::TaskActionKind::FileLossClaim;
          } else {
             continue;
          }
@@ -7497,8 +7516,8 @@ const char* radio_kind_name(const ct::RadioTransmissionKind kind)
       return "inspection order";
    case ct::RadioTransmissionKind::BoardingOrder:
       return "boarding order";
-   case ct::RadioTransmissionKind::SurrenderDemand:
-      return "surrender demand";
+   case ct::RadioTransmissionKind::PirateDemand:
+      return "pirate demand";
    }
    return "radio";
 }
@@ -10552,6 +10571,8 @@ std::optional<ct::CombatOrderSet> edit_combat_order(const ct::CombatSnapshot& co
       door_heading("Joint Order Book\n\r================\n\r\n\r");
       door_label("Actions entered: ");
       door_number("%zu", order.actions.size());
+      door_label("  Speed change: ");
+      door_number("%+dG", order.speed_adjustment);
       door_label("  Reactions standing: ");
       door_number("%zu\n\r\n\r", order.reactions.size());
       door_identifier("1. Command and signals\n\r");
@@ -10569,8 +10590,8 @@ std::optional<ct::CombatOrderSet> edit_combat_order(const ct::CombatSnapshot& co
          return std::nullopt;
       }
       if(section == '9') {
-         if(order.actions.empty()) {
-            door_error("At least one action must be entered.\n\r");
+         if(order.actions.empty() && order.speed_adjustment == 0) {
+            door_error("At least one action or speed change must be entered.\n\r");
             wait_for_enter();
             continue;
          }
@@ -10614,13 +10635,36 @@ std::optional<ct::CombatOrderSet> edit_combat_order(const ct::CombatSnapshot& co
          door_heading("Helm and Navigation\n\r===================\n\r\n\r");
          door_identifier("1. Evasive maneuvers\n\r2. Line up shot\n\r3. Close range\n\r");
          door_identifier("4. Open range\n\r5. Break pursuit\n\r6. Prepare Jump\n\r");
-         choice = input_number("Action", 1, 6);
+         door_identifier("7. Establish or maintain pursuit\n\r8. Accelerate\n\r9. Decelerate\n\r");
+         choice = input_number("Action", 1, 9);
+         if(choice && (*choice == 8 || *choice == 9)) {
+            const auto own = std::find_if(
+               combat.participants.begin(), combat.participants.end(),
+               [](const auto& participant) { return participant.commanded; });
+            if(own == combat.participants.end() || own->thrust == 0) {
+               door_error("No maneuver thrust is available.\n\r");
+               wait_for_enter();
+               continue;
+            }
+            const auto amount = input_number("Speed change (G)", 1, own->thrust);
+            if(!amount) continue;
+            const std::unordered_set<uint64_t> no_significant_assignment;
+            const auto pilot = select_combat_actor(
+               combat, ct::CombatActionKind::Pursuit, no_significant_assignment);
+            if(!pilot) continue;
+            order.speed_adjustment = *choice == 8
+               ? static_cast<int16_t>(*amount)
+               : static_cast<int16_t>(-static_cast<int>(*amount));
+            order.speed_actor_person_id = *pilot;
+            continue;
+         }
          kinds = {ct::CombatActionKind::EvasiveManeuvers,
                   ct::CombatActionKind::LineUpShot,
                   ct::CombatActionKind::RangeCheckClose,
                   ct::CombatActionKind::RangeCheckOpen,
                   ct::CombatActionKind::BreakPursuit,
-                  ct::CombatActionKind::PrepareJump};
+                  ct::CombatActionKind::PrepareJump,
+                  ct::CombatActionKind::Pursuit};
       } else if(section == '3') {
          od_clr_scr();
          door_heading("Sensors\n\r=======\n\r\n\r");
@@ -10666,7 +10710,8 @@ std::optional<ct::CombatOrderSet> edit_combat_order(const ct::CombatSnapshot& co
             || kind == ct::CombatActionKind::Board
             || kind == ct::CombatActionKind::OfferSurrender
             || kind == ct::CombatActionKind::AcceptSurrender
-            || kind == ct::CombatActionKind::InspectContact) {
+            || kind == ct::CombatActionKind::InspectContact
+            || kind == ct::CombatActionKind::Pursuit) {
          const auto target = select_combat_target(combat);
          if(!target) {
             continue;
@@ -10711,11 +10756,18 @@ ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello&
       door_value("%s\n\r", safe_field(vessel.class_name).c_str());
       door_label("  initiative ");
       door_number("%d", vessel.initiative);
-      door_label("  thrust ");
-      door_number("%uG", vessel.thrust);
+      door_label("  speed/thrust ");
+      door_number("%d/%uG", vessel.speed, vessel.thrust);
       door_label("  hull/structure/armor ");
       door_number("%u/%u/%u\n\r", vessel.hull_remaining, vessel.structure_remaining,
                   vessel.armor_remaining);
+      if(vessel.pursuit_target_vessel_id != 0) {
+         door_label("  pursuing contact #");
+         door_number("%llu", static_cast<unsigned long long>(
+            vessel.pursuit_target_vessel_id));
+         door_label("  attack bonus ");
+         door_number("+%u\n\r", vessel.pursuit_attack_bonus);
+      }
       if(vessel.commanded) {
          for(const auto& mount : vessel.weapons) {
             door_label("  mount ");
@@ -10938,10 +10990,70 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
    door_heading("Contact on Arrival\n\r==================\n\r\n\r");
    door_label("Contact: ");
    door_identifier("%s\n\r", safe_field(encounter.contact.ship_name).c_str());
+   door_label("Sensor resolution: ");
+   switch(encounter.contact.resolution) {
+   case ct::EncounterResolution::RadioOnly:
+      door_value("radio hail only\n\r");
+      break;
+   case ct::EncounterResolution::TransponderOnly:
+      door_value("transponder only\n\r");
+      break;
+   case ct::EncounterResolution::Approximate:
+      door_value("approximate size class\n\r");
+      break;
+   case ct::EncounterResolution::Identified:
+      door_value("identified\n\r");
+      break;
+   }
+   door_label("Transponder: ");
+   door_value("%s\n\r", encounter.contact.transponder.empty()
+      ? "No transponder information" : safe_field(encounter.contact.transponder).c_str());
    door_label("Classification: ");
-   door_value("%s  confidence %u%%\n\r", safe_field(encounter.contact.class_name).c_str(),
+   door_value("%s  confidence %u%%\n\r", encounter.contact.class_name.empty()
+      ? "Not resolved" : safe_field(encounter.contact.class_name).c_str(),
               encounter.contact.confidence_percent);
+   door_label("Role / range: ");
+   door_value("%s / %s\n\r", safe_field(encounter.contact.role).c_str(),
+              safe_field(encounter.contact.range).c_str());
+   door_label("Authority: ");
+   switch(encounter.authority) {
+   case ct::EncounterAuthority::Pirate: door_warning("pirate\n\r"); break;
+   case ct::EncounterAuthority::TrafficControl: door_value("traffic control\n\r"); break;
+   case ct::EncounterAuthority::Customs: door_value("customs\n\r"); break;
+   case ct::EncounterAuthority::Naval: door_value("naval\n\r"); break;
+   case ct::EncounterAuthority::Warrant: door_value("warrant enforcement\n\r"); break;
+   case ct::EncounterAuthority::None: door_value("none established\n\r"); break;
+   }
+   door_label("Assessed threat: ");
+   switch(encounter.threat) {
+   case ct::EncounterThreat::Favorable: door_success("favorable\n\r"); break;
+   case ct::EncounterThreat::Comparable: door_value("comparable\n\r"); break;
+   case ct::EncounterThreat::Dangerous: door_warning("dangerous\n\r"); break;
+   case ct::EncounterThreat::Overwhelming: door_error("overwhelming\n\r"); break;
+   case ct::EncounterThreat::Unknown: door_value("unknown\n\r"); break;
+   }
+   if(encounter.demand.present) {
+      door_heading("\n\rDemand\n\r");
+      door_information("%s\n\r", safe_field(encounter.demand.text).c_str());
+      door_label("Owned cargo exposed: ");
+      door_number("%.3f tons", encounter.demand.player_owned_millitons / 1000.0);
+      door_label("  entrusted freight exposed: ");
+      door_number("%.3f tons\n\r", encounter.demand.entrusted_millitons / 1000.0);
+      if(encounter.demand.entrusted_liability_credits != 0) {
+         door_label("Recorded non-delivery liability exposed: Cr");
+         door_number("%llu\n\r", static_cast<unsigned long long>(
+            encounter.demand.entrusted_liability_credits));
+      }
+      if(encounter.demand.unique_object_count != 0) {
+         door_warning("%u indivisible unique object(s) fit in the boarding allocation.\n\r",
+                      encounter.demand.unique_object_count);
+      }
+   }
    door_information("%s\n\r", safe_field(encounter.summary).c_str());
+   if(encounter.response_deadline_second != 0) {
+      door_label("Response due: ");
+      door_number("%s\n\r", game_date(encounter.response_deadline_second).c_str());
+   }
    if(encounter.state == ct::EncounterState::Resolving) {
       try {
          return run_combat(connection, hello, random, request_id);
@@ -10953,15 +11065,22 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
       wait_for_enter();
       return ct::PlayerPhase::Encounter;
    }
-   door_option_prompt({
-      "[F] Fight",
-      "[R] Run",
-      "[C] Comply",
-      "[S] Surrender",
-      "[B] Board",
-      "[Enter] Refresh",
-      "[?] Help",
-   });
+   const auto posture_available = [&](const ct::EncounterPosture posture) {
+      return std::find(encounter.available_postures.begin(), encounter.available_postures.end(),
+                       posture) != encounter.available_postures.end();
+   };
+   std::vector<std::string_view> options;
+   if(posture_available(ct::EncounterPosture::Fight)) options.emplace_back("[F] Fight");
+   if(posture_available(ct::EncounterPosture::Flee)) options.emplace_back("[R] Run");
+   if(posture_available(ct::EncounterPosture::Comply)) options.emplace_back("[C] Comply");
+   if(posture_available(ct::EncounterPosture::Surrender)) options.emplace_back("[S] Surrender");
+   if(posture_available(ct::EncounterPosture::Board)) options.emplace_back("[B] Board");
+   if(posture_available(ct::EncounterPosture::Pursue)) options.emplace_back("[P] Pursue");
+   if(posture_available(ct::EncounterPosture::ContinueCourse))
+      options.emplace_back("[O] Continue course");
+   options.emplace_back("[Enter] Refresh");
+   options.emplace_back("[?] Help");
+   door_option_prompt(options);
    char key = static_cast<char>(std::toupper(static_cast<unsigned char>(door_get_live_key())));
    if(key == '\r' || key == '\n') {
       latest_encounter.reset();
@@ -10978,14 +11097,79 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
       posture = ct::EncounterPosture::Surrender;
    } else if(key == 'B') {
       posture = ct::EncounterPosture::Board;
+   } else if(key == 'P') {
+      posture = ct::EncounterPosture::Pursue;
+   } else if(key == 'O') {
+      posture = ct::EncounterPosture::ContinueCourse;
    }
-   if(!posture.has_value()) {
+   if(!posture.has_value() || !posture_available(*posture)) {
       return ct::PlayerPhase::Encounter;
    }
-   const std::vector<ct::EncounterFallback> fallbacks{
-      ct::EncounterFallback::JettisonCargo,
-      ct::EncounterFallback::Surrender,
-   };
+   std::vector<ct::EncounterFallback> fallbacks;
+   if(!encounter.available_fallbacks.empty()) {
+      while(true) {
+         od_clr_scr();
+         door_heading("Emergency fallback order\n\r========================\n\r\n\r");
+         door_information("Add only responses the crew may use if the selected posture fails.\n\r");
+         if(!fallbacks.empty()) {
+            door_label("Current sequence contains ");
+            door_number("%zu", fallbacks.size());
+            door_information(" response(s).\n\r");
+         }
+         std::vector<std::string_view> fallback_options;
+         const auto fallback_available = [&](const ct::EncounterFallback fallback) {
+            return std::find(encounter.available_fallbacks.begin(),
+                             encounter.available_fallbacks.end(), fallback) !=
+                   encounter.available_fallbacks.end()
+                && std::find(fallbacks.begin(), fallbacks.end(), fallback) == fallbacks.end();
+         };
+         if(fallback_available(ct::EncounterFallback::Surrender))
+            fallback_options.emplace_back("[S] Surrender");
+         if(fallback_available(ct::EncounterFallback::Abandon))
+            fallback_options.emplace_back("[A] Abandon ship");
+         if(fallback_available(ct::EncounterFallback::JettisonCargo))
+            fallback_options.emplace_back("[J] Jettison demanded cargo");
+         if(fallback_available(ct::EncounterFallback::BreakOff))
+            fallback_options.emplace_back("[B] Break off");
+         fallback_options.emplace_back("[Enter] Finish sequence");
+         door_option_prompt(fallback_options);
+         const auto fallback_key = static_cast<char>(std::toupper(
+            static_cast<unsigned char>(door_get_live_key())));
+         if(fallback_key == '\r' || fallback_key == '\n') break;
+         if(fallback_key == 'S' && fallback_available(ct::EncounterFallback::Surrender))
+            fallbacks.push_back(ct::EncounterFallback::Surrender);
+         else if(fallback_key == 'A' && fallback_available(ct::EncounterFallback::Abandon))
+            fallbacks.push_back(ct::EncounterFallback::Abandon);
+         else if(fallback_key == 'J' && fallback_available(ct::EncounterFallback::JettisonCargo))
+            fallbacks.push_back(ct::EncounterFallback::JettisonCargo);
+         else if(fallback_key == 'B' && fallback_available(ct::EncounterFallback::BreakOff))
+            fallbacks.push_back(ct::EncounterFallback::BreakOff);
+      }
+   }
+   door_heading("\n\rConfirm response\n\r");
+   door_information("The selected posture will be transmitted now. ");
+   if(fallbacks.empty()) {
+      door_information("No emergency fallback is attached.\n\r");
+   } else {
+      door_information("Emergency sequence: ");
+      for(size_t index = 0; index < fallbacks.size(); ++index) {
+         if(index != 0) door_label(" -> ");
+         switch(fallbacks[index]) {
+         case ct::EncounterFallback::Surrender: door_value("surrender"); break;
+         case ct::EncounterFallback::Abandon: door_value("abandon ship"); break;
+         case ct::EncounterFallback::JettisonCargo: door_value("jettison demanded cargo"); break;
+         case ct::EncounterFallback::BreakOff: door_value("break off"); break;
+         }
+      }
+      door_information("\n\r");
+   }
+   door_option_prompt({"[Y] Transmit", "[N] Reconsider"}, false);
+   const auto confirm = static_cast<char>(std::toupper(static_cast<unsigned char>(
+      door_get_live_key())));
+   od_printf("\n\r");
+   if(confirm != 'Y') {
+      return ct::PlayerPhase::Encounter;
+   }
    auto result = ct::resolve_encounter(
                     connection,
                     hello.assigned_epoch,

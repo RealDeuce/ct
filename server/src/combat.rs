@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::creation::{ship_combat_spec, ship_status_spec};
 
-pub const COMBAT_RULES_REVISION: u16 = 1;
+pub const COMBAT_RULES_REVISION: u16 = 2;
 pub const COMBAT_TURN_SECONDS: u64 = 1_000;
 pub const ORDER_WINDOW_REAL_MILLISECONDS: u64 = 35_714;
 pub const DEFAULT_VICTORY_THRESHOLD_PERCENT: u8 = 70;
@@ -116,6 +116,8 @@ pub struct VesselState {
     pub catalog_id: u32,
     pub displacement_millitons: u64,
     pub thrust: u8,
+    pub speed: i16,
+    pub pilot_dm: i8,
     pub initiative: i16,
     pub hull_remaining: u16,
     pub structure_remaining: u16,
@@ -171,6 +173,7 @@ pub enum CrewAction {
     OfferSurrender { to_vessel_id: u64 },
     AcceptSurrender { vessel_id: u64 },
     InspectContact { target_id: u64 },
+    Pursuit { target_id: u64 },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -191,6 +194,7 @@ pub struct JointOrder {
     pub reactions: Vec<ReactionKind>,
     pub reaction_dms: Vec<i8>,
     pub automated: bool,
+    pub speed_adjustment: i16,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -212,6 +216,13 @@ pub struct BoardingState {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PursuitState {
+    pub pursuer_id: u64,
+    pub target_id: u64,
+    pub attack_bonus: u8,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CombatState {
     pub combat_id: u64,
     pub revision: u64,
@@ -221,6 +232,7 @@ pub struct CombatState {
     pub vessels: Vec<VesselState>,
     pub missiles: Vec<PendingMissile>,
     pub boarding: Vec<BoardingState>,
+    pub pursuits: Vec<PursuitState>,
     pub complete: bool,
 }
 
@@ -405,6 +417,8 @@ pub fn materialize_vessel(
         catalog_id,
         displacement_millitons: status.displacement_millitons,
         thrust: status.thrust_g,
+        speed: i16::from(status.thrust_g),
+        pilot_dm: 0,
         initiative,
         hull_remaining: hull,
         structure_remaining: hull,
@@ -454,8 +468,25 @@ pub fn conservative_order(state: &CombatState, vessel_id: u64) -> Result<JointOr
         .find(|vessel| vessel.vessel_id == vessel_id)
         .ok_or("vessel is not a participant")?;
     let mut actions = vec![CrewAction::Coordinate, CrewAction::EvasiveManeuvers];
+    let mut speed_adjustment = 0;
     if vessel.hull_remaining <= 1 || vessel.structure_remaining <= 1 {
         actions.push(CrewAction::DamageControl);
+    } else if let Some(pursuit) = state
+        .pursuits
+        .iter()
+        .find(|pursuit| pursuit.pursuer_id == vessel_id)
+    {
+        actions.push(CrewAction::Pursuit {
+            target_id: pursuit.target_id,
+        });
+    } else if state
+        .pursuits
+        .iter()
+        .any(|pursuit| pursuit.target_id == vessel_id)
+    {
+        speed_adjustment = i16::from(effective_thrust(vessel));
+        actions.push(CrewAction::RangeCheckOpen);
+        actions.push(CrewAction::BreakPursuit);
     } else {
         actions.push(CrewAction::RangeCheckOpen);
         actions.push(CrewAction::BreakPursuit);
@@ -475,6 +506,7 @@ pub fn conservative_order(state: &CombatState, vessel_id: u64) -> Result<JointOr
         ],
         reaction_dms: vec![0; 5],
         automated: false,
+        speed_adjustment,
     })
 }
 
@@ -605,6 +637,7 @@ fn attack_order(
         reactions: defensive.reactions,
         reaction_dms: defensive.reaction_dms,
         automated: true,
+        speed_adjustment: 0,
     })
 }
 
@@ -622,6 +655,7 @@ fn capture_order(
         reactions: defensive.reactions,
         reaction_dms: defensive.reaction_dms,
         automated: true,
+        speed_adjustment: 0,
     })
 }
 
@@ -801,6 +835,20 @@ pub fn resolve_round(
         vessel.targeting_dm = 0;
         vessel.line_up_dm = 0;
     }
+    for order in &ordered {
+        let vessel = result
+            .vessels
+            .iter_mut()
+            .find(|vessel| vessel.vessel_id == order.vessel_id)
+            .ok_or("speed-order vessel disappeared")?;
+        let available = effective_thrust(vessel);
+        if order.speed_adjustment.unsigned_abs() > u16::from(available)
+            || vessel.speed.saturating_add(order.speed_adjustment) < 0
+        {
+            return Err("speed adjustment exceeds effective thrust".into());
+        }
+        vessel.speed = vessel.speed.saturating_add(order.speed_adjustment);
+    }
     let mut events = Vec::new();
     resolve_missile_impacts(&mut result, &ordered, &mut events)?;
     for order in &ordered {
@@ -824,6 +872,7 @@ pub fn resolve_round(
         }
     }
     resolve_boarding(&mut result, &mut events);
+    end_broken_pursuits(&mut result, &mut events);
     result.round = result.round.saturating_add(1);
     result.round_started_second = result
         .round_started_second
@@ -897,7 +946,7 @@ fn resolve_action(
                 state.range = state.range.decrease();
             }
         }
-        CrewAction::RangeCheckOpen | CrewAction::BreakPursuit => {
+        CrewAction::RangeCheckOpen => {
             if action_check(state, order, action_index, task_dm, 8) < 0 {
                 return Ok(());
             }
@@ -906,6 +955,47 @@ fn resolve_action(
                 state.vessels[actor_index].disposition = VesselDisposition::Withdrawing;
                 events.push(CombatEvent::Withdrawal {
                     vessel_id: order.vessel_id,
+                });
+            }
+        }
+        CrewAction::BreakPursuit => {
+            let Some(pursuit_index) = state
+                .pursuits
+                .iter()
+                .position(|pursuit| pursuit.target_id == order.vessel_id)
+            else {
+                events.push(CombatEvent::Action {
+                    vessel_id: order.vessel_id,
+                    description: "no vessel has established pursuit".into(),
+                });
+                return Ok(());
+            };
+            let pursuer_id = state.pursuits[pursuit_index].pursuer_id;
+            let pursuer_dm = state
+                .vessels
+                .iter()
+                .find(|vessel| vessel.vessel_id == pursuer_id)
+                .map_or(0, |vessel| vessel.pilot_dm);
+            let target_total = opposed_pilot_total(
+                state,
+                order.vessel_id,
+                action_index,
+                task_dm,
+                0x4252_4541_4b00_0000,
+            );
+            let pursuer_total = opposed_pilot_total(
+                state,
+                pursuer_id,
+                action_index,
+                pursuer_dm,
+                0x5055_5253_5545_5200,
+            );
+            if target_total > pursuer_total {
+                state.pursuits.remove(pursuit_index);
+                state.vessels[actor_index].disposition = VesselDisposition::Withdrawing;
+                events.push(CombatEvent::Action {
+                    vessel_id: order.vessel_id,
+                    description: "pilot breaks pursuit".into(),
                 });
             }
         }
@@ -1005,8 +1095,138 @@ fn resolve_action(
                 });
             }
         }
+        CrewAction::Pursuit { target_id } => {
+            if target_id == order.vessel_id {
+                return Err("a vessel cannot pursue itself".into());
+            }
+            let target_index = state
+                .vessels
+                .iter()
+                .position(|vessel| vessel.vessel_id == target_id)
+                .ok_or("pursuit target is absent")?;
+            if state.vessels[target_index].side == state.vessels[actor_index].side {
+                return Err("friendly vessel is not a legal pursuit target".into());
+            }
+            if let Some(existing) = state.pursuits.iter_mut().find(|pursuit| {
+                pursuit.pursuer_id == order.vessel_id && pursuit.target_id == target_id
+            }) {
+                existing.attack_bonus = existing.attack_bonus.saturating_add(1).min(4);
+                events.push(CombatEvent::Action {
+                    vessel_id: order.vessel_id,
+                    description: format!(
+                        "pursuit maintained; attacks against vessel {target_id} gain +{}",
+                        existing.attack_bonus
+                    ),
+                });
+                return Ok(());
+            }
+            if !matches!(state.range, RangeBand::Close | RangeBand::Short)
+                || state.vessels[actor_index].speed != state.vessels[target_index].speed
+            {
+                events.push(CombatEvent::Action {
+                    vessel_id: order.vessel_id,
+                    description: "pursuit requires Short or Close range at equal speed".into(),
+                });
+                return Ok(());
+            }
+            let actor_total = opposed_pilot_total(
+                state,
+                order.vessel_id,
+                action_index,
+                task_dm,
+                0x4553_5441_424c_4953,
+            );
+            let target_total = opposed_pilot_total(
+                state,
+                target_id,
+                action_index,
+                state.vessels[target_index].pilot_dm,
+                0x5441_5247_4554_0000,
+            );
+            if actor_total > target_total {
+                state.pursuits.retain(|pursuit| {
+                    pursuit.pursuer_id != order.vessel_id && pursuit.target_id != target_id
+                });
+                state.pursuits.push(PursuitState {
+                    pursuer_id: order.vessel_id,
+                    target_id,
+                    attack_bonus: 0,
+                });
+                events.push(CombatEvent::Action {
+                    vessel_id: order.vessel_id,
+                    description: format!("pursuit established against vessel {target_id}"),
+                });
+            }
+        }
     }
     Ok(())
+}
+
+pub(crate) fn effective_thrust(vessel: &VesselState) -> u8 {
+    vessel
+        .thrust
+        .saturating_sub(effective_system_hits(vessel, RepairTarget::ManeuverDrive))
+}
+
+fn opposed_pilot_total(
+    state: &CombatState,
+    vessel_id: u64,
+    action_index: usize,
+    dm: i8,
+    salt: u64,
+) -> i16 {
+    let entropy = mix64(
+        state.combat_id
+            ^ state.revision.rotate_left(7)
+            ^ vessel_id.rotate_left(23)
+            ^ (action_index as u64).rotate_left(41)
+            ^ salt,
+    );
+    d6(entropy, 0) + d6(entropy, 8) + i16::from(dm)
+}
+
+fn end_broken_pursuits(state: &mut CombatState, events: &mut Vec<CombatEvent>) {
+    let vessels = state
+        .vessels
+        .iter()
+        .map(|vessel| (vessel.vessel_id, (vessel.speed, vessel.disposition)))
+        .collect::<BTreeMap<_, _>>();
+    let mut ended = Vec::new();
+    state.pursuits.retain(|pursuit| {
+        let pursuer = vessels.get(&pursuit.pursuer_id);
+        let target = vessels.get(&pursuit.target_id);
+        let keep = match (pursuer, target) {
+            (
+                Some((pursuer_speed, pursuer_disposition)),
+                Some((target_speed, target_disposition)),
+            ) => {
+                *pursuer_disposition == VesselDisposition::Active
+                    && *target_disposition == VesselDisposition::Active
+                    && state.range < RangeBand::Medium
+                    && target_speed.saturating_sub(*pursuer_speed) < 7
+            }
+            _ => false,
+        };
+        if !keep {
+            ended.push(pursuit.target_id);
+        }
+        keep
+    });
+    for target_id in ended {
+        if let Some(target) = state
+            .vessels
+            .iter_mut()
+            .find(|vessel| vessel.vessel_id == target_id)
+        {
+            if target.disposition == VesselDisposition::Active {
+                target.disposition = VesselDisposition::Withdrawing;
+            }
+        }
+        events.push(CombatEvent::Action {
+            vessel_id: target_id,
+            description: "pursuit ends as the target clears engagement geometry".into(),
+        });
+    }
 }
 
 fn repair_index(target: RepairTarget) -> Option<usize> {
@@ -1159,6 +1379,15 @@ fn resolve_attack(
                 state.vessels[actor_index].targeting_dm
                     + state.vessels[actor_index].line_up_dm
                     + state.vessels[target_index].evasive_dm,
+            )
+            + i16::from(
+                state
+                    .pursuits
+                    .iter()
+                    .find(|pursuit| {
+                        pursuit.pursuer_id == order.vessel_id && pursuit.target_id == target_id
+                    })
+                    .map_or(0, |pursuit| pursuit.attack_bonus),
             )
             - if state.vessels[actor_index].weapons[mount_index]
                 .damage_hits
@@ -1585,6 +1814,7 @@ mod tests {
             vessels: vec![first, second],
             missiles: vec![],
             boarding: vec![],
+            pursuits: vec![],
             complete: false,
         };
         assert!(resolve_round(&state, &[conservative_order(&state, 1).unwrap()]).is_err());
@@ -1606,6 +1836,7 @@ mod tests {
             vessels: vec![first, second],
             missiles: vec![],
             boarding: vec![],
+            pursuits: vec![],
             complete: false,
         };
         let orders = [
@@ -1635,6 +1866,7 @@ mod tests {
             vessels: vec![first, second],
             missiles: vec![],
             boarding: vec![],
+            pursuits: vec![],
             complete: false,
         };
         let open_range = JointOrder {
@@ -1645,6 +1877,7 @@ mod tests {
             reactions: vec![],
             reaction_dms: vec![],
             automated: false,
+            speed_adjustment: 0,
         };
         let board = JointOrder {
             vessel_id: 2,
@@ -1654,6 +1887,7 @@ mod tests {
             reactions: vec![],
             reaction_dms: vec![],
             automated: false,
+            speed_adjustment: 0,
         };
 
         let resolution = resolve_round(&state, &[open_range, board]).unwrap();
@@ -1681,6 +1915,7 @@ mod tests {
             vessels: vec![first, second],
             missiles: vec![],
             boarding: vec![],
+            pursuits: vec![],
             complete: false,
         };
         let a = risk_directed_order(&state, 1, &AutomationPolicy::default()).unwrap();
@@ -1760,6 +1995,7 @@ mod tests {
             vessels: vec![first, second],
             missiles: vec![],
             boarding: vec![],
+            pursuits: vec![],
             complete: false,
         };
         let repair = JointOrder {
@@ -1770,6 +2006,7 @@ mod tests {
             reactions: Vec::new(),
             reaction_dms: Vec::new(),
             automated: false,
+            speed_adjustment: 0,
         };
         let hold = JointOrder {
             vessel_id: 2,
@@ -1779,6 +2016,7 @@ mod tests {
             reactions: Vec::new(),
             reaction_dms: Vec::new(),
             automated: false,
+            speed_adjustment: 0,
         };
         let result = resolve_round(&state, &[repair, hold]).unwrap();
         let repaired = result
@@ -1804,5 +2042,120 @@ mod tests {
         assert_eq!(damage_hit_groups(12), vec![2]);
         assert_eq!(damage_hit_groups(44), vec![3, 3]);
         assert!(!damage_hit_groups(50).is_empty());
+    }
+
+    #[test]
+    fn pursuit_must_be_won_then_accumulates_attack_position() {
+        let first = materialize_vessel(1, 1, "Hunter", 72, 10).unwrap();
+        let second = materialize_vessel(2, 2, "Runner", 72, 8).unwrap();
+        let state = CombatState {
+            combat_id: 812,
+            revision: 1,
+            round: 1,
+            round_started_second: 0,
+            range: RangeBand::Short,
+            vessels: vec![first, second],
+            missiles: Vec::new(),
+            boarding: Vec::new(),
+            pursuits: Vec::new(),
+            complete: false,
+        };
+        let pursuit = JointOrder {
+            vessel_id: 1,
+            view_revision: 1,
+            actions: vec![CrewAction::Pursuit { target_id: 2 }],
+            action_dms: vec![100],
+            reactions: Vec::new(),
+            reaction_dms: Vec::new(),
+            automated: false,
+            speed_adjustment: 0,
+        };
+        let hold = JointOrder {
+            vessel_id: 2,
+            view_revision: 1,
+            actions: vec![CrewAction::Hold],
+            action_dms: vec![0],
+            reactions: Vec::new(),
+            reaction_dms: Vec::new(),
+            automated: false,
+            speed_adjustment: 0,
+        };
+        let established = resolve_round(&state, &[pursuit, hold]).unwrap().state;
+        assert_eq!(established.pursuits[0].attack_bonus, 0);
+
+        let mut maintain = conservative_order(&established, 1).unwrap();
+        maintain.action_dms = vec![100; maintain.actions.len()];
+        let other = JointOrder {
+            vessel_id: 2,
+            view_revision: established.revision,
+            actions: vec![CrewAction::Hold],
+            action_dms: vec![0],
+            reactions: Vec::new(),
+            reaction_dms: Vec::new(),
+            automated: false,
+            speed_adjustment: 0,
+        };
+        let maintained = resolve_round(&established, &[maintain, other])
+            .unwrap()
+            .state;
+        assert_eq!(maintained.pursuits[0].attack_bonus, 1);
+    }
+
+    #[test]
+    fn seven_greater_speed_ends_pursuit() {
+        let mut pursuer = materialize_vessel(1, 1, "Hunter", 72, 10).unwrap();
+        let mut target = materialize_vessel(2, 2, "Runner", 72, 8).unwrap();
+        pursuer.speed = 1;
+        target.speed = 8;
+        let state = CombatState {
+            combat_id: 813,
+            revision: 1,
+            round: 1,
+            round_started_second: 0,
+            range: RangeBand::Short,
+            vessels: vec![pursuer, target],
+            missiles: Vec::new(),
+            boarding: Vec::new(),
+            pursuits: vec![PursuitState {
+                pursuer_id: 1,
+                target_id: 2,
+                attack_bonus: 2,
+            }],
+            complete: false,
+        };
+        let orders = [
+            JointOrder {
+                vessel_id: 1,
+                view_revision: 1,
+                actions: vec![CrewAction::Hold],
+                action_dms: vec![0],
+                reactions: Vec::new(),
+                reaction_dms: Vec::new(),
+                automated: false,
+                speed_adjustment: 0,
+            },
+            JointOrder {
+                vessel_id: 2,
+                view_revision: 1,
+                actions: vec![CrewAction::Hold],
+                action_dms: vec![0],
+                reactions: Vec::new(),
+                reaction_dms: Vec::new(),
+                automated: false,
+                speed_adjustment: 0,
+            },
+        ];
+        let result = resolve_round(&state, &orders).unwrap();
+        assert!(result.state.pursuits.is_empty());
+        assert_eq!(
+            result
+                .state
+                .vessels
+                .iter()
+                .find(|vessel| vessel.vessel_id == 2)
+                .unwrap()
+                .disposition,
+            VesselDisposition::Withdrawing
+        );
     }
 }

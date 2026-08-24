@@ -1092,6 +1092,7 @@ enum TaskState {
   cancelled @8;
   defaulted @9;
   disputed @10;
+  lossDocumented @11;
 }
 
 struct TaskOffer {
@@ -1122,7 +1123,7 @@ struct TaskOffer {
 }
 
 enum PassengerClass { none @0; high @1; middle @2; steerage @3; low @4; charter @5; courier @6; }
-enum TaskActionKind { cancel @0; returnCustody @1; defaultTask @2; fileDispute @3; withdrawClaim @4; }
+enum TaskActionKind { cancel @0; returnCustody @1; defaultTask @2; fileDispute @3; withdrawClaim @4; fileLossClaim @5; }
 struct TaskActionRequest { taskId @0 :UInt64; expectedRevision @1 :UInt64; action @2 :TaskActionKind; explanation @3 :Text; }
 
 struct TaskRecord {
@@ -1147,6 +1148,14 @@ struct TaskRecord {
   disputeEffect @18 :Int16;
   adjudicationMessageId @19 :UInt64;
   performingShipId @20 :UInt64;
+  piracyEncounterId @21 :UInt64;
+  piracyIncidentSecond @22 :UInt64;
+  piracyContactId @23 :UInt64;
+  piracyThreat @24 :EncounterThreat;
+  piracyPosture @25 :EncounterPosture;
+  piracyQuantityMillitons @26 :UInt64;
+  lossClaimDeadlineSecond @27 :UInt64;
+  lossClaimEffect @28 :Int16;
 }
 
 struct TaskLedger {
@@ -1515,6 +1524,8 @@ enum EncounterPosture {
   comply @2;
   surrender @3;
   board @4;
+  pursue @5;
+  continueCourse @6;
 }
 
 enum EncounterFallback {
@@ -1615,6 +1626,7 @@ enum EncounterKind {
   hazard @5;
   hostile @6;
   military @7;
+  departingContact @8;
 }
 
 enum EncounterState {
@@ -1631,6 +1643,21 @@ struct EncounterContact {
   role @4 :Text;
   range @5 :Text;
   confidencePercent @6 :UInt8;
+  resolution @7 :EncounterResolution;
+}
+
+enum EncounterResolution { radioOnly @0; transponderOnly @1; approximate @2; identified @3; }
+enum EncounterAuthority { none @0; pirate @1; trafficControl @2; customs @3; naval @4; warrant @5; }
+enum EncounterThreat { unknown @0; favorable @1; comparable @2; dangerous @3; overwhelming @4; }
+
+struct EncounterDemand {
+  present @0 :Bool;
+  playerOwnedPercent @1 :UInt8;
+  playerOwnedMillitons @2 :UInt64;
+  entrustedMillitons @3 :UInt64;
+  uniqueObjectCount @4 :UInt16;
+  text @5 :Text;
+  entrustedLiabilityCredits @6 :UInt64;
 }
 
 struct EncounterSnapshot {
@@ -1643,6 +1670,12 @@ struct EncounterSnapshot {
   turn @6 :UInt16;
   contact @7 :EncounterContact;
   summary @8 :Text;
+  authority @9 :EncounterAuthority;
+  threat @10 :EncounterThreat;
+  demand @11 :EncounterDemand;
+  availablePostures @12 :List(EncounterPosture);
+  availableFallbacks @13 :List(EncounterFallback);
+  responseDeadlineSecond @14 :UInt64;
 }
 
 struct ResolveEncounterRequest {
@@ -1711,6 +1744,7 @@ enum CombatActionKind {
   offerSurrender @15;
   acceptSurrender @16;
   inspectContact @17;
+  pursuit @18;
 }
 
 enum CombatReaction {
@@ -1739,6 +1773,8 @@ struct CombatOrderSet {
   actions @2 :List(CombatAction);
   reactions @3 :List(CombatReactionOrder);
   useTacticalController @4 :Bool;
+  speedAdjustment @5 :Int16;
+  speedActorPersonId @6 :UInt64;
 }
 
 struct CombatAutomationPolicy {
@@ -1772,6 +1808,9 @@ struct CombatParticipant {
   commanded @11 :Bool;
   playerOwned @12 :Bool;
   onlineControlled @13 :Bool;
+  speed @14 :Int16;
+  pursuitTargetVesselId @15 :UInt64;
+  pursuitAttackBonus @16 :UInt8;
 }
 
 struct CombatActor {
@@ -2012,7 +2051,7 @@ enum RadioTransmissionKind {
   playerBroadcast @0;
   inspectionOrder @1;
   boardingOrder @2;
-  surrenderDemand @3;
+  pirateDemand @3;
 }
 
 struct RadioInboxEntry {

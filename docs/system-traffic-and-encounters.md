@@ -27,6 +27,32 @@ observer's present locus and are the only ordinary candidates for immediate
 interception. A civilian contact can contribute transponder identity to both
 pictures, but its hull solution still comes from local sensors.
 
+An encounter is always attached to one real projected traffic contact; an
+empty traffic picture does not fabricate a ship. Player-facing contact data is
+derived from the observing ship's sensor result. Radio-only and
+transponder-only contacts expose no hull class, an approximate result exposes
+only a broad size class, and positive identification adds vessel or
+transponder identity without releasing the exact catalog hull. A dark contact
+that neither hails nor crosses the observer's detection threshold produces no
+encounter screen.
+
+Predatory contacts make a separate sensor check against the player. An exact
+target solution supports actual combat-power assessment and an approximate
+solution supports only a median size-class estimate. Pirates abandon an
+intercept when their resulting odds are poor. Their boarding terms describe
+what a subsequent hold search will seize and therefore do not imply advance
+knowledge of the player's manifest; the exact exposure shown to the player is
+calculated from the player's own ledger. If the player's sensors detect that
+dark ship breaking off, the player may continue the filed course or give chase.
+
+Pirate cargo capacity is physical. Background traffic currently has no
+separate hidden commercial manifest, so its catalogued cargo capacity is its
+available hold space when a boarding demand becomes consequential. The demand
+allocator sorts eligible lots by realizable value per ton, takes all entrusted
+freight and a tiered percentage of owned lots only up to that space, and never
+splits a unique object. Persisted evidence and freight claims record the actual
+allocation removed, not the uncapped demand formula.
+
 ## Unaligned regional character
 
 BBS polities have explicit trade-to-combat and chaos-to-order settings.
@@ -509,32 +535,33 @@ job. An uninhabited system still receives a logical update but normally takes
 a very cheap no-activity path. Analytically derived celestial and orbital
 positions do not require mutation by the daily job.
 
-Daily jobs, exact-time events, clock advances, and player commands all pass
-through the same serialized authoritative input queue. A future-event index
-only says when scheduled work becomes eligible for admission; it is not a
-second processor and confers no category priority. A clock pulse is merely an
-out-of-band scheduler wake-up and is never a queue entry. It moves eligible
-work into the durable queue and commits that admission without executing it.
-Each admitted item receives the next queue sequence and is later applied only
-by the ordinary queue consumer. If no event remains due, the pulse may produce
-an explicit logical-time-advance work item; that item, unlike the pulse, goes
-through the queue.
+Due scheduled work and player commands pass through the same
+serialized authoritative input queue. Logical-time advancement does not. A
+future-event index only says when scheduled work becomes eligible for
+admission; it is not a second processor and confers no category priority. A
+clock pulse is merely an out-of-band scheduler wake-up and is never a queue
+entry. While ingress is empty, the scheduler advances the clock directly in a
+durable journalled transaction, leaving the future event in its due-time index.
+A following transaction moves the now-due timestamp-free payload into durable
+ingress without executing it. Each admitted item receives the next queue
+sequence and is later applied only by the ordinary queue consumer.
 
 Queue sequence is the complete execution order after admission. Neither event
-kind, entity ID, nor timestamp may reorder two admitted inputs. When several
+kind nor entity ID may reorder two admitted inputs. When several
 future events are eligible together, their global creation IDs provide the
 stable admission order; this is bookkeeping determinism, not a semantic
 production-before-departure or travel-before-maintenance rule. A rule which
 requires one action to follow another must express that causally by scheduling
 the dependent action only after its prerequisite commits.
 
-Removing a scheduled item from its due index and inserting it into durable
-ingress is one admission transaction. Applying it, journaling it, and removing
-it from ingress is a later execution transaction. A crash before admission
-leaves the future schedule; a crash after admission leaves recoverable queued
-work; a crash during execution commits either the entire input or none of it.
-Cross-system consequences are new scheduled inputs rather than direct mutation
-of another system in the middle of a daily job.
+Advancing to a scheduled item's due second is one transaction and leaves the
+future schedule intact. Removing the now-due item from its index and inserting
+its timestamp-free payload into durable ingress is a second transaction.
+Applying it, journaling it, and removing it from ingress is a third transaction.
+A crash before admission leaves the due schedule; a crash after admission
+leaves recoverable queued work; a crash during execution commits either the
+entire input or none of it. Cross-system consequences are new scheduled inputs
+rather than direct mutation of another system in the middle of a daily job.
 
 Background mail remains governed by the persistent due-time delivery queue
 specified in the message-store design. Daily system work generates traffic

@@ -55,14 +55,15 @@ counter, is the mechanism by which information moves.
 ## Scheduling and Recovery
 
 Future work is indexed by due game second. When work becomes eligible, the
-scheduler admits the work itself into the same durable ordered input queue as
-player commands; event kind supplies no priority. Simultaneously eligible work
-uses its stable global creation ID only to make admission order deterministic.
-Each admitted item currently commits as its own LMDB transaction and receives
-the next authoritative sequence and state revision. The engine refuses
-explicit time advancement while durable player ingress remains queued. A
-command cannot therefore use the tour interface to jump ahead of accepted
-commands.
+scheduler first advances logical time directly in a durable transaction while
+ingress is empty, leaving the future event indexed. It then admits the now-due
+timestamp-free payload into the same durable ordered input queue as player
+commands; event kind supplies no priority. Simultaneously eligible work uses
+its stable global creation ID only to make admission order deterministic. Each
+admitted item currently commits as its own LMDB transaction and receives the
+next authoritative sequence and state revision. The engine refuses clock
+advancement while durable player ingress remains queued. A command cannot
+therefore use the tour interface to jump ahead of accepted commands.
 
 System-day draws are derived from a domain-separated stream keyed by the
 persisted system seed and logical day. Reads do not consume or reroll it.

@@ -753,6 +753,7 @@ enum class TaskState {
    Cancelled,
    Defaulted,
    Disputed,
+   LossDocumented,
 };
 
 enum class PassengerClass {
@@ -771,6 +772,7 @@ enum class TaskActionKind {
    DefaultTask,
    FileDispute,
    WithdrawClaim,
+   FileLossClaim,
 };
 
 struct TaskOffer {
@@ -822,6 +824,14 @@ struct TaskRecord {
    int16_t dispute_effect;
    uint64_t adjudication_message_id;
    uint64_t performing_ship_id;
+   uint64_t piracy_encounter_id;
+   uint64_t piracy_incident_second;
+   uint64_t piracy_contact_id;
+   uint8_t piracy_threat;
+   uint8_t piracy_posture;
+   uint64_t piracy_quantity_millitons;
+   uint64_t loss_claim_deadline_second;
+   int16_t loss_claim_effect;
 };
 
 struct CarriageDeclaration {
@@ -1203,6 +1213,8 @@ enum class EncounterPosture {
    Comply,
    Surrender,
    Board,
+   Pursue,
+   ContinueCourse,
 };
 
 enum class EncounterFallback {
@@ -1319,12 +1331,19 @@ enum class EncounterKind {
    Hazard,
    Hostile,
    Military,
+   DepartingContact,
 };
 
 enum class EncounterState {
    AwaitingPosture,
    Resolving,
    Resolved,
+};
+enum class EncounterResolution {
+   RadioOnly,
+   TransponderOnly,
+   Approximate,
+   Identified,
 };
 struct EncounterContact {
    uint64_t contact_id;
@@ -1334,6 +1353,31 @@ struct EncounterContact {
    std::string role;
    std::string range;
    uint8_t confidence_percent;
+   EncounterResolution resolution;
+};
+enum class EncounterAuthority {
+   None,
+   Pirate,
+   TrafficControl,
+   Customs,
+   Naval,
+   Warrant,
+};
+enum class EncounterThreat {
+   Unknown,
+   Favorable,
+   Comparable,
+   Dangerous,
+   Overwhelming,
+};
+struct EncounterDemand {
+   bool present;
+   uint8_t player_owned_percent;
+   uint64_t player_owned_millitons;
+   uint64_t entrusted_millitons;
+   uint16_t unique_object_count;
+   std::string text;
+   uint64_t entrusted_liability_credits;
 };
 struct EncounterSnapshot {
    uint64_t encounter_id;
@@ -1345,6 +1389,12 @@ struct EncounterSnapshot {
    uint16_t turn;
    EncounterContact contact;
    std::string summary;
+   EncounterAuthority authority;
+   EncounterThreat threat;
+   EncounterDemand demand;
+   std::vector<EncounterPosture> available_postures;
+   std::vector<EncounterFallback> available_fallbacks;
+   uint64_t response_deadline_second;
    PlayerPhase phase;
 };
 struct EncounterResult {
@@ -1407,6 +1457,7 @@ enum class CombatActionKind {
    OfferSurrender,
    AcceptSurrender,
    InspectContact,
+   Pursuit,
 };
 
 enum class CombatReaction {
@@ -1432,6 +1483,8 @@ struct CombatOrderSet {
    std::vector<CombatAction> actions;
    std::vector<CombatReactionOrder> reactions;
    bool use_tactical_controller = false;
+   int16_t speed_adjustment = 0;
+   uint64_t speed_actor_person_id = 0;
 };
 struct CombatAutomationPolicy {
    uint64_t expected_revision;
@@ -1462,6 +1515,9 @@ struct CombatParticipant {
    bool commanded;
    bool player_owned;
    bool online_controlled;
+   int16_t speed;
+   uint64_t pursuit_target_vessel_id;
+   uint8_t pursuit_attack_bonus;
 };
 struct CombatActor {
    uint64_t person_id;
@@ -1724,7 +1780,7 @@ enum class RadioTransmissionKind {
    PlayerBroadcast,
    InspectionOrder,
    BoardingOrder,
-   SurrenderDemand,
+   PirateDemand,
 };
 
 struct RadioInboxEntry {
