@@ -65,8 +65,42 @@ backup commands are:
 
 ```text
 cepheus-trader-admin status
+cepheus-trader-admin add-league
 cepheus-trader-admin live-backup LABEL
 ```
+
+`add-league` requires an initialized universe and returns a numeric League ID
+and one-time 32-byte PSK. Transfer those values privately to the League
+Coordinator, who stores them without putting the PSK in an argument or
+environment variable:
+
+```text
+cepheus-trader-league init-credential league.credential
+```
+
+The dedicated League Coordinator endpoint defaults to port 7326 and accepts
+only the League PSKs created by the administrator. Its authority is limited to
+its own league:
+
+```text
+cepheus-trader-league --credential league.credential status
+cepheus-trader-league --credential league.credential \
+  --expected-revision REV set-name "Spinward League"
+cepheus-trader-league --credential league.credential \
+  --bbs-credential new-bbs.credential add-bbs "Example BBS"
+cepheus-trader-league --credential league.credential \
+  --expected-revision REV disable-bbs BBS_ID "reason"
+cepheus-trader-league --credential league.credential \
+  --expected-revision REV enable-bbs BBS_ID
+```
+
+The authenticated League ID, not a caller-supplied field, determines new-BBS
+membership. There is no attach, remove, or transfer operation. The add command
+creates a protected normal BBS credential file for private delivery to that
+BBS's sysop. Disabling a member preserves its polity, systems, players, and
+simulation state but immediately rejects new game/sysop authentication and
+disconnects active players and sysop control connections. Re-enabling restores
+the same BBS credential. Disabled members remain placement anchors.
 
 `LABEL` is a simple ASCII label, not a path. The server writes beneath its
 `--backup-dir` (default `server-backups`) at an engine-queue boundary. The
@@ -78,8 +112,8 @@ same-storage-version operation: stop the server, preserve the failed data
 directory, place the backup `data.mdb` in a fresh data directory, and start the
 same server build. Alpha formats have no migration path.
 
-The server reports committed sequence, game second, durable input depth, BBS,
-player, and system counts, active sessions, and storage format. It caps pending
+The server reports committed sequence, game second, durable input depth,
+League, BBS, player, and system counts, active sessions, and storage format. It caps pending
 game authentication at 64, active game sessions at 256, and active sessions per
 BBS at 64. SIGINT and SIGTERM send `ServerStopping`, drain the authoritative
 engine, and join its owner thread before exit.
@@ -134,8 +168,8 @@ domain. Provider snapshots are useful in addition to the application backup,
 but they do not replace the queue-boundary manifest and reopen check.
 
 Expose only the game TLS port publicly. Bind the administrator endpoint to
-loopback; expose the sysop endpoint only on the network path actually needed by
-participating BBS hosts and filter it at the host firewall. Run the server as a
+loopback; expose the sysop and League Coordinator endpoints only on the network
+paths actually needed by their operators and filter them at the host firewall. Run the server as a
 dedicated unprivileged account whose private data directory is owner-only.
 Leave enough free local storage for one complete live backup plus normal growth
 between off-host copies. A deployment is accepted for this profile only after

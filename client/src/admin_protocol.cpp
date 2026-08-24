@@ -159,6 +159,58 @@ BbsCredentials add_bbs(TlsConnection& connection,
    return result;
 }
 
+LeagueCredentials add_league(TlsConnection& connection,
+                             const std::array<uint8_t, 16>& command_id,
+                             const uint64_t request_id) {
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<admin::Envelope>();
+   envelope.setProtocolVersion(PROTOCOL_VERSION);
+   envelope.setRequestId(request_id);
+   auto request = envelope.initRequest();
+   request.setCommandId(kj::arrayPtr(command_id.data(), command_id.size()));
+   request.setAddLeague();
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+
+   const auto frame = receive_frame(connection);
+   const auto word_count =
+      (frame.size() + sizeof(capnp::word) - 1) / sizeof(capnp::word);
+   auto words = kj::heapArray<capnp::word>(word_count);
+   std::memset(words.begin(), 0, words.asBytes().size());
+   std::memcpy(words.asBytes().begin(), frame.data(), frame.size());
+   capnp::FlatArrayMessageReader reader(words);
+   const auto response_envelope = reader.getRoot<admin::Envelope>();
+   if(response_envelope.getProtocolVersion() != PROTOCOL_VERSION ||
+      response_envelope.getRequestId() != request_id ||
+      !response_envelope.isResponse()) {
+      throw std::runtime_error("invalid administrator response envelope");
+   }
+   const auto response = response_envelope.getResponse();
+   const auto returned_command_id = response.getCommandId();
+   if(returned_command_id.size() != command_id.size() ||
+      !std::equal(returned_command_id.begin(), returned_command_id.end(),
+                  command_id.begin())) {
+      throw std::runtime_error("administrator response command ID mismatch");
+   }
+   if(response.isError()) {
+      throw AdministratorRequestRejected(response.getError().getMessage().cStr());
+   }
+   if(!response.isLeagueAdded()) {
+      throw std::runtime_error("expected a league-added response");
+   }
+   const auto added = response.getLeagueAdded();
+   const auto psk = added.getPsk();
+   if(psk.size() != 32) {
+      throw std::runtime_error("server returned an invalid league PSK");
+   }
+   LeagueCredentials result{
+      .league_id = added.getLeagueId(),
+      .psk = {},
+      .committed_sequence = response.getCommittedSequence(),
+   };
+   std::copy(psk.begin(), psk.end(), result.psk.begin());
+   return result;
+}
+
 UniverseInitialization initialize_universe(
    TlsConnection& connection,
    const std::array<uint8_t, 16>& command_id,
@@ -263,6 +315,7 @@ ServerStatus server_status(TlsConnection& connection, const uint64_t request_id)
       .game_second = status.getGameSecond(),
       .queued_inputs = status.getQueuedInputs(),
       .bbs_count = status.getBbsCount(),
+      .league_count = status.getLeagueCount(),
       .player_count = status.getPlayerCount(),
       .system_count = status.getSystemCount(),
       .active_sessions = status.getActiveSessions(),

@@ -26,6 +26,10 @@ pub mod ct_sysop_capnp {
     include!(concat!(env!("OUT_DIR"), "/ct_sysop_capnp.rs"));
 }
 
+pub mod ct_league_capnp {
+    include!(concat!(env!("OUT_DIR"), "/ct_league_capnp.rs"));
+}
+
 pub mod admin_psk;
 pub mod admin_wire;
 pub mod atlas;
@@ -42,6 +46,7 @@ pub mod crypto;
 pub mod engine;
 pub mod i18n;
 pub mod jump;
+pub mod league_wire;
 pub mod mining;
 pub mod navigation;
 pub mod person_names;

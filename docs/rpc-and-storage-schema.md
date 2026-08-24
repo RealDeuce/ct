@@ -1,6 +1,6 @@
 # RPC and Storage Schema
 
-*Current implementation: player CT-RPC 8, sysop/admin protocols 2, storage format 1, and record codecs 1.*
+*Current implementation: player CT-RPC 8, sysop/admin protocols 2, League Coordinator protocol 1, storage format 2, and independently versioned record codecs.*
 
 ## Authority boundary
 
@@ -22,12 +22,21 @@ explain state, but it is never the machine-readable discriminator.
 ## Current protocol
 
 CT-RPC 8 is the only accepted player protocol. The sysop and administrator
-protocols likewise accept only version 2. Each TLS connection begins with a
+protocols likewise accept only version 2. The distinct League Coordinator
+endpoint accepts only CT-League version 1 and authenticates a numeric League
+ID with that League's PSK. Each player, sysop, and administrator TLS connection begins with a
 hello carrying one BCP 47 language tag. The server validates the tag and
 returns the selected supported tag. Bare `en` selects the server's `en-US`
 default; an explicit regional English tag such as `en-GB` remains selected.
 The current clients request `en-US`, and English is the only installed server
 language.
+
+League Coordinator requests are deliberately narrower than administrator and
+sysop requests: status/member listing, revision-checked league rename,
+member-BBS enrollment, and revision-checked member enable/disable. Mutations
+use stable 16-byte command IDs for exactly-once replay. The authenticated
+League ID determines membership; no request may attach, remove, or transfer an
+existing BBS.
 
 The player `ServerHello` also carries the display-formatting profile belonging
 to the selected language. It supplies decimal and grouping separators, primary

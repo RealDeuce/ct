@@ -7,7 +7,7 @@ use crate::universe::{
     stellar_component_density_per_cubic_parsec,
 };
 
-pub const BBS_POLITY_GENERATION_VERSION: u16 = 3;
+pub const BBS_POLITY_GENERATION_VERSION: u16 = 4;
 pub const BBS_COVERAGE_SAMPLER_VERSION: u16 = 1;
 pub const BBS_POLITY_SYSTEM_COUNT: usize = 10;
 pub const BBS_POLITY_MINIMUM_NEW_SYSTEMS: usize = BBS_POLITY_SYSTEM_COUNT;

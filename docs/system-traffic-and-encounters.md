@@ -625,7 +625,7 @@ intermediate scheduled events as the logical daily sequence.
 - Set traffic-fidelity hysteresis and the exact persistence schemas for
   `SystemDay`, `TrafficCall`, `CargoLot`, and observations. Arrival checkpoints
   and contact/encounter records have closed CT-RPC shapes in player protocol 3
-  and storage format 1.
+  and storage format 2.
 - Define daily-job work budgets, backlog behavior, and the safe boundary for
   bulk catch-up optimization. Event kind never supplies queue priority.
 - Define storage limits, inventory aging, substitutions, cancellations, and

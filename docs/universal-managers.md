@@ -253,6 +253,11 @@ server state merely because the server has materialized it. Full storage,
 physical synchronization, projection, and interface rules are in
 [`known-universe.md`](known-universe.md).
 
+Institutional affiliation is typed as polity, home BBS, and optional League.
+The system dossier displays it only for a `KnownPublic` mapping. Private,
+withheld, secret, direct-dispatch, and public-dispatch-in-transit states do not
+expose any of those fields.
+
 Known Universe also owns mapping disclosure. Arrival in a system not known by
 the current repository to be publicly mapped prompts the captain to send a
 free public notification, send a paid encrypted direct filing to Earth,

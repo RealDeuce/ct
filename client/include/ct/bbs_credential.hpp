@@ -14,10 +14,20 @@ struct BbsCredentialFile {
    std::vector<uint8_t> psk;
 };
 
+struct LeagueCredentialFile {
+   uint32_t league_id;
+   std::vector<uint8_t> psk;
+};
+
 void create_bbs_credential_file(const std::string& path,
                                 uint32_t bbs_id,
                                 std::span<const uint8_t> psk);
 
 BbsCredentialFile read_bbs_credential_file(const std::string& path);
+
+void create_league_credential_file(const std::string& path,
+                                   uint32_t league_id,
+                                   std::span<const uint8_t> psk);
+LeagueCredentialFile read_league_credential_file(const std::string& path);
 
 }  // namespace ct

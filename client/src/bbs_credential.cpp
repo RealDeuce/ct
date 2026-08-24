@@ -20,8 +20,11 @@
 namespace ct {
 namespace {
 
-constexpr std::array<uint8_t, 8> MAGIC{
+constexpr std::array<uint8_t, 8> BBS_MAGIC{
    'C', 'T', 'B', 'B', 'S', 'P', 'S', 'K',
+};
+constexpr std::array<uint8_t, 8> LEAGUE_MAGIC{
+   'C', 'T', 'L', 'C', 'P', 'S', 'K', '!',
 };
 constexpr uint16_t FORMAT_VERSION = 1;
 constexpr size_t FILE_BYTES = 8 + 2 + 2 + 4 + BBS_PSK_BYTES;
@@ -35,34 +38,37 @@ std::runtime_error system_error(const std::string& operation) {
 #endif
 }
 
-std::array<uint8_t, FILE_BYTES> encode(const uint32_t bbs_id,
-                                       const std::span<const uint8_t> psk) {
-   if(bbs_id == 0) {
-      throw std::invalid_argument("BBS ID must be nonzero");
+std::array<uint8_t, FILE_BYTES> encode(const uint32_t authority_id,
+                                       const std::span<const uint8_t> psk,
+                                       const std::array<uint8_t, 8>& magic) {
+   if(authority_id == 0) {
+      throw std::invalid_argument("credential ID must be nonzero");
    }
    if(psk.size() != BBS_PSK_BYTES) {
       throw std::invalid_argument("BBS PSK must contain exactly 32 bytes");
    }
    std::array<uint8_t, FILE_BYTES> bytes{};
-   std::copy(MAGIC.begin(), MAGIC.end(), bytes.begin());
+   std::copy(magic.begin(), magic.end(), bytes.begin());
    bytes[8] = static_cast<uint8_t>(FORMAT_VERSION >> 8);
    bytes[9] = static_cast<uint8_t>(FORMAT_VERSION);
-   bytes[12] = static_cast<uint8_t>(bbs_id >> 24);
-   bytes[13] = static_cast<uint8_t>(bbs_id >> 16);
-   bytes[14] = static_cast<uint8_t>(bbs_id >> 8);
-   bytes[15] = static_cast<uint8_t>(bbs_id);
+   bytes[12] = static_cast<uint8_t>(authority_id >> 24);
+   bytes[13] = static_cast<uint8_t>(authority_id >> 16);
+   bytes[14] = static_cast<uint8_t>(authority_id >> 8);
+   bytes[15] = static_cast<uint8_t>(authority_id);
    std::copy(psk.begin(), psk.end(), bytes.begin() + 16);
    return bytes;
 }
 
-BbsCredentialFile decode(std::array<uint8_t, FILE_BYTES>& bytes) {
-   if(!std::equal(MAGIC.begin(), MAGIC.end(), bytes.begin())) {
-      throw std::runtime_error("BBS credential file has an invalid magic value");
+std::pair<uint32_t, std::vector<uint8_t>> decode(
+   std::array<uint8_t, FILE_BYTES>& bytes,
+   const std::array<uint8_t, 8>& magic) {
+   if(!std::equal(magic.begin(), magic.end(), bytes.begin())) {
+      throw std::runtime_error("credential file has an invalid magic value");
    }
    const auto version =
       static_cast<uint16_t>((static_cast<uint16_t>(bytes[8]) << 8) | bytes[9]);
    if(version != FORMAT_VERSION || bytes[10] != 0 || bytes[11] != 0) {
-      throw std::runtime_error("BBS credential file has an unsupported format");
+      throw std::runtime_error("credential file has an unsupported format");
    }
    const uint32_t bbs_id =
       (static_cast<uint32_t>(bytes[12]) << 24) |
@@ -70,12 +76,10 @@ BbsCredentialFile decode(std::array<uint8_t, FILE_BYTES>& bytes) {
       (static_cast<uint32_t>(bytes[14]) << 8) |
       static_cast<uint32_t>(bytes[15]);
    if(bbs_id == 0) {
-      throw std::runtime_error("BBS credential file contains BBS ID zero");
+      throw std::runtime_error("credential file contains authority ID zero");
    }
-   BbsCredentialFile result{
-      .bbs_id = bbs_id,
-      .psk = std::vector<uint8_t>(bytes.begin() + 16, bytes.end()),
-   };
+   auto result = std::make_pair(
+      bbs_id, std::vector<uint8_t>(bytes.begin() + 16, bytes.end()));
    scrub_memory(std::span<uint8_t>(bytes));
    return result;
 }
@@ -182,7 +186,7 @@ std::array<uint8_t, FILE_BYTES> read_file(const std::string& path) {
    }
    if((information.dwFileAttributes &
        (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0) {
-      throw std::runtime_error("BBS credential path must be a regular file");
+      throw std::runtime_error("credential path must be a regular file");
    }
    // Reapply the protected owner/System/Administrators DACL while the
    // non-shared, verified non-reparse handle prevents path replacement.
@@ -197,7 +201,7 @@ std::array<uint8_t, FILE_BYTES> read_file(const std::string& path) {
       (static_cast<uint64_t>(information.nFileSizeHigh) << 32) |
       information.nFileSizeLow;
    if(size != FILE_BYTES) {
-      throw std::runtime_error("BBS credential file has an invalid size");
+      throw std::runtime_error("credential file has an invalid size");
    }
    std::array<uint8_t, FILE_BYTES> bytes{};
    DWORD read = 0;
@@ -247,7 +251,7 @@ void read_all(const int fd, const std::span<uint8_t> bytes) {
          continue;
       }
       if(count <= 0) {
-         throw std::runtime_error("BBS credential file is truncated");
+         throw std::runtime_error("credential file is truncated");
       }
       offset += static_cast<size_t>(count);
    }
@@ -257,7 +261,7 @@ void read_all(const int fd, const std::span<uint8_t> bytes) {
       count = read(fd, &extra, 1);
    } while(count < 0 && errno == EINTR);
    if(count != 0) {
-      throw std::runtime_error("BBS credential file has an invalid size");
+      throw std::runtime_error("credential file has an invalid size");
    }
 }
 
@@ -284,17 +288,17 @@ std::array<uint8_t, FILE_BYTES> read_file(const std::string& path) {
       throw system_error("credential file information");
    }
    if(!S_ISREG(status.st_mode)) {
-      throw std::runtime_error("BBS credential path must be a regular file");
+      throw std::runtime_error("credential path must be a regular file");
    }
    if(status.st_uid != geteuid()) {
-      throw std::runtime_error("BBS credential file is not owned by the current user");
+      throw std::runtime_error("credential file is not owned by the current user");
    }
    if((status.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
       throw std::runtime_error(
-         "BBS credential file must not grant group or other permissions");
+         "credential file must not grant group or other permissions");
    }
    if(status.st_nlink != 1) {
-      throw std::runtime_error("BBS credential file must have exactly one link");
+      throw std::runtime_error("credential file must have exactly one link");
    }
    std::array<uint8_t, FILE_BYTES> bytes{};
    read_all(file.get(), bytes);
@@ -308,7 +312,7 @@ std::array<uint8_t, FILE_BYTES> read_file(const std::string& path) {
 void create_bbs_credential_file(const std::string& path,
                                 const uint32_t bbs_id,
                                 const std::span<const uint8_t> psk) {
-   auto bytes = encode(bbs_id, psk);
+   auto bytes = encode(bbs_id, psk, BBS_MAGIC);
    try {
       write_file(path, bytes);
    } catch(...) {
@@ -321,7 +325,35 @@ void create_bbs_credential_file(const std::string& path,
 BbsCredentialFile read_bbs_credential_file(const std::string& path) {
    auto bytes = read_file(path);
    try {
-      return decode(bytes);
+      auto [bbs_id, psk] = decode(bytes, BBS_MAGIC);
+      return BbsCredentialFile{.bbs_id = bbs_id, .psk = std::move(psk)};
+   } catch(...) {
+      scrub_memory(std::span<uint8_t>(bytes));
+      throw;
+   }
+}
+
+void create_league_credential_file(const std::string& path,
+                                   const uint32_t league_id,
+                                   const std::span<const uint8_t> psk) {
+   auto bytes = encode(league_id, psk, LEAGUE_MAGIC);
+   try {
+      write_file(path, bytes);
+   } catch(...) {
+      scrub_memory(std::span<uint8_t>(bytes));
+      throw;
+   }
+   scrub_memory(std::span<uint8_t>(bytes));
+}
+
+LeagueCredentialFile read_league_credential_file(const std::string& path) {
+   auto bytes = read_file(path);
+   try {
+      auto [league_id, psk] = decode(bytes, LEAGUE_MAGIC);
+      return LeagueCredentialFile{
+         .league_id = league_id,
+         .psk = std::move(psk),
+      };
    } catch(...) {
       scrub_memory(std::span<uint8_t>(bytes));
       throw;

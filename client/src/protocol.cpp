@@ -125,6 +125,7 @@ ServerHello exchange_hello(TlsConnection& connection,
    const auto server_hello = response.getServerHello();
    const auto server_identity = server_hello.getIdentity();
    const auto wire_formatting = server_hello.getFormatting();
+   const auto wire_affiliation = server_hello.getAffiliation();
    ServerHello result{
       .identity =
       {
@@ -168,6 +169,16 @@ ServerHello exchange_hello(TlsConnection& connection,
          .game_duration_pattern = wire_formatting.getGameDurationPattern().cStr(),
          .real_duration_pattern = wire_formatting.getRealDurationPattern().cStr(),
       },
+      .affiliation = wire_affiliation.getPolityName().size() == 0
+         ? std::nullopt
+         : std::optional<ServerHello::InstitutionalAffiliation>{
+              ServerHello::InstitutionalAffiliation{
+                 .polity_name = wire_affiliation.getPolityName().cStr(),
+                 .bbs_name = wire_affiliation.getBbsName().cStr(),
+                 .league_name = wire_affiliation.getLeagueName().size() == 0
+                    ? std::nullopt
+                    : std::optional<std::string>{wire_affiliation.getLeagueName().cStr()},
+              }},
    };
    if(result.identity != identity) {
       throw std::runtime_error("server hello returned a different player identity");
@@ -1093,6 +1104,7 @@ KnownDestinations decode_known_destinations(const rpc::Response::Reader response
       .phase = decode_response_phase(response.getPhase()),
    };
    for(const auto system : source.getSystems()) {
+      const auto affiliation = system.getAffiliation();
       result.systems.push_back(KnownSystemSummary{
          .system_id = system.getSystemId(),
          .system_name = system.getSystemName().cStr(),
@@ -1111,6 +1123,16 @@ KnownDestinations decode_known_destinations(const rpc::Response::Reader response
          .knowledge_source = static_cast<SystemKnowledgeSource>(
             system.getKnowledgeSource()),
          .gas_giant_count = system.getGasGiantCount(),
+         .affiliation = affiliation.getPolityName().size() == 0
+            ? std::nullopt
+            : std::optional<ServerHello::InstitutionalAffiliation>{
+                 ServerHello::InstitutionalAffiliation{
+                    .polity_name = affiliation.getPolityName().cStr(),
+                    .bbs_name = affiliation.getBbsName().cStr(),
+                    .league_name = affiliation.getLeagueName().size() == 0
+                       ? std::nullopt
+                       : std::optional<std::string>{affiliation.getLeagueName().cStr()},
+                 }},
       });
    }
    for(const auto belt : source.getBelts()) {
@@ -1936,6 +1958,9 @@ StartingShipOffers get_starting_ship_offers(
          .home_world_name = origin.getHomeWorldName().cStr(),
          .trade_combat = origin.getTradeCombat(),
          .chaos_order = origin.getChaosOrder(),
+         .league_name = origin.getLeagueName().size() == 0
+            ? std::nullopt
+            : std::optional<std::string>{origin.getLeagueName().cStr()},
       },
       .offers = {},
    };

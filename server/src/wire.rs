@@ -304,6 +304,14 @@ pub struct OriginDossier {
     pub home_world_name: String,
     pub trade_combat: u8,
     pub chaos_order: u8,
+    pub league_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InstitutionalAffiliation {
+    pub polity_name: String,
+    pub bbs_name: String,
+    pub league_name: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -831,6 +839,7 @@ pub struct KnownSystemSummary {
     pub remote_candidate: bool,
     pub knowledge_source: SystemKnowledgeSource,
     pub gas_giant_count: u8,
+    pub affiliation: Option<InstitutionalAffiliation>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -3580,6 +3589,26 @@ pub fn encode_server_hello(
     language_tag: &str,
     formatting: &DisplayFormatting,
 ) -> Result<Vec<u8>, WireError> {
+    encode_server_hello_with_affiliation(
+        identity,
+        epoch,
+        committed_sequence,
+        phase,
+        language_tag,
+        formatting,
+        None,
+    )
+}
+
+pub fn encode_server_hello_with_affiliation(
+    identity: &PlayerIdentity,
+    epoch: u64,
+    committed_sequence: u64,
+    phase: PlayerPhase,
+    language_tag: &str,
+    formatting: &DisplayFormatting,
+    affiliation: Option<&InstitutionalAffiliation>,
+) -> Result<Vec<u8>, WireError> {
     let mut message = Builder::new_default();
     let mut envelope = message.init_root::<envelope::Builder>();
     envelope.set_protocol_version(PROTOCOL_VERSION);
@@ -3592,7 +3621,7 @@ pub fn encode_server_hello(
     hello.set_committed_sequence(committed_sequence);
     hello.set_phase(schema_phase(phase));
     hello.set_language_tag(language_tag);
-    let mut wire_formatting = hello.init_formatting();
+    let mut wire_formatting = hello.reborrow().init_formatting();
     wire_formatting.set_decimal_separator(formatting.decimal_separator);
     wire_formatting.set_grouping_separator(formatting.grouping_separator);
     wire_formatting.set_primary_grouping_digits(formatting.primary_grouping_digits);
@@ -3600,6 +3629,12 @@ pub fn encode_server_hello(
     wire_formatting.set_game_timestamp_pattern(formatting.game_timestamp_pattern);
     wire_formatting.set_game_duration_pattern(formatting.game_duration_pattern);
     wire_formatting.set_real_duration_pattern(formatting.real_duration_pattern);
+    if let Some(affiliation) = affiliation {
+        let mut wire = hello.init_affiliation();
+        wire.set_polity_name(&affiliation.polity_name);
+        wire.set_bbs_name(&affiliation.bbs_name);
+        wire.set_league_name(affiliation.league_name.as_deref().unwrap_or(""));
+    }
     finish_message(&message)
 }
 
@@ -4786,6 +4821,7 @@ fn set_starting_ship_offers(
     origin.set_home_world_name(&offers.origin.home_world_name);
     origin.set_trade_combat(offers.origin.trade_combat);
     origin.set_chaos_order(offers.origin.chaos_order);
+    origin.set_league_name(offers.origin.league_name.as_deref().unwrap_or(""));
     let count =
         u32::try_from(offers.offers.len()).map_err(|_| WireError::Expected("fewer offers"))?;
     let mut list = builder.init_offers(count);
@@ -5314,6 +5350,12 @@ fn set_known_destinations(
             }
         });
         item.set_gas_giant_count(system.gas_giant_count);
+        if let Some(affiliation) = &system.affiliation {
+            let mut wire = item.init_affiliation();
+            wire.set_polity_name(&affiliation.polity_name);
+            wire.set_bbs_name(&affiliation.bbs_name);
+            wire.set_league_name(affiliation.league_name.as_deref().unwrap_or(""));
+        }
     }
     let count = u32::try_from(snapshot.belts.len())
         .map_err(|_| WireError::Expected("fewer known belts"))?;

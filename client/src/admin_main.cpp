@@ -28,6 +28,7 @@ enum class Operation {
    InitializeUniverse,
    Status,
    LiveBackup,
+   AddLeague,
 };
 
 struct Options {
@@ -46,6 +47,7 @@ void print_usage(std::ostream& output) {
          "       cepheus-trader-admin [OPTIONS] initialize-universe\n"
          "       cepheus-trader-admin [OPTIONS] status\n"
          "       cepheus-trader-admin [OPTIONS] live-backup LABEL\n"
+         "       cepheus-trader-admin [OPTIONS] add-league\n"
          "\n"
          "Options:\n"
          "  --host HOST         administrator host (default: 127.0.0.1)\n"
@@ -122,6 +124,8 @@ Options parse_options(const int argc, char** argv) {
    } else if(positional.size() == 2 && positional[0] == "live-backup") {
       options.operation = Operation::LiveBackup;
       options.backup_label = std::move(positional[1]);
+   } else if(positional.size() == 1 && positional[0] == "add-league") {
+      options.operation = Operation::AddLeague;
    } else {
       throw std::invalid_argument(
          "expected an administrator operation; use --help for usage");
@@ -152,7 +156,8 @@ void confirm_universe_initialization() {
       << "WARNING: This permanently deletes the existing game universe,\n"
          "including all players, sessions, queued commands, generated systems,\n"
          "ships, markets, messages, and simulation state. BBS enrollment,\n"
-         "credentials, and sysop-selected BBS settings are preserved.\n"
+         "credentials, sysop-selected BBS settings, League credentials,\n"
+         "membership, and member access state are preserved.\n"
          "Type "
       << UNIVERSE_CONFIRMATION << " to continue: " << std::flush;
    std::string response;
@@ -199,16 +204,22 @@ int main(int argc, char** argv) {
                       << "game-second=" << status.game_second << '\n'
                       << "queued-inputs=" << status.queued_inputs << '\n'
                       << "bbs-count=" << status.bbs_count << '\n'
+                      << "league-count=" << status.league_count << '\n'
                       << "player-count=" << status.player_count << '\n'
                       << "system-count=" << status.system_count << '\n'
                       << "active-sessions=" << status.active_sessions << '\n'
                       << "storage-format=" << status.storage_format << '\n';
-         } else {
+         } else if(options.operation == Operation::LiveBackup) {
             const auto complete = ct::live_backup(
                connection, options.backup_label, command_id, 1);
             std::cout << "backup=" << complete.label
                       << " committed=" << complete.committed_sequence
                       << " game-second=" << complete.game_second << '\n';
+         } else {
+            const auto credential = ct::add_league(connection, command_id, 1);
+            std::cout << "League id=" << credential.league_id
+                      << " committed=" << credential.committed_sequence
+                      << " psk=" << ct::hex_encode(credential.psk) << '\n';
          }
          return 0;
       } catch(const ct::AdministratorRequestRejected& error) {

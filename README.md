@@ -76,8 +76,9 @@ python3 -m unittest discover -s tools -p 'test_*.py'
 ## Running the server
 
 The server listens on `localhost:7323` for players, `localhost:7324` for
-administrators, and `localhost:7325` for BBS sysops by default. `localhost`
-is resolved at startup and every supported IPv4 and IPv6 result is bound.
+administrators, `localhost:7325` for BBS sysops, and `localhost:7326` for
+League Coordinators by default. `localhost` is resolved at startup and every
+supported IPv4 and IPv6 result is bound.
 
 The listener options are repeatable and also bind every address returned for
 a hostname:
@@ -85,7 +86,8 @@ a hostname:
 ```console
 cepheus-trader-server \
   --listen 0.0.0.0:7323 --listen '[::]:7323' \
-  --sysop-listen 0.0.0.0:7325 --sysop-listen '[::]:7325'
+  --sysop-listen 0.0.0.0:7325 --sysop-listen '[::]:7325' \
+  --league-listen 0.0.0.0:7326 --league-listen '[::]:7326'
 ```
 
 The administrator listener remains restricted to loopback addresses. Explicit
@@ -94,8 +96,9 @@ resolved or bound.
 
 See the [sysop guide](docs/sysop-guide.md) for BBS installation,
 configuration, credential bootstrap, and door setup. Client development is
-covered by the [client documentation](client/README.md), and portable packages
-by the [release process](docs/release-process.md).
+covered by the [client documentation](client/README.md), League operation by
+the [League Coordinator guide](docs/league-coordinator.md), and portable
+packages by the [release process](docs/release-process.md).
 
 ## Documentation
 
@@ -104,6 +107,7 @@ by the [release process](docs/release-process.md).
 - [Player guide](docs/player-guide.md)
 - [Guided First Watch design](docs/guided-first-watch.md)
 - [BBS sysop installation and operations](docs/sysop-guide.md)
+- [League Coordinator administration](docs/league-coordinator.md)
 - [Operator-hosted interactive universe atlas](docs/universe-atlas.md)
 - [Game design and implementation overview](docs/game-design.md)
 - [Milestone 7 field-alpha audit](docs/milestone-7-audit.md)

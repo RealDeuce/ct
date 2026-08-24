@@ -86,6 +86,9 @@ screen explains the ship, starting package, reserves, authority, and exit
 terms. A powerful or specialized ship may have less free cargo space, higher
 costs, or less freedom of action.
 
+Each offer also identifies its home BBS and polity. If that BBS belongs to a
+League, the current League name follows the polity in parentheses.
+
 ### Name and fit the ship
 
 After choosing an offer, name the ship and select any starting-fit choices.
@@ -368,6 +371,9 @@ managers that remain inspectable throughout normal play:
 Enter refreshes the command console. `X` returns to the previous operational
 screen. `Q` offers to return to the BBS and requires confirmation.
 
+The console identifies the captain's home BBS and polity. A parenthesized name
+after the polity is the BBS's current League affiliation.
+
 `A` permanently abandons the current captain and starts over. It discards every
 ship and crew member, cargo and stores, cash and financing, tasks and contracts,
 career and service history, prizes and warrants, private messages, and personal
@@ -486,7 +492,10 @@ plan to see authoritative deadline warnings before filing it.
 
 When adding a charted leg, the destination list reports distance from that
 leg's origin, primary-world port, population and tech codes, and the number of
-charted gas giants. Its dossier adds chart age, source, and coordinates.
+charted gas giants. Its dossier adds chart age, source, and coordinates. A
+publicly mapped system also identifies its home BBS and current polity and
+League affiliation when known. Private, withheld, secret, and merely
+dispatched mapping states do not disclose that affiliation.
 
 When the ship reaches an unmapped system, you may publish it, file it directly,
 withhold it, or mark it secret. Read the prompt: disclosure choices have

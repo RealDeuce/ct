@@ -483,6 +483,9 @@ Required implementation:
 - reconnect and presentation behavior in actual remote terminal sessions;
 - audited sysop moderation for originating players and polity state without
   advantage-granting operations;
+- separate League Coordinator credentials and endpoint, league naming,
+  member-BBS provisioning, immediate member access control, and league-local
+  closest-fit placement;
 - BBS founding announcements and inter-polity discovery propagation;
 - operational monitoring, live same-version backup, recovery, and safe
   shutdown procedures; incompatible alpha stores are reinitialized rather
@@ -508,7 +511,7 @@ Required implementation:
 - long-duration economy, message-volume, storage-growth, and CPU validation;
 - dependency, OGL source, catalog attribution, and generated Section 15 audits;
 - reproducible builds and packages for the server, administrator utility,
-  sysop utility, and OpenDoors door; and
+  sysop utility, League Coordinator utility, and OpenDoors door; and
 - the optional HTTPS/Web Push activation notifier; and
 - upgrade, migration, backup, and release documentation.
 

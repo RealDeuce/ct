@@ -20,6 +20,12 @@ struct BbsCredentials {
    uint64_t committed_sequence;
 };
 
+struct LeagueCredentials {
+   uint32_t league_id;
+   std::array<uint8_t, 32> psk;
+   uint64_t committed_sequence;
+};
+
 struct UniverseInitialization {
    std::array<uint8_t, 16> universe_id;
    uint32_t polity_count;
@@ -33,6 +39,7 @@ struct ServerStatus {
    uint64_t game_second;
    uint64_t queued_inputs;
    uint32_t bbs_count;
+   uint32_t league_count;
    uint64_t player_count;
    uint64_t system_count;
    uint32_t active_sessions;
@@ -52,6 +59,10 @@ BbsCredentials add_bbs(TlsConnection& connection,
                        const std::string& name,
                        const std::array<uint8_t, 16>& command_id,
                        uint64_t request_id);
+
+LeagueCredentials add_league(TlsConnection& connection,
+                             const std::array<uint8_t, 16>& command_id,
+                             uint64_t request_id);
 
 UniverseInitialization initialize_universe(
    TlsConnection& connection,

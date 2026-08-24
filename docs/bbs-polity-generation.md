@@ -1,6 +1,6 @@
 # BBS Polity Generation
 
-*Status: version-3 frontier-reusing closest-fit placement, seeded CE primary-world rejection
+*Status: version-4 league-aware frontier-reusing closest-fit placement, seeded CE primary-world rejection
 sampling, derived detailed systems, persistent homes, contact-route visits,
 six-parsec frontier materialization, and founding news implemented, 2026-08-24*
 
@@ -21,7 +21,8 @@ already exist. See
 
 ## Implemented closest-fit search
 
-Version 3 treats the BBS capital as the canonical position used to compare
+Version 4 retains the version-3 geometry and treats the BBS capital as the
+canonical position used to compare
 candidate sites. It constructs candidates from every existing system in 98
 canonical primitive directions and four rotations around each direction. It
 considers unvisited, unaligned, inhabited frontier systems in Sol's Jump-2
@@ -45,7 +46,9 @@ The search rejects candidates whose new positions touch resolved cells or
 which violate any invariant below. Within the first viable geometry variant,
 candidates are ordered by:
 
-1. capital distance to the nearest system belonging to an existing polity;
+1. for a league with an already materialized member, capital distance to the
+   nearest materialized capital in that league; otherwise capital distance to
+   the nearest system belonging to an existing polity;
 2. local conditioning cost; and
 3. a placement-seed-derived tie key.
 
@@ -54,7 +57,12 @@ read-only and do not mark space surveyed. If no candidate is eligible, the
 sysop receives a normal `noEligibleSite` rule rejection and configuration is
 not partially committed.
 
-Version 3 retains the ten-system invariant topology but adopts the candidate's
+League membership never relaxes a geometry, coverage, topology, density, or
+runtime constraint and never causes the search to advance beyond the first
+viable geometry variant. Disabled members remain valid proximity anchors.
+Independent BBSs use the prior closest-fit order unchanged.
+
+Version 3 introduced the ten-system invariant topology and adopted the candidate's
 existing frontier anchor as its inward member instead of placing all ten
 systems beyond that anchor. The anchor's immutable generation seed, celestial
 details, and names are preserved; only its polity affiliation changes. When a
@@ -72,7 +80,7 @@ and use a route of already-real systems back through it. This lets inhabited
 space expand without inserting a new star into previously surveyed empty
 space.
 
-Before testing candidates, versions 2 and 3 find the complete graph of plotted
+Before testing candidates, versions 2 through 4 find the complete graph of plotted
 systems reachable from Sol by successive Jump-2 legs. At least one inward
 gateway endpoint must belong to that graph. Since every accepted cluster is
 internally Jump-2-connected, its capital and every member then have a plotted

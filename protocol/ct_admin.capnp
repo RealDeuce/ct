@@ -39,6 +39,7 @@ struct Request {
     initializeUniverse @2 :InitializeUniverse;
     status @3 :Void;
     liveBackup @4 :LiveBackup;
+    addLeague @5 :Void;
   }
 }
 
@@ -64,6 +65,7 @@ struct Response {
     universeInitialized @4 :UniverseInitialized;
     status @5 :ServerStatus;
     backupComplete @6 :BackupComplete;
+    leagueAdded @7 :LeagueCredentials;
   }
 }
 
@@ -76,6 +78,13 @@ struct ServerStatus {
   systemCount @5 :UInt64;
   activeSessions @6 :UInt32;
   storageFormat @7 :UInt64;
+  leagueCount @8 :UInt32;
+}
+
+struct LeagueCredentials {
+  leagueId @0 :UInt32;
+  # Raw 32-byte TLS external PSK. This field must never be logged.
+  psk @1 :Data;
 }
 
 struct BackupComplete {

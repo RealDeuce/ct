@@ -15,11 +15,13 @@ from pathlib import Path
 REQUIRED_BASENAMES = {
     "cepheus-trader-door",
     "cepheus-trader-sysop",
+    "cepheus-trader-league",
     "cepheus-trader.conf.example",
     "install-xtrn.ini",
     "README.md",
     "PLAYER-GUIDE.md",
     "SYSOP-GUIDE.md",
+    "LEAGUE-COORDINATOR.md",
     "LICENSE.md",
     "OPEN_GAME_LICENSE.md",
     "THIRD_PARTY_LICENSES.md",
@@ -84,7 +86,11 @@ def main() -> int:
                 raise SystemExit("SOURCE-RELEASE.txt has no tagged source URL")
 
         if args.run:
-            for program in ("cepheus-trader-door", "cepheus-trader-sysop"):
+            for program in (
+                "cepheus-trader-door",
+                "cepheus-trader-sysop",
+                "cepheus-trader-league",
+            ):
                 executable = next(
                     path for path in paths if normalize_program(path.name) == program
                 )

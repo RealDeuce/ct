@@ -5,7 +5,8 @@ use std::fmt;
 use std::io;
 use std::net::{Shutdown, SocketAddr, TcpStream as StdTcpStream};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex as StdMutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -18,16 +19,17 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, Semaphore, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
-use crate::engine::BbsRegistry;
+use crate::engine::{BbsRegistry, LeagueRegistry};
 use crate::engine::{Engine, EngineError};
 use crate::i18n::{
     LanguageNegotiationError, LocalizationError, NegotiatedLanguage, SUPPORTED_LANGUAGE_TAGS,
     default_language, negotiate_language,
 };
 use crate::store::{
-    BbsConfiguration, BbsCredential, BbsSettings, ConfigureBbsResult, Delivery, OperationalStatus,
-    PlayerAccessRecord, PlayerAccessState, PlayerTravelTransition, SetPlayerAccessResult,
-    StoreError, SysopDirectiveKind, SysopDirectiveRecord,
+    BbsConfiguration, BbsCredential, BbsSettings, ConfigureBbsResult, Delivery, LeagueCredential,
+    LeagueStatus, OperationalStatus, PlayerAccessRecord, PlayerAccessState, PlayerTravelTransition,
+    SetLeagueMemberAccessResult, SetLeagueNameResult, SetPlayerAccessResult, StoreError,
+    SysopDirectiveKind, SysopDirectiveRecord,
 };
 use crate::tls::{PskCredential, TlsServer};
 use crate::traffic::{TrafficContact, TrafficSnapshot};
@@ -37,10 +39,10 @@ use crate::wire::{
     decode_client_hello_with_version, decode_close, decode_protocol_version, decode_request,
     encode_checkpoint_ready, encode_close_with_code, encode_encounter_ready,
     encode_legacy_close_for_version, encode_phase_changed, encode_radio_unread, encode_response,
-    encode_server_hello, encode_server_stopping, encode_session_replaced, encode_traffic_movement,
-    encode_traffic_snapshot,
+    encode_server_hello_with_affiliation, encode_server_stopping, encode_session_replaced,
+    encode_traffic_movement, encode_traffic_snapshot,
 };
-use crate::{admin_wire, sysop_wire, wire};
+use crate::{admin_wire, league_wire, sysop_wire, wire};
 
 const CONNECTION_QUEUE_DEPTH: usize = 64;
 const ENGINE_QUEUE_DEPTH: usize = 256;
@@ -130,6 +132,8 @@ pub enum ServerError {
     #[error(transparent)]
     SysopWire(#[from] sysop_wire::SysopWireError),
     #[error(transparent)]
+    LeagueWire(#[from] league_wire::LeagueWireError),
+    #[error(transparent)]
     Localization(#[from] LocalizationError),
     #[error("authoritative engine stopped")]
     EngineStopped,
@@ -141,6 +145,8 @@ pub enum ServerError {
     BbsIdentityMismatch,
     #[error("authenticated TLS PSK identity is not a canonical BBS identifier")]
     InvalidBbsPskIdentity,
+    #[error("authenticated TLS PSK identity is not a canonical league identifier")]
+    InvalidLeaguePskIdentity,
     #[error("TLS worker stopped unexpectedly")]
     TlsWorkerStopped,
     #[error("administrator listener must bind to a loopback address")]
@@ -180,6 +186,36 @@ enum EngineMessage {
         command_id: [u8; wire::COMMAND_ID_BYTES],
         name: String,
         reply: oneshot::Sender<Result<BbsCredential, String>>,
+    },
+    AddLeague {
+        command_id: [u8; wire::COMMAND_ID_BYTES],
+        reply: oneshot::Sender<Result<LeagueCredential, String>>,
+    },
+    GetLeagueStatus {
+        league_id: u32,
+        reply: oneshot::Sender<Result<LeagueStatus, String>>,
+    },
+    SetLeagueName {
+        league_id: u32,
+        command_id: [u8; wire::COMMAND_ID_BYTES],
+        expected_revision: u64,
+        name: String,
+        reply: oneshot::Sender<Result<SetLeagueNameResult, String>>,
+    },
+    AddLeagueBbs {
+        league_id: u32,
+        command_id: [u8; wire::COMMAND_ID_BYTES],
+        name: String,
+        reply: oneshot::Sender<Result<BbsCredential, String>>,
+    },
+    SetLeagueMemberEnabled {
+        league_id: u32,
+        command_id: [u8; wire::COMMAND_ID_BYTES],
+        bbs_id: u32,
+        expected_revision: u64,
+        enabled: bool,
+        reason: String,
+        reply: oneshot::Sender<Result<SetLeagueMemberAccessResult, String>>,
     },
     InitializeUniverse {
         command_id: [u8; wire::COMMAND_ID_BYTES],
@@ -263,6 +299,11 @@ enum EngineEvent {
     },
     UniverseReset,
     PlayerAccessChanged(Box<PlayerAccessRecord>),
+    BbsAccessChanged {
+        bbs_id: u32,
+        enabled: bool,
+        reason: String,
+    },
     Fatal(String),
 }
 
@@ -275,6 +316,7 @@ struct SessionOpening {
     encounter: Option<wire::EncounterSnapshot>,
     radio_ship_id: u64,
     radio_unread_count: u64,
+    affiliation: Option<wire::InstitutionalAffiliation>,
 }
 
 struct Observer {
@@ -556,6 +598,107 @@ impl EngineHandle {
             .map_err(ServerError::Engine)
     }
 
+    async fn add_league(
+        &self,
+        command_id: [u8; wire::COMMAND_ID_BYTES],
+    ) -> Result<LeagueCredential, ServerError> {
+        let (reply, receiver) = oneshot::channel();
+        self.sender
+            .send(EngineMessage::AddLeague { command_id, reply })
+            .await
+            .map_err(|_| ServerError::EngineStopped)?;
+        receiver
+            .await
+            .map_err(|_| ServerError::EngineStopped)?
+            .map_err(ServerError::Engine)
+    }
+
+    async fn league_status(&self, league_id: u32) -> Result<LeagueStatus, ServerError> {
+        let (reply, receiver) = oneshot::channel();
+        self.sender
+            .send(EngineMessage::GetLeagueStatus { league_id, reply })
+            .await
+            .map_err(|_| ServerError::EngineStopped)?;
+        receiver
+            .await
+            .map_err(|_| ServerError::EngineStopped)?
+            .map_err(ServerError::Engine)
+    }
+
+    async fn set_league_name(
+        &self,
+        league_id: u32,
+        command_id: [u8; wire::COMMAND_ID_BYTES],
+        expected_revision: u64,
+        name: String,
+    ) -> Result<SetLeagueNameResult, ServerError> {
+        let (reply, receiver) = oneshot::channel();
+        self.sender
+            .send(EngineMessage::SetLeagueName {
+                league_id,
+                command_id,
+                expected_revision,
+                name,
+                reply,
+            })
+            .await
+            .map_err(|_| ServerError::EngineStopped)?;
+        receiver
+            .await
+            .map_err(|_| ServerError::EngineStopped)?
+            .map_err(ServerError::Engine)
+    }
+
+    async fn add_league_bbs(
+        &self,
+        league_id: u32,
+        command_id: [u8; wire::COMMAND_ID_BYTES],
+        name: String,
+    ) -> Result<BbsCredential, ServerError> {
+        let (reply, receiver) = oneshot::channel();
+        self.sender
+            .send(EngineMessage::AddLeagueBbs {
+                league_id,
+                command_id,
+                name,
+                reply,
+            })
+            .await
+            .map_err(|_| ServerError::EngineStopped)?;
+        receiver
+            .await
+            .map_err(|_| ServerError::EngineStopped)?
+            .map_err(ServerError::Engine)
+    }
+
+    async fn set_league_member_enabled(
+        &self,
+        league_id: u32,
+        command_id: [u8; wire::COMMAND_ID_BYTES],
+        bbs_id: u32,
+        expected_revision: u64,
+        enabled: bool,
+        reason: String,
+    ) -> Result<SetLeagueMemberAccessResult, ServerError> {
+        let (reply, receiver) = oneshot::channel();
+        self.sender
+            .send(EngineMessage::SetLeagueMemberEnabled {
+                league_id,
+                command_id,
+                bbs_id,
+                expected_revision,
+                enabled,
+                reason,
+                reply,
+            })
+            .await
+            .map_err(|_| ServerError::EngineStopped)?;
+        receiver
+            .await
+            .map_err(|_| ServerError::EngineStopped)?
+            .map_err(ServerError::Engine)
+    }
+
     async fn initialize_universe(
         &self,
         command_id: [u8; wire::COMMAND_ID_BYTES],
@@ -724,6 +867,7 @@ impl EngineHandle {
 fn spawn_engine(
     data_path: PathBuf,
     bbs_registry: BbsRegistry,
+    league_registry: LeagueRegistry,
 ) -> (
     EngineHandle,
     mpsc::Receiver<EngineEvent>,
@@ -738,7 +882,8 @@ fn spawn_engine(
         .spawn(move || {
             let mut ready_sender = Some(ready_sender);
             let run = || -> Result<(), EngineError> {
-                let engine = Engine::open(data_path, bbs_registry)?;
+                let engine =
+                    Engine::open_with_registries(data_path, bbs_registry, league_registry)?;
                 let recovered = engine.recover()?;
                 let mut live_clock = crate::clock::LiveClock::now(engine.game_second()?);
                 let mut observers = HashMap::<PlayerIdentity, Observer>::new();
@@ -844,6 +989,7 @@ fn spawn_engine(
                                         encounter: engine.pending_encounter(&identity)?,
                                         radio_ship_id,
                                         radio_unread_count,
+                                        affiliation: engine.home_affiliation(identity.bbs_id)?,
                                     }));
                                 }
                                 Err(error @ EngineError::PlayerAccessDenied(_)) => {
@@ -941,6 +1087,79 @@ fn spawn_engine(
                                 return Err(error);
                             }
                         },
+                        EngineMessage::AddLeague { command_id, reply } => {
+                            match engine.add_league(command_id) {
+                                Ok(credential) => {
+                                    let _ = reply.send(Ok(credential));
+                                }
+                                Err(error @ EngineError::Store(
+                                    StoreError::UniverseNotInitialized,
+                                )) => {
+                                    let _ = reply.send(Err(error.to_string()));
+                                }
+                                Err(error) => {
+                                    let _ = reply.send(Err(error.to_string()));
+                                    return Err(error);
+                                }
+                            }
+                        }
+                        EngineMessage::GetLeagueStatus { league_id, reply } => {
+                            let result = engine.league_status(league_id).map_err(|error| error.to_string());
+                            let _ = reply.send(result);
+                        }
+                        EngineMessage::SetLeagueName {
+                            league_id,
+                            command_id,
+                            expected_revision,
+                            name,
+                            reply,
+                        } => {
+                            let result = engine
+                                .set_league_name(league_id, command_id, expected_revision, &name)
+                                .map_err(|error| error.to_string());
+                            let _ = reply.send(result);
+                        }
+                        EngineMessage::AddLeagueBbs {
+                            league_id,
+                            command_id,
+                            name,
+                            reply,
+                        } => {
+                            let result = engine
+                                .add_league_bbs(league_id, command_id, &name)
+                                .map_err(|error| error.to_string());
+                            let _ = reply.send(result);
+                        }
+                        EngineMessage::SetLeagueMemberEnabled {
+                            league_id,
+                            command_id,
+                            bbs_id,
+                            expected_revision,
+                            enabled,
+                            reason,
+                            reply,
+                        } => {
+                            let result = engine.set_league_member_enabled(
+                                league_id,
+                                command_id,
+                                bbs_id,
+                                expected_revision,
+                                enabled,
+                                &reason,
+                            );
+                            if matches!(result, Ok(SetLeagueMemberAccessResult::Updated(_)))
+                                && event_sender
+                                    .blocking_send(EngineEvent::BbsAccessChanged {
+                                        bbs_id,
+                                        enabled,
+                                        reason: reason.clone(),
+                                    })
+                                    .is_err()
+                            {
+                                return Ok(());
+                            }
+                            let _ = reply.send(result.map_err(|error| error.to_string()));
+                        }
                         EngineMessage::InitializeUniverse { command_id, reply } => {
                             match engine.initialize_universe(command_id) {
                                 Ok(initialization) => {
@@ -1388,6 +1607,98 @@ impl Sessions {
             let _ = socket.shutdown(Shutdown::Both);
         }
     }
+
+    async fn close_bbs(&self, bbs_id: u32, disable_reason: &str) {
+        let sessions = {
+            let mut players = self.players.lock().await;
+            let identities = players
+                .keys()
+                .filter(|identity| identity.bbs_id == bbs_id)
+                .cloned()
+                .collect::<Vec<_>>();
+            identities
+                .into_iter()
+                .filter_map(|identity| players.remove(&identity))
+                .collect::<Vec<_>>()
+        };
+        for session in sessions {
+            let reason = if disable_reason.is_empty() {
+                "home BBS access is disabled".to_owned()
+            } else {
+                format!("home BBS access is disabled: {disable_reason}")
+            };
+            if let Ok(frame) =
+                encode_close_with_code(session.epoch, CloseCode::AccessDenied, &reason, &[])
+            {
+                let _ = session.outbound.try_send(frame);
+            }
+            let _ = session.replaced.send(true);
+            if let Some(socket) = session.socket {
+                let _ = socket.shutdown(Shutdown::Both);
+            }
+        }
+    }
+}
+
+#[derive(Default)]
+struct BbsControlConnections {
+    next_id: AtomicU64,
+    sockets: StdMutex<HashMap<u32, HashMap<u64, Arc<StdTcpStream>>>>,
+}
+
+impl BbsControlConnections {
+    fn register(
+        self: &Arc<Self>,
+        bbs_id: u32,
+        socket: Arc<StdTcpStream>,
+    ) -> BbsControlRegistration {
+        let connection_id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        self.sockets
+            .lock()
+            .expect("BBS control connection lock poisoned")
+            .entry(bbs_id)
+            .or_default()
+            .insert(connection_id, socket);
+        BbsControlRegistration {
+            owner: Arc::clone(self),
+            bbs_id,
+            connection_id,
+        }
+    }
+
+    fn close_bbs(&self, bbs_id: u32) {
+        let sockets = self
+            .sockets
+            .lock()
+            .expect("BBS control connection lock poisoned")
+            .remove(&bbs_id)
+            .unwrap_or_default();
+        for socket in sockets.into_values() {
+            let _ = socket.shutdown(Shutdown::Both);
+        }
+    }
+}
+
+struct BbsControlRegistration {
+    owner: Arc<BbsControlConnections>,
+    bbs_id: u32,
+    connection_id: u64,
+}
+
+impl Drop for BbsControlRegistration {
+    fn drop(&mut self) {
+        let mut sockets = self
+            .owner
+            .sockets
+            .lock()
+            .expect("BBS control connection lock poisoned");
+        if let Some(entries) = sockets.get_mut(&self.bbs_id) {
+            entries.remove(&self.connection_id);
+            if entries.is_empty() {
+                sockets.remove(&self.bbs_id);
+            }
+        }
+    }
 }
 
 enum DeliveryDisposition {
@@ -1401,12 +1712,14 @@ enum ListenerRole {
     Game,
     Administrator,
     Sysop,
+    League,
 }
 
 enum AcceptedConnection {
     Game(TcpStream, SocketAddr),
     Administrator(TcpStream, SocketAddr),
     Sysop(TcpStream, SocketAddr),
+    League(TcpStream, SocketAddr),
 }
 
 struct AcceptTasks(Vec<JoinHandle<()>>);
@@ -1471,6 +1784,7 @@ fn spawn_accept_tasks(
                     ListenerRole::Game => AcceptedConnection::Game(socket, peer),
                     ListenerRole::Administrator => AcceptedConnection::Administrator(socket, peer),
                     ListenerRole::Sysop => AcceptedConnection::Sysop(socket, peer),
+                    ListenerRole::League => AcceptedConnection::League(socket, peer),
                 });
                 let failed = result.is_err();
                 if sender.send(result).await.is_err() || failed {
@@ -1492,6 +1806,7 @@ pub async fn run(
         vec![game_address],
         vec![admin_address],
         vec![sysop_address],
+        vec![SocketAddr::new(sysop_address.ip(), 7326)],
         data_path,
         admin_tls,
     )
@@ -1502,6 +1817,7 @@ pub async fn run_on_addresses(
     game_addresses: Vec<SocketAddr>,
     admin_addresses: Vec<SocketAddr>,
     sysop_addresses: Vec<SocketAddr>,
+    league_addresses: Vec<SocketAddr>,
     data_path: PathBuf,
     admin_tls: AdminTlsConfig,
 ) -> Result<(), ServerError> {
@@ -1514,12 +1830,15 @@ pub async fn run_on_addresses(
     let game_listeners = bind_listeners(&game_addresses, "game")?;
     let admin_listeners = bind_listeners(&admin_addresses, "administrator")?;
     let sysop_listeners = bind_listeners(&sysop_addresses, "sysop")?;
+    let league_listeners = bind_listeners(&league_addresses, "league coordinator")?;
     let game_listener_text = listener_address_list(&game_listeners)?;
     let admin_listener_text = listener_address_list(&admin_listeners)?;
     let sysop_listener_text = listener_address_list(&sysop_listeners)?;
+    let league_listener_text = listener_address_list(&league_listeners)?;
     let bbs_registry = BbsRegistry::default();
+    let league_registry = LeagueRegistry::default();
     let (engine, mut engine_events, engine_thread, engine_ready) =
-        spawn_engine(data_path, bbs_registry.clone());
+        spawn_engine(data_path, bbs_registry.clone(), league_registry.clone());
     tokio::task::spawn_blocking(move || engine_ready.recv())
         .await
         .map_err(|_| ServerError::EngineStopped)?
@@ -1527,9 +1846,11 @@ pub async fn run_on_addresses(
         .map_err(ServerError::Engine)?;
     server_log!(
         "Cepheus Trader game listeners on {game_listener_text}; administrator listeners on \
-         {admin_listener_text}; sysop listeners on {sysop_listener_text}"
+         {admin_listener_text}; sysop listeners on {sysop_listener_text}; league coordinator \
+         listeners on {league_listener_text}"
     );
     let sessions = Arc::new(Sessions::default());
+    let bbs_control_connections = Arc::new(BbsControlConnections::default());
     let pending_game_authentications = Arc::new(Semaphore::new(MAX_PENDING_GAME_AUTHENTICATIONS));
     let clock_engine = engine.clone();
     tokio::spawn(async move {
@@ -1548,6 +1869,7 @@ pub async fn run_on_addresses(
     });
     let dispatcher_sessions = Arc::clone(&sessions);
     let dispatcher_engine = engine.clone();
+    let dispatcher_bbs_control_connections = Arc::clone(&bbs_control_connections);
     let (fatal_sender, mut fatal_receiver) = oneshot::channel();
     tokio::spawn(async move {
         while let Some(event) = engine_events.recv().await {
@@ -1630,6 +1952,16 @@ pub async fn run_on_addresses(
                 EngineEvent::PlayerAccessChanged(access) => {
                     dispatcher_sessions.close_for_access_change(&access).await;
                 }
+                EngineEvent::BbsAccessChanged {
+                    bbs_id,
+                    enabled,
+                    reason,
+                } => {
+                    if !enabled {
+                        dispatcher_sessions.close_bbs(bbs_id, &reason).await;
+                        dispatcher_bbs_control_connections.close_bbs(bbs_id);
+                    }
+                }
                 EngineEvent::Fatal(error) => {
                     let _ = fatal_sender.send(error);
                     return;
@@ -1655,6 +1987,12 @@ pub async fn run_on_addresses(
     spawn_accept_tasks(
         sysop_listeners,
         ListenerRole::Sysop,
+        &incoming_sender,
+        &mut accept_tasks,
+    );
+    spawn_accept_tasks(
+        league_listeners,
+        ListenerRole::League,
         &incoming_sender,
         &mut accept_tasks,
     );
@@ -1725,16 +2063,33 @@ pub async fn run_on_addresses(
                     AcceptedConnection::Sysop(socket, peer) => {
                         let connection_engine = engine.clone();
                         let connection_registry = bbs_registry.clone();
+                        let connection_controls = Arc::clone(&bbs_control_connections);
                         tokio::spawn(async move {
                             if let Err(error) = handle_sysop_connection(
                                 socket,
                                 connection_engine,
                                 connection_registry,
+                                connection_controls,
                             )
                             .await
                             {
                                 server_log!(
                                     "sysop connection peer={peer} event=failed error={error}"
+                                );
+                            }
+                        });
+                    }
+                    AcceptedConnection::League(socket, peer) => {
+                        let connection_engine = engine.clone();
+                        let connection_registry = league_registry.clone();
+                        tokio::spawn(async move {
+                            if let Err(error) = handle_league_connection(
+                                socket,
+                                connection_engine,
+                                connection_registry,
+                            ).await {
+                                server_log!(
+                                    "league coordinator connection peer={peer} event=failed error={error}"
                                 );
                             }
                         });
@@ -1945,14 +2300,35 @@ async fn handle_connection(
             let _ = socket.shutdown(Shutdown::Both);
         }
     }
+    // Disablement removes the live credential before the disconnect event is
+    // dispatched. Recheck after registration so a connection cannot slip in
+    // between that event's session sweep and this insertion.
+    if !bbs_registry.contains(hello.identity.bbs_id) {
+        sessions
+            .remove_if_current(&hello.identity, opening.epoch)
+            .await;
+        let _ = outbound
+            .send(encode_close_with_code(
+                opening.epoch,
+                CloseCode::AccessDenied,
+                "home BBS access is disabled",
+                &[],
+            )?)
+            .await;
+        drop(outbound);
+        let _ = writer_task.await;
+        let _ = socket.shutdown(Shutdown::Both);
+        return Ok(());
+    }
     outbound
-        .send(encode_server_hello(
+        .send(encode_server_hello_with_affiliation(
             &hello.identity,
             epoch,
             opening.committed_sequence,
             opening.phase,
             language.tag(),
             &language.display_formatting(),
+            opening.affiliation.as_ref(),
         )?)
         .await
         .map_err(|_| {
@@ -2243,6 +2619,15 @@ async fn handle_admin_connection(
                     Err(error) => return Err(error),
                 }
             }
+            admin_wire::AdminCommand::AddLeague => {
+                match engine.add_league(request.command_id).await {
+                    Ok(credential) => admin_wire::encode_league_added(&request, &credential)?,
+                    Err(ServerError::Engine(message)) => {
+                        admin_wire::encode_invalid_request(&request, &message)?
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
         };
         let writer = Arc::clone(&tls);
         tokio::task::spawn_blocking(move || write_tls_frame(&writer, &response))
@@ -2255,6 +2640,7 @@ async fn handle_sysop_connection(
     socket: TcpStream,
     engine: EngineHandle,
     bbs_registry: BbsRegistry,
+    control_connections: Arc<BbsControlConnections>,
 ) -> Result<(), ServerError> {
     socket.set_nodelay(true)?;
     let socket = socket.into_std()?;
@@ -2289,6 +2675,17 @@ async fn handle_sysop_connection(
         .map_err(|_| ServerError::InvalidBbsPskIdentity)?;
     if bbs_id == 0 || bbs_id.to_string() != identity {
         return Err(ServerError::InvalidBbsPskIdentity);
+    }
+    if !bbs_registry.contains(bbs_id) {
+        return Ok(());
+    }
+    let _control_registration = control_connections.register(bbs_id, Arc::clone(&socket));
+    // Pair the pre-registration check with a post-registration check. If
+    // disablement won the race before registration, the event sweep may have
+    // already run; if it happens after this check, the registered socket is
+    // visible to that sweep.
+    if !bbs_registry.contains(bbs_id) {
+        return Ok(());
     }
     let tls = Arc::new(tls);
 
@@ -2446,6 +2843,157 @@ async fn handle_sysop_connection(
     }
 }
 
+async fn handle_league_connection(
+    socket: TcpStream,
+    engine: EngineHandle,
+    league_registry: LeagueRegistry,
+) -> Result<(), ServerError> {
+    socket.set_nodelay(true)?;
+    let socket = socket.into_std()?;
+    socket.set_nonblocking(false)?;
+    socket.set_read_timeout(Some(AUTHENTICATION_TIMEOUT))?;
+    socket.set_write_timeout(Some(AUTHENTICATION_TIMEOUT))?;
+    let socket = Arc::new(socket);
+    let handshake_socket = Arc::clone(&socket);
+    let credentials = league_registry
+        .tls_credentials()
+        .into_iter()
+        .map(|(identity, key)| PskCredential {
+            identity: identity.into_bytes(),
+            key,
+        })
+        .collect::<Vec<_>>();
+    let tls = tokio::task::spawn_blocking(move || {
+        TlsServer::handshake_many(&*handshake_socket, &credentials)
+    })
+    .await
+    .map_err(|_| ServerError::TlsWorkerStopped)?
+    .map_err(|error| ServerError::Tls(error.to_string()))?;
+    socket.set_read_timeout(None)?;
+    socket.set_write_timeout(None)?;
+    let identity = tls
+        .identity()
+        .map_err(|error| ServerError::Tls(error.to_string()))?;
+    let identity =
+        std::str::from_utf8(&identity).map_err(|_| ServerError::InvalidLeaguePskIdentity)?;
+    let league_id = identity
+        .parse::<u32>()
+        .map_err(|_| ServerError::InvalidLeaguePskIdentity)?;
+    if league_id == 0 || league_id.to_string() != identity {
+        return Err(ServerError::InvalidLeaguePskIdentity);
+    }
+    let tls = Arc::new(tls);
+    loop {
+        let frame = match read_tls_frame_async(Arc::clone(&tls)).await {
+            Ok(frame) => frame,
+            Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
+            Err(error) => return Err(ServerError::Io(error)),
+        };
+        let client_version = league_wire::decode_protocol_version(&frame)?;
+        if client_version != league_wire::PROTOCOL_VERSION {
+            let close = league_wire::encode_close(
+                crate::ct_league_capnp::CloseCode::UnsupportedVersion,
+                &format!(
+                    "unsupported CT-League version {client_version}; server requires {}",
+                    league_wire::PROTOCOL_VERSION
+                ),
+            )?;
+            let writer = Arc::clone(&tls);
+            let _ = tokio::task::spawn_blocking(move || write_tls_frame(&writer, &close)).await;
+            return Ok(());
+        }
+        let request = match league_wire::decode_request(&frame) {
+            Ok(request) => request,
+            Err(error) => {
+                let close = league_wire::encode_close(
+                    crate::ct_league_capnp::CloseCode::InvalidRequest,
+                    &error.to_string(),
+                )?;
+                let writer = Arc::clone(&tls);
+                let _ = tokio::task::spawn_blocking(move || write_tls_frame(&writer, &close)).await;
+                return Ok(());
+            }
+        };
+        let response = match &request.command {
+            league_wire::LeagueCommand::Status => match engine.league_status(league_id).await {
+                Ok(status) => league_wire::encode_status(&request, &status)?,
+                Err(ServerError::Engine(message)) => league_wire::encode_error(&request, &message)?,
+                Err(error) => return Err(error),
+            },
+            league_wire::LeagueCommand::SetName {
+                expected_revision,
+                name,
+            } => {
+                match engine
+                    .set_league_name(
+                        league_id,
+                        request.command_id,
+                        *expected_revision,
+                        name.clone(),
+                    )
+                    .await
+                {
+                    Ok(SetLeagueNameResult::Updated(status)) => {
+                        league_wire::encode_name_set(&request, &status, false)?
+                    }
+                    Ok(SetLeagueNameResult::Stale(status)) => {
+                        league_wire::encode_name_set(&request, &status, true)?
+                    }
+                    Err(ServerError::Engine(message)) => {
+                        league_wire::encode_error(&request, &message)?
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            league_wire::LeagueCommand::AddBbs { name } => {
+                match engine
+                    .add_league_bbs(league_id, request.command_id, name.clone())
+                    .await
+                {
+                    Ok(credential) => league_wire::encode_bbs_added(&request, &credential)?,
+                    Err(ServerError::Engine(message)) => {
+                        league_wire::encode_error(&request, &message)?
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            league_wire::LeagueCommand::SetBbsAccess {
+                bbs_id,
+                expected_revision,
+                enabled,
+                reason,
+            } => {
+                match engine
+                    .set_league_member_enabled(
+                        league_id,
+                        request.command_id,
+                        *bbs_id,
+                        *expected_revision,
+                        *enabled,
+                        reason.clone(),
+                    )
+                    .await
+                {
+                    Ok(SetLeagueMemberAccessResult::Updated(member)) => {
+                        league_wire::encode_member_updated(&request, &member, false)?
+                    }
+                    Ok(SetLeagueMemberAccessResult::Stale(member)) => {
+                        league_wire::encode_member_updated(&request, &member, true)?
+                    }
+                    Err(ServerError::Engine(message)) => {
+                        league_wire::encode_error(&request, &message)?
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+        };
+        let writer = Arc::clone(&tls);
+        tokio::task::spawn_blocking(move || write_tls_frame(&writer, &response))
+            .await
+            .map_err(|_| ServerError::TlsWorkerStopped)??;
+    }
+}
+
 async fn read_tls_frame_async(tls: Arc<TlsServer>) -> io::Result<Vec<u8>> {
     tokio::task::spawn_blocking(move || read_tls_frame(&tls))
         .await
@@ -2532,8 +3080,11 @@ mod tests {
     #[test]
     fn engine_startup_preserves_the_authoritative_error() {
         let file = tempfile::NamedTempFile::new().unwrap();
-        let (_engine, mut events, engine_thread, ready) =
-            spawn_engine(file.path().to_owned(), BbsRegistry::default());
+        let (_engine, mut events, engine_thread, ready) = spawn_engine(
+            file.path().to_owned(),
+            BbsRegistry::default(),
+            LeagueRegistry::default(),
+        );
 
         let startup_error = ready.recv().unwrap().unwrap_err();
         assert!(

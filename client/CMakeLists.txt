@@ -401,6 +401,7 @@ capnp_generate_cpp(
   "${CMAKE_CURRENT_SOURCE_DIR}/../protocol/ct_admin.capnp"
   "${CMAKE_CURRENT_SOURCE_DIR}/../protocol/ct_rpc.capnp"
   "${CMAKE_CURRENT_SOURCE_DIR}/../protocol/ct_sysop.capnp"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../protocol/ct_league.capnp"
 )
 
 add_library(
@@ -473,6 +474,7 @@ add_library(
   src/bbs_credential.cpp
   src/crypto.cpp
   src/first_watch.cpp
+  src/league_protocol.cpp
   src/player_identity_registry.cpp
   src/protocol.cpp
   src/sysop_protocol.cpp
@@ -705,6 +707,17 @@ target_compile_options(
     -Werror
 )
 
+add_executable(cepheus-trader-league src/league_main.cpp)
+target_link_libraries(cepheus-trader-league PRIVATE ct-client-core)
+target_compile_options(
+  cepheus-trader-league
+  PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Werror
+)
+
 # An operator-invoked field-alpha load driver. It is intentionally excluded
 # from the default build and from CTest: opening fifty live sessions is an
 # operations benchmark, not a unit or CI test.
@@ -730,6 +743,7 @@ foreach(
     cepheus-trader-door
     cepheus-trader-admin
     cepheus-trader-sysop
+    cepheus-trader-league
     ct-field-alpha-load
 )
   target_compile_definitions(
@@ -745,6 +759,7 @@ if(CT_PORTABLE_CLIENT AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       ct-client-transport
       cepheus-trader-door
       cepheus-trader-sysop
+      cepheus-trader-league
   )
     target_link_options(
       ${CT_PORTABLE_TARGET}
@@ -775,12 +790,14 @@ set_target_properties(
   cepheus-trader-client
   cepheus-trader-door
   cepheus-trader-sysop
+  cepheus-trader-league
   PROPERTIES BUILD_RPATH_USE_ORIGIN ON
 )
 if(DEFINED CT_CLIENT_INSTALL_RPATH)
   set_target_properties(
     cepheus-trader-door
     cepheus-trader-sysop
+    cepheus-trader-league
     PROPERTIES INSTALL_RPATH "${CT_CLIENT_INSTALL_RPATH}"
   )
 endif()
@@ -802,6 +819,7 @@ install(
     ct-client-transport
     cepheus-trader-door
     cepheus-trader-sysop
+    cepheus-trader-league
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
   LIBRARY DESTINATION "${CMAKE_INSTALL_BINDIR}"
   COMPONENT Client
@@ -830,6 +848,12 @@ install(
   FILES "${CMAKE_CURRENT_SOURCE_DIR}/../docs/sysop-guide.md"
   DESTINATION "${CMAKE_INSTALL_DATADIR}/cepheus-trader"
   RENAME "SYSOP-GUIDE.md"
+  COMPONENT Client
+)
+install(
+  FILES "${CMAKE_CURRENT_SOURCE_DIR}/../docs/league-coordinator.md"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/cepheus-trader"
+  RENAME "LEAGUE-COORDINATOR.md"
   COMPONENT Client
 )
 install(

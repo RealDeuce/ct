@@ -665,6 +665,17 @@ std::string safe_field(const std::string_view text)
    return ct::door_single_line_field(text);
 }
 
+std::string polity_with_league(
+   const std::string& polity,
+   const std::optional<std::string>& league)
+{
+   auto result = safe_field(polity);
+   if(league && !league->empty()) {
+      result += " (" + safe_field(*league) + ")";
+   }
+   return result;
+}
+
 const char* travel_stage_name(const ct::TravelStage stage)
 {
    switch(stage) {
@@ -2394,7 +2405,10 @@ void render_offer_comparison(const ct::StartingShipOffers& offers)
    door_heading("Starting Ship Offers\n\r");
    door_heading("--------------------\n\r");
    door_label("Origin: ");
-   door_value("%s", safe_field(offers.origin.polity_name).c_str());
+   door_value("%s", safe_field(offers.origin.bbs_name).c_str());
+   door_label(" - ");
+   door_value("%s", polity_with_league(
+      offers.origin.polity_name, offers.origin.league_name).c_str());
    door_label(", ");
    door_value("%s", safe_field(offers.origin.home_system_name).c_str());
    door_label(" / ");
@@ -6340,6 +6354,14 @@ void show_planning_system_dossier(
    door_number("%u\n\r", system.population);
    door_label("Tech level:      ");
    door_number("%u\n\r", system.tech_level);
+   if(system.affiliation) {
+      door_label("Home BBS:        ");
+      door_value("%s\n\r", safe_field(system.affiliation->bbs_name).c_str());
+      door_label("Polity:          ");
+      door_value("%s\n\r", polity_with_league(
+         system.affiliation->polity_name,
+         system.affiliation->league_name).c_str());
+   }
    door_label("Gas giants:      ");
    if(system.gas_giant_count == 0) {
       door_warning("None charted\n\r");
@@ -7731,6 +7753,14 @@ void render_command_console(const ct::ServerHello& hello)
    door_heading("=========================\n\r\n\r");
    door_label("Ship status: ");
    door_identifier("%s\n\r", phase_name(hello.phase));
+   if(hello.affiliation) {
+      door_label("Home BBS:    ");
+      door_value("%s\n\r", safe_field(hello.affiliation->bbs_name).c_str());
+      door_label("Home polity: ");
+      door_value("%s\n\r", polity_with_league(
+         hello.affiliation->polity_name,
+         hello.affiliation->league_name).c_str());
+   }
    door_information(
       "These seven managers are available throughout every operational "
       "situation. Available actions depend on the ship's present status.\n\r\n\r");

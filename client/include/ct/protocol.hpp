@@ -133,12 +133,19 @@ struct InitialCrewDraft {
 };
 
 struct ServerHello {
+   struct InstitutionalAffiliation {
+      std::string polity_name;
+      std::string bbs_name;
+      std::optional<std::string> league_name;
+   };
+
    PlayerIdentity identity;
    uint64_t assigned_epoch;
    uint64_t committed_sequence;
    PlayerPhase phase;
    std::string language_tag;
    DisplayFormatting formatting;
+   std::optional<InstitutionalAffiliation> affiliation;
 };
 
 struct PlayerCreation {
@@ -185,6 +192,7 @@ struct OriginDossier {
    std::string home_world_name;
    uint8_t trade_combat;
    uint8_t chaos_order;
+   std::optional<std::string> league_name;
 };
 
 struct StartingShipOfferSummary {
@@ -626,6 +634,7 @@ struct KnownSystemSummary {
    bool remote_candidate;
    SystemKnowledgeSource knowledge_source;
    uint8_t gas_giant_count;
+   std::optional<ServerHello::InstitutionalAffiliation> affiliation;
 };
 
 struct KnownDestinations {

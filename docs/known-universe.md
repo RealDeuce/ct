@@ -167,6 +167,13 @@ remains private until a winning Earth award creates the public announcement.
 Default message filters suppress routine public notices so ordinary players
 are not forced to read a stream of cartographic updates.
 
+Once the founding mapping is public, current dossiers expose its BBS and
+optional League affiliation as typed institutional data and render `Polity
+(League)`; an independent BBS renders only the polity. Renaming a League
+changes current dossiers after the current mapping is consulted, but never
+rewrites the text of an already dispatched founding article. Non-public
+mapping states disclose no institutional affiliation.
+
 Public mail can carry both human-readable news and structured system
 observations in one data package. Delivery atomically retains the public
 message and merges its observations into the recipient repository even when

@@ -134,7 +134,8 @@ def main() -> int:
         ("server/src/wire.rs", r"pub const PROTOCOL_VERSION: u16 = 8;", "CT-RPC version 8"),
         ("server/src/admin_wire.rs", r"pub const PROTOCOL_VERSION: u16 = 2;", "admin protocol version 2"),
         ("server/src/sysop_wire.rs", r"pub const PROTOCOL_VERSION: u16 = 2;", "sysop protocol version 2"),
-        ("server/src/store.rs", r"pub const STORAGE_FORMAT_VERSION: u64 = 1;", "storage format version 1"),
+        ("server/src/league_wire.rs", r"pub const PROTOCOL_VERSION: u16 = 1;", "league protocol version 1"),
+        ("server/src/store.rs", r"pub const STORAGE_FORMAT_VERSION: u64 = 2;", "storage format version 2"),
         ("server/src/store.rs", r"const SHIP_RECORD_CODEC_VERSION: u8 = 3;", "ship record codec version 3"),
         ("server/src/store.rs", r"const CNS5_COVERAGE_DISTRIBUTION_VERSION: u16 = 1;", "CNS5 coverage distribution version 1"),
         ("server/src/store.rs", r"const CNS5_COVERAGE_SAMPLER_VERSION: u16 = 1;", "CNS5 coverage sampler version 1"),
@@ -143,12 +144,13 @@ def main() -> int:
         ("server/src/clock.rs", r"pub const CLOCK_FORMAT_VERSION: u64 = 1;", "clock format version 1"),
         ("server/src/universe.rs", r"pub const INITIAL_GENERATION_VERSION: u16 = 1;", "initial generation version 1"),
         ("server/src/celestial.rs", r"pub const CELESTIAL_GENERATION_VERSION: u16 = 1;", "celestial generation version 1"),
-        ("server/src/bbs_polity.rs", r"pub const BBS_POLITY_GENERATION_VERSION: u16 = 3;", "BBS polity generation version 3"),
+        ("server/src/bbs_polity.rs", r"pub const BBS_POLITY_GENERATION_VERSION: u16 = 4;", "BBS polity generation version 4"),
         ("server/src/bbs_polity.rs", r"pub const BBS_COVERAGE_SAMPLER_VERSION: u16 = 1;", "BBS coverage sampler version 1"),
         ("server/src/creation.rs", r"pub const SETUP_REVISION: u64 = 1;", "setup revision 1"),
         ("client/src/protocol.cpp", r"constexpr uint16_t PROTOCOL_VERSION = 8;", "CT-RPC version 8"),
         ("client/src/admin_protocol.cpp", r"constexpr uint16_t PROTOCOL_VERSION = 2;", "admin protocol version 2"),
         ("client/src/sysop_protocol.cpp", r"constexpr uint16_t PROTOCOL_VERSION = 2;", "sysop protocol version 2"),
+        ("client/src/league_protocol.cpp", r"constexpr uint16_t PROTOCOL_VERSION = 1;", "league protocol version 1"),
     ]
     for relative, pattern, description in compatibility_checks:
         try:

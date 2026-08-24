@@ -138,11 +138,12 @@ jobs:
           ctest --test-dir build/client-system --output-on-failure
           build/client-system/cepheus-trader-door --version
           build/client-system/cepheus-trader-sysop --version
+          build/client-system/cepheus-trader-league --version
           ccache --show-stats
           tar -C build/client-system \
             -czf "$GITHUB_WORKSPACE/client-system-binaries.tar.gz" \
             cepheus-trader-admin cepheus-trader-client \
-            cepheus-trader-door cepheus-trader-sysop \
+            cepheus-trader-door cepheus-trader-sysop cepheus-trader-league \
             libcepheus-trader-client-core.so
       - uses: actions/upload-artifact@v7
         with:
@@ -289,7 +290,8 @@ jobs:
           grep -F "Using cached OpenDoors static library" build/package-configure.log
           ccache --zero-stats
           cmake --build build/package --target \
-            cepheus-trader-door cepheus-trader-sysop ct-transport-boundary-test
+            cepheus-trader-door cepheus-trader-sysop cepheus-trader-league \
+            ct-transport-boundary-test
           ctest --test-dir build/package -R '^ct-transport-boundary$' \
             --output-on-failure
           cpack --config build/package/CPackConfig.cmake -B artifacts
@@ -297,6 +299,7 @@ jobs:
             --version 0.7.10 --run --require-source-url
           python3 tools/inspect_client_dependencies.py \
             build/package/cepheus-trader-door build/package/cepheus-trader-sysop \
+            build/package/cepheus-trader-league \
             build/package/libcepheus-trader-client-core.so \
             --report artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt
           ccache --show-stats
@@ -423,12 +426,13 @@ jobs:
             -DCT_SOURCE_RELEASE_URL="$SOURCE_URL"
           ccache --zero-stats
           cmake --build build/package --target \
-            cepheus-trader-door cepheus-trader-sysop
+            cepheus-trader-door cepheus-trader-sysop cepheus-trader-league
           cpack --config build/package/CPackConfig.cmake -B artifacts
           python3 tools/verify_client_package.py artifacts/*.tar.xz \
             --version 0.7.10 --run --require-source-url
           python3 tools/inspect_client_dependencies.py \
             build/package/cepheus-trader-door build/package/cepheus-trader-sysop \
+            build/package/cepheus-trader-league \
             build/package/libcepheus-trader-client-core.dylib \
             --report artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt
           ccache --show-stats
@@ -530,7 +534,7 @@ jobs:
             -DCT_PORTABLE_CLIENT=ON \
             -DCT_SOURCE_RELEASE_URL="$SOURCE_URL"
           cmake --build build/package --target \
-            cepheus-trader-door cepheus-trader-sysop \
+            cepheus-trader-door cepheus-trader-sysop cepheus-trader-league \
             ct-transport-boundary-test ct-player-identity-registry-test
           ctest --test-dir build/package \
             -R '^(ct-transport-boundary|ct-player-identity-registry)$' \
@@ -541,6 +545,7 @@ jobs:
           python3 tools/inspect_client_dependencies.py \
             build/package/cepheus-trader-door.exe \
             build/package/cepheus-trader-sysop.exe \
+            build/package/cepheus-trader-league.exe \
             build/package/cepheus-trader-client-core.dll \
             --report artifacts/DYNAMIC-DEPENDENCIES-${{ matrix.platform }}.txt
       - uses: actions/upload-artifact@v7

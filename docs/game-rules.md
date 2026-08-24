@@ -1204,6 +1204,15 @@ The captain can keep a system secret, share it directly, make it public, or
 file a private discovery claim. A disclosure becomes known only through its
 ordinary physical messages.
 
+Institutional affiliation follows the same causal boundary. A captain's home
+BBS and polity are known locally at login. A League name, when present, is an
+institutional affiliation rather than part of the polity's name. The Known
+Universe shows a remote system's BBS, polity, and optional League only after
+that system's mapping is `KnownPublic`; a private observation, withheld chart,
+secret chart, direct filing, or still-travelling public dispatch does not leak
+those fields. A League rename updates current dossiers and console identity,
+but it does not rewrite already dispatched historical news.
+
 The first valid private claim for a newly discovered settled system is judged
 at Earth. Its award is Cr218,000. Competing filings are decided when they
 physically reach the adjudicating office, and the public notice begins its own

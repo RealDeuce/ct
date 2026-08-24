@@ -45,6 +45,14 @@ struct ServerHello {
   phase @3 :Phase;
   languageTag @4 :Text;
   formatting @5 :DisplayFormatting;
+  affiliation @6 :InstitutionalAffiliation;
+}
+
+struct InstitutionalAffiliation {
+  polityName @0 :Text;
+  bbsName @1 :Text;
+  # Empty when the home BBS is independent.
+  leagueName @2 :Text;
 }
 
 struct DisplayFormatting {
@@ -338,6 +346,8 @@ struct OriginDossier {
   homeWorldName @3 :Text;
   tradeCombat @4 :UInt8;
   chaosOrder @5 :UInt8;
+  # Empty when the originating BBS is independent.
+  leagueName @6 :Text;
 }
 
 struct StartingShipOfferSummary {
@@ -824,6 +834,8 @@ struct KnownSystemSummary {
   remoteCandidate @13 :Bool;
   knowledgeSource @14 :SystemKnowledgeSource;
   gasGiantCount @15 :UInt8;
+  # Present only when this system's institutional mapping is public.
+  affiliation @16 :InstitutionalAffiliation;
 }
 
 enum SystemKnowledgeSource {

@@ -104,6 +104,7 @@ fn spawn_server(
     game_address: &str,
     admin_address: &str,
     sysop_address: &str,
+    league_address: &str,
     data: &Path,
 ) -> ServerProcess {
     let child = Command::new(executable)
@@ -114,6 +115,8 @@ fn spawn_server(
             admin_address,
             "--sysop-listen",
             sysop_address,
+            "--league-listen",
+            league_address,
             "--data",
             data.to_str().unwrap(),
             "--backup-dir",
@@ -885,10 +888,17 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let game_reservation = TcpListener::bind("127.0.0.1:0").unwrap();
     let admin_reservation = TcpListener::bind("127.0.0.1:0").unwrap();
     let sysop_reservation = TcpListener::bind("127.0.0.1:0").unwrap();
+    let league_reservation = TcpListener::bind("127.0.0.1:0").unwrap();
     let game_address = game_reservation.local_addr().unwrap();
     let admin_address = admin_reservation.local_addr().unwrap();
     let sysop_address = sysop_reservation.local_addr().unwrap();
-    drop((game_reservation, admin_reservation, sysop_reservation));
+    let league_address = league_reservation.local_addr().unwrap();
+    drop((
+        game_reservation,
+        admin_reservation,
+        sysop_reservation,
+        league_reservation,
+    ));
     let game_port = game_address.port().to_string();
     let sysop_port = sysop_address.port().to_string();
     let data = tempfile::tempdir().unwrap();
@@ -897,11 +907,13 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let game_address_text = game_address.to_string();
     let admin_address_text = admin_address.to_string();
     let sysop_address_text = sysop_address.to_string();
+    let league_address_text = league_address.to_string();
     let mut server = spawn_server(
         &server_executable,
         &game_address_text,
         &admin_address_text,
         &sysop_address_text,
+        &league_address_text,
         data.path(),
     );
 
@@ -1013,6 +1025,83 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         .nth(1)
         .unwrap()
         .to_owned();
+
+    let league_administrator = Command::new(&administrator)
+        .args([
+            "--host",
+            "127.0.0.1",
+            "--port",
+            &admin_address.port().to_string(),
+            "--psk-file",
+            admin_psk.to_str().unwrap(),
+            "--command-id",
+            "66666666666666666666666666666666",
+            "add-league",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        league_administrator.status.success(),
+        "League creation failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&league_administrator.stdout),
+        String::from_utf8_lossy(&league_administrator.stderr)
+    );
+    let league_administrator_output = String::from_utf8(league_administrator.stdout).unwrap();
+    assert!(league_administrator_output.starts_with("League id=1 committed="));
+    let league_psk = league_administrator_output
+        .trim()
+        .split("psk=")
+        .nth(1)
+        .unwrap();
+    let league_credential = data.path().join("league.credential");
+    let league_member_credential = data.path().join("league-member.credential");
+    let league_coordinator = build.path().join("cepheus-trader-league");
+    let mut league_credential_creator = Command::new(&league_coordinator)
+        .args(["init-credential", league_credential.to_str().unwrap()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        let input = league_credential_creator.stdin.as_mut().unwrap();
+        writeln!(input, "1").unwrap();
+        writeln!(input, "{league_psk}").unwrap();
+    }
+    let league_credential_creator = league_credential_creator.wait_with_output().unwrap();
+    assert!(
+        league_credential_creator.status.success(),
+        "League credential creation failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&league_credential_creator.stdout),
+        String::from_utf8_lossy(&league_credential_creator.stderr)
+    );
+    let league_port = league_address.port().to_string();
+    let league_renamed = Command::new(&league_coordinator)
+        .args([
+            "--host",
+            "127.0.0.1",
+            "--port",
+            league_port.as_str(),
+            "--credential",
+            league_credential.to_str().unwrap(),
+            "--expected-revision",
+            "0",
+            "--command-id",
+            "77777777777777777777777777777777",
+            "set-name",
+            "Long March League",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        league_renamed.status.success(),
+        "League rename failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&league_renamed.stdout),
+        String::from_utf8_lossy(&league_renamed.stderr)
+    );
+    let league_renamed = String::from_utf8(league_renamed.stdout).unwrap();
+    assert!(league_renamed.contains("name=Long March League\n"));
+    assert!(league_renamed.contains("revision=1\n"));
 
     let bbs_config = data.path().join("cepheus-trader.conf");
     let credential_file = data.path().join("cepheus-trader.credential");
@@ -1351,8 +1440,9 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     );
     let status_text = String::from_utf8_lossy(&status.stdout);
     assert!(status_text.contains("bbs-count=1\n"), "{status_text}");
+    assert!(status_text.contains("league-count=1\n"), "{status_text}");
     assert!(status_text.contains("player-count=1\n"), "{status_text}");
-    assert!(status_text.contains("storage-format=1\n"), "{status_text}");
+    assert!(status_text.contains("storage-format=2\n"), "{status_text}");
 
     let admin_port = admin_address.port().to_string();
     let backup_arguments = [
@@ -1850,6 +1940,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         &game_address_text,
         &admin_address_text,
         &sysop_address_text,
+        "127.0.0.1:0",
         refit_root.path(),
     );
     let refit_player = Command::new(build.path().join("cepheus-trader-client"))
@@ -1963,6 +2054,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
             &game_address_text,
             &admin_address_text,
             &sysop_address_text,
+            "127.0.0.1:0",
             combat_root.path(),
         );
         let mut combat_door = DoorSession::spawn(&door, combat_root.path(), "iso646", "40");
@@ -2056,6 +2148,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         &game_address_text,
         &admin_address_text,
         &sysop_address_text,
+        &league_address_text,
         data.path(),
     );
 
@@ -2258,6 +2351,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
             &game_address_text,
             &admin_address_text,
             &sysop_address_text,
+            "127.0.0.1:0",
             &profile_data,
         );
         let profile_screen = exercise_arrival_profile(&door, &profile_data, profile, columns);
@@ -2313,6 +2407,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         &game_address_text,
         &admin_address_text,
         &sysop_address_text,
+        &league_address_text,
         data.path(),
     );
     let completed_screen = complete_arrival_and_trade(&door, data.path(), &identity, cargo_lot_id);
@@ -2378,6 +2473,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         &game_address_text,
         &admin_address_text,
         &sysop_address_text,
+        &league_address_text,
         data.path(),
     );
 
@@ -2436,6 +2532,70 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     )
     .unwrap();
     let universe_initializer = universe_initializer.wait_with_output().unwrap();
+    let league_status = Command::new(&league_coordinator)
+        .args([
+            "--host",
+            "127.0.0.1",
+            "--port",
+            league_port.as_str(),
+            "--credential",
+            league_credential.to_str().unwrap(),
+            "status",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        league_status.status.success(),
+        "League status after universe initialization failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&league_status.stdout),
+        String::from_utf8_lossy(&league_status.stderr)
+    );
+    let league_status = String::from_utf8(league_status.stdout).unwrap();
+    assert!(league_status.contains("name=Long March League\n"));
+    assert!(league_status.contains("revision=1\n"));
+    let league_member = Command::new(&league_coordinator)
+        .args([
+            "--host",
+            "127.0.0.1",
+            "--port",
+            league_port.as_str(),
+            "--credential",
+            league_credential.to_str().unwrap(),
+            "--bbs-credential",
+            league_member_credential.to_str().unwrap(),
+            "--command-id",
+            "99999999999999999999999999999999",
+            "add-bbs",
+            "League Relay",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        league_member.status.success(),
+        "League member creation failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&league_member.stdout),
+        String::from_utf8_lossy(&league_member.stderr)
+    );
+    assert!(String::from_utf8_lossy(&league_member.stdout).starts_with("bbs-id=3 committed="));
+    assert_eq!(
+        std::fs::metadata(&league_member_credential).unwrap().len(),
+        48
+    );
+    let league_status_with_member = Command::new(&league_coordinator)
+        .args([
+            "--host",
+            "127.0.0.1",
+            "--port",
+            league_port.as_str(),
+            "--credential",
+            league_credential.to_str().unwrap(),
+            "status",
+        ])
+        .output()
+        .unwrap();
+    assert!(league_status_with_member.status.success());
+    let league_status_with_member = String::from_utf8(league_status_with_member.stdout).unwrap();
+    assert!(league_status_with_member.contains("bbs=3 name=League Relay enabled=yes revision=0"));
     let post_reset = Command::new(build.path().join("cepheus-trader-client"))
         .args([
             "127.0.0.1",

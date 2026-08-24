@@ -9,8 +9,9 @@ use thiserror::Error;
 use crate::simulation::SimulationReport;
 use crate::store::{
     BbsConfiguration, BbsCredential, BbsPlacementSeed, BbsSettings, ConfigureBbsResult, Delivery,
-    OperationalStatus, PlayerAccessRecord, PlayerAccessState, PlayerTravelTransition,
-    QueuedCommand, SetPlayerAccessResult, SimulationAdvance, Store, StoreError, SysopDirectiveKind,
+    LeagueCredential, LeagueStatus, OperationalStatus, PlayerAccessRecord, PlayerAccessState,
+    PlayerTravelTransition, QueuedCommand, SetLeagueMemberAccessResult, SetLeagueNameResult,
+    SetPlayerAccessResult, SimulationAdvance, Store, StoreError, SysopDirectiveKind,
     SysopDirectiveRecord,
 };
 use crate::universe::{INITIAL_SYSTEMS, UniverseInitialization};
@@ -29,6 +30,7 @@ pub enum EngineError {
 pub struct Engine {
     store: Store,
     bbs_registry: BbsRegistry,
+    league_registry: LeagueRegistry,
 }
 
 #[derive(Default)]
@@ -52,23 +54,74 @@ impl BbsRegistry {
             .collect()
     }
 
-    fn insert(&self, credential: &BbsCredential) {
+    pub fn insert(&self, credential: &BbsCredential) {
         self.credentials
             .write()
             .expect("BBS registry lock poisoned")
             .insert(credential.bbs_id, credential.psk);
     }
+
+    pub fn remove(&self, bbs_id: u32) {
+        self.credentials
+            .write()
+            .expect("BBS registry lock poisoned")
+            .remove(&bbs_id);
+    }
+
+    pub fn contains(&self, bbs_id: u32) -> bool {
+        self.credentials
+            .read()
+            .expect("BBS registry lock poisoned")
+            .contains_key(&bbs_id)
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct LeagueRegistry {
+    credentials: Arc<RwLock<HashMap<u32, [u8; 32]>>>,
+}
+
+impl LeagueRegistry {
+    pub fn tls_credentials(&self) -> Vec<(String, Vec<u8>)> {
+        self.credentials
+            .read()
+            .expect("league registry lock poisoned")
+            .iter()
+            .map(|(league_id, psk)| (league_id.to_string(), psk.to_vec()))
+            .collect()
+    }
+
+    fn insert(&self, credential: &LeagueCredential) {
+        self.credentials
+            .write()
+            .expect("league registry lock poisoned")
+            .insert(credential.league_id, credential.psk);
+    }
 }
 
 impl Engine {
     pub fn open(path: impl AsRef<Path>, bbs_registry: BbsRegistry) -> Result<Self, EngineError> {
+        Self::open_with_registries(path, bbs_registry, LeagueRegistry::default())
+    }
+
+    pub fn open_with_registries(
+        path: impl AsRef<Path>,
+        bbs_registry: BbsRegistry,
+        league_registry: LeagueRegistry,
+    ) -> Result<Self, EngineError> {
         let store = Store::open(path)?;
         for credential in store.bbs_credentials()? {
-            bbs_registry.insert(&credential);
+            if store.bbs_enabled(credential.bbs_id)? {
+                bbs_registry.insert(&credential);
+            }
+        }
+        for credential in store.league_credentials()? {
+            league_registry.insert(&credential);
         }
         let engine = Self {
             store,
             bbs_registry,
+            league_registry,
         };
         engine.reset_if_unique_cargo_destroyed()?;
         Ok(engine)
@@ -78,6 +131,11 @@ impl Engine {
         &self,
         identity: &PlayerIdentity,
     ) -> Result<(u64, u64, PlayerPhase), EngineError> {
+        if !self.bbs_registry.contains(identity.bbs_id) {
+            return Err(EngineError::PlayerAccessDenied(
+                "home BBS access is disabled".into(),
+            ));
+        }
         let access = self.store.player_access(identity)?;
         match access.state {
             PlayerAccessState::Active => Ok(self.store.issue_session_epoch(identity)?),
@@ -98,6 +156,13 @@ impl Engine {
                 }
             ))),
         }
+    }
+
+    pub fn home_affiliation(
+        &self,
+        bbs_id: u32,
+    ) -> Result<Option<crate::wire::InstitutionalAffiliation>, EngineError> {
+        Ok(self.store.home_affiliation(bbs_id)?)
     }
 
     pub fn submit(
@@ -175,6 +240,82 @@ impl Engine {
         let credential = self.store.add_bbs(&command_id, name, psk)?;
         self.bbs_registry.insert(&credential);
         Ok(credential)
+    }
+
+    pub fn add_league(
+        &self,
+        command_id: [u8; COMMAND_ID_BYTES],
+    ) -> Result<LeagueCredential, EngineError> {
+        let mut psk = [0; 32];
+        getrandom::fill(&mut psk)?;
+        let credential = self.store.add_league(&command_id, psk)?;
+        self.league_registry.insert(&credential);
+        Ok(credential)
+    }
+
+    pub fn league_status(&self, league_id: u32) -> Result<LeagueStatus, EngineError> {
+        Ok(self.store.league_status(league_id)?)
+    }
+
+    pub fn set_league_name(
+        &self,
+        league_id: u32,
+        command_id: [u8; COMMAND_ID_BYTES],
+        expected_revision: u64,
+        name: &str,
+    ) -> Result<SetLeagueNameResult, EngineError> {
+        Ok(self
+            .store
+            .set_league_name(league_id, &command_id, expected_revision, name)?)
+    }
+
+    pub fn add_league_bbs(
+        &self,
+        league_id: u32,
+        command_id: [u8; COMMAND_ID_BYTES],
+        name: &str,
+    ) -> Result<BbsCredential, EngineError> {
+        let mut psk = [0; 32];
+        getrandom::fill(&mut psk)?;
+        let credential = self
+            .store
+            .add_league_bbs(league_id, &command_id, name, psk)?;
+        self.bbs_registry.insert(&credential);
+        Ok(credential)
+    }
+
+    pub fn set_league_member_enabled(
+        &self,
+        league_id: u32,
+        command_id: [u8; COMMAND_ID_BYTES],
+        bbs_id: u32,
+        expected_revision: u64,
+        enabled: bool,
+        reason: &str,
+    ) -> Result<SetLeagueMemberAccessResult, EngineError> {
+        let result = self.store.set_league_member_enabled(
+            league_id,
+            &command_id,
+            bbs_id,
+            expected_revision,
+            enabled,
+            reason,
+        )?;
+        if let SetLeagueMemberAccessResult::Updated(member) = &result {
+            if member.enabled {
+                if let Some(credential) = self
+                    .store
+                    .bbs_credentials()?
+                    .into_iter()
+                    .find(|credential| credential.bbs_id == bbs_id)
+                {
+                    self.bbs_registry.insert(&credential);
+                }
+            } else {
+                self.bbs_registry.remove(bbs_id);
+            }
+        }
+        Ok(result)
     }
 
     pub fn initialize_universe(
@@ -371,7 +512,12 @@ mod tests {
     #[test]
     fn unique_cargo_destruction_resets_game_state_and_preserves_bbs_control() {
         let dir = TempDir::new().unwrap();
-        let engine = Engine::open(dir.path(), BbsRegistry::default()).unwrap();
+        let engine = Engine::open_with_registries(
+            dir.path(),
+            BbsRegistry::default(),
+            LeagueRegistry::default(),
+        )
+        .unwrap();
         let initial = engine.initialize_universe([1; COMMAND_ID_BYTES]).unwrap();
         let credential = engine.add_bbs([2; COMMAND_ID_BYTES], "Test BBS").unwrap();
         let before = engine.bbs_configuration(credential.bbs_id).unwrap();
@@ -385,5 +531,58 @@ mod tests {
             initial.committed_sequence
         );
         assert!(!engine.record_unique_cargo_destruction(999).unwrap());
+    }
+
+    #[test]
+    fn league_member_disable_removes_and_enable_restores_live_bbs_authentication() {
+        let dir = TempDir::new().unwrap();
+        let bbs_registry = BbsRegistry::default();
+        let engine = Engine::open_with_registries(
+            dir.path(),
+            bbs_registry.clone(),
+            LeagueRegistry::default(),
+        )
+        .unwrap();
+        engine.initialize_universe([3; COMMAND_ID_BYTES]).unwrap();
+        let league = engine.add_league([4; COMMAND_ID_BYTES]).unwrap();
+        let bbs = engine
+            .add_league_bbs(league.league_id, [5; COMMAND_ID_BYTES], "League BBS")
+            .unwrap();
+        assert!(bbs_registry.contains(bbs.bbs_id));
+
+        let disabled = engine
+            .set_league_member_enabled(
+                league.league_id,
+                [6; COMMAND_ID_BYTES],
+                bbs.bbs_id,
+                0,
+                false,
+                "paused",
+            )
+            .unwrap();
+        assert!(matches!(
+            disabled,
+            SetLeagueMemberAccessResult::Updated(ref member) if !member.enabled
+        ));
+        assert!(!bbs_registry.contains(bbs.bbs_id));
+        assert!(matches!(
+            engine.issue_session(&PlayerIdentity {
+                bbs_id: bbs.bbs_id,
+                player_id: 1,
+            }),
+            Err(EngineError::PlayerAccessDenied(_))
+        ));
+
+        engine
+            .set_league_member_enabled(
+                league.league_id,
+                [7; COMMAND_ID_BYTES],
+                bbs.bbs_id,
+                1,
+                true,
+                "",
+            )
+            .unwrap();
+        assert!(bbs_registry.contains(bbs.bbs_id));
     }
 }

@@ -64,13 +64,13 @@ use crate::wire::{
     EncounterThreat, ErrorCode, FlightLocus, FlightPlanAction, FlightPlanPreview,
     FlightPlanProposal, FlightPlanSnapshot, FlightPlanState, FlightPlanStep, FlightPlanWarning,
     FuelAccessKind, FuelOperation, FuelOperationTiming, FuelPurchaseReceipt, FuelSourceBodyKind,
-    KnownBelt, KnownDestinations, KnownSystemSummary, MarketOffer, MarketSnapshot,
-    MessageClassification, MessageItem, MessageManagement, OriginDossier, Outcome, OutcomeKind,
-    PlayerCreation, PlayerIdentity, PlayerPhase, PriceDistribution, ProvisionPurchaseReceipt,
-    ShipActivityKind as WireShipActivityKind, ShipActivityStatus, ShipAmmunitionStatus,
-    ShipProvisionStatus, ShipStatusSnapshot, ShipSubsystemKind, ShipSubsystemStatus,
-    SystemMappingChoice, SystemMappingState, SystemMappingStatus, TaskRouteAssessment,
-    TerminalReport, TravelStage, TravelStatus, WaypointAuthority,
+    InstitutionalAffiliation, KnownBelt, KnownDestinations, KnownSystemSummary, MarketOffer,
+    MarketSnapshot, MessageClassification, MessageItem, MessageManagement, OriginDossier, Outcome,
+    OutcomeKind, PlayerCreation, PlayerIdentity, PlayerPhase, PriceDistribution,
+    ProvisionPurchaseReceipt, ShipActivityKind as WireShipActivityKind, ShipActivityStatus,
+    ShipAmmunitionStatus, ShipProvisionStatus, ShipStatusSnapshot, ShipSubsystemKind,
+    ShipSubsystemStatus, SystemMappingChoice, SystemMappingState, SystemMappingStatus,
+    TaskRouteAssessment, TerminalReport, TravelStage, TravelStatus, WaypointAuthority,
 };
 
 type SequenceDatabase = Database<U64<BE>, Bytes>;
@@ -82,6 +82,7 @@ const META_NEXT_EPOCH: &str = "next-session-epoch";
 const META_COMMITTED_SEQUENCE: &str = "committed-sequence";
 const META_REVISION: &str = "revision";
 const META_NEXT_BBS_ID: &str = "next-bbs-id";
+const META_NEXT_LEAGUE_ID: &str = "next-league-id";
 const META_SESSION_EPOCH_FLOOR: &str = "session-epoch-floor";
 const META_UNIVERSE_ID: &str = "universe-id";
 const META_COVERAGE_REVISION: &str = "coverage-revision";
@@ -108,7 +109,7 @@ const META_CLOCK_FORMAT_VERSION: &str = "clock-format-version";
 const META_CLOCK_RATE_GAME_SECONDS: &str = "clock-rate-game-seconds";
 const META_CLOCK_RATE_REAL_SECONDS: &str = "clock-rate-real-seconds";
 const META_STORAGE_FORMAT_VERSION: &str = "storage-format-version";
-pub const STORAGE_FORMAT_VERSION: u64 = 1;
+pub const STORAGE_FORMAT_VERSION: u64 = 2;
 const META_ACCOMMODATION_CAPACITY_VERSION: &str = "accommodation-capacity-version";
 const ACCOMMODATION_CAPACITY_VERSION: u64 = 1;
 const SYSTEM_VISITS_BACKFILL_VERSION: u64 = 1;
@@ -138,6 +139,21 @@ fn jump_fuel_for_distance(displacement_millitons: u64, distance_parsecs: f64) ->
     displacement_millitons
         .saturating_div(10)
         .saturating_mul(u64::from(jump_number_for_distance(distance_parsecs)))
+}
+
+fn bbs_candidate_primary_distance(site: &BbsPolitySite, league_capitals: &[[f64; 3]]) -> f64 {
+    league_capitals
+        .iter()
+        .map(|capital| {
+            site.cluster_positions_parsecs[CAPITAL_INDEX]
+                .iter()
+                .zip(capital)
+                .map(|(left, right)| (left - right).powi(2))
+                .sum::<f64>()
+                .sqrt()
+        })
+        .min_by(f64::total_cmp)
+        .unwrap_or(site.nearest_polity_distance_parsecs)
 }
 
 fn encounter_kind_for_policy(entropy: u64, policy: Option<&SystemPolityPolicy>) -> EncounterKind {
@@ -190,6 +206,16 @@ pub enum StoreError {
     IncompatibleStorageFormat { actual: u64, required: u64 },
     #[error("unknown BBS identifier {0}")]
     UnknownBbs(u32),
+    #[error("unknown league identifier {0}")]
+    UnknownLeague(u32),
+    #[error("league name must contain 1..=128 non-control bytes")]
+    InvalidLeagueName,
+    #[error("league name is already in use")]
+    DuplicateLeagueName,
+    #[error("league command ID was already used for another operation")]
+    LeagueCommandIdReused,
+    #[error("BBS {bbs_id} is not a member of league {league_id}")]
+    NotLeagueMember { league_id: u32, bbs_id: u32 },
     #[error("the game universe must be initialized before a BBS can be added")]
     UniverseNotInitialized,
     #[error(
@@ -436,6 +462,45 @@ pub struct BbsCredential {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LeagueCredential {
+    pub league_id: u32,
+    pub psk: [u8; 32],
+    pub committed_sequence: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LeagueMember {
+    pub league_id: u32,
+    pub bbs_id: u32,
+    pub bbs_name: String,
+    pub enabled: bool,
+    pub reason: String,
+    pub revision: u64,
+    pub committed_sequence: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LeagueStatus {
+    pub league_id: u32,
+    pub name: String,
+    pub revision: u64,
+    pub committed_sequence: u64,
+    pub members: Vec<LeagueMember>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SetLeagueNameResult {
+    Updated(LeagueStatus),
+    Stale(LeagueStatus),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SetLeagueMemberAccessResult {
+    Updated(LeagueMember),
+    Stale(LeagueMember),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BbsSettings {
     pub bbs_name: String,
     pub polity_name: String,
@@ -525,6 +590,7 @@ pub struct OperationalStatus {
     pub game_second: u64,
     pub queued_inputs: u64,
     pub bbs_count: u32,
+    pub league_count: u32,
     pub player_count: u64,
     pub system_count: u64,
     pub storage_format: u64,
@@ -3382,6 +3448,9 @@ pub struct Store {
     journal: SequenceDatabase,
     outbox: SequenceDatabase,
     bbs: BbsDatabase,
+    leagues: BbsDatabase,
+    league_name_index: Database<Bytes, Bytes>,
+    bbs_league_membership: BbsDatabase,
     bbs_config: BbsDatabase,
     bbs_homes: BbsDatabase,
     polity_policy_directives: UniverseDatabase,
@@ -3469,7 +3538,7 @@ impl Store {
         let env = unsafe {
             EnvOpenOptions::new()
                 .map_size(map_size_bytes)
-                .max_dbs(82)
+                .max_dbs(85)
                 .open(path.as_ref())?
         };
         let mut txn = env.write_txn()?;
@@ -3484,6 +3553,9 @@ impl Store {
         let journal = env.create_database(&mut txn, Some("journal"))?;
         let outbox = env.create_database(&mut txn, Some("outbox"))?;
         let bbs = env.create_database(&mut txn, Some("bbs"))?;
+        let leagues = env.create_database(&mut txn, Some("leagues"))?;
+        let league_name_index = env.create_database(&mut txn, Some("league-name-index"))?;
+        let bbs_league_membership = env.create_database(&mut txn, Some("bbs-league-membership"))?;
         let bbs_config = env.create_database(&mut txn, Some("bbs-config"))?;
         let bbs_homes = env.create_database(&mut txn, Some("bbs-homes"))?;
         let polity_policy_directives =
@@ -3613,6 +3685,9 @@ impl Store {
             journal,
             outbox,
             bbs,
+            leagues,
+            league_name_index,
+            bbs_league_membership,
             bbs_config,
             bbs_homes,
             polity_policy_directives,
@@ -16205,6 +16280,20 @@ impl Store {
             let remote_candidate = mapping
                 .as_ref()
                 .is_some_and(|record| record.state == SystemMappingState::Unresolved);
+            let affiliation = if mapping
+                .as_ref()
+                .is_some_and(|record| record.state == SystemMappingState::KnownPublic)
+            {
+                self.system_polity_policies
+                    .get(txn, &system.id)?
+                    .map(decode_system_polity_policy)
+                    .transpose()?
+                    .map(|policy| self.affiliation_for_bbs_in(txn, policy.bbs_id))
+                    .transpose()?
+                    .flatten()
+            } else {
+                None
+            };
             let (observed_second, source, knowledge_source) = match mapping.as_ref() {
                 Some(record) => (
                     record.changed_second,
@@ -16260,6 +16349,7 @@ impl Store {
                 remote_candidate,
                 knowledge_source,
                 gas_giant_count: world.gas_giants,
+                affiliation,
             });
         }
         systems.sort_by_key(|system| (system.distance_milliparsecs, system.system_id));
@@ -25897,6 +25987,7 @@ impl Store {
             configuration.settings.trade_combat,
             configuration.settings.chaos_order,
         );
+        let league_name = self.league_name_for_bbs_in(txn, bbs_id)?;
         Ok(Some((
             path,
             OriginDossier {
@@ -25906,8 +25997,53 @@ impl Store {
                 home_world_name: system.primary_world_name,
                 trade_combat: configuration.settings.trade_combat,
                 chaos_order: configuration.settings.chaos_order,
+                league_name,
             },
         )))
+    }
+
+    pub fn home_affiliation(
+        &self,
+        bbs_id: u32,
+    ) -> Result<Option<InstitutionalAffiliation>, StoreError> {
+        let txn = self.env.read_txn()?;
+        self.affiliation_for_bbs_in(&txn, bbs_id)
+    }
+
+    fn league_name_for_bbs_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        bbs_id: u32,
+    ) -> Result<Option<String>, StoreError> {
+        let Some(member) = self
+            .bbs_league_membership
+            .get(txn, &bbs_id)?
+            .map(decode_league_member)
+            .transpose()?
+        else {
+            return Ok(None);
+        };
+        let encoded = self
+            .leagues
+            .get(txn, &member.league_id)?
+            .ok_or(StoreError::Corrupt("league membership has no league"))?;
+        Ok(Some(decode_league_record(encoded)?.1.name))
+    }
+
+    fn affiliation_for_bbs_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        bbs_id: u32,
+    ) -> Result<Option<InstitutionalAffiliation>, StoreError> {
+        let configuration = self.bbs_configuration_in(txn, bbs_id)?;
+        if !configuration.configured {
+            return Ok(None);
+        }
+        Ok(Some(InstitutionalAffiliation {
+            polity_name: configuration.settings.polity_name,
+            bbs_name: configuration.settings.bbs_name,
+            league_name: self.league_name_for_bbs_in(txn, bbs_id)?,
+        }))
     }
 
     pub fn player_phase(&self, identity: &PlayerIdentity) -> Result<PlayerPhase, StoreError> {
@@ -26110,6 +26246,311 @@ impl Store {
                 decode_bbs_credential(encoded)
             })
             .collect()
+    }
+
+    pub fn add_league(
+        &self,
+        command_id: &[u8; COMMAND_ID_BYTES],
+        psk: [u8; 32],
+    ) -> Result<LeagueCredential, StoreError> {
+        let result_key = admin_league_result_key(command_id);
+        let mut txn = self.env.write_txn()?;
+        if let Some(previous) = self.results.get(&txn, &result_key)? {
+            let result = decode_league_credential(previous)?;
+            txn.abort();
+            return Ok(result);
+        }
+        if self.meta.get(&txn, META_UNIVERSE_ID)?.is_none() {
+            txn.abort();
+            return Err(StoreError::UniverseNotInitialized);
+        }
+        let league_id = get_meta_u32(self.meta, &txn, META_NEXT_LEAGUE_ID)?.unwrap_or(1);
+        let next_league_id = league_id
+            .checked_add(1)
+            .ok_or(StoreError::Corrupt("league identifier overflow"))?;
+        let sequence = self.reserve_control_sequence_in(&mut txn)?;
+        let credential = LeagueCredential {
+            league_id,
+            psk,
+            committed_sequence: sequence,
+        };
+        let mut name = format!("League {league_id}");
+        let mut suffix = 1_u32;
+        while self
+            .league_name_index
+            .get(&txn, fold_league_name(&name).as_bytes())?
+            .is_some()
+        {
+            name = format!("League {league_id} ({suffix})");
+            suffix = suffix
+                .checked_add(1)
+                .ok_or(StoreError::Corrupt("provisional league name overflow"))?;
+        }
+        let status = LeagueStatus {
+            league_id,
+            name,
+            revision: 0,
+            committed_sequence: sequence,
+            members: Vec::new(),
+        };
+        let encoded = encode_league_record(&credential, &status)?;
+        self.leagues.put(&mut txn, &league_id, &encoded)?;
+        self.league_name_index.put(
+            &mut txn,
+            fold_league_name(&status.name).as_bytes(),
+            &league_id.to_be_bytes(),
+        )?;
+        self.results.put(
+            &mut txn,
+            &result_key,
+            &encode_league_credential(&credential),
+        )?;
+        put_meta_u32(self.meta, &mut txn, META_NEXT_LEAGUE_ID, next_league_id)?;
+        txn.commit()?;
+        Ok(credential)
+    }
+
+    pub fn league_credentials(&self) -> Result<Vec<LeagueCredential>, StoreError> {
+        let txn = self.env.read_txn()?;
+        self.leagues
+            .iter(&txn)?
+            .map(|entry| {
+                let (_, encoded) = entry?;
+                decode_league_record(encoded).map(|(credential, _)| credential)
+            })
+            .collect()
+    }
+
+    pub fn league_status(&self, league_id: u32) -> Result<LeagueStatus, StoreError> {
+        let txn = self.env.read_txn()?;
+        self.league_status_in(&txn, league_id)
+    }
+
+    pub fn set_league_name(
+        &self,
+        league_id: u32,
+        command_id: &[u8; COMMAND_ID_BYTES],
+        expected_revision: u64,
+        name: &str,
+    ) -> Result<SetLeagueNameResult, StoreError> {
+        validate_league_name(name)?;
+        let result_key = league_result_key(league_id, command_id);
+        let mut txn = self.env.write_txn()?;
+        if let Some(previous) = self.results.get(&txn, &result_key)? {
+            let result = decode_tagged_league_name_result(previous)?;
+            txn.abort();
+            return Ok(result);
+        }
+        let encoded = self
+            .leagues
+            .get(&txn, &league_id)?
+            .ok_or(StoreError::UnknownLeague(league_id))?;
+        let (credential, mut status) = decode_league_record(encoded)?;
+        if status.revision != expected_revision {
+            let result = SetLeagueNameResult::Stale(self.league_status_in(&txn, league_id)?);
+            self.results.put(
+                &mut txn,
+                &result_key,
+                &encode_tagged_league_name_result(&result)?,
+            )?;
+            txn.commit()?;
+            return Ok(result);
+        }
+        let folded = fold_league_name(name);
+        if let Some(existing) = self.league_name_index.get(&txn, folded.as_bytes())? {
+            if decode_u32(existing)? != league_id {
+                return Err(StoreError::DuplicateLeagueName);
+            }
+        }
+        self.league_name_index
+            .delete(&mut txn, fold_league_name(&status.name).as_bytes())?;
+        let sequence = self.reserve_control_sequence_in(&mut txn)?;
+        status.name = name.to_owned();
+        status.revision = status
+            .revision
+            .checked_add(1)
+            .ok_or(StoreError::Corrupt("league revision overflow"))?;
+        status.committed_sequence = sequence;
+        self.leagues.put(
+            &mut txn,
+            &league_id,
+            &encode_league_record(&credential, &status)?,
+        )?;
+        self.league_name_index
+            .put(&mut txn, folded.as_bytes(), &league_id.to_be_bytes())?;
+        let result = SetLeagueNameResult::Updated(self.league_status_in(&txn, league_id)?);
+        self.results.put(
+            &mut txn,
+            &result_key,
+            &encode_tagged_league_name_result(&result)?,
+        )?;
+        txn.commit()?;
+        Ok(result)
+    }
+
+    pub fn add_league_bbs(
+        &self,
+        league_id: u32,
+        command_id: &[u8; COMMAND_ID_BYTES],
+        name: &str,
+        psk: [u8; 32],
+    ) -> Result<BbsCredential, StoreError> {
+        let result_key = league_result_key(league_id, command_id);
+        let mut txn = self.env.write_txn()?;
+        if let Some(previous) = self.results.get(&txn, &result_key)? {
+            let (&tag, encoded) = previous
+                .split_first()
+                .ok_or(StoreError::Corrupt("empty league command result"))?;
+            if tag != 2 {
+                return Err(StoreError::LeagueCommandIdReused);
+            }
+            let result = decode_bbs_credential(encoded)?;
+            txn.abort();
+            return Ok(result);
+        }
+        if self.leagues.get(&txn, &league_id)?.is_none() {
+            return Err(StoreError::UnknownLeague(league_id));
+        }
+        let bbs_id = get_meta_u32(self.meta, &txn, META_NEXT_BBS_ID)?.unwrap_or(1);
+        let next_bbs_id = bbs_id
+            .checked_add(1)
+            .ok_or(StoreError::Corrupt("BBS identifier overflow"))?;
+        let sequence = self.reserve_control_sequence_in(&mut txn)?;
+        let credential = BbsCredential {
+            bbs_id,
+            name: name.to_owned(),
+            psk,
+            committed_sequence: sequence,
+        };
+        let member = LeagueMember {
+            league_id,
+            bbs_id,
+            bbs_name: name.to_owned(),
+            enabled: true,
+            reason: String::new(),
+            revision: 0,
+            committed_sequence: sequence,
+        };
+        let encoded = encode_bbs_credential(&credential)?;
+        self.bbs.put(&mut txn, &bbs_id, &encoded)?;
+        self.bbs_league_membership
+            .put(&mut txn, &bbs_id, &encode_league_member(&member)?)?;
+        let mut result = vec![2];
+        result.extend_from_slice(&encoded);
+        self.results.put(&mut txn, &result_key, &result)?;
+        self.journal
+            .put(&mut txn, &sequence, &encode_bbs_journal(&credential)?)?;
+        put_meta_u32(self.meta, &mut txn, META_NEXT_BBS_ID, next_bbs_id)?;
+        txn.commit()?;
+        Ok(credential)
+    }
+
+    pub fn set_league_member_enabled(
+        &self,
+        league_id: u32,
+        command_id: &[u8; COMMAND_ID_BYTES],
+        bbs_id: u32,
+        expected_revision: u64,
+        enabled: bool,
+        reason: &str,
+    ) -> Result<SetLeagueMemberAccessResult, StoreError> {
+        let result_key = league_result_key(league_id, command_id);
+        let mut txn = self.env.write_txn()?;
+        if let Some(previous) = self.results.get(&txn, &result_key)? {
+            let result = decode_tagged_league_member_access_result(previous)?;
+            txn.abort();
+            return Ok(result);
+        }
+        let encoded = self
+            .bbs_league_membership
+            .get(&txn, &bbs_id)?
+            .ok_or(StoreError::NotLeagueMember { league_id, bbs_id })?;
+        let mut member = decode_league_member(encoded)?;
+        if member.league_id != league_id {
+            return Err(StoreError::NotLeagueMember { league_id, bbs_id });
+        }
+        if member.revision != expected_revision {
+            let result = SetLeagueMemberAccessResult::Stale(member);
+            self.results.put(
+                &mut txn,
+                &result_key,
+                &encode_tagged_league_member_access_result(&result)?,
+            )?;
+            txn.commit()?;
+            return Ok(result);
+        }
+        let sequence = self.reserve_control_sequence_in(&mut txn)?;
+        member.enabled = enabled;
+        member.reason = if enabled {
+            String::new()
+        } else {
+            reason.to_owned()
+        };
+        member.revision = member
+            .revision
+            .checked_add(1)
+            .ok_or(StoreError::Corrupt("league member revision overflow"))?;
+        member.committed_sequence = sequence;
+        self.bbs_league_membership
+            .put(&mut txn, &bbs_id, &encode_league_member(&member)?)?;
+        let result = SetLeagueMemberAccessResult::Updated(member);
+        self.results.put(
+            &mut txn,
+            &result_key,
+            &encode_tagged_league_member_access_result(&result)?,
+        )?;
+        txn.commit()?;
+        Ok(result)
+    }
+
+    pub fn bbs_enabled(&self, bbs_id: u32) -> Result<bool, StoreError> {
+        let txn = self.env.read_txn()?;
+        Ok(self
+            .bbs_league_membership
+            .get(&txn, &bbs_id)?
+            .map(decode_league_member)
+            .transpose()?
+            .is_none_or(|member| member.enabled))
+    }
+
+    fn league_status_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        league_id: u32,
+    ) -> Result<LeagueStatus, StoreError> {
+        let encoded = self
+            .leagues
+            .get(txn, &league_id)?
+            .ok_or(StoreError::UnknownLeague(league_id))?;
+        let (_, mut status) = decode_league_record(encoded)?;
+        status.members = self
+            .bbs_league_membership
+            .iter(txn)?
+            .filter_map(|entry| match entry {
+                Ok((_, encoded)) => match decode_league_member(encoded) {
+                    Ok(member) if member.league_id == league_id => Some(Ok(member)),
+                    Ok(_) => None,
+                    Err(error) => Some(Err(error)),
+                },
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        status.committed_sequence = status
+            .members
+            .iter()
+            .map(|member| member.committed_sequence)
+            .fold(status.committed_sequence, u64::max);
+        Ok(status)
+    }
+
+    fn reserve_control_sequence_in(&self, txn: &mut heed::RwTxn<'_>) -> Result<u64, StoreError> {
+        let sequence = get_meta_u64(self.meta, txn, META_NEXT_INGRESS)?.unwrap_or(1);
+        let next_sequence = sequence
+            .checked_add(1)
+            .ok_or(StoreError::Corrupt("ingress sequence overflow"))?;
+        put_meta_u64(self.meta, txn, META_NEXT_INGRESS, next_sequence)?;
+        put_meta_u64(self.meta, txn, META_COMMITTED_SEQUENCE, sequence)?;
+        Ok(sequence)
     }
 
     /// Test whether the canonical six-parsec arrival footprint around a Jump
@@ -32442,9 +32883,13 @@ impl Store {
         home: &BbsHome,
         settings: &BbsSettings,
     ) -> Result<(), StoreError> {
+        let polity_display = match self.league_name_for_bbs_in(txn, home.bbs_id)? {
+            Some(league) => format!("{} ({league})", settings.polity_name),
+            None => settings.polity_name.clone(),
+        };
         let mut dossier = format!(
             "The {} has entered regular interstellar correspondence. Its capital authority is {}.\n\nRegistered systems:\n",
-            settings.polity_name, settings.bbs_name,
+            polity_display, settings.bbs_name,
         );
         for system_id in home.cluster_system_ids {
             let system = self
@@ -32529,7 +32974,7 @@ impl Store {
             home.capital_system_id,
             crate::simulation::MessageClass::AgencyNews,
             crate::simulation::MessageImportance::Headline,
-            &format!("New polity: {}", settings.polity_name),
+            &format!("New polity: {polity_display}"),
             &dossier,
             &destinations,
         )?;
@@ -32612,6 +33057,36 @@ impl Store {
         if existing.iter().all(|system| system.polity_id == 0) {
             return Err(StoreError::NoBbsPolitySite);
         }
+        let league_id = self
+            .bbs_league_membership
+            .get(txn, &bbs_id)?
+            .map(decode_league_member)
+            .transpose()?
+            .map(|member| member.league_id);
+        let mut league_capitals = Vec::new();
+        if let Some(league_id) = league_id {
+            for entry in self.bbs_league_membership.iter(txn)? {
+                let (member_bbs_id, encoded) = entry?;
+                let member = decode_league_member(encoded)?;
+                if member.league_id != league_id || member_bbs_id == bbs_id {
+                    continue;
+                }
+                let Some(home) = self
+                    .bbs_homes
+                    .get(txn, &member_bbs_id)?
+                    .map(decode_bbs_home)
+                    .transpose()?
+                else {
+                    continue;
+                };
+                if let Some(capital) = existing
+                    .iter()
+                    .find(|system| system.id == home.capital_system_id)
+                {
+                    league_capitals.push(capital.position_parsecs);
+                }
+            }
+        }
         let mut stream = SeedStream::new(placement_seed);
         let tie_salt = stream.next_u64()?;
         let mut candidates = Vec::new();
@@ -32651,8 +33126,8 @@ impl Store {
             }
         }
         candidates.sort_by(|left, right| {
-            left.nearest_polity_distance_parsecs
-                .total_cmp(&right.nearest_polity_distance_parsecs)
+            bbs_candidate_primary_distance(left, &league_capitals)
+                .total_cmp(&bbs_candidate_primary_distance(right, &league_capitals))
                 .then_with(|| {
                     right
                         .reused_frontier_system_id
@@ -32928,6 +33403,8 @@ impl Store {
             queued_inputs: self.queue.len(&txn)?,
             bbs_count: u32::try_from(self.bbs.len(&txn)?)
                 .map_err(|_| StoreError::Corrupt("BBS count overflow"))?,
+            league_count: u32::try_from(self.leagues.len(&txn)?)
+                .map_err(|_| StoreError::Corrupt("league count overflow"))?,
             player_count: self.players.len(&txn)?,
             system_count: self.systems.len(&txn)?,
             storage_format: STORAGE_FORMAT_VERSION,
@@ -32972,6 +33449,8 @@ impl Store {
                 queued_inputs: number("queued-inputs")?,
                 bbs_count: u32::try_from(number("bbs-count")?)
                     .map_err(|_| StoreError::Corrupt("backup BBS count overflow"))?,
+                league_count: u32::try_from(number("league-count")?)
+                    .map_err(|_| StoreError::Corrupt("backup league count overflow"))?,
                 player_count: number("player-count")?,
                 system_count: number("system-count")?,
                 storage_format: number("storage-format")?,
@@ -33000,6 +33479,7 @@ impl Store {
             writeln!(manifest, "game-second={}", status.game_second)?;
             writeln!(manifest, "queued-inputs={}", status.queued_inputs)?;
             writeln!(manifest, "bbs-count={}", status.bbs_count)?;
+            writeln!(manifest, "league-count={}", status.league_count)?;
             writeln!(manifest, "player-count={}", status.player_count)?;
             writeln!(manifest, "system-count={}", status.system_count)?;
             manifest.sync_all()?;
@@ -34041,6 +34521,21 @@ fn decode_u32(bytes: &[u8]) -> Result<u32, StoreError> {
 fn admin_result_key(command_id: &[u8; COMMAND_ID_BYTES]) -> Vec<u8> {
     let mut key = Vec::with_capacity(6 + COMMAND_ID_BYTES);
     key.extend_from_slice(b"admin\0");
+    key.extend_from_slice(command_id);
+    key
+}
+
+fn admin_league_result_key(command_id: &[u8; COMMAND_ID_BYTES]) -> Vec<u8> {
+    let mut key = Vec::with_capacity(13 + COMMAND_ID_BYTES);
+    key.extend_from_slice(b"admin-league\0");
+    key.extend_from_slice(command_id);
+    key
+}
+
+fn league_result_key(league_id: u32, command_id: &[u8; COMMAND_ID_BYTES]) -> Vec<u8> {
+    let mut key = Vec::with_capacity(11 + COMMAND_ID_BYTES);
+    key.extend_from_slice(b"league\0");
+    key.extend_from_slice(&league_id.to_be_bytes());
     key.extend_from_slice(command_id);
     key
 }
@@ -38851,7 +39346,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(20);
+    bytes.push(21);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -39143,6 +39638,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 18
         && version != 19
         && version != 20
+        && version != 21
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -39180,7 +39676,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
             OutcomeKind::PlayerCreated(decode_player_creation(decoder.take(length)?)?)
         }
         5 => OutcomeKind::CaptainCreationOptions(decode_captain_options(&mut decoder)?),
-        6 => OutcomeKind::StartingShipOffers(decode_starting_ship_offers(&mut decoder)?),
+        6 => OutcomeKind::StartingShipOffers(decode_starting_ship_offers(&mut decoder, version)?),
         7 => OutcomeKind::StartingShipOptions(decode_starting_ship_options(&mut decoder)?),
         8 => OutcomeKind::StartingCrewPlan(decode_starting_crew_plan(&mut decoder)?),
         9 => OutcomeKind::CrewManagement(decode_crew_management(&mut decoder, version)?),
@@ -42280,10 +42776,14 @@ fn encode_origin_into(
     encode_text(bytes, &origin.home_world_name)?;
     bytes.push(origin.trade_combat);
     bytes.push(origin.chaos_order);
+    encode_text(bytes, origin.league_name.as_deref().unwrap_or(""))?;
     Ok(())
 }
 
-fn decode_origin(decoder: &mut Decoder<'_>) -> Result<crate::wire::OriginDossier, StoreError> {
+fn decode_origin(
+    decoder: &mut Decoder<'_>,
+    outcome_version: u8,
+) -> Result<crate::wire::OriginDossier, StoreError> {
     Ok(crate::wire::OriginDossier {
         bbs_name: decoder.text()?,
         polity_name: decoder.text()?,
@@ -42291,6 +42791,14 @@ fn decode_origin(decoder: &mut Decoder<'_>) -> Result<crate::wire::OriginDossier
         home_world_name: decoder.text()?,
         trade_combat: decoder.u8()?,
         chaos_order: decoder.u8()?,
+        league_name: if outcome_version >= 21 {
+            match decoder.text()? {
+                name if name.is_empty() => None,
+                name => Some(name),
+            }
+        } else {
+            None
+        },
     })
 }
 
@@ -42311,9 +42819,10 @@ fn encode_starting_ship_offers_into(
 
 fn decode_starting_ship_offers(
     decoder: &mut Decoder<'_>,
+    outcome_version: u8,
 ) -> Result<crate::wire::StartingShipOffers, StoreError> {
     let setup_revision = decoder.u64()?;
-    let origin = decode_origin(decoder)?;
+    let origin = decode_origin(decoder, outcome_version)?;
     let count = decoder.u8()? as usize;
     let mut offers = Vec::with_capacity(count);
     for _ in 0..count {
@@ -43469,6 +43978,15 @@ fn encode_known_destinations_into(
         bytes.extend_from_slice(&system.position.north_bits.to_be_bytes());
         bytes.push(u8::from(system.remote_candidate));
         bytes.push(system.gas_giant_count);
+        match &system.affiliation {
+            Some(affiliation) => {
+                bytes.push(1);
+                encode_text(bytes, &affiliation.polity_name)?;
+                encode_text(bytes, &affiliation.bbs_name)?;
+                encode_text(bytes, affiliation.league_name.as_deref().unwrap_or(""))?;
+            }
+            None => bytes.push(0),
+        }
     }
     let count = u32::try_from(snapshot.belts.len())
         .map_err(|_| StoreError::Corrupt("too many known belts"))?;
@@ -43533,6 +44051,21 @@ fn decode_known_destinations(
         } else {
             0
         };
+        let affiliation = if outcome_version >= 21 && decoder.u8()? != 0 {
+            let polity_name = decoder.text()?;
+            let bbs_name = decoder.text()?;
+            let league_name = match decoder.text()? {
+                name if name.is_empty() => None,
+                name => Some(name),
+            };
+            Some(InstitutionalAffiliation {
+                polity_name,
+                bbs_name,
+                league_name,
+            })
+        } else {
+            None
+        };
         systems.push(KnownSystemSummary {
             system_id,
             system_name,
@@ -43548,6 +44081,7 @@ fn decode_known_destinations(
             remote_candidate,
             knowledge_source,
             gas_giant_count,
+            affiliation,
         });
     }
     let mut belts = Vec::new();
@@ -44413,6 +44947,253 @@ fn encode_bbs_journal(credential: &BbsCredential) -> Result<Vec<u8>, StoreError>
     bytes.extend_from_slice(&name_len.to_be_bytes());
     bytes.extend_from_slice(credential.name.as_bytes());
     Ok(bytes)
+}
+
+fn validate_league_name(name: &str) -> Result<(), StoreError> {
+    if name.is_empty()
+        || name.len() > 128
+        || name.chars().any(char::is_control)
+        || name.trim() != name
+    {
+        return Err(StoreError::InvalidLeagueName);
+    }
+    Ok(())
+}
+
+fn fold_league_name(name: &str) -> String {
+    name.chars().flat_map(char::to_lowercase).collect()
+}
+
+fn encode_league_credential(credential: &LeagueCredential) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(45);
+    bytes.push(1);
+    bytes.extend_from_slice(&credential.league_id.to_be_bytes());
+    bytes.extend_from_slice(&credential.committed_sequence.to_be_bytes());
+    bytes.extend_from_slice(&credential.psk);
+    bytes
+}
+
+fn decode_league_credential(bytes: &[u8]) -> Result<LeagueCredential, StoreError> {
+    let mut decoder = Decoder::new(bytes);
+    if decoder.u8()? != 1 {
+        return Err(StoreError::Corrupt("unsupported league credential version"));
+    }
+    let credential = LeagueCredential {
+        league_id: decoder.u32()?,
+        committed_sequence: decoder.u64()?,
+        psk: decoder.array()?,
+    };
+    decoder.finish()?;
+    Ok(credential)
+}
+
+fn encode_league_record(
+    credential: &LeagueCredential,
+    status: &LeagueStatus,
+) -> Result<Vec<u8>, StoreError> {
+    let mut bytes = Vec::new();
+    bytes.push(1);
+    bytes.extend_from_slice(&credential.league_id.to_be_bytes());
+    bytes.extend_from_slice(&credential.psk);
+    bytes.extend_from_slice(&credential.committed_sequence.to_be_bytes());
+    bytes.extend_from_slice(&status.revision.to_be_bytes());
+    bytes.extend_from_slice(&status.committed_sequence.to_be_bytes());
+    encode_text(&mut bytes, &status.name)?;
+    Ok(bytes)
+}
+
+fn decode_league_record(bytes: &[u8]) -> Result<(LeagueCredential, LeagueStatus), StoreError> {
+    let mut decoder = Decoder::new(bytes);
+    if decoder.u8()? != 1 {
+        return Err(StoreError::Corrupt("unsupported league record version"));
+    }
+    let league_id = decoder.u32()?;
+    let psk = decoder.array()?;
+    let credential_committed_sequence = decoder.u64()?;
+    let revision = decoder.u64()?;
+    let committed_sequence = decoder.u64()?;
+    let name = decoder.text()?;
+    decoder.finish()?;
+    Ok((
+        LeagueCredential {
+            league_id,
+            psk,
+            committed_sequence: credential_committed_sequence,
+        },
+        LeagueStatus {
+            league_id,
+            name,
+            revision,
+            committed_sequence,
+            members: Vec::new(),
+        },
+    ))
+}
+
+fn encode_league_member(member: &LeagueMember) -> Result<Vec<u8>, StoreError> {
+    let mut bytes = Vec::new();
+    bytes.push(1);
+    bytes.extend_from_slice(&member.league_id.to_be_bytes());
+    bytes.extend_from_slice(&member.bbs_id.to_be_bytes());
+    bytes.push(u8::from(member.enabled));
+    bytes.extend_from_slice(&member.revision.to_be_bytes());
+    bytes.extend_from_slice(&member.committed_sequence.to_be_bytes());
+    encode_text(&mut bytes, &member.bbs_name)?;
+    encode_text(&mut bytes, &member.reason)?;
+    Ok(bytes)
+}
+
+fn decode_league_member(bytes: &[u8]) -> Result<LeagueMember, StoreError> {
+    let mut decoder = Decoder::new(bytes);
+    if decoder.u8()? != 1 {
+        return Err(StoreError::Corrupt("unsupported league member version"));
+    }
+    let league_id = decoder.u32()?;
+    let bbs_id = decoder.u32()?;
+    let enabled = match decoder.u8()? {
+        0 => false,
+        1 => true,
+        _ => return Err(StoreError::Corrupt("invalid league member enabled flag")),
+    };
+    let revision = decoder.u64()?;
+    let committed_sequence = decoder.u64()?;
+    let bbs_name = decoder.text()?;
+    let reason = decoder.text()?;
+    decoder.finish()?;
+    Ok(LeagueMember {
+        league_id,
+        bbs_id,
+        bbs_name,
+        enabled,
+        reason,
+        revision,
+        committed_sequence,
+    })
+}
+
+fn encode_league_status(status: &LeagueStatus) -> Result<Vec<u8>, StoreError> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&status.league_id.to_be_bytes());
+    bytes.extend_from_slice(&status.revision.to_be_bytes());
+    bytes.extend_from_slice(&status.committed_sequence.to_be_bytes());
+    encode_text(&mut bytes, &status.name)?;
+    let count = u32::try_from(status.members.len())
+        .map_err(|_| StoreError::Corrupt("league member count overflow"))?;
+    bytes.extend_from_slice(&count.to_be_bytes());
+    for member in &status.members {
+        let encoded = encode_league_member(member)?;
+        let length = u32::try_from(encoded.len())
+            .map_err(|_| StoreError::Corrupt("league member record too long"))?;
+        bytes.extend_from_slice(&length.to_be_bytes());
+        bytes.extend_from_slice(&encoded);
+    }
+    Ok(bytes)
+}
+
+fn decode_league_status(decoder: &mut Decoder<'_>) -> Result<LeagueStatus, StoreError> {
+    let league_id = decoder.u32()?;
+    let revision = decoder.u64()?;
+    let committed_sequence = decoder.u64()?;
+    let name = decoder.text()?;
+    let count = decoder.u32()?;
+    let mut members = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        let length = decoder.u32()? as usize;
+        members.push(decode_league_member(decoder.take(length)?)?);
+    }
+    Ok(LeagueStatus {
+        league_id,
+        name,
+        revision,
+        committed_sequence,
+        members,
+    })
+}
+
+fn encode_set_league_name_result(result: &SetLeagueNameResult) -> Result<Vec<u8>, StoreError> {
+    let mut bytes = Vec::new();
+    bytes.push(match result {
+        SetLeagueNameResult::Updated(_) => 1,
+        SetLeagueNameResult::Stale(_) => 2,
+    });
+    bytes.extend_from_slice(&encode_league_status(match result {
+        SetLeagueNameResult::Updated(status) | SetLeagueNameResult::Stale(status) => status,
+    })?);
+    Ok(bytes)
+}
+
+fn decode_set_league_name_result(bytes: &[u8]) -> Result<SetLeagueNameResult, StoreError> {
+    let mut decoder = Decoder::new(bytes);
+    let tag = decoder.u8()?;
+    let status = decode_league_status(&mut decoder)?;
+    decoder.finish()?;
+    match tag {
+        1 => Ok(SetLeagueNameResult::Updated(status)),
+        2 => Ok(SetLeagueNameResult::Stale(status)),
+        _ => Err(StoreError::Corrupt("invalid set-league-name result")),
+    }
+}
+
+fn encode_tagged_league_name_result(result: &SetLeagueNameResult) -> Result<Vec<u8>, StoreError> {
+    let mut bytes = vec![1];
+    bytes.extend_from_slice(&encode_set_league_name_result(result)?);
+    Ok(bytes)
+}
+
+fn decode_tagged_league_name_result(bytes: &[u8]) -> Result<SetLeagueNameResult, StoreError> {
+    let (&tag, encoded) = bytes
+        .split_first()
+        .ok_or(StoreError::Corrupt("empty league command result"))?;
+    if tag != 1 {
+        return Err(StoreError::LeagueCommandIdReused);
+    }
+    decode_set_league_name_result(encoded)
+}
+
+fn encode_set_league_member_access_result(
+    result: &SetLeagueMemberAccessResult,
+) -> Result<Vec<u8>, StoreError> {
+    let (tag, member) = match result {
+        SetLeagueMemberAccessResult::Updated(member) => (1, member),
+        SetLeagueMemberAccessResult::Stale(member) => (2, member),
+    };
+    let mut bytes = vec![tag];
+    bytes.extend_from_slice(&encode_league_member(member)?);
+    Ok(bytes)
+}
+
+fn decode_set_league_member_access_result(
+    bytes: &[u8],
+) -> Result<SetLeagueMemberAccessResult, StoreError> {
+    let (&tag, member) = bytes
+        .split_first()
+        .ok_or(StoreError::Corrupt("empty league access result"))?;
+    let member = decode_league_member(member)?;
+    match tag {
+        1 => Ok(SetLeagueMemberAccessResult::Updated(member)),
+        2 => Ok(SetLeagueMemberAccessResult::Stale(member)),
+        _ => Err(StoreError::Corrupt("invalid league access result")),
+    }
+}
+
+fn encode_tagged_league_member_access_result(
+    result: &SetLeagueMemberAccessResult,
+) -> Result<Vec<u8>, StoreError> {
+    let mut bytes = vec![3];
+    bytes.extend_from_slice(&encode_set_league_member_access_result(result)?);
+    Ok(bytes)
+}
+
+fn decode_tagged_league_member_access_result(
+    bytes: &[u8],
+) -> Result<SetLeagueMemberAccessResult, StoreError> {
+    let (&tag, encoded) = bytes
+        .split_first()
+        .ok_or(StoreError::Corrupt("empty league command result"))?;
+    if tag != 3 {
+        return Err(StoreError::LeagueCommandIdReused);
+    }
+    decode_set_league_member_access_result(encoded)
 }
 
 fn encode_bbs_configuration(configuration: &BbsConfiguration) -> Result<Vec<u8>, StoreError> {
@@ -45359,6 +46140,7 @@ mod tests {
                     remote_candidate: false,
                     knowledge_source: crate::wire::SystemKnowledgeSource::CarriedRecords,
                     gas_giant_count: 3,
+                    affiliation: None,
                 }],
                 belts: vec![KnownBelt {
                     system_id: 1,
@@ -46661,8 +47443,12 @@ mod tests {
             txn.commit().unwrap();
         }
 
-        let engine =
-            crate::engine::Engine::open(dir.path(), crate::engine::BbsRegistry::default()).unwrap();
+        let engine = crate::engine::Engine::open_with_registries(
+            dir.path(),
+            crate::engine::BbsRegistry::default(),
+            crate::engine::LeagueRegistry::default(),
+        )
+        .unwrap();
         let recovered = engine.recover().unwrap();
         assert!(recovered.deliveries.is_empty());
         assert_eq!(recovered.player_transitions.len(), 1);
@@ -49482,6 +50268,115 @@ mod tests {
         ));
         assert!(store.bbs_credentials().unwrap().is_empty());
         assert_eq!(store.journal_count().unwrap(), 0);
+    }
+
+    #[test]
+    fn league_authority_is_durable_idempotent_and_membership_scoped() {
+        let dir = TempDir::new().unwrap();
+        let league_id = {
+            let store = Store::open(dir.path()).unwrap();
+            store
+                .initialize_universe(
+                    &[0x60; COMMAND_ID_BYTES],
+                    [0x61; 16],
+                    &initial_seeds(2),
+                    &[],
+                )
+                .unwrap();
+            let credential = store
+                .add_league(&[0x62; COMMAND_ID_BYTES], [0x63; 32])
+                .unwrap();
+            assert_eq!(
+                store
+                    .add_league(&[0x62; COMMAND_ID_BYTES], [0xff; 32])
+                    .unwrap(),
+                credential
+            );
+            let renamed = store
+                .set_league_name(
+                    credential.league_id,
+                    &[0x64; COMMAND_ID_BYTES],
+                    0,
+                    "Spinward Compact",
+                )
+                .unwrap();
+            assert!(matches!(renamed, SetLeagueNameResult::Updated(_)));
+            let other = store
+                .add_league(&[0x65; COMMAND_ID_BYTES], [0x66; 32])
+                .unwrap();
+            assert!(matches!(
+                store.set_league_name(
+                    other.league_id,
+                    &[0x67; COMMAND_ID_BYTES],
+                    0,
+                    "spinward compact",
+                ),
+                Err(StoreError::DuplicateLeagueName)
+            ));
+            let bbs = store
+                .add_league_bbs(
+                    credential.league_id,
+                    &[0x68; COMMAND_ID_BYTES],
+                    "Compact One",
+                    [0x69; 32],
+                )
+                .unwrap();
+            assert!(store.bbs_enabled(bbs.bbs_id).unwrap());
+            let disabled = store
+                .set_league_member_enabled(
+                    credential.league_id,
+                    &[0x6a; COMMAND_ID_BYTES],
+                    bbs.bbs_id,
+                    0,
+                    false,
+                    "membership paused",
+                )
+                .unwrap();
+            assert!(matches!(
+                disabled,
+                SetLeagueMemberAccessResult::Updated(LeagueMember { enabled: false, .. })
+            ));
+            assert!(!store.bbs_enabled(bbs.bbs_id).unwrap());
+            assert!(matches!(
+                store.set_league_member_enabled(
+                    other.league_id,
+                    &[0x6b; COMMAND_ID_BYTES],
+                    bbs.bbs_id,
+                    1,
+                    true,
+                    "",
+                ),
+                Err(StoreError::NotLeagueMember { .. })
+            ));
+            credential.league_id
+        };
+        let reopened = Store::open(dir.path()).unwrap();
+        let status = reopened.league_status(league_id).unwrap();
+        assert_eq!(status.name, "Spinward Compact");
+        assert_eq!(status.members.len(), 1);
+        assert!(!status.members[0].enabled);
+    }
+
+    #[test]
+    fn league_candidate_distance_overrides_only_the_ordinary_primary_rank() {
+        let site = BbsPolitySite {
+            anchor_system_id: 1,
+            reused_frontier_system_id: None,
+            cluster_positions_parsecs: [[10.0, 0.0, 0.0]; BBS_POLITY_SYSTEM_COUNT],
+            frontier_stub_position_parsecs: [12.0, 0.0, 0.0],
+            gateway_crossings: 1,
+            nearest_polity_distance_parsecs: 2.5,
+            conditioning_cost: 7.0,
+        };
+        assert_eq!(bbs_candidate_primary_distance(&site, &[]), 2.5);
+        assert_eq!(
+            bbs_candidate_primary_distance(&site, &[[6.0, 0.0, 0.0]]),
+            4.0
+        );
+        assert_eq!(
+            bbs_candidate_primary_distance(&site, &[[6.0, 0.0, 0.0], [9.0, 0.0, 0.0]],),
+            1.0
+        );
     }
 
     #[test]

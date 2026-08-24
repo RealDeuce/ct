@@ -7,7 +7,7 @@ use capnp::serialize;
 use thiserror::Error;
 
 use crate::ct_admin_capnp::{ErrorCode, envelope, request};
-use crate::store::{BbsCredential, OperationalStatus};
+use crate::store::{BbsCredential, LeagueCredential, OperationalStatus};
 use crate::universe::UniverseInitialization;
 use crate::wire::{COMMAND_ID_BYTES, CloseCode, MAX_FRAME_BYTES};
 
@@ -43,6 +43,7 @@ pub enum AdminCommand {
     InitializeUniverse,
     Status,
     LiveBackup { label: String },
+    AddLeague,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -134,6 +135,7 @@ pub fn decode_request(bytes: &[u8]) -> Result<AdminRequest, AdminWireError> {
             }
             AdminCommand::LiveBackup { label }
         }
+        request::AddLeague(()) => AdminCommand::AddLeague,
     };
     Ok(AdminRequest {
         request_id,
@@ -171,6 +173,24 @@ pub fn encode_status(
     wire.set_system_count(status.system_count);
     wire.set_active_sessions(active_sessions);
     wire.set_storage_format(status.storage_format);
+    wire.set_league_count(status.league_count);
+    finish_message(&message)
+}
+
+pub fn encode_league_added(
+    request: &AdminRequest,
+    credential: &LeagueCredential,
+) -> Result<Vec<u8>, AdminWireError> {
+    let mut message = Builder::new_default();
+    let mut envelope = message.init_root::<envelope::Builder>();
+    envelope.set_protocol_version(PROTOCOL_VERSION);
+    envelope.set_request_id(request.request_id);
+    let mut response = envelope.init_response();
+    response.set_command_id(&request.command_id);
+    response.set_committed_sequence(credential.committed_sequence);
+    let mut added = response.init_league_added();
+    added.set_league_id(credential.league_id);
+    added.set_psk(&credential.psk);
     finish_message(&message)
 }
 
@@ -311,6 +331,7 @@ pub fn encode_request(request: &AdminRequest) -> Result<Vec<u8>, AdminWireError>
         }
         AdminCommand::Status => builder.set_status(()),
         AdminCommand::LiveBackup { label } => builder.init_live_backup().set_label(label),
+        AdminCommand::AddLeague => builder.set_add_league(()),
     }
     finish_message(&message)
 }
@@ -359,6 +380,7 @@ mod tests {
             AdminCommand::LiveBackup {
                 label: "nightly-20260803".into(),
             },
+            AdminCommand::AddLeague,
         ] {
             let request = AdminRequest {
                 request_id: 9,

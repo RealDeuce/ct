@@ -100,6 +100,13 @@ The sysop protocol is a separate TLS-PSK listener (`--sysop-listen`, default
 enrolled BBS credentials. The
 `ct_sysop.capnp` schema is fully distinct from the player and admin schemas.
 
+League coordination is a fourth authority on its own TLS-PSK listener
+(`--league-listen`, default `localhost:7326`) and version-1 schema. It can
+rename only its authenticated League, create new member BBS credentials, and
+revision-check member enable/disable; it cannot exercise administrator or
+sysop powers. A disable removes live BBS authentication and ejects active
+players and the sysop connection without deleting game state.
+
 Implemented commands:
 
 - **get-config / set-config**: Revision-checked BBS configuration reads and
@@ -275,4 +282,4 @@ tools work" and "the acceptance test has been run and passed."
 | BBS founding announcements not in wire protocol | Correctly implemented as engine-internal operations generating in-world store-and-forward mail. Not a protocol-level message. |
 | Session capacity not reported to clients | Server-side enforcement only. Clients see TLS/protocol errors at capacity. Consistent with the doc's description of server-side caps. |
 | Load driver uses CYCLES instead of "reconnect-count" | Functionally identical; the parameter is a superset of the documented 2-cycle pattern. |
-| Admin port 7324 vs sysop port 7325 | These are two different listeners. Admin defaults to every supported address for loopback-only `localhost:7324`; sysop defaults to every supported address for `localhost:7325`. Both match their respective documented defaults. |
+| Admin port 7324 vs sysop port 7325 vs League port 7326 | These are distinct listeners and authority domains. Admin defaults to every supported loopback address for `localhost:7324`; sysop and League coordination default to every supported address for `localhost:7325` and `localhost:7326` respectively. |

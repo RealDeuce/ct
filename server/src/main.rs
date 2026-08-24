@@ -13,6 +13,7 @@ async fn main() {
     let mut listen = Vec::new();
     let mut admin_listen = Vec::new();
     let mut sysop_listen = Vec::new();
+    let mut league_listen = Vec::new();
     let mut data = PathBuf::from("server-data");
     let mut admin_psk_file = None;
     let mut backup_dir = None;
@@ -47,6 +48,13 @@ async fn main() {
                         .unwrap_or_else(|| usage("--sysop-listen needs an address")),
                 );
             }
+            "--league-listen" => {
+                league_listen.push(
+                    arguments
+                        .next()
+                        .unwrap_or_else(|| usage("--league-listen needs an address")),
+                );
+            }
             "--admin-psk-file" => {
                 admin_psk_file = Some(PathBuf::from(
                     arguments
@@ -78,6 +86,9 @@ async fn main() {
     let sysop_addresses = resolve_or_default(&sysop_listen, 7325)
         .await
         .unwrap_or_else(|error| usage(&format!("invalid --sysop-listen address: {error}")));
+    let league_addresses = resolve_or_default(&league_listen, 7326)
+        .await
+        .unwrap_or_else(|error| usage(&format!("invalid --league-listen address: {error}")));
     let admin_psk_file = admin_psk_file.unwrap_or_else(|| data.join("admin.psk"));
     let backup_dir = backup_dir.unwrap_or_else(|| PathBuf::from("server-backups"));
     let admin_key = admin_psk::load_or_create(&admin_psk_file).unwrap_or_else(|error| {
@@ -90,8 +101,15 @@ async fn main() {
         key: Arc::new(admin_key),
         backup_root: Arc::new(backup_dir),
     };
-    if let Err(error) =
-        server::run_on_addresses(addresses, admin_addresses, sysop_addresses, data, admin_tls).await
+    if let Err(error) = server::run_on_addresses(
+        addresses,
+        admin_addresses,
+        sysop_addresses,
+        league_addresses,
+        data,
+        admin_tls,
+    )
+    .await
     {
         server::log(format_args!("fatal server error: {error}"));
         std::process::exit(1);
@@ -154,7 +172,8 @@ fn usage(error: &str) -> ! {
     eprintln!(
         "Usage: cepheus-trader-server [--listen HOST:PORT]... [--data DIRECTORY] \\\n\
          [--admin-listen LOOPBACK_HOST:PORT]... [--sysop-listen HOST:PORT]... \\\n\
-         [--admin-psk-file PATH] [--backup-dir DIRECTORY] [--version]"
+         [--league-listen HOST:PORT]... [--admin-psk-file PATH] \\\n\
+         [--backup-dir DIRECTORY] [--version]"
     );
     std::process::exit(if error.is_empty() { 0 } else { 2 });
 }

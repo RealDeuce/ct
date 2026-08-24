@@ -6,6 +6,7 @@ fn main() {
     println!("cargo:rerun-if-changed=../protocol/ct_rpc.capnp");
     println!("cargo:rerun-if-changed=../protocol/ct_admin.capnp");
     println!("cargo:rerun-if-changed=../protocol/ct_sysop.capnp");
+    println!("cargo:rerun-if-changed=../protocol/ct_league.capnp");
     println!("cargo:rerun-if-changed=native/ct_gnutls.c");
     println!("cargo:rerun-if-changed=native/ct_gnutls.h");
     println!("cargo:rerun-if-changed=native/ct_clock.c");
@@ -19,6 +20,7 @@ fn main() {
         .file("../protocol/ct_rpc.capnp")
         .file("../protocol/ct_admin.capnp")
         .file("../protocol/ct_sysop.capnp")
+        .file("../protocol/ct_league.capnp")
         .run()
         .expect("compile shared protocol/ct_rpc.capnp");
 
