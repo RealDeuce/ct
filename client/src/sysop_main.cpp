@@ -9,10 +9,12 @@
 #include <array>
 #include <charconv>
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <future>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
@@ -235,6 +237,16 @@ bool stdin_is_terminal() {
    return handle != INVALID_HANDLE_VALUE && GetConsoleMode(handle, &mode) != 0;
 #else
    return isatty(STDIN_FILENO) != 0;
+#endif
+}
+
+bool stderr_is_terminal() {
+#ifdef _WIN32
+   DWORD mode = 0;
+   const auto handle = GetStdHandle(STD_ERROR_HANDLE);
+   return handle != INVALID_HANDLE_VALUE && GetConsoleMode(handle, &mode) != 0;
+#else
+   return isatty(STDERR_FILENO) != 0;
 #endif
 }
 
@@ -712,12 +724,26 @@ int main(int argc, char** argv) {
                                  ? *command_line.command_id
                                  : generate_command_id();
       try {
-         print_configuration(ct::set_bbs_configuration(
-            connection,
-            expected_revision,
-            *settings,
-            command_id,
-            generated_retry ? 2 : 1));
+         auto operation = std::async(std::launch::async, [&] {
+            return ct::set_bbs_configuration(
+               connection,
+               expected_revision,
+               *settings,
+               command_id,
+               generated_retry ? 2 : 1);
+         });
+         if(stderr_is_terminal()) {
+            constexpr std::array<char, 4> frames = {'|', '/', '-', '\\'};
+            std::size_t frame = 0;
+            std::cerr << frames[frame] << std::flush;
+            while(operation.wait_for(std::chrono::milliseconds(125)) !=
+                  std::future_status::ready) {
+               frame = (frame + 1) % frames.size();
+               std::cerr << '\b' << frames[frame] << std::flush;
+            }
+            std::cerr << "\b \b" << std::flush;
+         }
+         print_configuration(operation.get());
          return 0;
       } catch(const std::exception& error) {
          std::cerr << error.what() << '\n';

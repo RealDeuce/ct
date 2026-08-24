@@ -23,13 +23,27 @@ already exist. See
 
 Version 3 treats the BBS capital as the canonical position used to compare
 candidate sites. It constructs candidates from every existing system in 98
-canonical primitive directions, quantizes every resulting coordinate to the
-quarter-parsec coverage lattice, and considers unvisited, unaligned, inhabited
-frontier systems in Sol's Jump-2 component as prospective inward polity
-members. The version-2 external-anchor form remains a fallback when no such
-reuse candidate satisfies the complete topology. It rejects candidates whose
-new positions touch resolved cells or which violate any invariant below.
-Candidates are ordered by:
+canonical primitive directions and four rotations around each direction. It
+considers unvisited, unaligned, inhabited frontier systems in Sol's Jump-2
+component as prospective inward polity members. Existing systems retain their
+exact coordinates; they are never snapped to the quarter-parsec coverage
+lattice. New positions receive bounded deterministic three-dimensional
+variation and are then quantized to that lattice before the ordinary invariant
+checks. The capital and its two J-1 companions vary as one group so their
+relative trade-route geometry is preserved.
+
+Both the reused-member and version-2 external-anchor forms have outward and
+lateral families. The external lateral form is essential: without it, the
+form normally selected in generated universes projected every new cluster
+away from the materialized volume. Sixteen deterministic geometry variants
+are available as ordered fallbacks, but the search stops at the first variant
+with an eligible unresolved candidate rather than paying for all variants on
+every configuration. A three-parsec spatial index limits each invariant check
+to systems capable of participating in a boundary crossing.
+
+The search rejects candidates whose new positions touch resolved cells or
+which violate any invariant below. Within the first viable geometry variant,
+candidates are ordered by:
 
 1. capital distance to the nearest system belonging to an existing polity;
 2. local conditioning cost; and
@@ -45,9 +59,11 @@ existing frontier anchor as its inward member instead of placing all ten
 systems beyond that anchor. The anchor's immutable generation seed, celestial
 details, and names are preserved; only its polity affiliation changes. When a
 reuse candidate wins, the other nine members are generated in unresolved
-space. Straight and lateral templates are both considered, so closest-fit
-ranking can avoid forcing every polity to project radially out of the plotted
-volume. Version 2 placed all ten members beyond an external anchor.
+space. Outward and lateral templates are considered for both reused and
+external anchors, so closest-fit ranking can place a polity beside the plotted
+volume instead of forcing every polity to project radially outward. Version 2
+placed all ten members beyond an external anchor and considered only the
+outward form.
 
 Version 3 also creates one unaligned outward gateway system inside the
 resolved guard. The six-parsec survey supplies a larger plotted shell beyond

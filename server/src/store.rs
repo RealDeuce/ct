@@ -12,9 +12,9 @@ use heed::{CompactionOption, Database, Env, EnvOpenOptions};
 use thiserror::Error;
 
 use crate::bbs_polity::{
-    BBS_COVERAGE_SAMPLER_VERSION, BBS_MAX_SEED_DRAWS_PER_ROLE, BBS_POLITY_GENERATION_VERSION,
-    BBS_POLITY_SYSTEM_COUNT, BbsHome, BbsPolitySite, CAPITAL_INDEX, FIRST_COMPANION_INDEX,
-    SECOND_COMPANION_INDEX, candidate_sites,
+    BBS_COVERAGE_SAMPLER_VERSION, BBS_GEOMETRY_VARIANT_COUNT, BBS_MAX_SEED_DRAWS_PER_ROLE,
+    BBS_POLITY_GENERATION_VERSION, BBS_POLITY_SYSTEM_COUNT, BbsHome, BbsPolitySite, CAPITAL_INDEX,
+    FIRST_COMPANION_INDEX, SECOND_COMPANION_INDEX, candidate_sites, candidate_sites_for_variant,
 };
 use crate::celestial::{BodyKind, CelestialSystem, derive_celestial_system, derive_primary_world};
 use crate::commerce::{
@@ -32613,34 +32613,39 @@ impl Store {
         let mut stream = SeedStream::new(placement_seed);
         let tie_salt = stream.next_u64()?;
         let mut candidates = Vec::new();
-        for site in candidate_sites(&existing) {
-            if site.reused_frontier_system_id.is_some() {
-                let anchor = existing
+        for geometry_variant in 0..BBS_GEOMETRY_VARIANT_COUNT {
+            for site in candidate_sites_for_variant(&existing, geometry_variant) {
+                if let Some(system_id) = site.reused_frontier_system_id {
+                    let anchor = existing
+                        .iter()
+                        .find(|system| system.id == system_id)
+                        .ok_or(StoreError::Corrupt("BBS candidate member is missing"))?;
+                    let world = derive_primary_world(anchor)?;
+                    if self.system_visits.get(txn, &anchor.id)?.is_some()
+                        || !world.is_inhabited()
+                        || world.tech_level > 12
+                    {
+                        continue;
+                    }
+                }
+                let mut unresolved = true;
+                for position in site
+                    .cluster_positions_parsecs
                     .iter()
-                    .find(|system| system.id == site.anchor_system_id)
-                    .ok_or(StoreError::Corrupt("BBS candidate anchor is missing"))?;
-                let anchor_world = derive_primary_world(anchor)?;
-                if self.system_visits.get(txn, &anchor.id)?.is_some()
-                    || !anchor_world.is_inhabited()
-                    || anchor_world.tech_level > 12
+                    .skip(usize::from(site.reused_frontier_system_id.is_some()))
+                    .chain(std::iter::once(&site.frontier_stub_position_parsecs))
                 {
-                    continue;
+                    if self.point_is_resolved_in(txn, *position)? {
+                        unresolved = false;
+                        break;
+                    }
+                }
+                if unresolved {
+                    candidates.push(site);
                 }
             }
-            let mut unresolved = true;
-            for position in site
-                .cluster_positions_parsecs
-                .iter()
-                .skip(usize::from(site.reused_frontier_system_id.is_some()))
-                .chain(std::iter::once(&site.frontier_stub_position_parsecs))
-            {
-                if self.point_is_resolved_in(txn, *position)? {
-                    unresolved = false;
-                    break;
-                }
-            }
-            if unresolved {
-                candidates.push(site);
+            if !candidates.is_empty() {
+                break;
             }
         }
         candidates.sort_by(|left, right| {

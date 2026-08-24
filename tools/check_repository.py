@@ -143,7 +143,7 @@ def main() -> int:
         ("server/src/clock.rs", r"pub const CLOCK_FORMAT_VERSION: u64 = 1;", "clock format version 1"),
         ("server/src/universe.rs", r"pub const INITIAL_GENERATION_VERSION: u16 = 1;", "initial generation version 1"),
         ("server/src/celestial.rs", r"pub const CELESTIAL_GENERATION_VERSION: u16 = 1;", "celestial generation version 1"),
-        ("server/src/bbs_polity.rs", r"pub const BBS_POLITY_GENERATION_VERSION: u16 = 2;", "BBS polity generation version 2"),
+        ("server/src/bbs_polity.rs", r"pub const BBS_POLITY_GENERATION_VERSION: u16 = 3;", "BBS polity generation version 3"),
         ("server/src/bbs_polity.rs", r"pub const BBS_COVERAGE_SAMPLER_VERSION: u16 = 1;", "BBS coverage sampler version 1"),
         ("server/src/creation.rs", r"pub const SETUP_REVISION: u64 = 1;", "setup revision 1"),
         ("client/src/protocol.cpp", r"constexpr uint16_t PROTOCOL_VERSION = 8;", "CT-RPC version 8"),

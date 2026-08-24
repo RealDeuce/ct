@@ -17,6 +17,7 @@ pub const BBS_GUARD_RADIUS_PARSECS: f64 = 3.0;
 pub const BBS_LOCAL_DENSITY_MIN: f64 = 0.020;
 pub const BBS_LOCAL_DENSITY_MAX: f64 = 0.300;
 pub const BBS_MAX_SEED_DRAWS_PER_ROLE: usize = 65_536;
+pub const BBS_GEOMETRY_VARIANT_COUNT: u8 = 16;
 
 pub const CAPITAL_INDEX: usize = 2;
 pub const FIRST_COMPANION_INDEX: usize = 3;
@@ -52,6 +53,19 @@ const LATERAL_REUSED_FRONTIER_CLUSTER_TEMPLATE: [[f64; 3]; BBS_POLITY_SYSTEM_COU
     [3.25, 0.0, 1.50],
 ];
 const LATERAL_REUSED_FRONTIER_STUB_TEMPLATE: [f64; 3] = [3.25, 0.0, 5.25];
+const LATERAL_EXTERNAL_ANCHOR_CLUSTER_TEMPLATE: [[f64; 3]; BBS_POLITY_SYSTEM_COUNT] = [
+    [1.75, 0.0, 0.0],
+    [3.25, 0.0, 0.0],
+    [4.50, 0.0, 0.0],
+    [4.50, 0.75, 0.0],
+    [4.50, -0.75, 0.0],
+    [5.00, 1.50, 0.50],
+    [5.00, -1.50, -0.50],
+    [5.00, 0.0, -1.50],
+    [5.00, 0.0, 3.50],
+    [5.00, 0.0, 1.50],
+];
+const LATERAL_EXTERNAL_ANCHOR_STUB_TEMPLATE: [f64; 3] = [5.00, 0.0, 5.25];
 const EXTERNAL_ANCHOR_CLUSTER_TEMPLATE: [[f64; 3]; BBS_POLITY_SYSTEM_COUNT] = [
     [1.75, 0.0, 0.0],
     [3.25, 0.0, 0.0],
@@ -132,6 +146,45 @@ fn transform(
     })
 }
 
+fn geometry_entropy(
+    anchor: &StellarSystem,
+    forward: [f64; 3],
+    roll_quarter_turns: u8,
+    reuse_frontier_system: bool,
+    lateral_frontier: bool,
+    geometry_variant: u8,
+) -> u64 {
+    let mut seed_prefix = [0; 8];
+    seed_prefix.copy_from_slice(&anchor.generation_seed[..8]);
+    let mut entropy = anchor.id ^ u64::from_be_bytes(seed_prefix);
+    for coordinate in forward {
+        entropy = crate::ship_condition::mix64(entropy ^ coordinate.to_bits());
+    }
+    crate::ship_condition::mix64(
+        entropy
+            ^ u64::from(roll_quarter_turns)
+            ^ (u64::from(reuse_frontier_system) << 8)
+            ^ (u64::from(lateral_frontier) << 9)
+            ^ (u64::from(geometry_variant) << 16),
+    )
+}
+
+fn varied_local_point(point: [f64; 3], entropy: u64, index: usize) -> [f64; 3] {
+    // Keep the capital and its two J-1 companions together so their relative
+    // trade-route geometry is unchanged. Other generated systems receive
+    // independent quarter-parsec variation before the invariant checks.
+    let variation_index = if matches!(index, CAPITAL_INDEX..=SECOND_COMPANION_INDEX) {
+        CAPITAL_INDEX
+    } else {
+        index
+    };
+    let mut value = crate::ship_condition::mix64(entropy ^ variation_index as u64);
+    std::array::from_fn(|axis| {
+        value = crate::ship_condition::mix64(value ^ axis as u64);
+        point[axis] + (value % 3) as f64 * 0.25 - 0.25
+    })
+}
+
 fn gcd(mut left: i8, mut right: i8) -> i8 {
     left = left.abs();
     right = right.abs();
@@ -164,35 +217,68 @@ fn primitive_directions() -> Vec<[f64; 3]> {
 fn template_at(
     anchor: &StellarSystem,
     forward: [f64; 3],
+    roll_quarter_turns: u8,
     reuse_frontier_system: bool,
     lateral_frontier: bool,
+    geometry_variant: u8,
 ) -> BbsPolitySite {
     let reference = if forward[2].abs() < 0.9 {
         [0.0, 0.0, 1.0]
     } else {
         [0.0, 1.0, 0.0]
     };
-    let side = normalize(cross(reference, forward));
-    let vertical = normalize(cross(forward, side));
-    let cluster_template = if lateral_frontier {
+    let initial_side = normalize(cross(reference, forward));
+    let initial_vertical = normalize(cross(forward, initial_side));
+    let (side, vertical) = match roll_quarter_turns % 4 {
+        0 => (initial_side, initial_vertical),
+        1 => (initial_vertical, initial_side.map(|value| -value)),
+        2 => (
+            initial_side.map(|value| -value),
+            initial_vertical.map(|value| -value),
+        ),
+        _ => (initial_vertical.map(|value| -value), initial_side),
+    };
+    let cluster_template = if lateral_frontier && reuse_frontier_system {
         LATERAL_REUSED_FRONTIER_CLUSTER_TEMPLATE
+    } else if lateral_frontier {
+        LATERAL_EXTERNAL_ANCHOR_CLUSTER_TEMPLATE
     } else if reuse_frontier_system {
         REUSED_FRONTIER_CLUSTER_TEMPLATE
     } else {
         EXTERNAL_ANCHOR_CLUSTER_TEMPLATE
     };
-    let stub_template = if lateral_frontier {
+    let stub_template = if lateral_frontier && reuse_frontier_system {
         LATERAL_REUSED_FRONTIER_STUB_TEMPLATE
+    } else if lateral_frontier {
+        LATERAL_EXTERNAL_ANCHOR_STUB_TEMPLATE
     } else if reuse_frontier_system {
         REUSED_FRONTIER_STUB_TEMPLATE
     } else {
         EXTERNAL_ANCHOR_STUB_TEMPLATE
     };
-    let cluster_positions_parsecs = cluster_template
-        .map(|point| transform(anchor.position_parsecs, point, forward, side, vertical));
+    let entropy = geometry_entropy(
+        anchor,
+        forward,
+        roll_quarter_turns,
+        reuse_frontier_system,
+        lateral_frontier,
+        geometry_variant,
+    );
+    let mut cluster_positions_parsecs = std::array::from_fn(|index| {
+        transform(
+            anchor.position_parsecs,
+            varied_local_point(cluster_template[index], entropy, index),
+            forward,
+            side,
+            vertical,
+        )
+    });
+    if reuse_frontier_system {
+        cluster_positions_parsecs[0] = anchor.position_parsecs;
+    }
     let frontier_stub_position_parsecs = transform(
         anchor.position_parsecs,
-        stub_template,
+        varied_local_point(stub_template, entropy, BBS_POLITY_SYSTEM_COUNT),
         forward,
         side,
         vertical,
@@ -208,16 +294,16 @@ fn template_at(
     }
 }
 
-fn internally_jump_two_connected(positions: &[[f64; 3]; BBS_POLITY_SYSTEM_COUNT]) -> bool {
-    let mut visited = [false; BBS_POLITY_SYSTEM_COUNT];
+fn internally_jump_two_connected(positions: &[[f64; 3]]) -> bool {
+    let mut visited = vec![false; positions.len()];
     visited[0] = true;
     loop {
-        let before = visited;
-        for index in 0..BBS_POLITY_SYSTEM_COUNT {
+        let before = visited.clone();
+        for index in 0..positions.len() {
             if !visited[index] {
                 continue;
             }
-            for other in 0..BBS_POLITY_SYSTEM_COUNT {
+            for other in 0..positions.len() {
                 if distance_squared(positions[index], positions[other]) <= 4.0 + 1e-9 {
                     visited[other] = true;
                 }
@@ -279,10 +365,27 @@ fn jump_two_reachable_from_sol(existing: &[StellarSystem]) -> HashSet<u64> {
     reachable
 }
 
+type SpatialBuckets = HashMap<(i64, i64, i64), Vec<usize>>;
+
+fn spatial_buckets(existing: &[StellarSystem]) -> SpatialBuckets {
+    let mut buckets = SpatialBuckets::new();
+    for (index, system) in existing.iter().enumerate() {
+        let coordinate = system
+            .position_parsecs
+            .map(|value| (value / 3.0).floor() as i64);
+        buckets
+            .entry((coordinate[0], coordinate[1], coordinate[2]))
+            .or_default()
+            .push(index);
+    }
+    buckets
+}
+
 fn geometrically_eligible(
     site: &mut BbsPolitySite,
     existing: &[StellarSystem],
     sol_reachable: &HashSet<u64>,
+    buckets: &SpatialBuckets,
 ) -> bool {
     let Some(anchor) = existing
         .iter()
@@ -298,7 +401,8 @@ fn geometrically_eligible(
     {
         return false;
     }
-    if !internally_jump_two_connected(&site.cluster_positions_parsecs) {
+    let member_positions = &site.cluster_positions_parsecs;
+    if !internally_jump_two_connected(member_positions) {
         return false;
     }
     if distance_squared(
@@ -313,14 +417,14 @@ fn geometrically_eligible(
         return false;
     }
 
-    for (index, position) in site.cluster_positions_parsecs.iter().enumerate() {
+    for (index, position) in member_positions.iter().enumerate() {
         let galactic_radius = galactic_cylindrical_position(*position).radius_parsecs;
         if galactic_radius - BBS_GUARD_RADIUS_PARSECS < BBS_GALACTOCENTRIC_MIN_PARSECS
             || galactic_radius + BBS_GUARD_RADIUS_PARSECS > BBS_GALACTOCENTRIC_MAX_PARSECS
         {
             return false;
         }
-        for other in &site.cluster_positions_parsecs[index + 1..] {
+        for other in &member_positions[index + 1..] {
             if distance_squared(*position, *other) < 0.25_f64.powi(2) {
                 return false;
             }
@@ -343,25 +447,38 @@ fn geometrically_eligible(
 
     let mut gateway_crossings = 0_u8;
     let mut sol_gateway = false;
-    for cluster in site.cluster_positions_parsecs {
-        for external in existing {
-            if site.reused_frontier_system_id == Some(external.id) {
-                continue;
-            }
-            let squared = distance_squared(cluster, external.position_parsecs);
-            if squared < 0.25_f64.powi(2) {
-                return false;
-            }
-            if squared <= 9.0 + 1e-9 {
-                if squared > 4.0 + 1e-9 {
-                    return false;
-                }
-                gateway_crossings = match gateway_crossings.checked_add(1) {
-                    Some(value) => value,
-                    None => return false,
-                };
-                if sol_reachable.contains(&external.id) {
-                    sol_gateway = true;
+    for &cluster in member_positions {
+        let bucket = cluster.map(|value| (value / 3.0).floor() as i64);
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                for dz in -1..=1 {
+                    let Some(indices) =
+                        buckets.get(&(bucket[0] + dx, bucket[1] + dy, bucket[2] + dz))
+                    else {
+                        continue;
+                    };
+                    for &index in indices {
+                        let external = &existing[index];
+                        if site.reused_frontier_system_id == Some(external.id) {
+                            continue;
+                        }
+                        let squared = distance_squared(cluster, external.position_parsecs);
+                        if squared < 0.25_f64.powi(2) {
+                            return false;
+                        }
+                        if squared <= 9.0 + 1e-9 {
+                            if squared > 4.0 + 1e-9 {
+                                return false;
+                            }
+                            gateway_crossings = match gateway_crossings.checked_add(1) {
+                                Some(value) => value,
+                                None => return false,
+                            };
+                            if sol_reachable.contains(&external.id) {
+                                sol_gateway = true;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -398,29 +515,47 @@ fn geometrically_eligible(
     site.nearest_polity_distance_parsecs.is_finite()
 }
 
-pub fn candidate_sites(existing: &[StellarSystem]) -> Vec<BbsPolitySite> {
+pub fn candidate_sites_for_variant(
+    existing: &[StellarSystem],
+    geometry_variant: u8,
+) -> Vec<BbsPolitySite> {
     let directions = primitive_directions();
     let sol_reachable = jump_two_reachable_from_sol(existing);
+    let buckets = spatial_buckets(existing);
     let mut candidates = Vec::new();
     for anchor in existing {
         for direction in &directions {
-            if anchor.polity_id == 0 {
-                let mut site = template_at(anchor, *direction, true, false);
-                if geometrically_eligible(&mut site, existing, &sol_reachable) {
+            for roll in 0..4 {
+                if anchor.polity_id == 0 {
+                    let mut site =
+                        template_at(anchor, *direction, roll, true, false, geometry_variant);
+                    if geometrically_eligible(&mut site, existing, &sol_reachable, &buckets) {
+                        candidates.push(site);
+                    }
+                    let mut lateral =
+                        template_at(anchor, *direction, roll, true, true, geometry_variant);
+                    if geometrically_eligible(&mut lateral, existing, &sol_reachable, &buckets) {
+                        candidates.push(lateral);
+                    }
+                }
+                let mut site =
+                    template_at(anchor, *direction, roll, false, false, geometry_variant);
+                if geometrically_eligible(&mut site, existing, &sol_reachable, &buckets) {
                     candidates.push(site);
                 }
-                let mut lateral = template_at(anchor, *direction, true, true);
-                if geometrically_eligible(&mut lateral, existing, &sol_reachable) {
+                let mut lateral =
+                    template_at(anchor, *direction, roll, false, true, geometry_variant);
+                if geometrically_eligible(&mut lateral, existing, &sol_reachable, &buckets) {
                     candidates.push(lateral);
                 }
-            }
-            let mut site = template_at(anchor, *direction, false, false);
-            if geometrically_eligible(&mut site, existing, &sol_reachable) {
-                candidates.push(site);
             }
         }
     }
     candidates
+}
+
+pub fn candidate_sites(existing: &[StellarSystem]) -> Vec<BbsPolitySite> {
+    candidate_sites_for_variant(existing, 0)
 }
 
 #[cfg(test)]
@@ -439,15 +574,38 @@ mod tests {
         }
     }
 
+    fn eligible_template(
+        existing: &[StellarSystem],
+        reuse_frontier_system: bool,
+        lateral_frontier: bool,
+    ) -> BbsPolitySite {
+        let sol_reachable = jump_two_reachable_from_sol(existing);
+        let buckets = spatial_buckets(existing);
+        for geometry_variant in 0..BBS_GEOMETRY_VARIANT_COUNT {
+            for roll in 0..4 {
+                let mut site = template_at(
+                    &existing[1],
+                    [1.0, 0.0, 0.0],
+                    roll,
+                    reuse_frontier_system,
+                    lateral_frontier,
+                    geometry_variant,
+                );
+                if geometrically_eligible(&mut site, existing, &sol_reachable, &buckets) {
+                    return site;
+                }
+            }
+        }
+        panic!("no eligible template variant");
+    }
+
     #[test]
     fn canonical_template_has_capital_routes_and_two_gateways() {
         let existing = vec![
             system(SOL_SYSTEM_ID, [-1.75, 0.0, 0.0], 1),
             system(2, [0.0; 3], 0),
         ];
-        let sol_reachable = jump_two_reachable_from_sol(&existing);
-        let mut site = template_at(&existing[1], [1.0, 0.0, 0.0], true, false);
-        assert!(geometrically_eligible(&mut site, &existing, &sol_reachable));
+        let site = eligible_template(&existing, true, false);
         assert_eq!(site.gateway_crossings, 2);
         assert!(internally_jump_two_connected(
             &site.cluster_positions_parsecs
@@ -461,32 +619,30 @@ mod tests {
     }
 
     #[test]
-    fn frontier_reuse_supports_a_lateral_shorter_footprint() {
+    fn reused_and_external_anchors_support_lateral_three_dimensional_footprints() {
         let existing = vec![
             system(SOL_SYSTEM_ID, [-1.75, 0.0, 0.0], 1),
             system(2, [0.0; 3], 0),
         ];
-        let sol_reachable = jump_two_reachable_from_sol(&existing);
-        let mut lateral = template_at(&existing[1], [1.0, 0.0, 0.0], true, true);
-
-        assert!(geometrically_eligible(
-            &mut lateral,
-            &existing,
-            &sol_reachable
-        ));
+        let lateral = eligible_template(&existing, true, true);
         assert_eq!(lateral.cluster_positions_parsecs[0], [0.0; 3]);
-        assert_eq!(
-            lateral.cluster_positions_parsecs[CAPITAL_INDEX],
-            [2.75, 0.0, 0.0]
-        );
-        assert_eq!(lateral.frontier_stub_position_parsecs, [3.25, 0.0, 5.25]);
+        let mut vertical_coordinates = lateral
+            .cluster_positions_parsecs
+            .iter()
+            .map(|position| position[2])
+            .collect::<Vec<_>>();
+        vertical_coordinates.sort_by(f64::total_cmp);
+        vertical_coordinates.dedup();
+        assert!(vertical_coordinates.len() >= 3);
 
-        let external = template_at(&existing[1], [1.0, 0.0, 0.0], false, false);
-        assert_eq!(
-            external.cluster_positions_parsecs[CAPITAL_INDEX],
-            [4.5, 0.0, 0.0]
+        let external_lateral = eligible_template(&existing, false, true);
+        assert!(external_lateral.frontier_stub_position_parsecs[0] < 7.0);
+        assert!(
+            external_lateral
+                .cluster_positions_parsecs
+                .iter()
+                .any(|position| position[2].abs() >= 1.0)
         );
-        assert_eq!(external.frontier_stub_position_parsecs, [8.75, 0.0, 1.5]);
     }
 
     #[test]
@@ -497,11 +653,13 @@ mod tests {
             system(3, [1.0, 2.5, 0.0], 1),
         ];
         let sol_reachable = jump_two_reachable_from_sol(&existing);
-        let mut site = template_at(&existing[1], [1.0, 0.0, 0.0], true, false);
+        let buckets = spatial_buckets(&existing);
+        let mut site = template_at(&existing[1], [1.0, 0.0, 0.0], 0, true, false, 0);
         assert!(!geometrically_eligible(
             &mut site,
             &existing,
-            &sol_reachable
+            &sol_reachable,
+            &buckets,
         ));
     }
 
@@ -513,13 +671,15 @@ mod tests {
             system(3, [0.0; 3], 0),
         ];
         let sol_reachable = jump_two_reachable_from_sol(&existing);
+        let buckets = spatial_buckets(&existing);
         assert_eq!(sol_reachable, HashSet::from([SOL_SYSTEM_ID]));
 
-        let mut site = template_at(&existing[2], [1.0, 0.0, 0.0], true, false);
+        let mut site = template_at(&existing[2], [1.0, 0.0, 0.0], 0, true, false, 0);
         assert!(!geometrically_eligible(
             &mut site,
             &existing,
-            &sol_reachable
+            &sol_reachable,
+            &buckets,
         ));
     }
 
