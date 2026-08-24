@@ -234,7 +234,7 @@ The server accepts storage manifest format 2 and the current version of each
 record codec, plus only the explicit legacy readers documented for that codec.
 It does not perform an implicit universe-wide migration. Opening any
 unsupported manifest or record version fails with an instruction to
-reinitialize the game store. In particular, v0.7.11 has no migration from the
+reinitialize the game store. In particular, v0.7.11 and v0.7.12 have no migration from the
 v0.7.10 format-1 database; operators must preserve any desired backup and
 initialize a fresh store.
 
