@@ -26946,6 +26946,44 @@ impl Store {
         system_seeds: &[[u8; 32]],
         bbs_placement_seeds: &[BbsPlacementSeed],
     ) -> Result<UniverseInitialization, StoreError> {
+        self.initialize_universe_with_frontiers(
+            command_id,
+            universe_id,
+            system_seeds,
+            bbs_placement_seeds,
+            true,
+        )
+    }
+
+    #[cfg(test)]
+    fn initialize_universe_for_player_fixture(
+        &self,
+        command_id: &[u8; COMMAND_ID_BYTES],
+        universe_id: [u8; 16],
+        system_seeds: &[[u8; 32]],
+        bbs_placement_seeds: &[BbsPlacementSeed],
+    ) -> Result<UniverseInitialization, StoreError> {
+        // Most store tests exercise player state transitions, not frontier
+        // sampling. Keep the real fixed catalogue and initialization
+        // transaction while dedicated production-path tests below retain the
+        // complete founding-shell coverage.
+        self.initialize_universe_with_frontiers(
+            command_id,
+            universe_id,
+            system_seeds,
+            bbs_placement_seeds,
+            false,
+        )
+    }
+
+    fn initialize_universe_with_frontiers(
+        &self,
+        command_id: &[u8; COMMAND_ID_BYTES],
+        universe_id: [u8; 16],
+        system_seeds: &[[u8; 32]],
+        bbs_placement_seeds: &[BbsPlacementSeed],
+        materialize_founding_frontiers: bool,
+    ) -> Result<UniverseInitialization, StoreError> {
         if system_seeds.len() != INITIAL_SYSTEMS.len() {
             return Err(StoreError::InvalidUniverseSeedCount {
                 expected: INITIAL_SYSTEMS.len(),
@@ -27185,42 +27223,44 @@ impl Store {
             return Err(StoreError::Corrupt("empty initial coverage footprint"));
         }
 
-        // The fixed-catalog hull must win every overlapping coverage cell.
-        // Only after that layer is complete do the hardcoded systems survey
-        // their six-parsec surroundings, so the frontier sampler can populate
-        // only the unresolved shell outside the established CNS5 volume.
-        for (initial, generation_seed) in INITIAL_SYSTEMS.iter().zip(system_seeds) {
-            let operation_seed =
-                derive_seed(*generation_seed, b"frontier/initial-catalog-arrival/v1")?;
-            self.materialize_jump_arrival_volume_with_seed_in(
-                &mut txn,
-                initial.position_parsecs,
-                0,
-                Some(operation_seed),
-            )?;
-        }
-        let initial_frontier_ids = self
-            .systems
-            .iter(&txn)?
-            .filter_map(|entry| match entry {
-                Ok((system_id, _)) if system_id > INITIAL_SYSTEMS.len() as u64 => {
-                    Some(Ok(system_id))
-                }
-                Ok(_) => None,
-                Err(error) => Some(Err(StoreError::Heed(error))),
-            })
-            .collect::<Result<Vec<_>, StoreError>>()?;
-        for system_id in initial_frontier_ids {
-            self.system_publications.put(
-                &mut txn,
-                &system_id,
-                &encode_system_publication(&SystemPublicationRecord {
-                    message_id: 0,
-                    dispatched_second: 0,
-                    completed_second: 0,
-                    state: SystemPublicationState::UniversallyKnown,
-                }),
-            )?;
+        if materialize_founding_frontiers {
+            // The fixed-catalog hull must win every overlapping coverage cell.
+            // Only after that layer is complete do the hardcoded systems survey
+            // their six-parsec surroundings, so the frontier sampler can populate
+            // only the unresolved shell outside the established CNS5 volume.
+            for (initial, generation_seed) in INITIAL_SYSTEMS.iter().zip(system_seeds) {
+                let operation_seed =
+                    derive_seed(*generation_seed, b"frontier/initial-catalog-arrival/v1")?;
+                self.materialize_jump_arrival_volume_with_seed_in(
+                    &mut txn,
+                    initial.position_parsecs,
+                    0,
+                    Some(operation_seed),
+                )?;
+            }
+            let initial_frontier_ids = self
+                .systems
+                .iter(&txn)?
+                .filter_map(|entry| match entry {
+                    Ok((system_id, _)) if system_id > INITIAL_SYSTEMS.len() as u64 => {
+                        Some(Ok(system_id))
+                    }
+                    Ok(_) => None,
+                    Err(error) => Some(Err(StoreError::Heed(error))),
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?;
+            for system_id in initial_frontier_ids {
+                self.system_publications.put(
+                    &mut txn,
+                    &system_id,
+                    &encode_system_publication(&SystemPublicationRecord {
+                        message_id: 0,
+                        dispatched_second: 0,
+                        completed_second: 0,
+                        state: SystemPublicationState::UniversallyKnown,
+                    }),
+                )?;
+            }
         }
         for (bbs_id, configuration) in &configured {
             let home = self.materialize_bbs_polity_in(
@@ -27228,6 +27268,7 @@ impl Store {
                 *bbs_id,
                 &configuration.settings,
                 placement_seeds[bbs_id],
+                materialize_founding_frontiers,
             )?;
             self.initialize_polity_policy_in(&mut txn, &home, configuration, 0)?;
         }
@@ -32633,6 +32674,47 @@ impl Store {
         settings: &BbsSettings,
         placement_seed: [u8; 32],
     ) -> Result<ConfigureBbsResult, StoreError> {
+        self.configure_bbs_with_frontier(
+            bbs_id,
+            command_id,
+            expected_revision,
+            settings,
+            placement_seed,
+            true,
+        )
+    }
+
+    #[cfg(test)]
+    fn configure_bbs_for_player_fixture(
+        &self,
+        bbs_id: u32,
+        command_id: &[u8; COMMAND_ID_BYTES],
+        expected_revision: u64,
+        settings: &BbsSettings,
+        placement_seed: [u8; 32],
+    ) -> Result<ConfigureBbsResult, StoreError> {
+        // The fixture still creates the real conditioned polity, guard,
+        // policies, markets, traffic, and player. Only the surrounding
+        // six-parsec frontier shell is omitted.
+        self.configure_bbs_with_frontier(
+            bbs_id,
+            command_id,
+            expected_revision,
+            settings,
+            placement_seed,
+            false,
+        )
+    }
+
+    fn configure_bbs_with_frontier(
+        &self,
+        bbs_id: u32,
+        command_id: &[u8; COMMAND_ID_BYTES],
+        expected_revision: u64,
+        settings: &BbsSettings,
+        placement_seed: [u8; 32],
+        materialize_founding_frontier: bool,
+    ) -> Result<ConfigureBbsResult, StoreError> {
         let result_key = sysop_result_key(bbs_id, command_id);
         let mut txn = self.env.write_txn()?;
         if let Some(previous) = self.results.get(&txn, &result_key)? {
@@ -32689,7 +32771,13 @@ impl Store {
                 self.dispatch_polity_policy_in(&mut txn, &home, &configuration, current_second)?;
                 Some(home)
             } else {
-                match self.materialize_bbs_polity_in(&mut txn, bbs_id, settings, placement_seed) {
+                match self.materialize_bbs_polity_in(
+                    &mut txn,
+                    bbs_id,
+                    settings,
+                    placement_seed,
+                    materialize_founding_frontier,
+                ) {
                     Ok(home) => {
                         self.initialize_polity_policy_in(
                             &mut txn,
@@ -33049,6 +33137,7 @@ impl Store {
         bbs_id: u32,
         settings: &BbsSettings,
         placement_seed: [u8; 32],
+        materialize_founding_frontier: bool,
     ) -> Result<BbsHome, StoreError> {
         let existing = self
             .systems
@@ -33292,21 +33381,23 @@ impl Store {
         for system_id in cluster_system_ids {
             record_first_system_visit_in(self.system_visits, txn, system_id, current_second)?;
         }
-        for system_id in cluster_system_ids {
-            let system = self
-                .systems
-                .get(txn, &system_id)?
-                .map(decode_stellar_system)
-                .transpose()?
-                .ok_or(StoreError::Corrupt("new BBS system is missing"))?;
-            let operation_seed =
-                derive_seed(system.generation_seed, b"frontier/bbs-polity-arrival/v1")?;
-            self.materialize_jump_arrival_volume_with_seed_in(
-                txn,
-                system.position_parsecs,
-                current_second,
-                Some(operation_seed),
-            )?;
+        if materialize_founding_frontier {
+            for system_id in cluster_system_ids {
+                let system = self
+                    .systems
+                    .get(txn, &system_id)?
+                    .map(decode_stellar_system)
+                    .transpose()?
+                    .ok_or(StoreError::Corrupt("new BBS system is missing"))?;
+                let operation_seed =
+                    derive_seed(system.generation_seed, b"frontier/bbs-polity-arrival/v1")?;
+                self.materialize_jump_arrival_volume_with_seed_in(
+                    txn,
+                    system.position_parsecs,
+                    current_second,
+                    Some(operation_seed),
+                )?;
+            }
         }
 
         let home = BbsHome {
@@ -47266,20 +47357,21 @@ mod tests {
     }
 
     fn initialize_player_fixture(store: &Store) -> u64 {
-        store
-            .initialize_universe(
+        let initialized = store
+            .initialize_universe_for_player_fixture(
                 &[0xa5; COMMAND_ID_BYTES],
                 [0xa6; 16],
                 &initial_seeds(140),
                 &[],
             )
             .unwrap();
+        assert_eq!(initialized.system_count as usize, INITIAL_SYSTEMS.len());
         let credential = store
             .add_bbs(&[0xa1; COMMAND_ID_BYTES], "Trader Slice", [0xa2; 32])
             .unwrap();
         assert_eq!(credential.bbs_id, identity().bbs_id);
         store
-            .configure_bbs(
+            .configure_bbs_for_player_fixture(
                 credential.bbs_id,
                 &[0xa3; COMMAND_ID_BYTES],
                 0,
@@ -47292,6 +47384,10 @@ mod tests {
                 [0xa4; 32],
             )
             .unwrap();
+        assert_eq!(
+            store.stellar_systems().unwrap().len(),
+            INITIAL_SYSTEMS.len() + BBS_POLITY_SYSTEM_COUNT + 1
+        );
         let (epoch, _, phase) = store.issue_session_epoch(&identity()).unwrap();
         assert_eq!(phase, PlayerPhase::NewUser);
         store

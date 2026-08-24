@@ -433,13 +433,25 @@ fn engine_request(epoch: u64, request_id: u64, command: WireCommand) -> CommandR
 
 const SETTLEMENT_STEP_LIMIT: usize = 4_096;
 const SIMULATION_EVENT_LIMIT: usize = 65_536;
+const SIMULATION_EVENT_BATCH: u64 = 1_024;
 
-fn advance_one_simulation_event(engine: &Engine, target_second: u64) -> bool {
+fn advance_simulation_events(
+    engine: &Engine,
+    target_second: u64,
+    remaining_events: &mut u64,
+) -> bool {
+    assert!(*remaining_events > 0, "simulation event limit exhausted");
     let current_second = engine.game_second().unwrap();
-    engine
-        .advance_simulation_toward(target_second.max(current_second), 1)
-        .unwrap()
-        .reached_target
+    let maximum_events = (*remaining_events).min(SIMULATION_EVENT_BATCH);
+    let advance = engine
+        .advance_simulation_toward(target_second.max(current_second), maximum_events)
+        .unwrap();
+    assert!(
+        advance.processed_events > 0 || advance.reached_target,
+        "simulation neither processed an event nor reached its target"
+    );
+    *remaining_events = remaining_events.saturating_sub(advance.processed_events);
+    advance.reached_target
 }
 
 fn advance_encounter_until_progress(
@@ -447,7 +459,8 @@ fn advance_encounter_until_progress(
     identity: &PlayerIdentity,
     before: &cepheus_trader_server::wire::EncounterSnapshot,
 ) {
-    for _ in 0..SETTLEMENT_STEP_LIMIT {
+    let mut remaining_events = SETTLEMENT_STEP_LIMIT as u64;
+    while remaining_events > 0 {
         let after = engine.pending_encounter(identity).unwrap();
         if after.as_ref() != Some(before) {
             return;
@@ -457,7 +470,7 @@ fn advance_encounter_until_progress(
         } else {
             before.next_turn_second
         };
-        let reached_target = advance_one_simulation_event(engine, due_second);
+        let reached_target = advance_simulation_events(engine, due_second, &mut remaining_events);
         let after = engine.pending_encounter(identity).unwrap();
         if after.as_ref() != Some(before) {
             return;
@@ -479,7 +492,8 @@ fn advance_encounter_until_progress(
 }
 
 fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity, request_id: &mut u64) {
-    for _ in 0..SIMULATION_EVENT_LIMIT {
+    let mut remaining_events = SIMULATION_EVENT_LIMIT as u64;
+    while remaining_events > 0 {
         let engine = Engine::open(data, BbsRegistry::default()).unwrap();
         let (epoch, _, _) = engine.issue_session(identity).unwrap();
         settle_pending_arrival_encounter_with_engine(&engine, identity, epoch, request_id);
@@ -509,7 +523,7 @@ fn settle_arrival_checkpoint(data: &Path, identity: &PlayerIdentity, request_id:
                 let due_second = leg.due_second;
                 drop(store);
                 let engine = Engine::open(data, BbsRegistry::default()).unwrap();
-                advance_one_simulation_event(&engine, due_second);
+                advance_simulation_events(&engine, due_second, &mut remaining_events);
             }
             other => panic!("terminal approach entered an unexpected locus: {other:?}"),
         }
@@ -598,12 +612,14 @@ fn advance_player_simulation_to(
 ) {
     let engine = Engine::open(data, BbsRegistry::default()).unwrap();
     let (epoch, _, _) = engine.issue_session(identity).unwrap();
-    for _ in 0..SIMULATION_EVENT_LIMIT {
+    let mut remaining_events = SIMULATION_EVENT_LIMIT as u64;
+    while remaining_events > 0 {
         settle_pending_arrival_encounter_with_engine(&engine, identity, epoch, request_id);
         if engine.game_second().unwrap() > target_second {
             return;
         }
-        if advance_one_simulation_event(&engine, target_second) {
+        if advance_simulation_events(&engine, target_second, &mut remaining_events) {
+            settle_pending_arrival_encounter_with_engine(&engine, identity, epoch, request_id);
             return;
         }
     }
@@ -618,7 +634,8 @@ fn advance_until_flight_leg(
     matches_purpose: impl Fn(FlightLegPurpose) -> bool,
     request_id: &mut u64,
 ) -> FlightLegRecord {
-    for _ in 0..SIMULATION_EVENT_LIMIT {
+    let mut remaining_events = SIMULATION_EVENT_LIMIT as u64;
+    while remaining_events > 0 {
         settle_pending_arrival_encounter(data, identity, request_id);
         let store = Store::open(data).unwrap();
         let player = store.player_record(identity).unwrap().unwrap();
@@ -632,7 +649,7 @@ fn advance_until_flight_leg(
         }
         drop(store);
         let engine = Engine::open(data, BbsRegistry::default()).unwrap();
-        advance_one_simulation_event(&engine, leg.due_second);
+        advance_simulation_events(&engine, leg.due_second, &mut remaining_events);
     }
     panic!("voyage did not reach the requested flight-leg purpose");
 }
