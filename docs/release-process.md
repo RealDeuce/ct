@@ -8,8 +8,9 @@ compatibility counters independently begin at 1.
 The ordinary GitHub Actions workflow validates repository hygiene and
 licenses, runs the Python/catalog suite, Rust formatting/lint/tests, and runs
 the native CMake/CTest suite on Ubuntu. Its client package matrix uses GitHub
-hosted runners to build only `cepheus-trader-door` and
-`cepheus-trader-sysop` for Linux amd64/arm64, macOS arm64/x86-64, and Windows
+hosted runners to build only `cepheus-trader-door`,
+`cepheus-trader-sysop`, and `cepheus-trader-league` for Linux amd64/arm64,
+macOS arm64/x86-64, and Windows
 x86-64/x86. Linux packages are built once per architecture on Ubuntu 22.04,
 then the same archives are exercised on Ubuntu 22.04, 24.04, and 26.04.
 Each client kit also contains the platform's `cepheus-trader-client-core`
@@ -52,7 +53,7 @@ For an alpha release:
 3. write curated Highlights and the exact previous-to-current comparison link;
 4. make the default-branch pipeline green and confirm
    `python3 tools/check_repository.py` succeeds on the tag commit;
-5. create the protected annotated tag `v<version>` (for example, `v0.7.10`);
+5. create the protected annotated tag `v<version>` (for example, `v0.7.11`);
 6. let each native runner configure with `CT_PORTABLE_CLIENT=ON` and an exact
    GitHub release URL;
 7. unpack and inspect every archive, run native `--version` probes, and inspect
@@ -61,9 +62,10 @@ For an alpha release:
    keep GitHub's exact tagged source archive available beside all binaries.
 
 Every client archive contains `cepheus-trader-door`, `cepheus-trader-sysop`,
-their platform-specific `cepheus-trader-client-core` shared library, the
-player and sysop guides, example configuration and installation notes, all
-project and dependency notices, and `SOURCE-RELEASE.txt`. The tagged source is
+`cepheus-trader-league`, their platform-specific
+`cepheus-trader-client-core` shared library, the player, sysop, and League
+Coordinator guides, example configuration and installation notes, all project
+and dependency notices, and `SOURCE-RELEASE.txt`. The tagged source is
 the OpenDoors corresponding-source distribution: it includes the vendored
 library, local modifications, schemas, and build files needed to rebuild and
 relink. Do not publish a binary if its source-release URL is empty.

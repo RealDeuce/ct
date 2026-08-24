@@ -46170,7 +46170,9 @@ mod tests {
         })
         .unwrap();
         version_two[0] = 2;
-        version_two.truncate(version_two.len() - 5);
+        // Version two predates the per-system gas-giant byte, the per-system
+        // affiliation marker, and the trailing known-belt count.
+        version_two.truncate(version_two.len() - 6);
         let decoded = decode_outcome(&version_two).unwrap();
         let OutcomeKind::KnownDestinations(snapshot) = decoded.kind else {
             panic!("expected known destinations");

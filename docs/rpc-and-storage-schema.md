@@ -202,8 +202,9 @@ the ship and generate preview warnings; replanning never edits obligations.
 Flight Plan codec version 4 adds the per-collection refine choice and the
 standalone refine action; readers retain versions 1 through 3. Authoritative
 preview includes per-step normal and failed fuel-operation timings. Retained
-outcome codec version 20 preserves those timings, the added quotation and
-activity metadata, and terminal reports for idempotent replay.
+outcome codec version 21 preserves those timings, the added quotation and
+activity metadata, terminal reports, and BBS/League affiliation for
+idempotent replay.
 
 Arrival does not directly rewrite an approaching ship as docked. It creates a
 durable checkpoint at the exact port locus. Hold authority waits for an
@@ -221,31 +222,33 @@ as Hold plus a terminal marker. Encounter-record codec version 4 stores
 Through/automation use and the optional acknowledged terminal-report snapshot
 while retaining readers for versions 1 through 3. Older terminal records derive
 the same report from retained encounter, combat, ship, and personnel state when
-first reviewed. Outcome codec version 20 preserves terminal-report transaction
+first reviewed. Outcome codec version 21 preserves terminal-report transaction
 replay; older outcomes decode absent additive fields as empty or zero. A
 pre-field proposal with no explicit terminal bit is normalized at the wire
 boundary by marking its last step. CT-RPC 8 adds durable ship commissions and
-construction activity. No universe-wide storage migration is required.
+construction activity.
 
-## Persistence contract during development
+## Persistence contract
 
-The repository has not been deployed. The server accepts storage manifest
-format 1 and the current version of each record codec, plus only the explicit
-legacy readers documented for that codec. It does not perform an implicit
-universe-wide migration. Opening any unsupported manifest or record version
-fails with an instruction to reinitialize the game store.
+The server accepts storage manifest format 2 and the current version of each
+record codec, plus only the explicit legacy readers documented for that codec.
+It does not perform an implicit universe-wide migration. Opening any
+unsupported manifest or record version fails with an instruction to
+reinitialize the game store. In particular, v0.7.11 has no migration from the
+v0.7.10 format-1 database; operators must preserve any desired backup and
+initialize a fresh store.
 
 Record versions remain explicit corruption guards and make byte-level audit
-straightforward; they are not promises of backward readability. When the game
-is first deployed, a release policy must define backup, migration, rollback,
-and compatibility guarantees before an incompatible format is shipped.
+straightforward; they are not promises of backward readability. Release notes
+define the backup, migration or reinitialization, rollback, and mixed-version
+requirements for each shipped compatibility boundary.
 
 Scheduled indexes are written atomically with the authoritative object that
 requires them. Startup does not reconstruct missing simulation systems,
 maintenance events, training events, or activity events. A missing counterpart
 is corruption, not an upgrade opportunity.
 
-Storage format 1 contains the current Task, finite offer, work-assignment, carriage,
+Storage format 2 contains the current Task, finite offer, work-assignment, carriage,
 finance, market, travel, encounter, combat, combat-career, prize, warrant, and
 post-combat-recovery records and indexes. It also contains exact deep-space
 coordinates, per-system generation seeds, materialized-coverage cells, and
