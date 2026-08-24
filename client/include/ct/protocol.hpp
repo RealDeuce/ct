@@ -1409,6 +1409,51 @@ struct EncounterResult {
    PlayerPhase phase;
 };
 
+enum class CommandLossKind {
+   Destroyed,
+   Captured,
+   Surrendered,
+   Abandoned,
+   Bankruptcy,
+};
+enum class CaptainFate { Survived, Dead };
+struct TerminalReport {
+   uint64_t encounter_id;
+   uint64_t revision;
+   bool acknowledged;
+   uint64_t started_second;
+   uint64_t resolved_second;
+   uint64_t system_id;
+   std::string system_name;
+   std::string location;
+   EncounterContact contact;
+   EncounterAuthority authority;
+   EncounterThreat threat;
+   bool standing_orders_used;
+   std::optional<EncounterPosture> posture;
+   std::vector<EncounterFallback> fallbacks;
+   bool automated_combat_used;
+   std::string outcome;
+   std::string ship_name;
+   CommandLossKind loss_kind;
+   uint64_t owned_cargo_lost_millitons;
+   uint64_t entrusted_cargo_lost_millitons;
+   uint16_t unique_objects_lost;
+   uint64_t fuel_lost_millitons;
+   uint16_t passengers_affected;
+   uint16_t damage_hits;
+   std::string captain_name;
+   CaptainFate captain_fate;
+   uint16_t other_crew_total;
+   uint16_t other_crew_dead;
+   uint16_t other_crew_injured;
+   uint16_t other_crew_surviving;
+   uint64_t recovery_ready_second;
+   bool successor_required;
+   std::vector<std::string> incident_log;
+   PlayerPhase phase;
+};
+
 enum class CombatRange {
    Adjacent,
    Close,
@@ -2257,6 +2302,10 @@ FlightPlanSnapshot commit_flight_plan(TlsConnection&, uint64_t, const FlightPlan
 CheckpointSnapshot acknowledge_checkpoint(TlsConnection&, uint64_t, uint64_t,
       const std::array<uint8_t, 16>&, uint64_t);
 EncounterSnapshot get_encounter(TlsConnection&, uint64_t, const std::array<uint8_t, 16>&, uint64_t);
+TerminalReport get_terminal_report(TlsConnection&, uint64_t,
+                                   const std::array<uint8_t, 16>&, uint64_t);
+TerminalReport acknowledge_terminal_report(TlsConnection&, uint64_t, uint64_t, uint64_t,
+                                            const std::array<uint8_t, 16>&, uint64_t);
 EncounterResult resolve_encounter(TlsConnection&, uint64_t, uint64_t, uint64_t, EncounterPosture,
                                   const std::vector<EncounterFallback>&, const std::array<uint8_t, 16>&, uint64_t);
 CombatSnapshot get_combat(TlsConnection&, uint64_t, const std::array<uint8_t, 16>&, uint64_t);

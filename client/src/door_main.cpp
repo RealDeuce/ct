@@ -5252,7 +5252,7 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
    }
 }
 
-void show_finance(
+std::optional<ct::PlayerPhase> show_finance(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
    ct::CommandIdGenerator& random,
@@ -5348,7 +5348,7 @@ void show_finance(
          continue;
       }
       if(key == 'q' || key == 'Q') {
-         return;
+         return std::nullopt;
       }
       if((key == 'p' || key == 'P') && finance.in_default) {
          door_prompt(
@@ -5403,12 +5403,8 @@ void show_finance(
          door_warning(
             "\n\rThe court will liquidate every vessel, cargo lot, and financial balance "
             "in this estate. Career standing and legal records survive. The old captain "
-            "retires from play and a named successor begins with the original starting "
-            "class under a new secured loan.\n\r");
-         const auto successor = input_text("Successor captain name", "", 80);
-         if(!successor || successor->empty()) {
-            continue;
-         }
+            "retires from play. After the Command Loss Report is acknowledged, a named "
+            "successor begins with the original starting class under a new secured loan.\n\r");
          door_prompt("File this irrevocable petition? [y/N]: ");
          const auto confirmation = od_get_key(TRUE);
          od_printf("\n\r");
@@ -5416,12 +5412,14 @@ void show_finance(
             continue;
          }
          try {
-            ct::declare_bankruptcy(
-               connection, session_epoch, *successor,
+            const auto fleet = ct::declare_bankruptcy(
+               connection, session_epoch, "",
                random_command_id(random), request_id++);
-            door_success("The estate is settled. The successor's command is at the berth.\n\r");
+            door_success(
+               "The petition is entered. Review and acknowledge the Command Loss Report "
+               "before the estate is settled.\n\r");
             wait_for_enter();
-            return;
+            return fleet.phase;
          } catch(const std::exception& error) {
             door_error("%s\n\r", safe_field(error.what()).c_str());
             wait_for_enter();
@@ -5850,7 +5848,7 @@ void invoke_message_action(
       show_task_manager(connection, session_epoch, random, request_id);
       break;
    case ct::MessageActionKind::ReviewFinance:
-      show_finance(connection, session_epoch, random, request_id);
+      (void)show_finance(connection, session_epoch, random, request_id);
       break;
    case ct::MessageActionKind::ReviewOperations:
       (void)show_combat_operations(
@@ -10049,7 +10047,11 @@ void run_first_watch(ct::TlsConnection& connection,
          mark_first_watch_seen(fact);
          break;
       case ct::FirstWatchFact::Finance:
-         show_finance(connection, hello.assigned_epoch, random, request_id);
+         if(const auto phase = show_finance(
+               connection, hello.assigned_epoch, random, request_id)) {
+            hello.phase = *phase;
+            return;
+         }
          mark_first_watch_seen(fact);
          break;
       case ct::FirstWatchFact::Operations:
@@ -10190,7 +10192,10 @@ ct::PlayerPhase run_docked_menu(
          show_task_manager(connection, hello.assigned_epoch, random, request_id);
       } else if(key == 'B') {
          if(snapshot.banking_available) {
-            show_finance(connection, hello.assigned_epoch, random, request_id);
+            if(const auto phase = show_finance(
+                  connection, hello.assigned_epoch, random, request_id)) {
+               return *phase;
+            }
          } else {
             door_warning("No recognized banking house operates at this port.\n\r");
             wait_for_enter();
@@ -11185,6 +11190,165 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
    return result.phase;
 }
 
+const char* command_loss_name(const ct::CommandLossKind kind)
+{
+   switch(kind) {
+      case ct::CommandLossKind::Destroyed: return "Vessel destroyed";
+      case ct::CommandLossKind::Captured: return "Vessel captured";
+      case ct::CommandLossKind::Surrendered: return "Vessel surrendered";
+      case ct::CommandLossKind::Abandoned: return "Vessel abandoned";
+      case ct::CommandLossKind::Bankruptcy: return "Estate in receivership";
+   }
+   return "Command lost";
+}
+
+const char* encounter_posture_name(const ct::EncounterPosture posture)
+{
+   switch(posture) {
+      case ct::EncounterPosture::Fight: return "Fight";
+      case ct::EncounterPosture::Flee: return "Run";
+      case ct::EncounterPosture::Comply: return "Comply";
+      case ct::EncounterPosture::Surrender: return "Surrender";
+      case ct::EncounterPosture::Board: return "Board";
+      case ct::EncounterPosture::Pursue: return "Pursue";
+      case ct::EncounterPosture::ContinueCourse: return "Continue course";
+   }
+   return "Unknown";
+}
+
+const char* encounter_fallback_name(const ct::EncounterFallback fallback)
+{
+   switch(fallback) {
+      case ct::EncounterFallback::Surrender: return "Surrender";
+      case ct::EncounterFallback::Abandon: return "Abandon ship";
+      case ct::EncounterFallback::JettisonCargo: return "Jettison cargo";
+      case ct::EncounterFallback::BreakOff: return "Break off";
+   }
+   return "Unknown";
+}
+
+const char* encounter_authority_name(const ct::EncounterAuthority authority)
+{
+   switch(authority) {
+      case ct::EncounterAuthority::None: return "None established";
+      case ct::EncounterAuthority::Pirate: return "Pirate demand";
+      case ct::EncounterAuthority::TrafficControl: return "Traffic control";
+      case ct::EncounterAuthority::Customs: return "Customs";
+      case ct::EncounterAuthority::Naval: return "Naval authority";
+      case ct::EncounterAuthority::Warrant: return "Warrant authority";
+   }
+   return "Unknown";
+}
+
+const char* encounter_threat_name(const ct::EncounterThreat threat)
+{
+   switch(threat) {
+      case ct::EncounterThreat::Unknown: return "Unknown";
+      case ct::EncounterThreat::Favorable: return "Favorable";
+      case ct::EncounterThreat::Comparable: return "Comparable";
+      case ct::EncounterThreat::Dangerous: return "Dangerous";
+      case ct::EncounterThreat::Overwhelming: return "Overwhelming";
+   }
+   return "Unknown";
+}
+
+void render_command_loss_report(const ct::TerminalReport& report)
+{
+   od_clr_scr();
+   door_heading("Command Loss Report\n\r===================\n\r\n\r");
+   door_heading("Incident\n\r--------\n\r");
+   door_label("Date: ");
+   door_number("%s\n\r", game_date(report.resolved_second).c_str());
+   door_label("Location: ");
+   door_information("%s\n\r", safe_field(report.location).c_str());
+   door_label("Contact: ");
+   door_information("%s\n\r", safe_field(report.contact.ship_name).c_str());
+   door_label("Transponder: ");
+   door_information("%s\n\r", safe_field(report.contact.transponder).c_str());
+   if(!report.contact.class_name.empty()) {
+      door_label("Classification: ");
+      door_information("%s  confidence %u%%\n\r",
+                       safe_field(report.contact.class_name).c_str(),
+                       report.contact.confidence_percent);
+   }
+   door_label("Apparent authority: ");
+   door_information("%s\n\r", encounter_authority_name(report.authority));
+   door_label("Assessed threat: ");
+   door_information("%s\n\r", encounter_threat_name(report.threat));
+
+   door_heading("\n\rStanding Orders\n\r---------------\n\r");
+   door_information("%s\n\r", report.standing_orders_used
+      ? "The filed Through plan supplied this response."
+      : "The response was entered during the encounter.");
+   if(report.posture) {
+      door_label("Response: ");
+      door_information("%s\n\r", encounter_posture_name(*report.posture));
+   }
+   if(!report.fallbacks.empty()) {
+      door_label("Fallbacks: ");
+      for(size_t index = 0; index < report.fallbacks.size(); ++index) {
+         if(index != 0) {
+            door_information(", ");
+         }
+         door_information("%s", encounter_fallback_name(report.fallbacks[index]));
+      }
+      od_printf("\n\r");
+   }
+   door_label("Tactical controller: ");
+   door_information("%s\n\r", report.automated_combat_used ? "used" : "not used");
+
+   door_heading("\n\rOutcome\n\r-------\n\r");
+   door_warning("%s: %s\n\r", command_loss_name(report.loss_kind),
+                safe_field(report.outcome).c_str());
+   door_label("Ship: ");
+   door_information("%s\n\r", safe_field(report.ship_name).c_str());
+   door_label("Damage recorded: ");
+   door_number("%u hit(s)\n\r", report.damage_hits);
+
+   door_heading("\n\rPersonnel\n\r---------\n\r");
+   door_label("Captain: ");
+   door_information("%s - %s\n\r", safe_field(report.captain_name).c_str(),
+                    report.captain_fate == ct::CaptainFate::Dead ? "dead" : "survived");
+   door_label("Other crew: ");
+   door_number("%u total; %u dead; %u injured; %u surviving\n\r",
+               report.other_crew_total, report.other_crew_dead,
+               report.other_crew_injured, report.other_crew_surviving);
+
+   door_heading("\n\rMaterial and Carriage\n\r---------------------\n\r");
+   door_label("Owned cargo lost: ");
+   door_number("%s t\n\r", ct::format_tonnage(report.owned_cargo_lost_millitons).c_str());
+   door_label("Entrusted cargo lost: ");
+   door_number("%s t\n\r", ct::format_tonnage(report.entrusted_cargo_lost_millitons).c_str());
+   door_label("Unique objects lost: ");
+   door_number("%u\n\r", report.unique_objects_lost);
+   door_label("Fuel lost: ");
+   door_number("%s t\n\r", ct::format_tonnage(report.fuel_lost_millitons).c_str());
+   door_label("Passengers affected: ");
+   door_number("%u\n\r", report.passengers_affected);
+
+   door_heading("\n\rProceedings\n\r-----------\n\r");
+   door_label("Recovery eligible: ");
+   door_number("%s\n\r", game_date(report.recovery_ready_second).c_str());
+   door_information("%s\n\r", report.successor_required
+      ? "A named successor is required."
+      : "The surviving captain retains the command ledger.");
+}
+
+void show_terminal_incident_log(const ct::TerminalReport& report)
+{
+   od_clr_scr();
+   door_heading("Full Incident Log\n\r=================\n\r\n\r");
+   if(report.incident_log.empty()) {
+      door_information("No further incident entries were recovered.\n\r");
+   } else {
+      for(size_t index = 0; index < report.incident_log.size(); ++index) {
+         door_number("%u. ", static_cast<unsigned>(index + 1));
+         door_information("%s\n\r", safe_field(report.incident_log[index]).c_str());
+      }
+   }
+   wait_for_enter();
+}
+
 void run_operational_loop(ct::TlsConnection& connection, ct::ServerHello& hello)
 {
    ct::CommandIdGenerator random;
@@ -11236,26 +11400,84 @@ void run_operational_loop(ct::TlsConnection& connection, ct::ServerHello& hello)
          continue;
       }
       if(hello.phase == ct::PlayerPhase::Terminal) {
+         std::optional<ct::TerminalReport> report;
+         try {
+            report = ct::get_terminal_report(
+               connection, hello.assigned_epoch, random_command_id(random), request_id++);
+         } catch(const std::exception& error) {
+            od_clr_scr();
+            door_heading("Command Loss Report\n\r===================\n\r\n\r");
+            door_error("The report could not be recovered: %s\n\r\n\r",
+                       safe_field(error.what()).c_str());
+            door_option_prompt({"[Enter] Refresh", "[Q] Leave game", "[?] Help"});
+            const auto action = static_cast<char>(std::toupper(
+               static_cast<unsigned char>(od_get_key(TRUE))));
+            if(action == '?') {
+               show_context_help();
+            } else if(action == 'Q' && confirm_return_to_bbs()) {
+               return;
+            }
+            continue;
+         }
+         if(!report->acknowledged) {
+            render_command_loss_report(*report);
+            door_option_prompt({
+               "[L] Full incident log",
+               "[Enter] Acknowledge report",
+               "[Q] Leave game",
+               "[?] Help",
+            });
+            const auto action = static_cast<char>(std::toupper(
+               static_cast<unsigned char>(od_get_key(TRUE))));
+            if(action == 'L') {
+               show_terminal_incident_log(*report);
+               continue;
+            }
+            if(action == '?') {
+               show_context_help();
+               continue;
+            }
+            if(action == 'Q') {
+               if(confirm_return_to_bbs()) {
+                  return;
+               }
+               continue;
+            }
+            if(action != '\r' && action != '\n' && action != 0) {
+               continue;
+            }
+            try {
+               report = ct::acknowledge_terminal_report(
+                  connection, hello.assigned_epoch, report->encounter_id, report->revision,
+                  random_command_id(random), request_id++);
+            } catch(const std::exception& error) {
+               door_error("%s\n\r", safe_field(error.what()).c_str());
+               wait_for_enter();
+            }
+            continue;
+         }
+
          od_clr_scr();
          door_heading("Command Recovery\n\r================\n\r\n\r");
-         try {
-            const auto encounter = ct::get_encounter(
-               connection, hello.assigned_epoch, random_command_id(random), request_id++);
-            door_warning("%s\n\r\n\r", safe_field(encounter.summary).c_str());
-         } catch(const std::exception&) {
-            door_warning("The command is recorded as lost.\n\r\n\r");
-         }
+         door_warning("%s: %s\n\r\n\r", command_loss_name(report->loss_kind),
+                      safe_field(report->outcome).c_str());
          door_information(
             "A surviving captain remains the same person through rescue, custody, or parole. "
             "Only a recorded death opens the estate to a successor.\n\r");
          door_option_prompt({
             "[A] Abandon captain and restart",
             "[R] Review recovery or succession",
+            "[V] Review incident report",
             "[Enter] Refresh",
             "[Q] Leave game",
+            "[?] Help",
          });
          const auto action = static_cast<char>(std::toupper(
             static_cast<unsigned char>(od_get_key(TRUE))));
+         if(action == '?') {
+            show_context_help();
+            continue;
+         }
          if(action == 'Q') {
             if(confirm_return_to_bbs()) {
                return;
@@ -11268,12 +11490,26 @@ void run_operational_loop(ct::TlsConnection& connection, ct::ServerHello& hello)
             }
             continue;
          }
+         if(action == 'V') {
+            render_command_loss_report(*report);
+            door_option_prompt({"[L] Full incident log", "[Enter] Return", "[?] Help"});
+            const auto review_action = static_cast<char>(std::toupper(
+               static_cast<unsigned char>(od_get_key(TRUE))));
+            if(review_action == 'L') {
+               show_terminal_incident_log(*report);
+            } else if(review_action == '?') {
+               show_context_help();
+            }
+            continue;
+         }
          if(action != 'R') {
             continue;
          }
          od_printf("\n\r");
          const auto successor = input_text(
-            "Successor name (leave empty if captain survived)", "", 80);
+            report->successor_required
+               ? "Successor name"
+               : "Successor name (leave empty; captain survived)", "", 80);
          if(!successor) {
             continue;
          }

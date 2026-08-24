@@ -168,6 +168,8 @@ struct Request {
     suggestTaskCourse @73 :Void;
     cureFinanceDefault @74 :Void;
     commissionShip @75 :CommissionShipRequest;
+    getTerminalReport @76 :Void;
+    acknowledgeTerminalReport @77 :AcknowledgeTerminalReportRequest;
   }
 }
 
@@ -213,6 +215,7 @@ struct Response {
     systemRadio @36 :SystemRadioSnapshot;
     radioContent @37 :RadioContent;
     dockedServiceReceipt @38 :DockedServiceReceipt;
+    terminalReport @39 :TerminalReport;
   }
 }
 
@@ -1694,6 +1697,58 @@ struct EncounterResult {
   cargoLostMillitons @5 :UInt64;
   fuelLostMillitons @6 :UInt64;
   damageHits @7 :UInt16;
+}
+
+enum CommandLossKind {
+  destroyed @0;
+  captured @1;
+  surrendered @2;
+  abandoned @3;
+  bankruptcy @4;
+}
+
+enum CaptainFate { survived @0; dead @1; }
+
+struct TerminalReport {
+  encounterId @0 :UInt64;
+  revision @1 :UInt64;
+  acknowledged @2 :Bool;
+  startedSecond @3 :UInt64;
+  resolvedSecond @4 :UInt64;
+  systemId @5 :UInt64;
+  systemName @6 :Text;
+  location @7 :Text;
+  contact @8 :EncounterContact;
+  authority @9 :EncounterAuthority;
+  threat @10 :EncounterThreat;
+  standingOrdersUsed @11 :Bool;
+  hasPosture @12 :Bool;
+  posture @13 :EncounterPosture;
+  fallbacks @14 :List(EncounterFallback);
+  automatedCombatUsed @15 :Bool;
+  outcome @16 :Text;
+  shipName @17 :Text;
+  lossKind @18 :CommandLossKind;
+  ownedCargoLostMillitons @19 :UInt64;
+  entrustedCargoLostMillitons @20 :UInt64;
+  uniqueObjectsLost @21 :UInt16;
+  fuelLostMillitons @22 :UInt64;
+  passengersAffected @23 :UInt16;
+  damageHits @24 :UInt16;
+  captainName @25 :Text;
+  captainFate @26 :CaptainFate;
+  otherCrewTotal @27 :UInt16;
+  otherCrewDead @28 :UInt16;
+  otherCrewInjured @29 :UInt16;
+  otherCrewSurviving @30 :UInt16;
+  recoveryReadySecond @31 :UInt64;
+  successorRequired @32 :Bool;
+  incidentLog @33 :List(Text);
+}
+
+struct AcknowledgeTerminalReportRequest {
+  encounterId @0 :UInt64;
+  expectedRevision @1 :UInt64;
 }
 
 enum CombatRange {

@@ -1475,6 +1475,14 @@ abandonment, 14 days after other destruction or loss, or 30 days after capture
 or surrender. A dead captain requires a named successor. Career, warrant, and
 estate history persist through succession.
 
+Every terminal command loss atomically preserves a censored Command Loss
+Report with the encounter. Its typed cause, captain fate, material and personnel
+consequences, recovery date, and successor requirement govern recovery; outcome
+prose is never parsed as rule state. The captain must acknowledge the current
+report revision before recovery or succession. Reconnecting before that point
+shows the report again. The detailed incident log is optional, and the report
+is deleted with the terminal encounter only after recovery succeeds.
+
 Roll weapon damage, subtract current armor unless the weapon has the meson
 trait, and convert the penetrating total into grouped system hits. Every hit in
 one Double or Triple group uses the same location.

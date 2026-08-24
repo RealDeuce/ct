@@ -189,6 +189,15 @@ where practical and otherwise replaced visibly. Rendering must be
 deterministic so the same profile, width, and semantic view produce the same
 output in tests.
 
+A terminal command loss is presented as a labeled, wrapping report rather
+than server-authored terminal prose. Incident, standing-order, outcome,
+personnel, material, and proceeding sections are rendered from typed CT-RPC
+fields. The mandatory summary prompt offers the optional full incident log,
+acknowledgement, help, and confirmed exit. Recovery controls are not rendered
+if fetching or acknowledging the report fails. After acknowledgement, the
+recovery screen retains a review action until successful recovery removes the
+report.
+
 ## Test coverage
 
 `client/tests/door_presentation_test.cpp` provides deterministic equivalent

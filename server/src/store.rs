@@ -52,22 +52,23 @@ use crate::universe::{
     stellar_component_density_per_cubic_parsec,
 };
 use crate::wire::{
-    ArrivalPacket, COMMAND_ID_BYTES, CargoLot, CargoSaleQuote, CargoTitle, CheckpointKind,
-    CheckpointSnapshot, Command, CommandPersistence, CommandRequest, CommitFlightPlanRequest,
-    CommodityLegality, CourseFuelSource, CoursePlan, CoursePlot, CourseWaypoint, DockedFuelService,
-    DockedFuelServiceKind, DockedRepairService, DockedServiceOrderKind, DockedServiceReceipt,
-    DockedServiceReceiptDetail, DockedServices, DockedSnapshot, EncounterAuthority,
-    EncounterContact, EncounterFallback, EncounterKind, EncounterPolicy, EncounterPosture,
-    EncounterResult, EncounterSnapshot, EncounterState, EncounterThreat, ErrorCode, FlightLocus,
-    FlightPlanAction, FlightPlanPreview, FlightPlanProposal, FlightPlanSnapshot, FlightPlanState,
-    FlightPlanStep, FlightPlanWarning, FuelAccessKind, FuelOperation, FuelOperationTiming,
-    FuelPurchaseReceipt, FuelSourceBodyKind, KnownBelt, KnownDestinations, KnownSystemSummary,
-    MarketOffer, MarketSnapshot, MessageClassification, MessageItem, MessageManagement,
-    OriginDossier, Outcome, OutcomeKind, PlayerCreation, PlayerIdentity, PlayerPhase,
-    PriceDistribution, ProvisionPurchaseReceipt, ShipActivityKind as WireShipActivityKind,
-    ShipActivityStatus, ShipAmmunitionStatus, ShipProvisionStatus, ShipStatusSnapshot,
-    ShipSubsystemKind, ShipSubsystemStatus, SystemMappingChoice, SystemMappingState,
-    SystemMappingStatus, TaskRouteAssessment, TravelStage, TravelStatus, WaypointAuthority,
+    ArrivalPacket, COMMAND_ID_BYTES, CaptainFate, CargoLot, CargoSaleQuote, CargoTitle,
+    CheckpointKind, CheckpointSnapshot, Command, CommandLossKind, CommandPersistence,
+    CommandRequest, CommitFlightPlanRequest, CommodityLegality, CourseFuelSource, CoursePlan,
+    CoursePlot, CourseWaypoint, DockedFuelService, DockedFuelServiceKind, DockedRepairService,
+    DockedServiceOrderKind, DockedServiceReceipt, DockedServiceReceiptDetail, DockedServices,
+    DockedSnapshot, EncounterAuthority, EncounterContact, EncounterFallback, EncounterKind,
+    EncounterPolicy, EncounterPosture, EncounterResult, EncounterSnapshot, EncounterState,
+    EncounterThreat, ErrorCode, FlightLocus, FlightPlanAction, FlightPlanPreview,
+    FlightPlanProposal, FlightPlanSnapshot, FlightPlanState, FlightPlanStep, FlightPlanWarning,
+    FuelAccessKind, FuelOperation, FuelOperationTiming, FuelPurchaseReceipt, FuelSourceBodyKind,
+    KnownBelt, KnownDestinations, KnownSystemSummary, MarketOffer, MarketSnapshot,
+    MessageClassification, MessageItem, MessageManagement, OriginDossier, Outcome, OutcomeKind,
+    PlayerCreation, PlayerIdentity, PlayerPhase, PriceDistribution, ProvisionPurchaseReceipt,
+    ShipActivityKind as WireShipActivityKind, ShipActivityStatus, ShipAmmunitionStatus,
+    ShipProvisionStatus, ShipStatusSnapshot, ShipSubsystemKind, ShipSubsystemStatus,
+    SystemMappingChoice, SystemMappingState, SystemMappingStatus, TaskRouteAssessment,
+    TerminalReport, TravelStage, TravelStatus, WaypointAuthority,
 };
 
 type SequenceDatabase = Database<U64<BE>, Bytes>;
@@ -1112,6 +1113,9 @@ struct EncounterRecord {
     combat: Option<crate::combat::CombatState>,
     player_order: Option<crate::combat::JointOrder>,
     automation_decision: Option<crate::combat::AutomationDecision>,
+    standing_orders_used: bool,
+    automated_combat_used: bool,
+    terminal_report: Option<TerminalReport>,
     combat_log: Vec<String>,
     pending_interventions: Vec<PendingCombatIntervention>,
 }
@@ -4793,6 +4797,28 @@ impl Store {
                     message: "there is no active encounter".into(),
                 },
             },
+            Command::GetTerminalReport => match self.terminal_report_in(txn, &queued.identity)? {
+                RuleResult::Applied(report) => OutcomeKind::TerminalReport(report),
+                RuleResult::Rejected(message) => OutcomeKind::Error {
+                    code: ErrorCode::InvalidCommand,
+                    message,
+                },
+            },
+            Command::AcknowledgeTerminalReport {
+                encounter_id,
+                expected_revision,
+            } => match self.acknowledge_terminal_report_in(
+                txn,
+                &queued.identity,
+                encounter_id,
+                expected_revision,
+            )? {
+                RuleResult::Applied(report) => OutcomeKind::TerminalReport(report),
+                RuleResult::Rejected(message) => OutcomeKind::Error {
+                    code: ErrorCode::InvalidCommand,
+                    message,
+                },
+            },
             Command::ResolveEncounter(ref request) => {
                 match self.resolve_encounter_in(txn, &queued.identity, request)? {
                     RuleResult::Applied(result) => OutcomeKind::EncounterResult(result),
@@ -7607,6 +7633,306 @@ impl Store {
             .transpose()
     }
 
+    fn terminal_report_for_record_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+        record: &EncounterRecord,
+        loss_kind: Option<CommandLossKind>,
+        resolved_second: u64,
+    ) -> Result<TerminalReport, StoreError> {
+        let result = record.result.as_ref().ok_or(StoreError::Corrupt(
+            "terminal command has no encounter result",
+        ))?;
+        if !result.terminal {
+            return Err(StoreError::Corrupt(
+                "terminal report requested for a nonterminal encounter",
+            ));
+        }
+        let player = self
+            .players
+            .get(txn, &encode_identity(identity))?
+            .map(decode_player_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("terminal player is missing"))?;
+        let ship = self
+            .ships
+            .get(txn, &player.ship_id)?
+            .map(decode_ship_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("lost command vessel is missing"))?;
+        let captain = self
+            .persons
+            .get(txn, &player.captain_person_id)?
+            .map(decode_person_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("lost command captain is missing"))?;
+        let system_name = self
+            .simulation
+            .systems(txn)?
+            .into_iter()
+            .find(|system| system.system_id == ship.system_id)
+            .map_or_else(
+                || format!("System {}", ship.system_id),
+                |system| system.name,
+            );
+        let location = match ship.location {
+            ShipLocationRecord::Docked { .. } => format!("Docked in {system_name}"),
+            ShipLocationRecord::Holding { .. } => format!("Holding in {system_name}"),
+            ShipLocationRecord::InFlight(_) => format!("Under way in {system_name}"),
+        };
+        let loss_kind = loss_kind.unwrap_or_else(|| {
+            record
+                .combat
+                .as_ref()
+                .and_then(|combat| {
+                    combat
+                        .vessels
+                        .iter()
+                        .find(|vessel| vessel.vessel_id == ship.ship_id)
+                })
+                .map(|vessel| match vessel.disposition {
+                    crate::combat::VesselDisposition::Captured => CommandLossKind::Captured,
+                    crate::combat::VesselDisposition::Surrendered => CommandLossKind::Surrendered,
+                    crate::combat::VesselDisposition::Abandoned => CommandLossKind::Abandoned,
+                    _ => CommandLossKind::Destroyed,
+                })
+                .unwrap_or_else(|| {
+                    if record.opponent_catalog_id == 0
+                        && record.snapshot.authority == EncounterAuthority::Warrant
+                    {
+                        CommandLossKind::Bankruptcy
+                    } else if record.posture == Some(EncounterPosture::Surrender) {
+                        CommandLossKind::Surrendered
+                    } else {
+                        CommandLossKind::Destroyed
+                    }
+                })
+        });
+        let delay_days = match loss_kind {
+            CommandLossKind::Bankruptcy => 0,
+            CommandLossKind::Captured | CommandLossKind::Surrendered => 30,
+            CommandLossKind::Abandoned => 7,
+            CommandLossKind::Destroyed => 14,
+        };
+        let affected_ships = if loss_kind == CommandLossKind::Bankruptcy {
+            let mut ships = Vec::with_capacity(player.managed_ship_ids.len());
+            for ship_id in &player.managed_ship_ids {
+                ships.push(
+                    self.ships
+                        .get(txn, ship_id)?
+                        .map(decode_ship_record)
+                        .transpose()?
+                        .ok_or(StoreError::Corrupt("bankruptcy vessel is missing"))?,
+                );
+            }
+            ships
+        } else {
+            vec![ship.clone()]
+        };
+        let affected_ship_ids = affected_ships
+            .iter()
+            .map(|affected| affected.ship_id)
+            .collect::<HashSet<_>>();
+        let captain_fate = if person_dead(&captain) {
+            CaptainFate::Dead
+        } else {
+            CaptainFate::Survived
+        };
+        let successor_required =
+            captain_fate == CaptainFate::Dead || loss_kind == CommandLossKind::Bankruptcy;
+        let mut other_crew_total = 0_u16;
+        let mut other_crew_dead = 0_u16;
+        let mut other_crew_injured = 0_u16;
+        for entry in self.crew_services.iter(txn)? {
+            let (_, bytes) = entry?;
+            let service = decode_crew_service(bytes)?;
+            if service.command != *identity
+                || !affected_ship_ids.contains(&service.ship_id)
+                || service.person_id == player.captain_person_id
+            {
+                continue;
+            }
+            let person = self
+                .persons
+                .get(txn, &service.person_id)?
+                .map(decode_person_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("lost ship crew record is missing"))?;
+            other_crew_total = other_crew_total.saturating_add(1);
+            if person_dead(&person) {
+                other_crew_dead = other_crew_dead.saturating_add(1);
+            } else if person_injury_points(&person) != 0 {
+                other_crew_injured = other_crew_injured.saturating_add(1);
+            }
+        }
+        let owned_cargo_lost_millitons = affected_ships
+            .iter()
+            .flat_map(|affected| affected.cargo.iter())
+            .filter(|lot| lot.title == CargoTitle::PlayerOwned)
+            .map(|lot| lot.quantity_millitons)
+            .fold(0_u64, u64::saturating_add);
+        let entrusted_cargo_lost_millitons = affected_ships
+            .iter()
+            .flat_map(|affected| affected.cargo.iter())
+            .filter(|lot| matches!(lot.title, CargoTitle::Freight | CargoTitle::Contract))
+            .map(|lot| lot.quantity_millitons)
+            .fold(0_u64, u64::saturating_add);
+        let unique_objects_lost = u16::try_from(
+            affected_ships
+                .iter()
+                .flat_map(|affected| affected.cargo.iter())
+                .filter(|lot| lot.title == CargoTitle::UniqueObject)
+                .count(),
+        )
+        .unwrap_or(u16::MAX);
+        let passengers_affected = affected_ships
+            .iter()
+            .flat_map(|affected| affected.passengers.iter())
+            .map(|manifest| manifest.passenger_count)
+            .fold(0_u16, u16::saturating_add);
+        let damage_hits = affected_ships
+            .iter()
+            .flat_map(|affected| affected.subsystems.iter())
+            .map(|subsystem| subsystem.sustained_hits)
+            .fold(0_u16, u16::saturating_add);
+        let mut incident_log = vec![format!(
+            "Contact recorded as {} at {}.",
+            record.snapshot.contact.ship_name, record.snapshot.contact.range
+        )];
+        if record.standing_orders_used {
+            incident_log.push("The filed Through plan supplied the standing response.".into());
+        }
+        if let Some(combat) = &record.combat {
+            incident_log.extend(
+                record
+                    .combat_log
+                    .iter()
+                    .map(|line| combat_log_text_for_snapshot(combat, line)),
+            );
+        } else {
+            incident_log.extend(record.combat_log.iter().cloned());
+        }
+        if incident_log.last() != Some(&result.outcome) {
+            incident_log.push(result.outcome.clone());
+        }
+        let mut contact = record.snapshot.contact.clone();
+        if record.snapshot.kind == EncounterKind::Hostile
+            || record.snapshot.authority == EncounterAuthority::Pirate
+        {
+            contact.class_name = "Armed vessel".into();
+        }
+        Ok(TerminalReport {
+            encounter_id: record.snapshot.encounter_id,
+            revision: record.snapshot.revision,
+            acknowledged: false,
+            started_second: record.snapshot.started_second,
+            resolved_second,
+            system_id: ship.system_id,
+            system_name,
+            location,
+            contact,
+            authority: record.snapshot.authority,
+            threat: record.snapshot.threat,
+            standing_orders_used: record.standing_orders_used,
+            posture: record.posture,
+            fallbacks: record.fallbacks.clone(),
+            automated_combat_used: record.automated_combat_used,
+            outcome: result.outcome.clone(),
+            ship_name: ship.name.clone(),
+            loss_kind,
+            owned_cargo_lost_millitons,
+            entrusted_cargo_lost_millitons,
+            unique_objects_lost,
+            fuel_lost_millitons: affected_ships
+                .iter()
+                .map(|affected| affected.current_fuel_millitons)
+                .fold(0_u64, u64::saturating_add),
+            passengers_affected,
+            damage_hits,
+            captain_name: captain.person.name.clone(),
+            captain_fate,
+            other_crew_total,
+            other_crew_dead,
+            other_crew_injured,
+            other_crew_surviving: other_crew_total.saturating_sub(other_crew_dead),
+            recovery_ready_second: resolved_second
+                .saturating_add(delay_days * crate::simulation::SECONDS_PER_DAY),
+            successor_required,
+            incident_log,
+        })
+    }
+
+    fn terminal_report_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+    ) -> Result<RuleResult<TerminalReport>, StoreError> {
+        if self.player_phase_in(txn, identity)? != PlayerPhase::Terminal {
+            return Ok(RuleResult::Rejected(
+                "there is no command-loss report".into(),
+            ));
+        }
+        let record = self
+            .encounter_in(txn, identity)?
+            .ok_or(StoreError::Corrupt(
+                "terminal command has no encounter record",
+            ))?;
+        if let Some(report) = record.terminal_report {
+            return Ok(RuleResult::Applied(report));
+        }
+        Ok(RuleResult::Applied(self.terminal_report_for_record_in(
+            txn,
+            identity,
+            &record,
+            None,
+            record.snapshot.next_turn_second,
+        )?))
+    }
+
+    fn acknowledge_terminal_report_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        encounter_id: u64,
+        expected_revision: u64,
+    ) -> Result<RuleResult<TerminalReport>, StoreError> {
+        if self.player_phase_in(txn, identity)? != PlayerPhase::Terminal {
+            return Ok(RuleResult::Rejected(
+                "there is no command-loss report".into(),
+            ));
+        }
+        let key = encode_identity(identity);
+        let mut record = self
+            .encounter_in(txn, identity)?
+            .ok_or(StoreError::Corrupt(
+                "terminal command has no encounter record",
+            ))?;
+        let mut report = match record.terminal_report.take() {
+            Some(report) => report,
+            None => self.terminal_report_for_record_in(
+                txn,
+                identity,
+                &record,
+                None,
+                record.snapshot.next_turn_second,
+            )?,
+        };
+        if report.encounter_id != encounter_id || report.revision != expected_revision {
+            return Ok(RuleResult::Rejected(
+                "that command-loss report is no longer current".into(),
+            ));
+        }
+        if !report.acknowledged {
+            report.acknowledged = true;
+            report.revision = report.revision.saturating_add(1);
+        }
+        record.terminal_report = Some(report.clone());
+        self.encounters
+            .put(txn, &key, &encode_encounter_record(&record)?)?;
+        Ok(RuleResult::Applied(report))
+    }
+
     fn acknowledge_checkpoint_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
@@ -7837,6 +8163,9 @@ impl Store {
                     combat: None,
                     player_order: None,
                     automation_decision: None,
+                    standing_orders_used: false,
+                    automated_combat_used: false,
+                    terminal_report: None,
                     combat_log: Vec::new(),
                     pending_interventions: Vec::new(),
                 })?,
@@ -8000,6 +8329,9 @@ impl Store {
                 combat: None,
                 player_order: None,
                 automation_decision: None,
+                standing_orders_used: false,
+                automated_combat_used: false,
+                terminal_report: None,
                 combat_log: Vec::new(),
                 pending_interventions: Vec::new(),
             };
@@ -8925,6 +9257,7 @@ impl Store {
             let mut decision = decision;
             decision.order = staffed.clone();
             record.automation_decision = Some(decision);
+            record.automated_combat_used = true;
             staffed
         } else {
             match self.player_combat_order_in(txn, identity, &ship, combat, request)? {
@@ -11157,6 +11490,9 @@ impl Store {
                 combat: None,
                 player_order: None,
                 automation_decision: None,
+                standing_orders_used: false,
+                automated_combat_used: false,
+                terminal_report: None,
                 combat_log: shared.combat_log.clone(),
                 pending_interventions: Vec::new(),
             };
@@ -11221,6 +11557,9 @@ impl Store {
                     combat: None,
                     player_order: None,
                     automation_decision: None,
+                    standing_orders_used: false,
+                    automated_combat_used: false,
+                    terminal_report: None,
                     combat_log: shared.combat_log.clone(),
                     pending_interventions: Vec::new(),
                 };
@@ -11332,6 +11671,9 @@ impl Store {
             combat: Some(combat.clone()),
             player_order: None,
             automation_decision: None,
+            standing_orders_used: false,
+            automated_combat_used: false,
+            terminal_report: None,
             combat_log: vec![if boarding_inspection {
                 "The registered traffic refuses the boarding order; the picket escalates to combat."
                     .into()
@@ -12051,17 +12393,11 @@ impl Store {
         &self,
         txn: &mut heed::RwTxn<'_>,
         identity: &PlayerIdentity,
-        successor_name: &str,
+        _successor_name: &str,
     ) -> Result<RuleResult<crate::wire::FleetSnapshot>, StoreError> {
         if self.player_phase_in(txn, identity)? != PlayerPhase::Docked {
             return Ok(RuleResult::Rejected(
                 "bankruptcy may only be declared while docked".into(),
-            ));
-        }
-        let successor_name = successor_name.trim();
-        if successor_name.is_empty() || successor_name.len() > 80 {
-            return Ok(RuleResult::Rejected(
-                "the bankruptcy estate requires a successor name of at most 80 characters".into(),
             ));
         }
         let (_, ship) = self.player_and_ship_in(txn, identity)?;
@@ -12079,7 +12415,7 @@ impl Store {
 
         let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
         let encounter_id = take_next_id(self.meta, txn, META_NEXT_ENCOUNTER_ID)?;
-        let encounter = EncounterRecord {
+        let mut encounter = EncounterRecord {
             snapshot: EncounterSnapshot {
                 encounter_id,
                 revision: 1,
@@ -12124,15 +12460,25 @@ impl Store {
             combat: None,
             player_order: None,
             automation_decision: None,
+            standing_orders_used: false,
+            automated_combat_used: false,
+            terminal_report: None,
             combat_log: vec!["The captain surrenders the insolvent estate to its creditors.".into()],
             pending_interventions: Vec::new(),
         };
+        encounter.terminal_report = Some(self.terminal_report_for_record_in(
+            txn,
+            identity,
+            &encounter,
+            Some(CommandLossKind::Bankruptcy),
+            current,
+        )?);
         self.encounters.put(
             txn,
             &encode_identity(identity),
             &encode_encounter_record(&encounter)?,
         )?;
-        self.recover_command_in(txn, identity, successor_name)
+        Ok(RuleResult::Applied(self.fleet_snapshot_in(txn, identity)?))
     }
 
     fn abandon_player_in(
@@ -12587,6 +12933,20 @@ impl Store {
                 "terminal command has no terminal encounter result",
             ));
         }
+        let Some(report) = encounter
+            .terminal_report
+            .as_ref()
+            .filter(|report| report.acknowledged)
+        else {
+            return Ok(RuleResult::Rejected(
+                "review and acknowledge the current command-loss report before recovery".into(),
+            ));
+        };
+        if report.encounter_id != encounter.snapshot.encounter_id {
+            return Err(StoreError::Corrupt(
+                "terminal report does not match its encounter",
+            ));
+        }
         let mut player = self
             .players
             .get(txn, &key)?
@@ -12599,36 +12959,8 @@ impl Store {
             .map(decode_ship_record)
             .transpose()?
             .ok_or(StoreError::Corrupt("lost command vessel is missing"))?;
-        let bankruptcy = encounter
-            .result
-            .as_ref()
-            .is_some_and(|result| result.outcome.contains("irrecoverable bankruptcy"));
-        let disposition = encounter
-            .combat
-            .as_ref()
-            .and_then(|combat| {
-                combat
-                    .vessels
-                    .iter()
-                    .find(|vessel| vessel.vessel_id == lost_ship.ship_id)
-            })
-            .map_or(crate::combat::VesselDisposition::Destroyed, |vessel| {
-                vessel.disposition
-            });
-        let delay_days = if bankruptcy {
-            0
-        } else {
-            match disposition {
-                crate::combat::VesselDisposition::Captured
-                | crate::combat::VesselDisposition::Surrendered => 30,
-                crate::combat::VesselDisposition::Abandoned => 7,
-                _ => 14,
-            }
-        };
-        let ready_second = encounter
-            .snapshot
-            .next_turn_second
-            .saturating_add(delay_days * crate::simulation::SECONDS_PER_DAY);
+        let bankruptcy = report.loss_kind == CommandLossKind::Bankruptcy;
+        let ready_second = report.recovery_ready_second;
         let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
         if current < ready_second {
             return Ok(RuleResult::Rejected(format!(
@@ -12642,7 +12974,12 @@ impl Store {
             .map(decode_person_record)
             .transpose()?
             .ok_or(StoreError::Corrupt("lost command captain is missing"))?;
-        let captain_replaced = person_dead(&captain) || bankruptcy;
+        let captain_replaced = report.successor_required;
+        if captain_replaced != (person_dead(&captain) || bankruptcy) {
+            return Err(StoreError::Corrupt(
+                "terminal report successor requirement disagrees with personnel records",
+            ));
+        }
         let successor_name = successor_name.trim();
         if captain_replaced && (successor_name.is_empty() || successor_name.len() > 80) {
             return Ok(RuleResult::Rejected(
@@ -13199,6 +13536,7 @@ impl Store {
                 decision.order =
                     self.staff_automated_order_in(txn, identity, &ship, &combat, &decision.order)?;
                 record.automation_decision = Some(decision.clone());
+                record.automated_combat_used = true;
                 decision.order
             };
             let mut orders = vec![player_order];
@@ -13486,7 +13824,7 @@ impl Store {
                     .subsystems
                     .iter()
                     .map(|subsystem| subsystem.sustained_hits)
-                    .sum();
+                    .fold(0_u16, u16::saturating_add);
                 record.result = Some(EncounterResult {
                     encounter_id,
                     resolved: true,
@@ -13497,6 +13835,25 @@ impl Store {
                     fuel_lost_millitons: 0,
                     damage_hits,
                 });
+                if command_lost {
+                    self.ships
+                        .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+                    let loss_kind = match player_vessel.disposition {
+                        crate::combat::VesselDisposition::Captured => CommandLossKind::Captured,
+                        crate::combat::VesselDisposition::Surrendered => {
+                            CommandLossKind::Surrendered
+                        }
+                        crate::combat::VesselDisposition::Abandoned => CommandLossKind::Abandoned,
+                        _ => CommandLossKind::Destroyed,
+                    };
+                    record.terminal_report = Some(self.terminal_report_for_record_in(
+                        txn,
+                        identity,
+                        &record,
+                        Some(loss_kind),
+                        current_second,
+                    )?);
+                }
                 if !command_lost {
                     begin_offline_recovery(&mut ship, current_second);
                     self.ships
@@ -13625,6 +13982,7 @@ impl Store {
         let mut damage_hits = 0_u16;
         let mut cargo_lost = 0_u64;
         let mut terminal = false;
+        let mut surrendered = false;
         let mut resolved = false;
         let mut legal_hold = false;
         let outcome;
@@ -13788,6 +14146,7 @@ impl Store {
         } else if posture == EncounterPosture::Surrender {
             resolved = true;
             terminal = true;
+            surrendered = true;
             outcome = "The captain surrenders the ship and crew; command is lost.".into();
         } else if player_total >= opponent_total + 2 {
             resolved = true;
@@ -13840,9 +14199,12 @@ impl Store {
             }
             if !resolved && turn >= 4 {
                 resolved = true;
-                terminal = record.fallbacks.contains(&EncounterFallback::Surrender);
+                surrendered = record.fallbacks.contains(&EncounterFallback::Surrender);
+                terminal = surrendered;
             }
-            outcome = if terminal {
+            outcome = if surrendered {
+                "Standing orders surrender the ship and crew; command is lost.".into()
+            } else if terminal {
                 "The ship is disabled beyond recovery and command is lost.".into()
             } else if resolved {
                 "Standing orders end the engagement and the hostile contact breaks away.".into()
@@ -13863,7 +14225,7 @@ impl Store {
                     txn,
                     ship.ship_id,
                     ship.system_id,
-                    if posture == EncounterPosture::Surrender {
+                    if surrendered {
                         crate::combat::VesselDisposition::Surrendered
                     } else {
                         crate::combat::VesselDisposition::Destroyed
@@ -13884,6 +14246,20 @@ impl Store {
                 damage_hits,
             };
             record.result = Some(result);
+            if terminal {
+                let loss_kind = if surrendered {
+                    CommandLossKind::Surrendered
+                } else {
+                    CommandLossKind::Destroyed
+                };
+                record.terminal_report = Some(self.terminal_report_for_record_in(
+                    txn,
+                    identity,
+                    &record,
+                    Some(loss_kind),
+                    current_second,
+                )?);
+            }
             self.encounters
                 .put(txn, &key, &encode_encounter_record(&record)?)?;
             if let Some(mut plan) = self
@@ -14160,7 +14536,7 @@ impl Store {
                 .iter()
                 .filter(|participant| participant.directly_commanded)
             {
-                self.update_shared_encounter_view_in(txn, participant, &shared, false)?;
+                self.update_shared_encounter_view_in(txn, participant, &shared, false, due_second)?;
             }
             self.schedule_shared_combat_turn_in(
                 txn,
@@ -14186,6 +14562,7 @@ impl Store {
         participant: &SharedCombatParticipant,
         shared: &SharedCombatRecord,
         complete: bool,
+        event_second: u64,
     ) -> Result<(), StoreError> {
         let key = encode_identity(&participant.identity);
         let Some(mut record) = self
@@ -14217,6 +14594,7 @@ impl Store {
             .iter()
             .find(|decision| decision.order.vessel_id == participant.ship_id)
             .cloned();
+        record.automated_combat_used |= record.automation_decision.is_some();
         if complete {
             record.combat = Some(shared.combat.clone());
             let command_lost = matches!(
@@ -14263,8 +14641,23 @@ impl Store {
                     .subsystems
                     .iter()
                     .map(|subsystem| subsystem.sustained_hits)
-                    .sum(),
+                    .fold(0_u16, u16::saturating_add),
             });
+            if command_lost {
+                let loss_kind = match vessel.disposition {
+                    crate::combat::VesselDisposition::Captured => CommandLossKind::Captured,
+                    crate::combat::VesselDisposition::Surrendered => CommandLossKind::Surrendered,
+                    crate::combat::VesselDisposition::Abandoned => CommandLossKind::Abandoned,
+                    _ => CommandLossKind::Destroyed,
+                };
+                record.terminal_report = Some(self.terminal_report_for_record_in(
+                    txn,
+                    &participant.identity,
+                    &record,
+                    Some(loss_kind),
+                    event_second,
+                )?);
+            }
         } else {
             record.snapshot.summary = format!(
                 "Combat round {} is complete. Fresh joint orders are required.",
@@ -14285,7 +14678,7 @@ impl Store {
         let participants = shared.participants.clone();
         for participant in &participants {
             if participant.directly_commanded {
-                self.update_shared_encounter_view_in(txn, participant, shared, true)?;
+                self.update_shared_encounter_view_in(txn, participant, shared, true, due_second)?;
                 let key = encode_identity(&participant.identity);
                 let vessel = shared
                     .combat
@@ -15266,6 +15659,9 @@ impl Store {
                     combat: None,
                     player_order: None,
                     automation_decision: None,
+                    standing_orders_used: through_authorized,
+                    automated_combat_used: false,
+                    terminal_report: None,
                     combat_log: Vec::new(),
                     pending_interventions: Vec::new(),
                 })?,
@@ -15284,6 +15680,9 @@ impl Store {
                 combat: None,
                 player_order: None,
                 automation_decision: None,
+                standing_orders_used: through_authorized,
+                automated_combat_used: false,
+                terminal_report: None,
                 combat_log: Vec::new(),
                 pending_interventions: Vec::new(),
             })?,
@@ -15320,6 +15719,9 @@ impl Store {
                     combat: None,
                     player_order: None,
                     automation_decision: None,
+                    standing_orders_used: through_authorized,
+                    automated_combat_used: false,
+                    terminal_report: None,
                     combat_log: Vec::new(),
                     pending_interventions: Vec::new(),
                 })?,
@@ -34921,6 +35323,189 @@ fn decode_encounter_result_record(
     })
 }
 
+fn encode_terminal_report_record(
+    bytes: &mut Vec<u8>,
+    value: &TerminalReport,
+) -> Result<(), StoreError> {
+    bytes.extend_from_slice(&value.encounter_id.to_be_bytes());
+    bytes.extend_from_slice(&value.revision.to_be_bytes());
+    bytes.push(u8::from(value.acknowledged));
+    bytes.extend_from_slice(&value.started_second.to_be_bytes());
+    bytes.extend_from_slice(&value.resolved_second.to_be_bytes());
+    bytes.extend_from_slice(&value.system_id.to_be_bytes());
+    encode_text(bytes, &value.system_name)?;
+    encode_text(bytes, &value.location)?;
+    bytes.extend_from_slice(&value.contact.contact_id.to_be_bytes());
+    encode_text(bytes, &value.contact.ship_name)?;
+    encode_text(bytes, &value.contact.class_name)?;
+    encode_text(bytes, &value.contact.transponder)?;
+    encode_text(bytes, &value.contact.role)?;
+    encode_text(bytes, &value.contact.range)?;
+    bytes.push(value.contact.confidence_percent);
+    bytes.push(value.contact.resolution as u8);
+    bytes.push(value.authority as u8);
+    bytes.push(value.threat as u8);
+    bytes.push(u8::from(value.standing_orders_used));
+    bytes.push(value.posture.map_or(255, |posture| posture as u8));
+    bytes.push(
+        u8::try_from(value.fallbacks.len())
+            .map_err(|_| StoreError::Corrupt("too many terminal report fallbacks"))?,
+    );
+    for fallback in &value.fallbacks {
+        bytes.push(*fallback as u8);
+    }
+    bytes.push(u8::from(value.automated_combat_used));
+    encode_text(bytes, &value.outcome)?;
+    encode_text(bytes, &value.ship_name)?;
+    bytes.push(value.loss_kind as u8);
+    bytes.extend_from_slice(&value.owned_cargo_lost_millitons.to_be_bytes());
+    bytes.extend_from_slice(&value.entrusted_cargo_lost_millitons.to_be_bytes());
+    bytes.extend_from_slice(&value.unique_objects_lost.to_be_bytes());
+    bytes.extend_from_slice(&value.fuel_lost_millitons.to_be_bytes());
+    bytes.extend_from_slice(&value.passengers_affected.to_be_bytes());
+    bytes.extend_from_slice(&value.damage_hits.to_be_bytes());
+    encode_text(bytes, &value.captain_name)?;
+    bytes.push(value.captain_fate as u8);
+    bytes.extend_from_slice(&value.other_crew_total.to_be_bytes());
+    bytes.extend_from_slice(&value.other_crew_dead.to_be_bytes());
+    bytes.extend_from_slice(&value.other_crew_injured.to_be_bytes());
+    bytes.extend_from_slice(&value.other_crew_surviving.to_be_bytes());
+    bytes.extend_from_slice(&value.recovery_ready_second.to_be_bytes());
+    bytes.push(u8::from(value.successor_required));
+    bytes.extend_from_slice(
+        &u16::try_from(value.incident_log.len())
+            .map_err(|_| StoreError::Corrupt("terminal report log too long"))?
+            .to_be_bytes(),
+    );
+    for line in &value.incident_log {
+        encode_text(bytes, line)?;
+    }
+    Ok(())
+}
+
+fn decode_terminal_report_record(d: &mut Decoder<'_>) -> Result<TerminalReport, StoreError> {
+    let encounter_id = d.u64()?;
+    let revision = d.u64()?;
+    let acknowledged = d.u8()? != 0;
+    let started_second = d.u64()?;
+    let resolved_second = d.u64()?;
+    let system_id = d.u64()?;
+    let system_name = d.text()?;
+    let location = d.text()?;
+    let contact = EncounterContact {
+        contact_id: d.u64()?,
+        ship_name: d.text()?,
+        class_name: d.text()?,
+        transponder: d.text()?,
+        role: d.text()?,
+        range: d.text()?,
+        confidence_percent: d.u8()?,
+        resolution: match d.u8()? {
+            0 => crate::wire::EncounterResolution::RadioOnly,
+            1 => crate::wire::EncounterResolution::TransponderOnly,
+            2 => crate::wire::EncounterResolution::Approximate,
+            3 => crate::wire::EncounterResolution::Identified,
+            _ => return Err(StoreError::Corrupt("unknown terminal contact resolution")),
+        },
+    };
+    let authority = match d.u8()? {
+        0 => EncounterAuthority::None,
+        1 => EncounterAuthority::Pirate,
+        2 => EncounterAuthority::TrafficControl,
+        3 => EncounterAuthority::Customs,
+        4 => EncounterAuthority::Naval,
+        5 => EncounterAuthority::Warrant,
+        _ => return Err(StoreError::Corrupt("unknown terminal report authority")),
+    };
+    let threat = match d.u8()? {
+        0 => EncounterThreat::Unknown,
+        1 => EncounterThreat::Favorable,
+        2 => EncounterThreat::Comparable,
+        3 => EncounterThreat::Dangerous,
+        4 => EncounterThreat::Overwhelming,
+        _ => return Err(StoreError::Corrupt("unknown terminal report threat")),
+    };
+    let standing_orders_used = d.u8()? != 0;
+    let posture = match d.u8()? {
+        255 => None,
+        value => Some(decode_posture(value)?),
+    };
+    let fallback_count = d.u8()? as usize;
+    let mut fallbacks = Vec::with_capacity(fallback_count);
+    for _ in 0..fallback_count {
+        fallbacks.push(decode_fallback(d.u8()?)?);
+    }
+    let automated_combat_used = d.u8()? != 0;
+    let outcome = d.text()?;
+    let ship_name = d.text()?;
+    let loss_kind = match d.u8()? {
+        0 => CommandLossKind::Destroyed,
+        1 => CommandLossKind::Captured,
+        2 => CommandLossKind::Surrendered,
+        3 => CommandLossKind::Abandoned,
+        4 => CommandLossKind::Bankruptcy,
+        _ => return Err(StoreError::Corrupt("unknown command loss kind")),
+    };
+    let owned_cargo_lost_millitons = d.u64()?;
+    let entrusted_cargo_lost_millitons = d.u64()?;
+    let unique_objects_lost = d.u16()?;
+    let fuel_lost_millitons = d.u64()?;
+    let passengers_affected = d.u16()?;
+    let damage_hits = d.u16()?;
+    let captain_name = d.text()?;
+    let captain_fate = match d.u8()? {
+        0 => CaptainFate::Survived,
+        1 => CaptainFate::Dead,
+        _ => return Err(StoreError::Corrupt("unknown captain fate")),
+    };
+    let other_crew_total = d.u16()?;
+    let other_crew_dead = d.u16()?;
+    let other_crew_injured = d.u16()?;
+    let other_crew_surviving = d.u16()?;
+    let recovery_ready_second = d.u64()?;
+    let successor_required = d.u8()? != 0;
+    let log_count = d.u16()? as usize;
+    let mut incident_log = Vec::with_capacity(log_count);
+    for _ in 0..log_count {
+        incident_log.push(d.text()?);
+    }
+    Ok(TerminalReport {
+        encounter_id,
+        revision,
+        acknowledged,
+        started_second,
+        resolved_second,
+        system_id,
+        system_name,
+        location,
+        contact,
+        authority,
+        threat,
+        standing_orders_used,
+        posture,
+        fallbacks,
+        automated_combat_used,
+        outcome,
+        ship_name,
+        loss_kind,
+        owned_cargo_lost_millitons,
+        entrusted_cargo_lost_millitons,
+        unique_objects_lost,
+        fuel_lost_millitons,
+        passengers_affected,
+        damage_hits,
+        captain_name,
+        captain_fate,
+        other_crew_total,
+        other_crew_dead,
+        other_crew_injured,
+        other_crew_surviving,
+        recovery_ready_second,
+        successor_required,
+        incident_log,
+    })
+}
+
 fn encode_combat_weapon_rule(
     bytes: &mut Vec<u8>,
     value: &crate::combat::WeaponRule,
@@ -35420,7 +36005,7 @@ fn decode_combat_state(
 }
 
 fn encode_encounter_record(value: &EncounterRecord) -> Result<Vec<u8>, StoreError> {
-    let mut bytes = vec![3];
+    let mut bytes = vec![4];
     let s = &value.snapshot;
     bytes.extend_from_slice(&s.encounter_id.to_be_bytes());
     bytes.extend_from_slice(&s.revision.to_be_bytes());
@@ -35511,12 +36096,18 @@ fn encode_encounter_record(value: &EncounterRecord) -> Result<Vec<u8>, StoreErro
         bytes.extend_from_slice(&intervention.side.to_be_bytes());
         encode_text(&mut bytes, &intervention.ship_name)?;
     }
+    bytes.push(u8::from(value.standing_orders_used));
+    bytes.push(u8::from(value.automated_combat_used));
+    bytes.push(u8::from(value.terminal_report.is_some()));
+    if let Some(report) = &value.terminal_report {
+        encode_terminal_report_record(&mut bytes, report)?;
+    }
     Ok(bytes)
 }
 fn decode_encounter_record(bytes: &[u8]) -> Result<EncounterRecord, StoreError> {
     let mut d = Decoder::new(bytes);
     let version = d.u8()?;
-    if !matches!(version, 1..=3) {
+    if !matches!(version, 1..=4) {
         return Err(StoreError::Corrupt("unsupported encounter record"));
     }
     let encounter_id = d.u64()?;
@@ -35679,6 +36270,18 @@ fn decode_encounter_record(bytes: &[u8]) -> Result<EncounterRecord, StoreError> 
             ship_name: d.text()?,
         });
     }
+    let (standing_orders_used, automated_combat_used, terminal_report) = if version >= 4 {
+        let standing_orders_used = d.u8()? != 0;
+        let automated_combat_used = d.u8()? != 0;
+        let terminal_report = if d.u8()? != 0 {
+            Some(decode_terminal_report_record(&mut d)?)
+        } else {
+            None
+        };
+        (standing_orders_used, automated_combat_used, terminal_report)
+    } else {
+        (false, automation_decision.is_some(), None)
+    };
     d.finish()?;
     Ok(EncounterRecord {
         snapshot: EncounterSnapshot {
@@ -35705,6 +36308,9 @@ fn decode_encounter_record(bytes: &[u8]) -> Result<EncounterRecord, StoreError> 
         combat,
         player_order,
         automation_decision,
+        standing_orders_used,
+        automated_combat_used,
+        terminal_report,
         combat_log,
         pending_interventions,
     })
@@ -35999,6 +36605,15 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
             bytes.extend_from_slice(&checkpoint_id.to_be_bytes());
         }
         Command::GetEncounter => bytes.push(34),
+        Command::GetTerminalReport => bytes.push(83),
+        Command::AcknowledgeTerminalReport {
+            encounter_id,
+            expected_revision,
+        } => {
+            bytes.push(84);
+            bytes.extend_from_slice(&encounter_id.to_be_bytes());
+            bytes.extend_from_slice(&expected_revision.to_be_bytes());
+        }
         Command::ResolveEncounter(ref request) => {
             bytes.push(35);
             bytes.extend_from_slice(&request.encounter_id.to_be_bytes());
@@ -36511,6 +37126,11 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
             checkpoint_id: decoder.u64()?,
         },
         34 => Command::GetEncounter,
+        83 => Command::GetTerminalReport,
+        84 => Command::AcknowledgeTerminalReport {
+            encounter_id: decoder.u64()?,
+            expected_revision: decoder.u64()?,
+        },
         35 => {
             let encounter_id = decoder.u64()?;
             let expected_revision = decoder.u64()?;
@@ -38172,7 +38792,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(19);
+    bytes.push(20);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -38309,6 +38929,9 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
                 combat: None,
                 player_order: None,
                 automation_decision: None,
+                standing_orders_used: false,
+                automated_combat_used: false,
+                terminal_report: None,
                 combat_log: Vec::new(),
                 pending_interventions: Vec::new(),
             })?;
@@ -38318,6 +38941,10 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
         OutcomeKind::EncounterResult(value) => {
             bytes.push(23);
             encode_encounter_result_record(&mut bytes, value)?;
+        }
+        OutcomeKind::TerminalReport(value) => {
+            bytes.push(36);
+            encode_terminal_report_record(&mut bytes, value)?;
         }
         OutcomeKind::TaskLedger(value) => {
             bytes.push(24);
@@ -38456,6 +39083,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 17
         && version != 18
         && version != 19
+        && version != 20
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -38672,6 +39300,9 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         }),
         35 if version >= 11 => {
             OutcomeKind::DockedServiceReceipt(decode_docked_service_receipt(&mut decoder, version)?)
+        }
+        36 if version >= 20 => {
+            OutcomeKind::TerminalReport(decode_terminal_report_record(&mut decoder)?)
         }
         _ => return Err(StoreError::Corrupt("unknown outcome kind")),
     };
@@ -45123,8 +45754,180 @@ mod tests {
             combat: None,
             player_order: None,
             automation_decision: None,
+            standing_orders_used: false,
+            automated_combat_used: false,
+            terminal_report: None,
             combat_log: Vec::new(),
             pending_interventions: Vec::new(),
+        }
+    }
+
+    fn acknowledge_current_terminal_report(
+        store: &Store,
+        txn: &mut heed::RwTxn<'_>,
+    ) -> TerminalReport {
+        let report = match store.terminal_report_in(txn, &identity()).unwrap() {
+            RuleResult::Applied(report) => report,
+            RuleResult::Rejected(message) => panic!("{message}"),
+        };
+        match store
+            .acknowledge_terminal_report_in(txn, &identity(), report.encounter_id, report.revision)
+            .unwrap()
+        {
+            RuleResult::Applied(report) => report,
+            RuleResult::Rejected(message) => panic!("{message}"),
+        }
+    }
+
+    #[test]
+    fn terminal_report_is_censored_durable_and_requires_current_acknowledgement() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut txn = store.env.write_txn().unwrap();
+        let key = encode_identity(&identity());
+        let (_, mut ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        ship.cargo.push(CargoLot {
+            cargo_lot_id: 901,
+            commodity_id: 1,
+            commodity_name: "Machine Parts".into(),
+            quantity_millitons: 2_500,
+            purchase_price_per_ton: 800,
+            origin_system_id: ship.system_id,
+            acquired_second: 1,
+            title: CargoTitle::PlayerOwned,
+            task_id: 0,
+            unique_object_id: 0,
+            condition_percent: 100,
+            destination_system_id: 0,
+            source_body_id: 0,
+            source_lode_id: 0,
+        });
+        ship.passengers.push(PassengerManifestRecord {
+            task_id: 44,
+            passenger_count: 2,
+            passenger_class: crate::wire::PassengerClass::Middle,
+            origin_system_id: ship.system_id,
+            destination_system_id: SOL_SYSTEM_ID,
+            embarked_second: 1,
+        });
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        let mut record = test_encounter_record(
+            EncounterState::Resolved,
+            10,
+            1_000,
+            Some(EncounterPosture::Flee),
+        );
+        record.standing_orders_used = true;
+        record.automated_combat_used = true;
+        record.result = Some(EncounterResult {
+            encounter_id: record.snapshot.encounter_id,
+            resolved: true,
+            terminal: true,
+            outcome: "The vessel is abandoned after the pursuit.".into(),
+            turns: 3,
+            cargo_lost_millitons: 0,
+            fuel_lost_millitons: 0,
+            damage_hits: 2,
+        });
+        record.terminal_report = Some(
+            store
+                .terminal_report_for_record_in(
+                    &txn,
+                    &identity(),
+                    &record,
+                    Some(CommandLossKind::Abandoned),
+                    1_000,
+                )
+                .unwrap(),
+        );
+        store
+            .encounters
+            .put(&mut txn, &key, &encode_encounter_record(&record).unwrap())
+            .unwrap();
+
+        let report = match store.terminal_report_in(&txn, &identity()).unwrap() {
+            RuleResult::Applied(report) => report,
+            RuleResult::Rejected(message) => panic!("{message}"),
+        };
+        assert!(!report.acknowledged);
+        assert_eq!(report.contact.class_name, "Armed vessel");
+        assert!(!report.incident_log.iter().any(|line| line.contains("128")));
+        assert!(report.standing_orders_used);
+        assert!(report.automated_combat_used);
+        assert_eq!(report.owned_cargo_lost_millitons, 2_500);
+        assert_eq!(report.passengers_affected, 2);
+        assert!(matches!(
+            store
+                .acknowledge_terminal_report_in(
+                    &mut txn,
+                    &identity(),
+                    report.encounter_id,
+                    report.revision.saturating_add(1),
+                )
+                .unwrap(),
+            RuleResult::Rejected(_)
+        ));
+        let acknowledged = acknowledge_current_terminal_report(&store, &mut txn);
+        assert!(acknowledged.acknowledged);
+        assert_eq!(acknowledged.revision, report.revision + 1);
+        match store.terminal_report_in(&txn, &identity()).unwrap() {
+            RuleResult::Applied(current) => assert_eq!(current, acknowledged),
+            RuleResult::Rejected(message) => panic!("{message}"),
+        }
+        assert!(matches!(
+            store
+                .acknowledge_terminal_report_in(
+                    &mut txn,
+                    &identity(),
+                    report.encounter_id,
+                    report.revision,
+                )
+                .unwrap(),
+            RuleResult::Rejected(_)
+        ));
+        let stored = store
+            .encounters
+            .get(&txn, &key)
+            .unwrap()
+            .map(decode_encounter_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.terminal_report, Some(acknowledged.clone()));
+        for loss_kind in [
+            CommandLossKind::Destroyed,
+            CommandLossKind::Captured,
+            CommandLossKind::Surrendered,
+            CommandLossKind::Abandoned,
+            CommandLossKind::Bankruptcy,
+        ] {
+            let mut typed_report = acknowledged.clone();
+            typed_report.loss_kind = loss_kind;
+            let outcome = Outcome {
+                command_id: [9; COMMAND_ID_BYTES],
+                committed_sequence: 7,
+                revision: 3,
+                replayed: false,
+                phase: PlayerPhase::Terminal,
+                kind: OutcomeKind::TerminalReport(typed_report),
+            };
+            assert_eq!(
+                decode_outcome(&encode_outcome(&outcome).unwrap()).unwrap(),
+                outcome
+            );
+        }
+        txn.commit().unwrap();
+        drop(store);
+
+        let reopened = Store::open(dir.path()).unwrap();
+        let txn = reopened.env.read_txn().unwrap();
+        match reopened.terminal_report_in(&txn, &identity()).unwrap() {
+            RuleResult::Applied(current) => assert_eq!(current, acknowledged),
+            RuleResult::Rejected(message) => panic!("{message}"),
         }
     }
 
@@ -56097,6 +56900,9 @@ mod tests {
                     combat: None,
                     player_order: None,
                     automation_decision: None,
+                    standing_orders_used: false,
+                    automated_combat_used: false,
+                    terminal_report: None,
                     combat_log: Vec::new(),
                     pending_interventions: Vec::new(),
                 })
@@ -56396,6 +57202,11 @@ mod tests {
             },
             Command::DeclareBankruptcy {
                 successor_name: "Jordan Vale".into(),
+            },
+            Command::GetTerminalReport,
+            Command::AcknowledgeTerminalReport {
+                encounter_id: 23,
+                expected_revision: 4,
             },
             Command::AbandonPlayer {
                 confirmation: "ABANDON EVERYTHING".into(),
@@ -57879,6 +58690,13 @@ mod tests {
             8 * crate::simulation::SECONDS_PER_DAY,
         )
         .unwrap();
+        assert!(matches!(
+            store.recover_command_in(&mut txn, &identity(), "").unwrap(),
+            RuleResult::Rejected(message) if message.contains("acknowledge")
+        ));
+        let report = acknowledge_current_terminal_report(&store, &mut txn);
+        assert_eq!(report.loss_kind, CommandLossKind::Abandoned);
+        assert_eq!(report.captain_fate, CaptainFate::Survived);
         let recovered = match store.recover_command_in(&mut txn, &identity(), "").unwrap() {
             RuleResult::Applied(fleet) => fleet,
             RuleResult::Rejected(message) => panic!("{message}"),
@@ -57906,6 +58724,10 @@ mod tests {
             store.player_phase_in(&txn, &identity()).unwrap(),
             PlayerPhase::Docked
         );
+        assert!(matches!(
+            store.terminal_report_in(&txn, &identity()).unwrap(),
+            RuleResult::Rejected(_)
+        ));
         txn.commit().unwrap();
     }
 
@@ -57986,6 +58808,9 @@ mod tests {
             15 * crate::simulation::SECONDS_PER_DAY,
         )
         .unwrap();
+        let report = acknowledge_current_terminal_report(&store, &mut txn);
+        assert!(report.successor_required);
+        assert_eq!(report.captain_fate, CaptainFate::Dead);
         assert!(matches!(
             store.recover_command_in(&mut txn, &identity(), "").unwrap(),
             RuleResult::Rejected(_)
@@ -58077,8 +58902,26 @@ mod tests {
             .put(&mut txn, &finance_key, &encode_finance_record(&finance))
             .unwrap();
         let career_before = store.career_state_in(&txn, &identity()).unwrap();
-        let fleet = match store
+        let initial_fleet = match store
             .declare_bankruptcy_in(&mut txn, &identity(), "Jordan Vale")
+            .unwrap()
+        {
+            RuleResult::Applied(fleet) => fleet,
+            RuleResult::Rejected(message) => panic!("{message}"),
+        };
+        assert_eq!(initial_fleet.active_ship_id, player.ship_id);
+        assert_eq!(
+            store.player_phase_in(&txn, &identity()).unwrap(),
+            PlayerPhase::Terminal
+        );
+        for old_ship_id in &liquidated_ids {
+            assert!(store.ships.get(&txn, old_ship_id).unwrap().is_some());
+        }
+        let report = acknowledge_current_terminal_report(&store, &mut txn);
+        assert_eq!(report.loss_kind, CommandLossKind::Bankruptcy);
+        assert!(report.successor_required);
+        let fleet = match store
+            .recover_command_in(&mut txn, &identity(), "Jordan Vale")
             .unwrap()
         {
             RuleResult::Applied(fleet) => fleet,

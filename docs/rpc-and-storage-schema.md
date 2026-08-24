@@ -106,7 +106,13 @@ mail linkage, private-message composition, insurance state, and versioned
 starting title/refit terms. It also exposes a revisioned multi-vessel fleet,
 physical store transfers, career transitions and legal instruments, named
 combat actors and joint orders, command-loss recovery, and irrecoverable
-bankruptcy succession. Crew snapshots include current physical
+bankruptcy succession. `GetTerminalReport` is an observation and
+`AcknowledgeTerminalReport` is an exactly-once transaction. Their structured
+report carries a typed loss cause and captain fate, censored contact evidence,
+standing-order and automation use, material and personnel consequences,
+recovery eligibility, successor requirement, and the optional chronological
+log. Recovery accepts only the matching acknowledged report revision. Crew
+snapshots include current physical
 characteristics, injury/fatigue, service availability, shore facility,
 treatment timing, salary arrears, morale, and service revision. Task records
 name their performing ship. Docked service quotations expose persisted
@@ -187,8 +193,8 @@ the ship and generate preview warnings; replanning never edits obligations.
 Flight Plan codec version 4 adds the per-collection refine choice and the
 standalone refine action; readers retain versions 1 through 3. Authoritative
 preview includes per-step normal and failed fuel-operation timings. Retained
-outcome codec version 18 preserves those timings and the added quotation and
-activity metadata for idempotent replay.
+outcome codec version 20 preserves those timings, the added quotation and
+activity metadata, and terminal reports for idempotent replay.
 
 Arrival does not directly rewrite an approaching ship as docked. It creates a
 durable checkpoint at the exact port locus. Hold authority waits for an
@@ -198,13 +204,16 @@ come from the deterministic traffic window, while actual background carriers
 remain persisted in the simulator. Encounter turns are their own scheduled
 engine inputs and use the same ingress sequence as every other mutation.
 
-`FlightPlanStep.terminal` and `FlightPlanWarning.stepIndices` are additive
-CT-RPC fields. The flight-plan proposal and snapshot record codecs use version
-3; versions 1 and 2 remain readable, and version-1 Terminal authority decodes
-as Hold plus a terminal marker. Outcome codec version 16 preserves warning
-step references, catalogued belts, cargo provenance, and the capable-yard
-commission catalog; older outcomes decode absent additive fields as empty or
-zero. A
+`FlightPlanStep.terminal`, `FlightPlanWarning.stepIndices`, and the terminal
+report requests and response are additive CT-RPC fields. The flight-plan
+proposal and snapshot record codecs use version 4; versions 1 through 3 remain
+readable, and version-1 Terminal authority decodes
+as Hold plus a terminal marker. Encounter-record codec version 4 stores
+Through/automation use and the optional acknowledged terminal-report snapshot
+while retaining readers for versions 1 through 3. Older terminal records derive
+the same report from retained encounter, combat, ship, and personnel state when
+first reviewed. Outcome codec version 20 preserves terminal-report transaction
+replay; older outcomes decode absent additive fields as empty or zero. A
 pre-field proposal with no explicit terminal bit is normalized at the wire
 boundary by marking its last step. CT-RPC 8 adds durable ship commissions and
 construction activity. No universe-wide storage migration is required.

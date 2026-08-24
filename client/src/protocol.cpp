@@ -3311,6 +3311,107 @@ EncounterSnapshot get_encounter(TlsConnection& connection, const uint64_t epoch,
    return result;
 }
 
+namespace
+{
+
+TerminalReport decode_terminal_report(rpc::Response::Reader response)
+{
+   if(!response.isTerminalReport()) {
+      throw std::runtime_error("expected TerminalReport");
+   }
+   const auto s = response.getTerminalReport();
+   const auto c = s.getContact();
+   TerminalReport result{
+      .encounter_id = s.getEncounterId(),
+      .revision = s.getRevision(),
+      .acknowledged = s.getAcknowledged(),
+      .started_second = s.getStartedSecond(),
+      .resolved_second = s.getResolvedSecond(),
+      .system_id = s.getSystemId(),
+      .system_name = s.getSystemName().cStr(),
+      .location = s.getLocation().cStr(),
+      .contact = {
+         .contact_id = c.getContactId(),
+         .ship_name = c.getShipName().cStr(),
+         .class_name = c.getClassName().cStr(),
+         .transponder = c.getTransponder().cStr(),
+         .role = c.getRole().cStr(),
+         .range = c.getRange().cStr(),
+         .confidence_percent = c.getConfidencePercent(),
+         .resolution = static_cast<EncounterResolution>(c.getResolution()),
+      },
+      .authority = static_cast<EncounterAuthority>(s.getAuthority()),
+      .threat = static_cast<EncounterThreat>(s.getThreat()),
+      .standing_orders_used = s.getStandingOrdersUsed(),
+      .posture = s.getHasPosture()
+         ? std::optional<EncounterPosture>(static_cast<EncounterPosture>(s.getPosture()))
+         : std::nullopt,
+      .fallbacks = {},
+      .automated_combat_used = s.getAutomatedCombatUsed(),
+      .outcome = s.getOutcome().cStr(),
+      .ship_name = s.getShipName().cStr(),
+      .loss_kind = static_cast<CommandLossKind>(s.getLossKind()),
+      .owned_cargo_lost_millitons = s.getOwnedCargoLostMillitons(),
+      .entrusted_cargo_lost_millitons = s.getEntrustedCargoLostMillitons(),
+      .unique_objects_lost = s.getUniqueObjectsLost(),
+      .fuel_lost_millitons = s.getFuelLostMillitons(),
+      .passengers_affected = s.getPassengersAffected(),
+      .damage_hits = s.getDamageHits(),
+      .captain_name = s.getCaptainName().cStr(),
+      .captain_fate = static_cast<CaptainFate>(s.getCaptainFate()),
+      .other_crew_total = s.getOtherCrewTotal(),
+      .other_crew_dead = s.getOtherCrewDead(),
+      .other_crew_injured = s.getOtherCrewInjured(),
+      .other_crew_surviving = s.getOtherCrewSurviving(),
+      .recovery_ready_second = s.getRecoveryReadySecond(),
+      .successor_required = s.getSuccessorRequired(),
+      .incident_log = {},
+      .phase = decode_response_phase(response.getPhase()),
+   };
+   for(const auto fallback : s.getFallbacks()) {
+      result.fallbacks.push_back(static_cast<EncounterFallback>(fallback));
+   }
+   for(const auto line : s.getIncidentLog()) {
+      result.incident_log.emplace_back(line.cStr());
+   }
+   return result;
+}
+
+}  // namespace
+
+TerminalReport get_terminal_report(TlsConnection& connection, const uint64_t epoch,
+                                   const std::array<uint8_t, 16>& id,
+                                   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   request.setGetTerminalReport();
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_terminal_report(checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+
+TerminalReport acknowledge_terminal_report(
+   TlsConnection& connection, const uint64_t epoch, const uint64_t encounter_id,
+   const uint64_t revision, const std::array<uint8_t, 16>& id,
+   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   auto acknowledge = request.initAcknowledgeTerminalReport();
+   acknowledge.setEncounterId(encounter_id);
+   acknowledge.setExpectedRevision(revision);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_terminal_report(checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+
 EncounterResult resolve_encounter(TlsConnection& connection, const uint64_t epoch,
                                   const uint64_t encounter_id, const uint64_t revision, const EncounterPosture posture,
                                   const std::vector<EncounterFallback>& fallbacks, const std::array<uint8_t, 16>& id,

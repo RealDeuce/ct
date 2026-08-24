@@ -1816,6 +1816,58 @@ pub struct EncounterResult {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CommandLossKind {
+    Destroyed,
+    Captured,
+    Surrendered,
+    Abandoned,
+    Bankruptcy,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CaptainFate {
+    Survived,
+    Dead,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TerminalReport {
+    pub encounter_id: u64,
+    pub revision: u64,
+    pub acknowledged: bool,
+    pub started_second: u64,
+    pub resolved_second: u64,
+    pub system_id: u64,
+    pub system_name: String,
+    pub location: String,
+    pub contact: EncounterContact,
+    pub authority: EncounterAuthority,
+    pub threat: EncounterThreat,
+    pub standing_orders_used: bool,
+    pub posture: Option<EncounterPosture>,
+    pub fallbacks: Vec<EncounterFallback>,
+    pub automated_combat_used: bool,
+    pub outcome: String,
+    pub ship_name: String,
+    pub loss_kind: CommandLossKind,
+    pub owned_cargo_lost_millitons: u64,
+    pub entrusted_cargo_lost_millitons: u64,
+    pub unique_objects_lost: u16,
+    pub fuel_lost_millitons: u64,
+    pub passengers_affected: u16,
+    pub damage_hits: u16,
+    pub captain_name: String,
+    pub captain_fate: CaptainFate,
+    pub other_crew_total: u16,
+    pub other_crew_dead: u16,
+    pub other_crew_injured: u16,
+    pub other_crew_surviving: u16,
+    pub recovery_ready_second: u64,
+    pub successor_required: bool,
+    pub incident_log: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CombatActionKind {
     Hold,
     Coordinate,
@@ -2308,6 +2360,11 @@ pub enum Command {
         checkpoint_id: u64,
     },
     GetEncounter,
+    GetTerminalReport,
+    AcknowledgeTerminalReport {
+        encounter_id: u64,
+        expected_revision: u64,
+    },
     ResolveEncounter(ResolveEncounterRequest),
     GetCombat,
     SubmitCombatOrder(CombatOrderSet),
@@ -2467,6 +2524,7 @@ impl Command {
             | Self::GetFlightPlan
             | Self::PreviewFlightPlan(_)
             | Self::GetEncounter
+            | Self::GetTerminalReport
             | Self::GetCombat
             | Self::GetCombatCareer => CommandPersistence::Observation,
             Self::GetTaskLedger
@@ -2492,6 +2550,7 @@ impl Command {
             | Self::CommitFlightPlan(_)
             | Self::AcknowledgeCheckpoint { .. }
             | Self::ResolveEncounter(_) => CommandPersistence::Transaction,
+            Self::AcknowledgeTerminalReport { .. } => CommandPersistence::Transaction,
             Self::SubmitCombatOrder(_) | Self::SetCombatAutomationPolicy(_) => {
                 CommandPersistence::Transaction
             }
@@ -2570,6 +2629,7 @@ pub enum OutcomeKind {
     Checkpoint(CheckpointSnapshot),
     Encounter(EncounterSnapshot),
     EncounterResult(EncounterResult),
+    TerminalReport(TerminalReport),
     Combat(CombatSnapshot),
     CombatCareer(CombatCareerSnapshot),
     TaskLedger(TaskLedger),
@@ -3026,6 +3086,14 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
             checkpoint_id: ack?.get_checkpoint_id(),
         },
         request::GetEncounter(()) => Command::GetEncounter,
+        request::GetTerminalReport(()) => Command::GetTerminalReport,
+        request::AcknowledgeTerminalReport(value) => {
+            let value = value?;
+            Command::AcknowledgeTerminalReport {
+                encounter_id: value.get_encounter_id(),
+                expected_revision: value.get_expected_revision(),
+            }
+        }
         request::ResolveEncounter(resolve) => {
             let resolve = resolve?;
             Command::ResolveEncounter(ResolveEncounterRequest {
@@ -3613,6 +3681,9 @@ pub fn encode_response(
         OutcomeKind::EncounterResult(result) => {
             set_encounter_result(response.reborrow().init_encounter_result(), result);
         }
+        OutcomeKind::TerminalReport(report) => {
+            set_terminal_report(response.reborrow().init_terminal_report(), report)?;
+        }
         OutcomeKind::Combat(snapshot) => {
             set_combat_snapshot(response.reborrow().init_combat(), snapshot)?;
         }
@@ -4023,6 +4094,15 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
             .init_acknowledge_checkpoint()
             .set_checkpoint_id(checkpoint_id),
         Command::GetEncounter => builder.set_get_encounter(()),
+        Command::GetTerminalReport => builder.set_get_terminal_report(()),
+        Command::AcknowledgeTerminalReport {
+            encounter_id,
+            expected_revision,
+        } => {
+            let mut value = builder.init_acknowledge_terminal_report();
+            value.set_encounter_id(encounter_id);
+            value.set_expected_revision(expected_revision);
+        }
         Command::ResolveEncounter(ref request) => {
             let mut resolve = builder.init_resolve_encounter();
             resolve.set_encounter_id(request.encounter_id);
@@ -6260,6 +6340,98 @@ fn set_encounter_result(
     builder.set_damage_hits(value.damage_hits);
 }
 
+fn set_terminal_report(
+    mut builder: crate::ct_rpc_capnp::terminal_report::Builder<'_>,
+    value: &TerminalReport,
+) -> Result<(), WireError> {
+    builder.set_encounter_id(value.encounter_id);
+    builder.set_revision(value.revision);
+    builder.set_acknowledged(value.acknowledged);
+    builder.set_started_second(value.started_second);
+    builder.set_resolved_second(value.resolved_second);
+    builder.set_system_id(value.system_id);
+    builder.set_system_name(&value.system_name);
+    builder.set_location(&value.location);
+    let mut contact = builder.reborrow().init_contact();
+    contact.set_contact_id(value.contact.contact_id);
+    contact.set_ship_name(&value.contact.ship_name);
+    contact.set_class_name(&value.contact.class_name);
+    contact.set_transponder(&value.contact.transponder);
+    contact.set_role(&value.contact.role);
+    contact.set_range(&value.contact.range);
+    contact.set_confidence_percent(value.contact.confidence_percent);
+    contact.set_resolution(match value.contact.resolution {
+        EncounterResolution::RadioOnly => crate::ct_rpc_capnp::EncounterResolution::RadioOnly,
+        EncounterResolution::TransponderOnly => {
+            crate::ct_rpc_capnp::EncounterResolution::TransponderOnly
+        }
+        EncounterResolution::Approximate => crate::ct_rpc_capnp::EncounterResolution::Approximate,
+        EncounterResolution::Identified => crate::ct_rpc_capnp::EncounterResolution::Identified,
+    });
+    builder.set_authority(match value.authority {
+        EncounterAuthority::None => crate::ct_rpc_capnp::EncounterAuthority::None,
+        EncounterAuthority::Pirate => crate::ct_rpc_capnp::EncounterAuthority::Pirate,
+        EncounterAuthority::TrafficControl => {
+            crate::ct_rpc_capnp::EncounterAuthority::TrafficControl
+        }
+        EncounterAuthority::Customs => crate::ct_rpc_capnp::EncounterAuthority::Customs,
+        EncounterAuthority::Naval => crate::ct_rpc_capnp::EncounterAuthority::Naval,
+        EncounterAuthority::Warrant => crate::ct_rpc_capnp::EncounterAuthority::Warrant,
+    });
+    builder.set_threat(match value.threat {
+        EncounterThreat::Unknown => crate::ct_rpc_capnp::EncounterThreat::Unknown,
+        EncounterThreat::Favorable => crate::ct_rpc_capnp::EncounterThreat::Favorable,
+        EncounterThreat::Comparable => crate::ct_rpc_capnp::EncounterThreat::Comparable,
+        EncounterThreat::Dangerous => crate::ct_rpc_capnp::EncounterThreat::Dangerous,
+        EncounterThreat::Overwhelming => crate::ct_rpc_capnp::EncounterThreat::Overwhelming,
+    });
+    builder.set_standing_orders_used(value.standing_orders_used);
+    builder.set_has_posture(value.posture.is_some());
+    builder.set_posture(encode_encounter_posture(
+        value.posture.unwrap_or(EncounterPosture::Fight),
+    ));
+    let mut fallbacks = builder
+        .reborrow()
+        .init_fallbacks(value.fallbacks.len() as u32);
+    for (index, fallback) in value.fallbacks.iter().enumerate() {
+        fallbacks.set(index as u32, encode_encounter_fallback(*fallback));
+    }
+    builder.set_automated_combat_used(value.automated_combat_used);
+    builder.set_outcome(&value.outcome);
+    builder.set_ship_name(&value.ship_name);
+    builder.set_loss_kind(match value.loss_kind {
+        CommandLossKind::Destroyed => crate::ct_rpc_capnp::CommandLossKind::Destroyed,
+        CommandLossKind::Captured => crate::ct_rpc_capnp::CommandLossKind::Captured,
+        CommandLossKind::Surrendered => crate::ct_rpc_capnp::CommandLossKind::Surrendered,
+        CommandLossKind::Abandoned => crate::ct_rpc_capnp::CommandLossKind::Abandoned,
+        CommandLossKind::Bankruptcy => crate::ct_rpc_capnp::CommandLossKind::Bankruptcy,
+    });
+    builder.set_owned_cargo_lost_millitons(value.owned_cargo_lost_millitons);
+    builder.set_entrusted_cargo_lost_millitons(value.entrusted_cargo_lost_millitons);
+    builder.set_unique_objects_lost(value.unique_objects_lost);
+    builder.set_fuel_lost_millitons(value.fuel_lost_millitons);
+    builder.set_passengers_affected(value.passengers_affected);
+    builder.set_damage_hits(value.damage_hits);
+    builder.set_captain_name(&value.captain_name);
+    builder.set_captain_fate(match value.captain_fate {
+        CaptainFate::Survived => crate::ct_rpc_capnp::CaptainFate::Survived,
+        CaptainFate::Dead => crate::ct_rpc_capnp::CaptainFate::Dead,
+    });
+    builder.set_other_crew_total(value.other_crew_total);
+    builder.set_other_crew_dead(value.other_crew_dead);
+    builder.set_other_crew_injured(value.other_crew_injured);
+    builder.set_other_crew_surviving(value.other_crew_surviving);
+    builder.set_recovery_ready_second(value.recovery_ready_second);
+    builder.set_successor_required(value.successor_required);
+    let count = u32::try_from(value.incident_log.len())
+        .map_err(|_| WireError::Expected("fewer terminal incident log entries"))?;
+    let mut log = builder.init_incident_log(count);
+    for (index, line) in value.incident_log.iter().enumerate() {
+        log.set(index as u32, line);
+    }
+    Ok(())
+}
+
 fn decode_combat_action_kind(value: crate::ct_rpc_capnp::CombatActionKind) -> CombatActionKind {
     use crate::ct_rpc_capnp::CombatActionKind as Wire;
     match value {
@@ -7628,6 +7800,11 @@ mod tests {
                 posture: EncounterPosture::Board,
                 fallbacks: vec![EncounterFallback::JettisonCargo],
             }),
+            Command::GetTerminalReport,
+            Command::AcknowledgeTerminalReport {
+                encounter_id: 91,
+                expected_revision: 5,
+            },
         ] {
             let request = CommandRequest {
                 request_id: 8,

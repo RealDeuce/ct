@@ -309,6 +309,15 @@ history survive both forms of succession. The unique apple pie follows the
 physical result: captor custody, system wreckage, or destruction; destruction
 therefore activates the already-settled universe-reset rule.
 
+The terminal transition also stores one Command Loss Report in the same
+transaction. It records whether standing Through orders or the tactical
+controller acted, retains the selected posture and fallbacks, summarizes
+material and personnel consequences, and converts the combat disposition to a
+closed command-loss cause. Sensor censorship is preserved: the report never
+substitutes a hostile catalog ID or exact hull class for what the captain knew.
+Recovery requires acknowledgement of the matching report revision; the report
+remains reviewable until successful recovery deletes the encounter.
+
 Detailed emission classification, player-owned third-party response policy,
 pursuit/rescue aftermath, deception refinements, and the optional Web Push
 notifier remain later Milestone 7 expansions. They extend this implementation

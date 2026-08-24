@@ -674,8 +674,16 @@ obtain a better combat controller.
 
 Damage, ammunition use, injury, capture, surrender, and loss persist. A crew
 that retains the ship attempts feasible emergency recovery, but supplies,
-skills, time, and underlying damage still matter. If command is lost, the
-recovery screen explains the available continuation or succession action.
+skills, time, and underlying damage still matter. If command is lost, the next
+login opens a mandatory **Command Loss Report** before recovery or succession.
+It identifies the censored contact evidence, whether a Through plan supplied
+the response, the posture and fallbacks used, tactical-controller involvement,
+the final ship and captain disposition, crew casualties, and cargo, fuel,
+passenger, and damage consequences. `L` opens the optional chronological
+incident log; Enter acknowledges the summary. Recovery remains locked until
+the current report is acknowledged. After acknowledgement, `V` reviews it
+again until recovery or succession succeeds, at which point the report is
+removed.
 
 ## Practical advice
 
