@@ -35516,7 +35516,7 @@ fn encode_encounter_record(value: &EncounterRecord) -> Result<Vec<u8>, StoreErro
 fn decode_encounter_record(bytes: &[u8]) -> Result<EncounterRecord, StoreError> {
     let mut d = Decoder::new(bytes);
     let version = d.u8()?;
-    if !matches!(version, 1 | 2 | 3) {
+    if !matches!(version, 1..=3) {
         return Err(StoreError::Corrupt("unsupported encounter record"));
     }
     let encounter_id = d.u64()?;
@@ -36402,7 +36402,7 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
 fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
     let mut decoder = Decoder::new(bytes);
     let queue_version = decoder.u8()?;
-    if !matches!(queue_version, 1 | 2 | 3) {
+    if !matches!(queue_version, 1..=3) {
         return Err(StoreError::Corrupt("unsupported queue record version"));
     }
     let identity = decode_identity(&mut decoder)?;
@@ -39197,7 +39197,7 @@ fn encode_stored_task(record: &StoredTask) -> Result<Vec<u8>, StoreError> {
 fn decode_stored_task(bytes: &[u8]) -> Result<StoredTask, StoreError> {
     let mut d = Decoder::new(bytes);
     let version = d.u8()?;
-    if !matches!(version, 1 | 2 | 3) {
+    if !matches!(version, 1..=3) {
         return Err(StoreError::Corrupt("unsupported task record version"));
     }
     let identity = decode_identity(&mut d)?;
