@@ -1054,7 +1054,6 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         .nth(1)
         .unwrap();
     let league_credential = data.path().join("league.credential");
-    let league_member_credential = data.path().join("league-member.credential");
     let league_coordinator = build.path().join("cepheus-trader-league");
     let mut league_credential_creator = Command::new(&league_coordinator)
         .args(["init-credential", league_credential.to_str().unwrap()])
@@ -2561,8 +2560,6 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
             league_port.as_str(),
             "--credential",
             league_credential.to_str().unwrap(),
-            "--bbs-credential",
-            league_member_credential.to_str().unwrap(),
             "--command-id",
             "99999999999999999999999999999999",
             "add-bbs",
@@ -2576,10 +2573,53 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         String::from_utf8_lossy(&league_member.stdout),
         String::from_utf8_lossy(&league_member.stderr)
     );
-    assert!(String::from_utf8_lossy(&league_member.stdout).starts_with("bbs-id=3 committed="));
-    assert_eq!(
-        std::fs::metadata(&league_member_credential).unwrap().len(),
-        48
+    let league_member_output = String::from_utf8(league_member.stdout).unwrap();
+    assert!(league_member_output.starts_with("BBS id=3 committed="));
+    let league_member_psk = league_member_output
+        .trim()
+        .split("psk=")
+        .nth(1)
+        .expect("League member response omitted its one-time PSK");
+    let league_member_installation = data.path().join("league-member-installation");
+    let league_member_config = league_member_installation.join("cepheus-trader.conf");
+    let mut league_member_bootstrap = Command::new(build.path().join("cepheus-trader-sysop"))
+        .args([
+            "--config",
+            league_member_config.to_str().unwrap(),
+            "--server",
+            "127.0.0.1",
+            "--game-port",
+            game_port.as_str(),
+            "--sysop-port",
+            sysop_port.as_str(),
+            "init-credential",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        let input = league_member_bootstrap.stdin.as_mut().unwrap();
+        writeln!(input, "3").unwrap();
+        writeln!(input, "{league_member_psk}").unwrap();
+    }
+    let league_member_bootstrap = league_member_bootstrap.wait_with_output().unwrap();
+    assert!(
+        league_member_bootstrap.status.success(),
+        "League member installation bootstrap failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&league_member_bootstrap.stdout),
+        String::from_utf8_lossy(&league_member_bootstrap.stderr)
+    );
+    let league_member_bootstrap = String::from_utf8(league_member_bootstrap.stdout).unwrap();
+    assert!(league_member_bootstrap.contains("credential created for BBS id=3:"));
+    assert!(league_member_bootstrap.contains("identity registry created:"));
+    let league_member_config_text = std::fs::read_to_string(&league_member_config).unwrap();
+    assert!(league_member_config_text.contains("credential-file=cepheus-trader.credential\n"));
+    assert!(
+        league_member_installation
+            .join("cepheus-trader.identities")
+            .is_file()
     );
     let league_status_with_member = Command::new(&league_coordinator)
         .args([

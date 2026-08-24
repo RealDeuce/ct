@@ -2,8 +2,9 @@
 
 This guide is for invited BBS sysops participating in the Cepheus Trader
 field test. The game is still in alpha and is not yet balanced for public
-enrollment. The server operator gives selected sysops a BBS ID and BBS PSK
-privately over Discord.
+enrollment. An independent BBS receives its BBS ID and PSK privately from the
+server operator; a League member receives the same two values from its League
+Coordinator.
 
 The shared field-test server is `ct.bbsdev.net`. Player doors connect to port
 `7323`; the sysop utility connects to port `7325`.
@@ -28,15 +29,16 @@ the current directory is that extracted top-level directory. Its `bin`
 directory contains:
 
 - `cepheus-trader-door`, the OpenDoors player door;
-- `cepheus-trader-sysop`, the BBS management utility; and
+- `cepheus-trader-sysop`, the BBS management utility;
+- `cepheus-trader-league`, the separate League Coordinator utility; and
 - `libcepheus-trader-client-core.so`,
   `libcepheus-trader-client-core.dylib`, or
   `cepheus-trader-client-core.dll`, depending on the platform.
 
-On Windows the two programs have an `.exe` suffix. Keep the shared client-core
+On Windows the three programs have an `.exe` suffix. Keep the shared client-core
 library in the same directory as the programs. The `share/cepheus-trader`
-directory contains the player and sysop guides, the example configuration,
-source correspondence, and license notices.
+directory contains the player, sysop, and League Coordinator guides, the
+example configuration, source correspondence, and license notices.
 
 Check the installation before adding it to the BBS:
 
@@ -46,7 +48,8 @@ bin/cepheus-trader-sysop --version
 ```
 
 Run the corresponding `.exe` files on Windows. Both commands must report the
-same product version.
+same product version. A League Coordinator can also check
+`bin/cepheus-trader-league --version`.
 
 ## Create the BBS credential and configuration
 
@@ -55,7 +58,8 @@ Place the extracted package at a permanent location such as
 BBS to use it as the door's working directory. The default filenames then work
 for both programs without repeated path options.
 
-Run `init-credential` interactively:
+After the server operator or League Coordinator supplies the BBS ID and PSK,
+run `init-credential` interactively:
 
 ```console
 cd /srv/bbs/doors/cepheus-trader

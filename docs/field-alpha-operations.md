@@ -87,7 +87,7 @@ cepheus-trader-league --credential league.credential status
 cepheus-trader-league --credential league.credential \
   --expected-revision REV set-name "Spinward League"
 cepheus-trader-league --credential league.credential \
-  --bbs-credential new-bbs.credential add-bbs "Example BBS"
+  add-bbs "Example BBS"
 cepheus-trader-league --credential league.credential \
   --expected-revision REV disable-bbs BBS_ID "reason"
 cepheus-trader-league --credential league.credential \
@@ -96,11 +96,13 @@ cepheus-trader-league --credential league.credential \
 
 The authenticated League ID, not a caller-supplied field, determines new-BBS
 membership. There is no attach, remove, or transfer operation. The add command
-creates a protected normal BBS credential file for private delivery to that
-BBS's sysop. Disabling a member preserves its polity, systems, players, and
-simulation state but immediately rejects new game/sysop authentication and
-disconnects active players and sysop control connections. Re-enabling restores
-the same BBS credential. Disabled members remain placement anchors.
+returns the new BBS ID and one-time PSK for private delivery to that BBS's
+sysop. The sysop uses the same interactive `cepheus-trader-sysop
+init-credential` workflow as an independently provisioned BBS. Disabling a
+member preserves its polity, systems, players, and simulation state but
+immediately rejects new game/sysop authentication and disconnects active
+players and sysop control connections. Re-enabling restores the same BBS
+credential. Disabled members remain placement anchors.
 
 `LABEL` is a simple ASCII label, not a path. The server writes beneath its
 `--backup-dir` (default `server-backups`) at an engine-queue boundary. The

@@ -30,7 +30,6 @@ struct Options {
    std::string host{"127.0.0.1"};
    std::string port{"7326"};
    std::string credential_file;
-   std::string bbs_credential_file;
    Operation operation{Operation::Status};
    std::string name;
    std::string reason;
@@ -88,7 +87,6 @@ void usage(std::ostream& out) {
           "  --host HOST                 server host (default: 127.0.0.1)\n"
           "  --port PORT                 league port (default: 7326)\n"
           "  --credential FILE           League Coordinator credential\n"
-          "  --bbs-credential FILE       new BBS credential output for add-bbs\n"
           "  --expected-revision NUMBER  required for set/enable/disable\n"
           "  --command-id HEX            reuse an exactly-once command ID\n";
 }
@@ -131,7 +129,6 @@ Options parse(const int argc, char** argv) {
       if(argument == "--host") options.host = next(index, argc, argv, argument);
       else if(argument == "--port") options.port = next(index, argc, argv, argument);
       else if(argument == "--credential") options.credential_file = next(index, argc, argv, argument);
-      else if(argument == "--bbs-credential") options.bbs_credential_file = next(index, argc, argv, argument);
       else if(argument == "--expected-revision") options.expected_revision = number<uint64_t>(next(index, argc, argv, argument), "revision");
       else if(argument == "--command-id") options.command_id = command_id(next(index, argc, argv, argument));
       else if(argument.starts_with("--")) throw std::invalid_argument("unknown option: " + std::string(argument));
@@ -150,8 +147,6 @@ Options parse(const int argc, char** argv) {
    else throw std::invalid_argument("expected a league operation; use --help");
    if(options.operation != Operation::Status && !options.expected_revision.has_value() && options.operation != Operation::AddBbs)
       throw std::invalid_argument("--expected-revision is required");
-   if(options.operation == Operation::AddBbs && options.bbs_credential_file.empty())
-      throw std::invalid_argument("add-bbs requires --bbs-credential FILE");
    return options;
 }
 
@@ -217,9 +212,9 @@ int main(int argc, char** argv) {
          }
       } else if(options.operation == Operation::AddBbs) {
          const auto bbs = ct::add_league_bbs(connection, options.name, id, 1);
-         ct::create_bbs_credential_file(options.bbs_credential_file, bbs.bbs_id, bbs.psk);
-         std::cout << "bbs-id=" << bbs.bbs_id << " committed=" << bbs.committed_sequence
-                   << " credential=" << options.bbs_credential_file << '\n';
+         std::cout << "BBS id=" << bbs.bbs_id
+                   << " committed=" << bbs.committed_sequence
+                   << " psk=" << ct::hex_encode(bbs.psk) << '\n';
       } else {
          bool stale = false;
          const auto member = ct::set_league_bbs_access(connection, options.bbs_id,

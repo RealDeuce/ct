@@ -191,8 +191,9 @@ identities provisioned by the global administrator. CT-League version 1 permits
 only status/member listing, revision-checked League naming, creation of new
 member BBS credentials, and revision-checked member enable/disable. Membership
 is derived from the authenticated League PSK; existing BBSs cannot be attached,
-removed, or transferred. PSKs never belong in arguments, environment variables,
-logs, or member listings.
+removed, or transferred. New-member creation returns its BBS ID and PSK only
+in the exactly-once response for private transfer to the sysop. PSKs never
+belong in arguments, environment variables, ordinary logs, or member listings.
 
 The door is a page-oriented, line-oriented interface with exactly three output
 profiles: ISO 646 plain text, ISO 646 plus ECMA-48 SGR colour, and CP437 plus

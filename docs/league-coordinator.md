@@ -51,13 +51,14 @@ directly to a protected file:
 
 ```console
 cepheus-trader-league --credential league.credential \
-  --bbs-credential new-bbs.credential add-bbs "Example BBS"
+  add-bbs "Example BBS"
 ```
 
-Transfer that BBS credential privately to its sysop, who completes ordinary
-sysop configuration. Membership is established by the authenticated League
-credential; there is no caller-supplied League ID and no later attach, remove,
-or transfer command.
+The command displays the new BBS ID and one-time PSK. Transfer both privately
+to its sysop, who uses the ordinary interactive `cepheus-trader-sysop
+init-credential` workflow. Membership is established by the authenticated
+League credential; there is no caller-supplied League ID and no later attach,
+remove, or transfer command.
 
 Disable or re-enable a member with that member's revision:
 
