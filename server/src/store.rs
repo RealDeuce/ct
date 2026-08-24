@@ -13968,14 +13968,18 @@ impl Store {
                     }
                     self.start_post_combat_recovery_in(txn, identity)?;
                 }
-                self.ships
-                    .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
-                if let Some(watch) = self.interception_watch_in(txn, ship.ship_id)? {
-                    self.remove_contact_schedules_in(txn, ship.ship_id)?;
-                    if !command_lost && Self::ship_traffic_locus(&ship) == Some(watch.locus) {
+                // Checkpoint finalization and recovery may both replace the
+                // ship record. Do not restore the older in-combat snapshot
+                // over that authoritative post-combat state.
+                let (_, settled_ship) = self.player_and_ship_in(txn, identity)?;
+                if let Some(watch) = self.interception_watch_in(txn, settled_ship.ship_id)? {
+                    self.remove_contact_schedules_in(txn, settled_ship.ship_id)?;
+                    if !command_lost && Self::ship_traffic_locus(&settled_ship) == Some(watch.locus)
+                    {
                         self.schedule_next_interception_watch_in(txn, &watch, current_second)?;
                     } else {
-                        self.interception_watches.delete(txn, &ship.ship_id)?;
+                        self.interception_watches
+                            .delete(txn, &settled_ship.ship_id)?;
                     }
                 }
             } else {
@@ -48995,6 +48999,152 @@ mod tests {
                 ..
             }
         ));
+        txn.abort();
+    }
+
+    #[test]
+    fn surviving_arrival_combat_does_not_restore_the_consumed_approach_leg() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let key = encode_identity(&identity());
+        let mut txn = store.env.write_txn().unwrap();
+        let (_, mut ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        let port = ShipLocusRecord::Port {
+            system_id: ship.system_id,
+            world_id: ship.system_id,
+            facility_id: ship.system_id,
+        };
+        ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: 88,
+            plan_revision: 1,
+            leg_index: 0,
+            origin: ShipLocusRecord::JumpLocus {
+                system_id: ship.system_id,
+            },
+            destination: port,
+            started_second: 0,
+            due_second: 50,
+            purpose: FlightLegPurpose::ApproachPort,
+        });
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        let checkpoint = CheckpointSnapshot {
+            checkpoint_id: 77,
+            plan_id: 88,
+            plan_revision: 1,
+            step_index: 0,
+            locus: FlightLocus::Port {
+                system_id: ship.system_id,
+                world_id: ship.system_id,
+                facility_id: ship.system_id,
+            },
+            kind: CheckpointKind::InhabitedWorld,
+            ready_second: 50,
+            acknowledged: true,
+        };
+        store
+            .checkpoints
+            .put(
+                &mut txn,
+                &key,
+                &encode_checkpoint_snapshot(&checkpoint).unwrap(),
+            )
+            .unwrap();
+        let plan = FlightPlanSnapshot {
+            plan_id: 88,
+            revision: 1,
+            current_step: 0,
+            state: FlightPlanState::Encounter,
+            steps: vec![FlightPlanStep {
+                locus: checkpoint.locus,
+                authority: WaypointAuthority::Through,
+                action: FlightPlanAction::Dock {
+                    world_id: ship.system_id,
+                    facility_id: ship.system_id,
+                },
+                terminal: true,
+            }],
+            policy: EncounterPolicy::default(),
+            suspension_reason: "contact at arrival checkpoint".into(),
+        };
+        store
+            .flight_plans
+            .put(&mut txn, &key, &encode_flight_plan_snapshot(&plan).unwrap())
+            .unwrap();
+
+        let mut encounter = test_encounter_record(
+            EncounterState::Resolving,
+            50,
+            100,
+            Some(EncounterPosture::Flee),
+        );
+        let player_vessel = crate::combat::materialize_vessel(
+            ship.ship_id,
+            1,
+            ship.name.clone(),
+            ship.catalog_id,
+            20,
+        )
+        .unwrap();
+        let mut opponent = crate::combat::materialize_vessel(
+            encounter.snapshot.contact.contact_id | (1_u64 << 63),
+            2,
+            encounter.snapshot.contact.ship_name.clone(),
+            encounter.opponent_catalog_id,
+            1,
+        )
+        .unwrap();
+        opponent.weapons.clear();
+        opponent.disposition = crate::combat::VesselDisposition::Withdrawing;
+        let combat = crate::combat::CombatState {
+            combat_id: encounter.snapshot.encounter_id,
+            revision: 1,
+            round: 1,
+            round_started_second: 0,
+            range: crate::combat::RangeBand::Long,
+            vessels: vec![player_vessel, opponent],
+            missiles: Vec::new(),
+            boarding: Vec::new(),
+            pursuits: Vec::new(),
+            complete: false,
+        };
+        encounter.player_order =
+            Some(crate::combat::conservative_order(&combat, ship.ship_id).unwrap());
+        encounter.combat = Some(combat);
+        store
+            .encounters
+            .put(
+                &mut txn,
+                &key,
+                &encode_encounter_record(&encounter).unwrap(),
+            )
+            .unwrap();
+        put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, 100).unwrap();
+
+        store
+            .process_encounter_turn_in(&mut txn, 100, &identity(), encounter.snapshot.encounter_id)
+            .unwrap();
+
+        let (_, settled_ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        assert!(
+            matches!(
+                settled_ship.location,
+                ShipLocationRecord::Docked {
+                    arrived_second: 100,
+                    ..
+                }
+            ),
+            "settled ship remained at {:?}",
+            settled_ship.location
+        );
+        assert!(store.checkpoints.get(&txn, &key).unwrap().is_none());
+        assert_eq!(
+            store.flight_plan_in(&txn, &identity()).unwrap().state,
+            FlightPlanState::Completed
+        );
         txn.abort();
     }
 
