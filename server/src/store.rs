@@ -11,13 +11,13 @@ use heed::types::{Bytes, Str, U64};
 use heed::{CompactionOption, Database, Env, EnvOpenOptions};
 use thiserror::Error;
 
+#[cfg(test)]
+use crate::bbs_polity::candidate_sites;
 use crate::bbs_polity::{
     BBS_COVERAGE_SAMPLER_VERSION, BBS_GEOMETRY_VARIANT_COUNT, BBS_MAX_SEED_DRAWS_PER_ROLE,
     BBS_POLITY_GENERATION_VERSION, BBS_POLITY_SYSTEM_COUNT, BbsHome, BbsPolitySite, CAPITAL_INDEX,
     FIRST_COMPANION_INDEX, SECOND_COMPANION_INDEX, candidate_sites_for_variant,
 };
-#[cfg(test)]
-use crate::bbs_polity::candidate_sites;
 use crate::celestial::{BodyKind, CelestialSystem, derive_celestial_system, derive_primary_world};
 use crate::commerce::{
     MILLITONS_PER_TON, REFINED_FUEL_PRICE_PER_TON, commodity, negotiated_sale_price,
