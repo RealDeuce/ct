@@ -1,5 +1,6 @@
 # Local build and runtime output
 build/
+/client/deploy-build/
 cmake-build-*/
 out/
 target/
