@@ -51,7 +51,7 @@
     return {
       attentionSoon: byId("attention-soon").checked,
       attentionNow: byId("attention-now").checked,
-      automationApplied: true,
+      automationApplied: byId("automation-applied").checked,
       leadMinutes: Number(byId("lead-minutes").value)
     };
   }
@@ -65,9 +65,19 @@
     };
     byId("attention-soon").checked = preferences.attentionSoon;
     byId("attention-now").checked = preferences.attentionNow;
+    byId("automation-applied").checked = preferences.automationApplied;
     byId("lead-minutes").value = preferences.leadMinutes;
     byId("settings").hidden = false;
     byId("enrollment").hidden = true;
+  }
+
+  function showDashboard() {
+    byId("notice-panel").hidden = true;
+    byId("status-panel").hidden = false;
+    if (state.config && state.config.linked) {
+      setStatus("Receiver linked", "This communicator is standing by for bridge calls.", "LINKED");
+      byId("inbox").hidden = false;
+    }
   }
 
   function setBusy(button, busy) {
@@ -117,6 +127,7 @@
       state.config.linked = true;
       showPreferences(response.preferences);
       setStatus("Receiver linked", "Bridge calls will reach this communicator according to the orders below.", "LINKED");
+      loadInbox();
     }).catch(function (error) {
       setStatus("Link failed", error.message, "FAULT");
     }).then(function () {
@@ -150,6 +161,7 @@
       return subscription ? subscription.unsubscribe() : true;
     }).then(function () {
       byId("settings").hidden = true;
+      byId("inbox").hidden = true;
       setStatus("Receiver unlinked", "This unit will no longer receive bridge calls. Link it again from the game when needed.", "STANDBY");
     }).catch(function (error) {
       setStatus("Unlink failed", error.message, "FAULT");
@@ -182,7 +194,67 @@
     });
   }
 
-  function loadNotice() {
+  function noticeKind(kind) {
+    if (kind === "attention-soon")
+      return "HOLD WARNING";
+    if (kind === "automation-soon")
+      return "THROUGH WARNING";
+    if (kind === "attention-now")
+      return "PRIORITY CALL";
+    return "TRANSMISSION";
+  }
+
+  function localTime(unix) {
+    return new Date(unix * 1000).toLocaleString();
+  }
+
+  function renderInbox(alerts) {
+    var list = byId("inbox-list");
+    list.textContent = "";
+    byId("inbox-empty").textContent =
+      "No unexpired transmissions have been delivered to this receiver.";
+    byId("inbox-empty").hidden = alerts.length !== 0;
+    alerts.forEach(function (alert) {
+      var button = document.createElement("button");
+      var kind = document.createElement("span");
+      var title = document.createElement("strong");
+      var body = document.createElement("span");
+      var time = document.createElement("span");
+      button.type = "button";
+      button.className = "inbox-entry";
+      kind.className = "inbox-kind";
+      title.className = "inbox-title";
+      body.className = "inbox-body";
+      time.className = "inbox-time";
+      kind.textContent = noticeKind(alert.kind);
+      title.textContent = alert.title;
+      body.textContent = alert.body;
+      time.textContent = "Issued " + localTime(alert.createdUnix) +
+        " · available until " + localTime(alert.expiresUnix);
+      button.appendChild(kind);
+      button.appendChild(title);
+      button.appendChild(body);
+      button.appendChild(time);
+      button.addEventListener("click", function () { loadNotice(alert.notice); });
+      list.appendChild(button);
+    });
+    byId("inbox").hidden = false;
+  }
+
+  function loadInbox() {
+    return post("inbox.ssjs", {}).then(function (response) {
+      renderInbox(response.alerts);
+    }).catch(function (error) {
+      byId("inbox-list").textContent = "";
+      byId("inbox-empty").hidden = false;
+      byId("inbox-empty").textContent =
+        "Received transmissions are unavailable: " + error.message;
+      byId("inbox").hidden = false;
+    });
+  }
+
+  function loadNotice(notice) {
+    state.notice = notice || state.notice;
     post("notice.ssjs", { notice: state.notice }).then(function (response) {
       byId("notice-title").textContent = response.alert.title;
       byId("notice-body").textContent = response.alert.body;
@@ -194,6 +266,8 @@
       byId("signal").textContent = "PRIORITY";
       history.replaceState(null, "", location.pathname);
     }).catch(function (error) {
+      byId("notice-panel").hidden = true;
+      byId("status-panel").hidden = false;
       setStatus("Transmission unavailable", error.message, "EXPIRED");
     });
   }
@@ -213,6 +287,8 @@
     byId("link-button").addEventListener("click", linkDevice);
     byId("save-button").addEventListener("click", savePreferences);
     byId("revoke-button").addEventListener("click", revokeDevice);
+    byId("refresh-inbox").addEventListener("click", loadInbox);
+    byId("notice-back").addEventListener("click", showDashboard);
     fetch("config.ssjs", { credentials: "same-origin", cache: "no-store" })
       .then(function (response) { return response.json(); })
       .then(function (config) {
@@ -220,12 +296,17 @@
           throw new Error(config.error || "The bridge relay is unavailable.");
         state.config = config;
         if (state.notice) {
+          if (config.linked) {
+            showPreferences(config.preferences);
+            loadInbox();
+          }
           loadNotice();
         } else if (config.linked) {
           if (state.token)
             history.replaceState(null, "", location.pathname);
           showPreferences(config.preferences);
           setStatus("Receiver linked", "This communicator is standing by for bridge calls.", "LINKED");
+          loadInbox();
         } else if (state.token) {
           byId("enrollment").hidden = false;
           setStatus("Pairing signal acquired", "Permission is required before this unit can receive bridge calls.", "SIGNAL LOCK");

@@ -152,11 +152,36 @@ button {
 button:disabled { cursor: wait; opacity: .55; }
 .primary { color: #071008; border-color: #b9d89f; background: #9fc481; }
 .danger { color: #f0b0a2; border-color: #8d4d42; background: #291411; }
+.quiet { color: #b9d89f; border-color: #60755c; background: #142019; }
 
 .notice-label { color: #ffe27f; letter-spacing: .12em; font-size: .75rem; }
 .notice-panel dl { display: grid; grid-template-columns: minmax(7rem, auto) 1fr; gap: .45rem 1rem; }
 .notice-panel dt { color: #7ebd78; }
 .notice-panel dd { margin: 0; overflow-wrap: anywhere; }
+.screen-button {
+  color: #a9f09d;
+  border-color: #56845d;
+  background: rgba(7, 20, 15, .75);
+}
+
+.inbox { margin-top: 1rem; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.section-heading h2 { margin: 0; }
+.section-heading button { min-height: 2.2rem; padding: .35rem .65rem; }
+.inbox-list { display: grid; gap: .65rem; }
+.inbox-entry {
+  width: 100%;
+  padding: .75rem;
+  text-align: left;
+  color: #d5e7d0;
+  border-color: #4b5752;
+  background: #0a1110;
+}
+.inbox-entry:hover, .inbox-entry:focus-visible { border-color: #9fc481; background: #111c17; }
+.inbox-kind, .inbox-time { display: block; color: #8fa58f; font-size: .7rem; }
+.inbox-title { display: block; margin: .25rem 0; color: #baff9f; font-size: .9rem; }
+.inbox-body { display: block; font-weight: normal; line-height: 1.35; }
+.inbox-time { margin-top: .35rem; }
 
 footer {
   display: flex;

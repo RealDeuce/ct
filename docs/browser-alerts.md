@@ -3,17 +3,19 @@
 Cepheus Trader can pair up to five browsers with a captain and send Web Push
 alerts while the captain is away. The companion page is deliberately narrow:
 in-world it is the captain's portable communicator; operationally it enrolls
-a browser, edits receiving preferences, displays an authenticated alert detail,
-and unlinks the current receiver. It never accepts game orders.
+a browser, edits receiving preferences, displays authenticated alert detail,
+lists unexpired alerts successfully delivered to the current receiver, and
+unlinks that receiver. It never accepts game orders.
 
-The alert service currently produces three useful classes:
+The alert service currently produces three independently selectable classes:
 
 - an advance bridge-watch reminder for a scheduled leg that will finish at a
   `Hold` waypoint and wait for the captain;
-- an immediate call when an unacknowledged checkpoint becomes visible to the
-  captain;
-- an immediate call when the captain detects an encounter. Hidden engine
-  knowledge does not originate an encounter alert.
+- an advance standing-orders reminder for a scheduled leg that will reach a
+  `Through` waypoint and act for the captain;
+- an immediate call when an unacknowledged checkpoint becomes visible or the
+  captain detects an encounter. Hidden engine knowledge does not originate an
+  encounter alert.
 
 Alert text may contain the same game information that the captain can see.
 Opening the companion is optional: the push title and body carry the useful
@@ -109,8 +111,17 @@ enough:
 The URL fragment carries the pairing token, so it is not sent in the HTTP
 request target or ordinary access logs. The browser requests notification
 permission only after the player presses **Link this communicator**. Once
-linked, the companion exposes independent toggles for advance warnings and
-attention-now calls, plus a 1–1440 minute advance warning time.
+linked, the companion exposes independent toggles for advance Hold warnings,
+advance Through/standing-orders warnings, and attention-now calls, plus one
+1–1440 minute lead time shared by both advance-warning classes. This lets a
+captain disable routine Through notices while retaining every warning that
+means the ship will wait for orders.
+
+The communicator's Received Transmissions section is a temporary receiver
+inbox. It lists only alerts that the push service accepted for that linked
+browser, and each entry opens the same authenticated detail as its system
+notification. Entries disappear under the alert's existing expiry rule; this
+is recovery from a dismissed notification, not a permanent message archive.
 
 ## Security and failure behavior
 
@@ -124,6 +135,11 @@ attention-now calls, plus a 1–1440 minute advance warning time.
 - Alert detail references are random. The detail endpoint checks the linked
   browser session, captain identity, and expiry before returning data. The
   service worker opens the reference in a URL fragment.
+- The temporary inbox requires the receiver credential and joins delivery rows
+  to that browser session, captain identity, successful state, and alert
+  expiry. Revoking the receiver invalidates that credential; a push-service
+  revocation does not prematurely hide alerts it had already accepted. The
+  inbox does not expose pending, failed, or other-receiver alerts.
 - Push subscription endpoints must be plain HTTPS URLs. Delivery disables
   redirects, resolves and pins a public address, and rejects loopback, private,
   link-local, multicast, and other non-public ranges.

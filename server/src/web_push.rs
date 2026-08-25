@@ -128,8 +128,9 @@ pub struct PushAlert {
     pub detail_json: String,
     pub created_unix_second: u64,
     pub expires_unix_second: u64,
-    /// For `attention-soon`, the real-world instant when attention becomes
-    /// necessary. Each subscription's lead time is subtracted from this.
+    /// For Hold and Through advance notices, the real-world instant when the
+    /// boundary is reached. Each subscription's lead time is subtracted from
+    /// this.
     pub attention_due_unix_second: u64,
 }
 
@@ -623,13 +624,13 @@ fn store_alert(connection: &mut Connection, alert: &PushAlert) -> Result<(), Web
         transaction.execute(
             "INSERT INTO deliveries(alert_id,subscription_id,next_attempt_unix)
              SELECT ?1,id,
-               CASE WHEN ?5='attention-soon'
+               CASE WHEN ?5 IN ('attention-soon','automation-soon')
                  THEN MAX(?2, ?6 - (lead_minutes * 60)) ELSE ?2 END
              FROM subscriptions
              WHERE bbs_id=?3 AND player_id=?4 AND revoked_unix IS NULL AND
                CASE ?5 WHEN 'attention-soon' THEN attention_soon
                        WHEN 'attention-now' THEN attention_now
-                       WHEN 'automation-applied' THEN automation_applied ELSE 0 END = 1
+                       WHEN 'automation-soon' THEN automation_applied ELSE 0 END = 1
              ON CONFLICT(alert_id,subscription_id) DO NOTHING",
             params![
                 alert_id,
@@ -682,7 +683,7 @@ fn deliver_due(
                AND a.expires_unix>?1 AND s.revoked_unix IS NULL
                AND CASE a.kind WHEN 'attention-soon' THEN s.attention_soon
                        WHEN 'attention-now' THEN s.attention_now
-                       WHEN 'automation-applied' THEN s.automation_applied ELSE 0 END = 1
+                       WHEN 'automation-soon' THEN s.automation_applied ELSE 0 END = 1
              ORDER BY d.next_attempt_unix LIMIT ?2",
         )?;
         query
@@ -1035,5 +1036,91 @@ mod tests {
             })
             .unwrap();
         assert_eq!(scheduled, due - 12 * 60);
+    }
+
+    #[test]
+    fn through_warning_uses_independent_automation_preference_and_lead_time() {
+        let directory = tempfile::tempdir().unwrap();
+        let key_path = directory.path().join("vapid.key");
+        initialize_vapid_key(&key_path).unwrap();
+        let config = WebPushConfig::new(
+            "https://example.test/ct-alerts/",
+            directory.path().join("push.sqlite3"),
+            key_path.clone(),
+            "mailto:sysop@example.test".into(),
+        )
+        .unwrap();
+        let private = read_private_key(&key_path).unwrap();
+        let key_pair = ES256KeyPair::from_bytes(&private).unwrap();
+        let mut database = open_database(
+            &config.database_path,
+            &encode_vapid_public_key(&key_pair).unwrap(),
+            &config.public_url,
+        )
+        .unwrap();
+        database
+            .execute(
+                "INSERT INTO browser_sessions(id,credential_hash,bbs_id,player_id,created_unix) \
+                 VALUES(1,'credential',2,7,1)",
+                [],
+            )
+            .unwrap();
+        database
+            .execute(
+                "INSERT INTO subscriptions(session_id,bbs_id,player_id,endpoint,p256dh,auth,\
+                 attention_soon,automation_applied,lead_minutes,created_unix,updated_unix) \
+                 VALUES(1,2,7,'https://push.example.test/one','key','auth',0,1,7,1,1)",
+                [],
+            )
+            .unwrap();
+        let now = unix_now();
+        let due = now + 3_600;
+        store_alert(
+            &mut database,
+            &PushAlert {
+                identity: PlayerIdentity {
+                    bbs_id: 2,
+                    player_id: 7,
+                },
+                source_key: "leg:through".into(),
+                kind: "automation-soon".into(),
+                title: "Standing orders reminder".into(),
+                body: "Standing orders will continue the voyage.".into(),
+                detail_json: "{}".into(),
+                created_unix_second: now,
+                expires_unix_second: due + 3_600,
+                attention_due_unix_second: due,
+            },
+        )
+        .unwrap();
+        let scheduled: u64 = database
+            .query_row("SELECT next_attempt_unix FROM deliveries", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(scheduled, due - 7 * 60);
+
+        store_alert(
+            &mut database,
+            &PushAlert {
+                identity: PlayerIdentity {
+                    bbs_id: 2,
+                    player_id: 7,
+                },
+                source_key: "leg:hold".into(),
+                kind: "attention-soon".into(),
+                title: "Bridge watch reminder".into(),
+                body: "The ship will wait for orders.".into(),
+                detail_json: "{}".into(),
+                created_unix_second: now,
+                expires_unix_second: due + 3_600,
+                attention_due_unix_second: due,
+            },
+        )
+        .unwrap();
+        let delivery_count: u64 = database
+            .query_row("SELECT COUNT(*) FROM deliveries", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(delivery_count, 1);
     }
 }

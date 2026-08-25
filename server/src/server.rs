@@ -440,9 +440,8 @@ fn encounter_push_alert(
 }
 
 fn upcoming_attention_push_alert(transition: &PlayerTravelTransition) -> Option<PushAlert> {
-    if !transition.attention_required_at_due
-        || transition.status.due_second <= transition.status.current_game_second
-    {
+    let authority = transition.waypoint_authority_at_due?;
+    if transition.status.due_second <= transition.status.current_game_second {
         return None;
     }
     let now = web_alert_now();
@@ -465,6 +464,24 @@ fn upcoming_attention_push_alert(transition: &PlayerTravelTransition) -> Option<
             wire::FlightLocus::Port { system_id, .. } => format!("port in system {system_id}"),
         }
     };
+    let (kind, title, body) = match authority {
+        wire::WaypointAuthority::Hold => (
+            "attention-soon",
+            "Bridge watch reminder",
+            format!(
+                "{} will reach {destination} and wait for the captain's orders.",
+                transition.status.ship_name
+            ),
+        ),
+        wire::WaypointAuthority::Through => (
+            "automation-soon",
+            "Standing orders reminder",
+            format!(
+                "{} will reach {destination}, where standing orders are filed to continue.",
+                transition.status.ship_name
+            ),
+        ),
+    };
     Some(PushAlert {
         identity: transition.identity.clone(),
         source_key: format!(
@@ -474,21 +491,16 @@ fn upcoming_attention_push_alert(transition: &PlayerTravelTransition) -> Option<
             transition.status.leg_index,
             transition.status.due_second,
         ),
-        kind: "attention-soon".into(),
-        title: "Bridge watch reminder".into(),
-        body: shortened_alert_text(
-            &format!(
-                "{} will reach {destination} and wait for the captain's orders.",
-                transition.status.ship_name
-            ),
-            240,
-        ),
+        kind: kind.into(),
+        title: title.into(),
+        body: shortened_alert_text(&body, 240),
         detail_json: serde_json::json!({
             "shipId": transition.status.ship_id,
             "shipName": transition.status.ship_name,
             "destinationSystemId": transition.status.destination_system_id,
             "destinationSystemName": transition.status.destination_system_name,
             "stage": format!("{:?}", transition.status.stage),
+            "waypointAuthority": format!("{authority:?}"),
             "dueGameSecond": transition.status.due_second,
         })
         .to_string(),
@@ -3455,6 +3467,66 @@ mod tests {
         assert!(controlled.online_controlled);
         assert!(!standing_orders.online_controlled);
         assert!(!generated.online_controlled);
+    }
+
+    fn travel_transition_with_authority(
+        authority: Option<wire::WaypointAuthority>,
+    ) -> PlayerTravelTransition {
+        PlayerTravelTransition {
+            identity: PlayerIdentity {
+                bbs_id: 17,
+                player_id: 42,
+            },
+            committed_sequence: 9,
+            revision: 3,
+            phase: wire::PlayerPhase::Interplanetary,
+            status: wire::TravelStatus {
+                ship_id: 99,
+                ship_name: "Far Horizon".into(),
+                current_system_id: 1,
+                current_system_name: "Origin".into(),
+                destination_system_id: 1,
+                destination_system_name: "Origin".into(),
+                stage: wire::TravelStage::DepartingForJump,
+                current_game_second: 1_000,
+                due_second: 2_000,
+                current_fuel_millitons: 10_000,
+                jump_fuel_millitons: 5_000,
+                plan_id: 7,
+                plan_revision: 3,
+                leg_index: 0,
+                origin: wire::FlightLocus::Port {
+                    system_id: 1,
+                    world_id: 1,
+                    facility_id: 1,
+                },
+                destination: wire::FlightLocus::JumpLocus { system_id: 1 },
+            },
+            waypoint_authority_at_due: authority,
+        }
+    }
+
+    #[test]
+    fn upcoming_waypoint_alerts_split_hold_and_through_preferences() {
+        let hold = upcoming_attention_push_alert(&travel_transition_with_authority(Some(
+            wire::WaypointAuthority::Hold,
+        )))
+        .unwrap();
+        assert_eq!(hold.kind, "attention-soon");
+        assert!(hold.body.contains("wait for the captain's orders"));
+
+        let through = upcoming_attention_push_alert(&travel_transition_with_authority(Some(
+            wire::WaypointAuthority::Through,
+        )))
+        .unwrap();
+        assert_eq!(through.kind, "automation-soon");
+        assert!(
+            through
+                .body
+                .contains("standing orders are filed to continue")
+        );
+
+        assert!(upcoming_attention_push_alert(&travel_transition_with_authority(None)).is_none());
     }
 
     #[tokio::test]

@@ -43,10 +43,14 @@ screen. Letter choices are case-insensitive.
 - `B` in the universal menu opens **Browser Alerts**. When the BBS operator has
   enabled the service, the door displays a ten-minute link and, where it fits,
   a QR code for the captain's portable communicator. The browser can warn you
-  before the ship reaches a waypoint that will wait for orders and call you
-  when a checkpoint or detected encounter needs attention. Push alerts are a
-  convenience, not a guarantee; game time and standing orders continue if one
-  is delayed or missed.
+  before the ship reaches a waypoint that will wait for orders, optionally
+  warn before standing orders carry the ship through a waypoint, and call you
+  when a checkpoint or detected encounter needs attention. Hold warnings,
+  Through warnings, and immediate calls can be selected independently. Alerts
+  successfully delivered to that browser remain in its temporary Received
+  Transmissions list until they expire, so dismissing a notification does not
+  discard its detail. Push alerts are a convenience, not a guarantee; game
+  time and standing orders continue if one is delayed or missed.
 
 Cepheus Trader is server-authoritative. If a command is rejected, read the
 reason and refresh the relevant screen rather than assuming that the displayed

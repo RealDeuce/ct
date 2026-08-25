@@ -2911,9 +2911,9 @@ pub struct PlayerTravelTransition {
     pub revision: u64,
     pub phase: PlayerPhase,
     pub status: TravelStatus,
-    /// The currently scheduled leg ends at a waypoint where automation will
-    /// stop and wait for the captain.
-    pub attention_required_at_due: bool,
+    /// Hold/Through authority at the currently scheduled leg boundary. A
+    /// missing value means the boundary has no player-selected authority.
+    pub waypoint_authority_at_due: Option<WaypointAuthority>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4153,9 +4153,34 @@ impl Store {
                 let Some(delivery) = self.process_next()? else {
                     return Ok(None);
                 };
-                let player_transitions = if !delivery.outcome.replayed
-                    && delivery.outcome.phase == PlayerPhase::Encounter
+                let mut player_transitions = Vec::new();
+                let may_schedule_waypoint = matches!(
+                    &queued.request.command,
+                    Command::CommitFlightPlan(_)
+                        | Command::AcknowledgeCheckpoint { .. }
+                        | Command::ResolveEncounter(_)
+                        | Command::CommitDockedService(_)
+                );
+                if !delivery.outcome.replayed
+                    && may_schedule_waypoint
+                    && !matches!(&delivery.outcome.kind, OutcomeKind::Error { .. })
                 {
+                    let txn = self.env.read_txn()?;
+                    let status = self.travel_status_in(&txn, &queued.identity)?;
+                    let waypoint_authority_at_due =
+                        self.waypoint_authority_at_due_in(&txn, &queued.identity, &status)?;
+                    if waypoint_authority_at_due.is_some() {
+                        player_transitions.push(PlayerTravelTransition {
+                            identity: queued.identity.clone(),
+                            committed_sequence: delivery.outbox_sequence,
+                            revision: delivery.outcome.revision,
+                            phase: delivery.outcome.phase,
+                            status,
+                            waypoint_authority_at_due,
+                        });
+                    }
+                }
+                if !delivery.outcome.replayed && delivery.outcome.phase == PlayerPhase::Encounter {
                     let combat_id = {
                         let txn = self.env.read_txn()?;
                         self.player_and_ship_in(&txn, &queued.identity)
@@ -4166,20 +4191,17 @@ impl Store {
                             .transpose()?
                     };
                     if let Some(combat_id) = combat_id {
-                        self.shared_combat_transitions(
-                            combat_id,
-                            delivery.outbox_sequence,
-                            delivery.outcome.revision,
-                        )?
-                        .into_iter()
-                        .filter(|transition| transition.identity != queued.identity)
-                        .collect()
-                    } else {
-                        Vec::new()
+                        player_transitions.extend(
+                            self.shared_combat_transitions(
+                                combat_id,
+                                delivery.outbox_sequence,
+                                delivery.outcome.revision,
+                            )?
+                            .into_iter()
+                            .filter(|transition| transition.identity != queued.identity),
+                        );
                     }
-                } else {
-                    Vec::new()
-                };
+                }
                 Ok(Some(ProcessedEngineInput {
                     delivery: Some(delivery),
                     player_transitions,
@@ -4299,15 +4321,15 @@ impl Store {
                     self.process_player_travel_in(&mut txn, current_second, ship_id)?;
                 let phase = self.player_phase_in(&txn, &identity)?;
                 let status = self.travel_status_in(&txn, &identity)?;
-                let attention_required_at_due =
-                    self.attention_required_at_due_in(&txn, &identity, &status)?;
+                let waypoint_authority_at_due =
+                    self.waypoint_authority_at_due_in(&txn, &identity, &status)?;
                 player_transitions.push(PlayerTravelTransition {
                     identity: identity.clone(),
                     committed_sequence: sequence,
                     revision,
                     phase,
                     status,
-                    attention_required_at_due,
+                    waypoint_authority_at_due,
                 });
                 let combat_id = self
                     .player_and_ship_in(&txn, &identity)
@@ -4370,15 +4392,15 @@ impl Store {
                 self.process_encounter_turn_in(&mut txn, current_second, &identity, encounter_id)?;
                 let phase = self.player_phase_in(&txn, &identity)?;
                 let status = self.travel_status_in(&txn, &identity)?;
-                let attention_required_at_due =
-                    self.attention_required_at_due_in(&txn, &identity, &status)?;
+                let waypoint_authority_at_due =
+                    self.waypoint_authority_at_due_in(&txn, &identity, &status)?;
                 player_transitions.push(PlayerTravelTransition {
                     identity,
                     committed_sequence: sequence,
                     revision,
                     phase,
                     status,
-                    attention_required_at_due,
+                    waypoint_authority_at_due,
                 });
                 category = Some(ProcessedScheduledCategory::EncounterTurn);
                 encode_timed_object_event_journal(0x45, current_second, encounter_id)
@@ -4389,15 +4411,15 @@ impl Store {
                 for identity in identities {
                     let phase = self.player_phase_in(&txn, &identity)?;
                     let status = self.travel_status_in(&txn, &identity)?;
-                    let attention_required_at_due =
-                        self.attention_required_at_due_in(&txn, &identity, &status)?;
+                    let waypoint_authority_at_due =
+                        self.waypoint_authority_at_due_in(&txn, &identity, &status)?;
                     player_transitions.push(PlayerTravelTransition {
                         identity,
                         committed_sequence: sequence,
                         revision,
                         phase,
                         status,
-                        attention_required_at_due,
+                        waypoint_authority_at_due,
                     });
                 }
                 category = Some(ProcessedScheduledCategory::EncounterTurn);
@@ -4409,15 +4431,15 @@ impl Store {
                 {
                     let phase = self.player_phase_in(&txn, &identity)?;
                     let status = self.travel_status_in(&txn, &identity)?;
-                    let attention_required_at_due =
-                        self.attention_required_at_due_in(&txn, &identity, &status)?;
+                    let waypoint_authority_at_due =
+                        self.waypoint_authority_at_due_in(&txn, &identity, &status)?;
                     player_transitions.push(PlayerTravelTransition {
                         identity,
                         committed_sequence: sequence,
                         revision,
                         phase,
                         status,
-                        attention_required_at_due,
+                        waypoint_authority_at_due,
                     });
                 }
                 category = Some(ProcessedScheduledCategory::ContactCheck);
@@ -5709,19 +5731,19 @@ impl Store {
             }))
     }
 
-    fn attention_required_at_due_in(
+    fn waypoint_authority_at_due_in(
         &self,
         txn: &heed::RoTxn<'_>,
         identity: &PlayerIdentity,
         status: &TravelStatus,
-    ) -> Result<bool, StoreError> {
+    ) -> Result<Option<WaypointAuthority>, StoreError> {
         if status.due_second <= status.current_game_second
             || matches!(
                 status.stage,
                 TravelStage::Docked | TravelStage::Holding | TravelStage::Encounter
             )
         {
-            return Ok(false);
+            return Ok(None);
         }
         // Coordinate Jumps always break out into a deep-space survey and hold
         // for damage/arrival assessment; their plan step names the departure
@@ -5729,7 +5751,7 @@ impl Store {
         if status.stage == TravelStage::JumpSpace
             && matches!(status.destination, FlightLocus::DeepSpace { .. })
         {
-            return Ok(true);
+            return Ok(Some(WaypointAuthority::Hold));
         }
         let plan = self.flight_plan_in(txn, identity)?;
         if let Some(step) = plan
@@ -5738,12 +5760,12 @@ impl Store {
             .skip(usize::from(plan.current_step))
             .find(|step| step.locus == status.destination)
         {
-            return Ok(step.authority == WaypointAuthority::Hold);
+            return Ok(Some(step.authority));
         }
         // Legacy/direct voyages have no FlightPlanSnapshot policy. Their
         // final approach (and the return leg of direct remote operations)
         // always stops for the captain.
-        Ok(plan.plan_id == 0
+        Ok((plan.plan_id == 0
             && (status.stage == TravelStage::ApproachingStarport
                 || (matches!(status.destination, FlightLocus::Port { .. })
                     && matches!(
@@ -5753,6 +5775,7 @@ impl Store {
                             | TravelStage::FuelProcessing
                             | TravelStage::BeltEgress
                     ))))
+        .then_some(WaypointAuthority::Hold))
     }
 
     fn projected_primary_approach_seconds_in(
@@ -15409,7 +15432,7 @@ impl Store {
                 committed_sequence,
                 revision,
                 phase: self.player_phase_in(txn, &participant.identity)?,
-                attention_required_at_due: self.attention_required_at_due_in(
+                waypoint_authority_at_due: self.waypoint_authority_at_due_in(
                     txn,
                     &participant.identity,
                     &status,
@@ -49095,7 +49118,7 @@ mod tests {
     }
 
     #[test]
-    fn attention_warning_is_reserved_for_future_hold_waypoints() {
+    fn advance_warning_classifies_future_waypoint_authority() {
         let directory = TempDir::new().unwrap();
         let store = Store::open(directory.path()).unwrap();
         let destination = FlightLocus::Port {
@@ -49146,10 +49169,11 @@ mod tests {
             destination,
         };
         let txn = store.env.read_txn().unwrap();
-        assert!(
+        assert_eq!(
             store
-                .attention_required_at_due_in(&txn, &identity(), &status)
-                .unwrap()
+                .waypoint_authority_at_due_in(&txn, &identity(), &status)
+                .unwrap(),
+            Some(WaypointAuthority::Hold)
         );
         drop(txn);
 
@@ -49161,10 +49185,11 @@ mod tests {
             .unwrap();
         txn.commit().unwrap();
         let txn = store.env.read_txn().unwrap();
-        assert!(
-            !store
-                .attention_required_at_due_in(&txn, &identity(), &status)
-                .unwrap()
+        assert_eq!(
+            store
+                .waypoint_authority_at_due_in(&txn, &identity(), &status)
+                .unwrap(),
+            Some(WaypointAuthority::Through)
         );
         drop(txn);
 
@@ -49177,10 +49202,11 @@ mod tests {
             .unwrap();
         txn.commit().unwrap();
         let txn = store.env.read_txn().unwrap();
-        assert!(
-            !store
-                .attention_required_at_due_in(&txn, &identity(), &status)
-                .unwrap()
+        assert_eq!(
+            store
+                .waypoint_authority_at_due_in(&txn, &identity(), &status)
+                .unwrap(),
+            None
         );
         drop(txn);
 
@@ -49189,10 +49215,11 @@ mod tests {
             position: crate::wire::Coordinate3::from_parsecs([1.0, 2.0, 3.0]),
         };
         let txn = store.env.read_txn().unwrap();
-        assert!(
+        assert_eq!(
             store
-                .attention_required_at_due_in(&txn, &identity(), &status)
-                .unwrap()
+                .waypoint_authority_at_due_in(&txn, &identity(), &status)
+                .unwrap(),
+            Some(WaypointAuthority::Hold)
         );
         drop(txn);
 
@@ -49202,10 +49229,11 @@ mod tests {
         status.stage = TravelStage::ApproachingStarport;
         status.destination = destination;
         let txn = store.env.read_txn().unwrap();
-        assert!(
+        assert_eq!(
             store
-                .attention_required_at_due_in(&txn, &identity(), &status)
-                .unwrap()
+                .waypoint_authority_at_due_in(&txn, &identity(), &status)
+                .unwrap(),
+            Some(WaypointAuthority::Hold)
         );
     }
 
@@ -49661,7 +49689,13 @@ mod tests {
                 ),
             })
             .unwrap();
-        let plan = match store.process_next().unwrap().unwrap().outcome.kind {
+        let processed = store.process_next_engine_input().unwrap().unwrap();
+        assert_eq!(processed.player_transitions.len(), 1);
+        assert_eq!(
+            processed.player_transitions[0].waypoint_authority_at_due,
+            Some(WaypointAuthority::Through)
+        );
+        let plan = match processed.delivery.unwrap().outcome.kind {
             OutcomeKind::FlightPlan(value) => value,
             other => panic!("expected committed plan, got {other:?}"),
         };
