@@ -18,6 +18,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use url::Url;
 use web_push_native::jwt_simple::algorithms::ES256KeyPair;
+use web_push_native::p256::elliptic_curve::sec1::ToEncodedPoint;
 use web_push_native::{Auth, WebPushBuilder, p256::PublicKey};
 
 use crate::wire::{COMMAND_ID_BYTES, PlayerIdentity};
@@ -243,7 +244,7 @@ impl WebPushWorker {
         let private_key = read_private_key(&config.vapid_private_key_path)?;
         let key_pair = ES256KeyPair::from_bytes(&private_key)
             .map_err(|error| WebPushError::Configuration(error.to_string()))?;
-        let public_key = URL_SAFE_NO_PAD.encode(key_pair.public_key().to_bytes());
+        let public_key = encode_vapid_public_key(&key_pair)?;
         let connection = open_database(&config.database_path, &public_key, &config.public_url)?;
         drop(connection);
 
@@ -276,7 +277,7 @@ impl Drop for WebPushWorker {
 pub fn initialize_vapid_key(path: &Path) -> Result<String, WebPushError> {
     let key_pair = ES256KeyPair::generate();
     let private_key = key_pair.to_bytes();
-    let public_key = URL_SAFE_NO_PAD.encode(key_pair.public_key().to_bytes());
+    let public_key = encode_vapid_public_key(&key_pair)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -306,6 +307,17 @@ fn read_private_key(path: &Path) -> Result<Vec<u8>, WebPushError> {
         ));
     }
     Ok(bytes)
+}
+
+/// Encode the VAPID application-server key in the uncompressed SEC1 form
+/// required by the Web Push API. jwt-simple's `to_bytes()` deliberately uses
+/// compressed SEC1, which browsers reject as an `applicationServerKey`.
+fn encode_vapid_public_key(key_pair: &ES256KeyPair) -> Result<String, WebPushError> {
+    let compressed = key_pair.public_key().to_bytes();
+    let public_key = PublicKey::from_sec1_bytes(&compressed).map_err(|error| {
+        WebPushError::Configuration(format!("invalid VAPID public key: {error}"))
+    })?;
+    Ok(URL_SAFE_NO_PAD.encode(public_key.to_encoded_point(false).as_bytes()))
 }
 
 fn open_database(
@@ -415,7 +427,13 @@ fn worker_main(config: WebPushConfig, private_key: Vec<u8>, receiver: Receiver<W
             return;
         }
     };
-    let public_key = URL_SAFE_NO_PAD.encode(key_pair.public_key().to_bytes());
+    let public_key = match encode_vapid_public_key(&key_pair) {
+        Ok(public_key) => public_key,
+        Err(error) => {
+            eprintln!("browser-alert worker failed: {error}");
+            return;
+        }
+    };
     let mut connection = match open_database(&config.database_path, &public_key, &config.public_url)
     {
         Ok(value) => value,
@@ -898,6 +916,15 @@ mod tests {
     }
 
     #[test]
+    fn vapid_public_key_uses_browser_sec1_encoding() {
+        let key_pair = ES256KeyPair::generate();
+        let encoded = encode_vapid_public_key(&key_pair).unwrap();
+        let decoded = URL_SAFE_NO_PAD.decode(encoded).unwrap();
+        assert_eq!(decoded.len(), 65);
+        assert_eq!(decoded[0], 0x04);
+    }
+
+    #[test]
     fn schema_and_enrollment_are_idempotent() {
         let directory = tempfile::tempdir().unwrap();
         let key_path = directory.path().join("vapid.key");
@@ -913,7 +940,7 @@ mod tests {
         let key_pair = ES256KeyPair::from_bytes(&private).unwrap();
         let mut database = open_database(
             &config.database_path,
-            &URL_SAFE_NO_PAD.encode(key_pair.public_key().to_bytes()),
+            &encode_vapid_public_key(&key_pair).unwrap(),
             &config.public_url,
         )
         .unwrap();
@@ -963,7 +990,7 @@ mod tests {
         let key_pair = ES256KeyPair::from_bytes(&private).unwrap();
         let mut database = open_database(
             &config.database_path,
-            &URL_SAFE_NO_PAD.encode(key_pair.public_key().to_bytes()),
+            &encode_vapid_public_key(&key_pair).unwrap(),
             &config.public_url,
         )
         .unwrap();
