@@ -119,6 +119,7 @@ ct_gnutls_server* ct_gnutls_server_handshake(int fd,
         rc = gnutls_handshake(server->session);
     } while(rc == GNUTLS_E_INTERRUPTED || rc == GNUTLS_E_AGAIN);
     if(rc < 0) {
+        (void)gnutls_alert_send_appropriate(server->session, rc);
         goto failed;
     }
     if(gnutls_protocol_get_version(server->session) != GNUTLS_TLS1_3) {

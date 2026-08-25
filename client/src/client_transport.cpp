@@ -298,6 +298,14 @@ class TransportImpl final : public Botan::TLS::Callbacks {
 
       void tls_alert(Botan::TLS::Alert alert) override {
          if(alert.is_fatal()) {
+            if(!m_session_established) {
+               throw TransportFailure(
+                  CT_CLIENT_ERROR_TLS,
+                  static_cast<int64_t>(alert.type()),
+                  "TLS PSK authentication failed; verify that the configured "
+                  "identity and PSK match the server (server alert: " +
+                     alert.type_string() + ")");
+            }
             throw TransportFailure(
                CT_CLIENT_ERROR_TLS,
                static_cast<int64_t>(alert.type()),
@@ -318,6 +326,7 @@ class TransportImpl final : public Botan::TLS::Callbacks {
                0,
                "server did not authenticate the requested external PSK");
          }
+         m_session_established = true;
          m_protocol_version = "TLS1.3";
       }
 
@@ -471,6 +480,13 @@ class TransportImpl final : public Botan::TLS::Callbacks {
 #endif
             error = count < 0 ? socket_error() : 0;
          } while(count < 0 && socket_interrupted(error));
+         if(count == 0 && !m_session_established) {
+            throw TransportFailure(
+               CT_CLIENT_ERROR_TLS,
+               0,
+               "TLS PSK authentication failed; verify that the configured "
+               "identity and PSK match the server");
+         }
          if(count <= 0) {
             throw TransportFailure(
                CT_CLIENT_ERROR_NETWORK,
@@ -492,6 +508,7 @@ class TransportImpl final : public Botan::TLS::Callbacks {
       mutable std::mutex m_botan_mutex;
       std::vector<uint8_t> m_plaintext;
       size_t m_plaintext_offset = 0;
+      bool m_session_established = false;
       std::string m_protocol_version;
       std::thread m_dispatch;
       std::mutex m_queue_mutex;

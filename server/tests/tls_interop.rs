@@ -1297,6 +1297,52 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let automatic_committed = numeric_field(&automatic_text, "committed=");
     assert!(automatic_committed > configured_committed);
     let client = build.path().join("cepheus-trader-client");
+    let rejected_installation = data.path().join("rejected-credential");
+    let rejected_config = rejected_installation.join("cepheus-trader.conf");
+    let rejected_credential = rejected_installation.join("cepheus-trader.credential");
+    let mut wrong_psk = psk.clone();
+    wrong_psk.replace_range(..1, if wrong_psk.starts_with('0') { "1" } else { "0" });
+    let mut rejected_credential_creator = Command::new(&sysop)
+        .args([
+            "--config",
+            rejected_config.to_str().unwrap(),
+            "--server",
+            "127.0.0.1",
+            "--game-port",
+            game_port.as_str(),
+            "--sysop-port",
+            sysop_port.as_str(),
+            "init-credential",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        let input = rejected_credential_creator.stdin.as_mut().unwrap();
+        writeln!(input, "1").unwrap();
+        writeln!(input, "{wrong_psk}").unwrap();
+    }
+    let rejected_credential_creator = rejected_credential_creator.wait_with_output().unwrap();
+    assert!(rejected_credential_creator.status.success());
+    let rejected = Command::new(&client)
+        .args([
+            "127.0.0.1",
+            game_port.as_str(),
+            rejected_credential.to_str().unwrap(),
+            "1",
+        ])
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
+    let rejected_error = String::from_utf8_lossy(&rejected.stderr);
+    assert!(
+        rejected_error.contains("client transport error [TLS")
+            && rejected_error.contains("TLS PSK authentication failed")
+            && rejected_error.contains("identity and PSK match the server"),
+        "wrong PSK produced an unactionable error: {rejected_error}"
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
