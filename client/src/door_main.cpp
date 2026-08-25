@@ -434,11 +434,8 @@ void door_prompt(const char* format, ...)
    }
    active_prompt += text;
    active_prompt_on_current_line = false;
-   // A final command prompt is one atomic control surface.  Paging in the
-   // middle of its wrapped lines makes a partial prompt look like the whole
-   // menu and then repeats the remaining controls after the pause.
-   output().suspend_paging();
    output().write(text, ct::DoorTextRole::Prompt);
+   output().suspend_paging();
 }
 
 void door_live_prompt(const char* format, ...)
@@ -455,8 +452,8 @@ void door_live_prompt(const char* format, ...)
    }
    active_prompt = text;
    active_prompt_on_current_line = true;
-   output().suspend_paging();
    output().write(text, ct::DoorTextRole::Prompt);
+   output().suspend_paging();
 }
 
 void show_voyage_live_prompt()
