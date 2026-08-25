@@ -178,6 +178,9 @@ struct Request {
     commissionShip @75 :CommissionShipRequest;
     getTerminalReport @76 :Void;
     acknowledgeTerminalReport @77 :AcknowledgeTerminalReportRequest;
+    getBrowserAlertStatus @78 :Void;
+    createBrowserAlertEnrollment @79 :Void;
+    revokeAllBrowserAlerts @80 :Void;
   }
 }
 
@@ -224,7 +227,21 @@ struct Response {
     radioContent @37 :RadioContent;
     dockedServiceReceipt @38 :DockedServiceReceipt;
     terminalReport @39 :TerminalReport;
+    browserAlertStatus @40 :BrowserAlertStatus;
+    browserAlertEnrollment @41 :BrowserAlertEnrollment;
   }
+}
+
+struct BrowserAlertStatus {
+  configured @0 :Bool;
+  activeDevices @1 :UInt32;
+  maximumDevices @2 :UInt32;
+}
+
+struct BrowserAlertEnrollment {
+  status @0 :BrowserAlertStatus;
+  url @1 :Text;
+  expiresUnixSecond @2 :UInt64;
 }
 
 struct SkillPool {

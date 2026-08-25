@@ -7746,6 +7746,87 @@ bool abandon_captain(
    return true;
 }
 
+void show_browser_alerts(
+   ct::TlsConnection& connection,
+   const uint64_t session_epoch,
+   ct::CommandIdGenerator& random,
+   uint64_t& request_id)
+{
+   od_clr_scr();
+   door_heading("Captain's Portable Communicator\n\r");
+   door_heading("===============================\n\r\n\r");
+   auto status = ct::get_browser_alert_status(
+      connection, session_epoch, random_command_id(random), request_id++);
+   if(!status.configured) {
+      door_information(
+         "Browser alert service is not configured for this game.\n\r");
+      wait_for_enter();
+      return;
+   }
+   door_label("Linked receivers: ");
+   door_number("%u", status.active_devices);
+   door_label("/");
+   door_number("%u\n\r", status.maximum_devices);
+
+   if(status.active_devices < status.maximum_devices) {
+      const auto enrollment = ct::create_browser_alert_enrollment(
+         connection, session_epoch, random_command_id(random), request_id++);
+      door_information(
+         "\n\rOpen this secure channel on the captain's portable device. "
+         "The pairing code remains valid for ten minutes.\n\r\n\r");
+      output().write_hyperlink(enrollment.url, ct::DoorTextRole::Value);
+      door_write("\n\r\n\r", ct::DoorTextRole::Normal);
+      if(const auto qr = ct::door_qr_code(
+            enrollment.url, output().profile(), output().columns())) {
+         // A pager prompt inside the matrix destroys the symbol. Let the
+         // terminal scroll the complete QR as one uninterrupted unit.
+         output().suspend_paging();
+         for(const auto& line : *qr) {
+            if(!output().write(line, ct::DoorTextRole::Normal)) {
+               break;
+            }
+         }
+         output().reset_paging();
+         output().resume_paging();
+      } else {
+         door_information(
+            "QR rendering is unavailable at this width; use the URL above.\n\r");
+      }
+   } else {
+      door_warning(
+         "\n\rAll receiver berths are occupied. Revoke the linked receivers "
+         "before pairing another.\n\r");
+   }
+
+   if(status.active_devices == 0) {
+      wait_for_enter("Return to command console");
+      return;
+   }
+   door_option_prompt({
+      "[Enter] Return to command console",
+      "[R] Revoke every linked receiver",
+   });
+   while(true) {
+      const auto key = od_get_key(TRUE);
+      if(key == '\r' || key == '\n') {
+         return;
+      }
+      if(key == 'r' || key == 'R') {
+         door_warning(
+            "\n\rRevoke every browser linked to this captain? [Y/N] ");
+         const auto confirmation = od_get_key(TRUE);
+         if(confirmation == 'y' || confirmation == 'Y') {
+            status = ct::revoke_all_browser_alerts(
+               connection, session_epoch, random_command_id(random), request_id++);
+            door_success("\n\rAll portable receivers have been revoked.\n\r");
+            wait_for_enter("Return to command console");
+            return;
+         }
+         door_information("\n\rNo receivers were changed.\n\r");
+      }
+   }
+}
+
 void render_command_console(const ct::ServerHello& hello)
 {
    od_clr_scr();
@@ -7762,11 +7843,14 @@ void render_command_console(const ct::ServerHello& hello)
          hello.affiliation->league_name).c_str());
    }
    door_information(
-      "These seven managers are available throughout every operational "
+      "These managers are available throughout every operational "
       "situation. Available actions depend on the ship's present status.\n\r\n\r");
    door_number("A");
    door_label(". ");
    door_identifier("Abandon Captain and Restart\n\r");
+   door_number("B");
+   door_label(". ");
+   door_identifier("Browser Alerts\n\r");
    door_number("C");
    door_label(". ");
    door_identifier("Crew Management\n\r");
@@ -7799,6 +7883,7 @@ void render_command_console(const ct::ServerHello& hello)
    door_identifier("Guided First Watch\n\r");
    door_option_prompt({
       "[A] Abandon captain",
+      "[B] Browser alerts",
       "[C/K/M/O/R/S/T] Manager",
       "[H] Help browser",
       "[P] Preferences",
@@ -7830,6 +7915,10 @@ bool run_command_console(
             hello.assigned_epoch,
             random,
             request_id);
+         render_command_console(hello);
+      } else if(key == 'b' || key == 'B') {
+         show_browser_alerts(
+            connection, hello.assigned_epoch, random, request_id);
          render_command_console(hello);
       } else if(key == 'h' || key == 'H') {
          show_help_browser_direct();

@@ -83,6 +83,57 @@ void check_profile_and_width(const ct::DoorProfile profile,
 }  // namespace
 
 int main() {
+   const std::string enrollment_url =
+      "https://x.io/#abcdefghijklmnopqrstuv";
+   const auto cp437_square =
+      ct::door_qr_code(enrollment_url, ct::DoorProfile::Cp437, 40);
+   const auto cp437_wide =
+      ct::door_qr_code(enrollment_url, ct::DoorProfile::Cp437, 80);
+   const auto iso_square =
+      ct::door_qr_code(enrollment_url, ct::DoorProfile::Iso646, 40);
+   const auto iso_wide =
+      ct::door_qr_code(enrollment_url, ct::DoorProfile::Iso646, 80);
+   check(cp437_square.has_value());
+   check(cp437_wide.has_value());
+   check(iso_square.has_value());
+   check(iso_wide.has_value());
+   check(cp437_wide->size() * 2 >= cp437_square->size());
+   check(cp437_wide->size() * 2 <= cp437_square->size() + 1);
+   check(iso_square->size() == cp437_square->size());
+   check(iso_wide->size() == iso_square->size());
+   check(std::ranges::any_of(*cp437_wide, [](const std::string& line) {
+      return line.find("\xe2\x96\x80") != std::string::npos ||
+             line.find("\xe2\x96\x84") != std::string::npos ||
+             line.find("\xe2\x96\x88") != std::string::npos;
+   }));
+   check(std::ranges::any_of(*iso_square, [](const std::string& line) {
+      return line.find('M') != std::string::npos;
+   }));
+   check(!ct::door_qr_code(
+      enrollment_url, ct::DoorProfile::Iso646, 39).has_value());
+
+   for(const auto profile : {ct::DoorProfile::Cp437Color,
+                              ct::DoorProfile::Iso646Color}) {
+      std::string linked;
+      ct::DoorPresentation presentation(
+         profile,
+         80,
+         24,
+         [&linked](const std::string_view bytes) { linked.append(bytes); });
+      check(presentation.write_hyperlink(enrollment_url));
+      check(linked.find("\x1b]8;;" + enrollment_url + "\x1b\\") !=
+            std::string::npos);
+      check(linked.find(enrollment_url) != std::string::npos);
+   }
+   std::string plain_link;
+   ct::DoorPresentation plain_hyperlink_presentation(
+      ct::DoorProfile::Iso646,
+      80,
+      24,
+      [&plain_link](const std::string_view bytes) { plain_link.append(bytes); });
+   check(plain_hyperlink_presentation.write_hyperlink(enrollment_url));
+   check(plain_link == enrollment_url);
+
    const auto price_plot =
       ct::price_box_plot(900, 1'000, 1'100, 1'200, 1'300, 1'150);
    check(price_plot.size() == 21);

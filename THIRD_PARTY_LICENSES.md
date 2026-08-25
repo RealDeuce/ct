@@ -30,13 +30,21 @@ and complete license texts that must accompany a binary distribution.
 | Cap'n Proto | C++ clients and Rust server | MIT | Installed or pinned CMake-built C++ library; Rust crate |
 | Botan 3 | C++ clients | BSD-2-Clause | System library for development or pinned 3.12.0 static source build |
 | OpenDoors | Player door | LGPL-2.0-or-later | Vendored source, statically linked in official client packages |
+| QR Code generator | Player door | MIT | Installed for development or pinned 1.8.0 source build |
 | GnuTLS core library | Rust server | LGPL-2.1-or-later | Shared library |
 | `capnp` | Rust server | MIT | Rust crate |
 | `getrandom` | Rust server | MIT OR Apache-2.0 | Rust crate |
 | `heed` | Rust server | MIT | Rust crate |
 | `lmdb-master-sys` | Rust server through `heed` | Apache-2.0 | Rust/native code |
+| `base64` | Rust server | MIT OR Apache-2.0 | Rust crate |
+| `reqwest` | Rust server | MIT OR Apache-2.0 | Rust crate with rustls transport |
+| `rusqlite` | Rust server | MIT | Rust crate with bundled SQLite |
+| `serde` / `serde_json` | Rust server | MIT OR Apache-2.0 | Rust crates |
+| `sha2` | Rust server | MIT OR Apache-2.0 | Rust crate |
 | `thiserror` | Rust server | MIT OR Apache-2.0 | Rust crate |
 | `tokio` | Rust server | MIT | Rust crate |
+| `url` | Rust server | MIT OR Apache-2.0 | Rust crate |
+| `web-push-native` | Rust server | MIT OR Apache-2.0 | Rust crate |
 
 The installed GnuTLS package also contains GPL utilities. Cepheus Trader links
 the LGPL GnuTLS core library and does not copy or link those utilities.
@@ -53,7 +61,11 @@ portable builds set `CT_USE_SYSTEM_BOTAN=OFF`, which downloads the official
 Botan 3.12.0 source archive and verifies SHA-256
 `5370f98dc15f8c222ee1ce52cd61c8756a53be0dc57cc4c1b0714d5a09ad74fb`
 before building its static library. The repository carries the Botan and
-Cap'n Proto license notices used by client packages.
+Cap'n Proto license notices used by client packages. QR Code generator builds
+likewise prefer the installed Project Nayuki library for development and fetch
+the pinned 1.8.0 archive, verified with SHA-256
+`2ec0a4d33d6f521c942eeaf473d42d5fe139abcfa57d2beffe10c5cf7d34ae60`,
+for portable builds.
 
 ## Current Rust Transitive Inventory
 

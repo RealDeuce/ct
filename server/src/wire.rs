@@ -2501,10 +2501,16 @@ pub enum Command {
         sender: PlayerIdentity,
         muted: bool,
     },
+    GetBrowserAlertStatus,
+    CreateBrowserAlertEnrollment,
+    RevokeAllBrowserAlerts,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CommandPersistence {
+    /// Served by a non-authoritative subsystem and never admitted to the game
+    /// queue or journal.
+    Operational,
     /// A read of authoritative state. It remains ordered and journaled, but
     /// its potentially large response is not retained forever for replay.
     Observation,
@@ -2594,6 +2600,9 @@ impl Command {
             | Self::TransmitSystemRadio { .. }
             | Self::AcknowledgeRadioReception { .. }
             | Self::SetRadioMute { .. } => CommandPersistence::Transaction,
+            Self::GetBrowserAlertStatus
+            | Self::CreateBrowserAlertEnrollment
+            | Self::RevokeAllBrowserAlerts => CommandPersistence::Operational,
         }
     }
 }
@@ -2651,6 +2660,8 @@ pub enum OutcomeKind {
     Fleet(FleetSnapshot),
     SystemRadio(SystemRadioSnapshot),
     RadioContent(RadioContent),
+    BrowserAlertStatus(crate::web_push::BrowserAlertStatus),
+    BrowserAlertEnrollment(crate::web_push::BrowserAlertEnrollment),
     Error { code: ErrorCode, message: String },
 }
 
@@ -3547,6 +3558,9 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
                 muted: value.get_muted(),
             }
         }
+        request::GetBrowserAlertStatus(()) => Command::GetBrowserAlertStatus,
+        request::CreateBrowserAlertEnrollment(()) => Command::CreateBrowserAlertEnrollment,
+        request::RevokeAllBrowserAlerts(()) => Command::RevokeAllBrowserAlerts,
     };
     Ok(CommandRequest {
         request_id,
@@ -3718,6 +3732,22 @@ pub fn encode_response(
         }
         OutcomeKind::TerminalReport(report) => {
             set_terminal_report(response.reborrow().init_terminal_report(), report)?;
+        }
+        OutcomeKind::BrowserAlertStatus(status) => {
+            set_browser_alert_status(response.reborrow().init_browser_alert_status(), status);
+        }
+        OutcomeKind::BrowserAlertEnrollment(enrollment) => {
+            let mut wire = response.reborrow().init_browser_alert_enrollment();
+            set_browser_alert_status(
+                wire.reborrow().init_status(),
+                &crate::web_push::BrowserAlertStatus {
+                    configured: true,
+                    active_devices: enrollment.active_devices,
+                    maximum_devices: enrollment.maximum_devices,
+                },
+            );
+            wire.set_url(&enrollment.url);
+            wire.set_expires_unix_second(enrollment.expires_unix_second);
         }
         OutcomeKind::Combat(snapshot) => {
             set_combat_snapshot(response.reborrow().init_combat(), snapshot)?;
@@ -4547,6 +4577,9 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
             target.set_player_id(sender.player_id);
             value.set_muted(muted);
         }
+        Command::GetBrowserAlertStatus => builder.set_get_browser_alert_status(()),
+        Command::CreateBrowserAlertEnrollment => builder.set_create_browser_alert_enrollment(()),
+        Command::RevokeAllBrowserAlerts => builder.set_revoke_all_browser_alerts(()),
     }
     finish_message(&message)
 }
@@ -6474,6 +6507,15 @@ fn set_terminal_report(
     Ok(())
 }
 
+fn set_browser_alert_status(
+    mut builder: crate::ct_rpc_capnp::browser_alert_status::Builder<'_>,
+    status: &crate::web_push::BrowserAlertStatus,
+) {
+    builder.set_configured(status.configured);
+    builder.set_active_devices(status.active_devices);
+    builder.set_maximum_devices(status.maximum_devices);
+}
+
 fn decode_combat_action_kind(value: crate::ct_rpc_capnp::CombatActionKind) -> CombatActionKind {
     use crate::ct_rpc_capnp::CombatActionKind as Wire;
     match value {
@@ -7785,6 +7827,24 @@ mod tests {
                 session_epoch: 23,
                 command_id: [0xb5; COMMAND_ID_BYTES],
                 command: Command::CommissionShip { catalog_id: 214 },
+            },
+            CommandRequest {
+                request_id: 34,
+                session_epoch: 23,
+                command_id: [0xb6; COMMAND_ID_BYTES],
+                command: Command::GetBrowserAlertStatus,
+            },
+            CommandRequest {
+                request_id: 35,
+                session_epoch: 23,
+                command_id: [0xb7; COMMAND_ID_BYTES],
+                command: Command::CreateBrowserAlertEnrollment,
+            },
+            CommandRequest {
+                request_id: 36,
+                session_epoch: 23,
+                command_id: [0xb8; COMMAND_ID_BYTES],
+                command: Command::RevokeAllBrowserAlerts,
             },
         ] {
             let frame = encode_request(&expected).unwrap();

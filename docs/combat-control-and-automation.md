@@ -112,8 +112,9 @@ activation-soon and activation-ready notices without leaving the page or
 browser open. The app is not an alternate gameplay client and accepts no game
 orders. Push delivery is optional and best-effort: a missed, delayed, or
 duplicate notice never changes the activation deadline or prevents the
-risk-directed controller from acting. Lock-screen text must avoid disclosing
-tactical details.
+risk-directed controller from acting. Alert text may include the captain's
+player-visible tactical details so the notification itself is useful; opening
+the authenticated companion detail is optional.
 
 The risk-directed controller must also be invokable explicitly while online.
 Otherwise disconnecting would give a player access to a supposedly stronger

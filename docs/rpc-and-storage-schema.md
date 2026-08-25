@@ -14,7 +14,9 @@ Every player command is classified in `server/src/wire.rs` as either:
 - an **observation**, which is ordered and journaled but whose returned
   snapshot is not retained indefinitely; or
 - a **transaction**, whose command ID and outcome are retained for exactly-once
-  retry across reconnects.
+  retry across reconnects; or
+- an **operational request**, such as browser-alert enrollment, which is
+  handled by a separate service and never enters authoritative game storage.
 
 Closed enums and unions carry rule-bearing state. Player-facing prose may
 explain state, but it is never the machine-readable discriminator.

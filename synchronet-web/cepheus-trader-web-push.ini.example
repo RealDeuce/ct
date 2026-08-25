@@ -1,0 +1,3 @@
+; Install as ctrl/cepheus-trader-web-push.ini, outside the web root.
+; This must be the same SQLite path passed to ct-server --web-push-database.
+database=/sbbs/data/cepheus-trader/web-push.sqlite3

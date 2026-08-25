@@ -4281,6 +4281,93 @@ SystemMappingStatus set_system_mapping_disclosure(
    return decode_system_mapping_status(response.getSystemMappingStatus(), response);
 }
 
+BrowserAlertStatus decode_browser_alert_status(
+   const rpc::BrowserAlertStatus::Reader source)
+{
+   const BrowserAlertStatus status{
+      .configured = source.getConfigured(),
+      .active_devices = source.getActiveDevices(),
+      .maximum_devices = source.getMaximumDevices(),
+   };
+   if(status.active_devices > status.maximum_devices || status.maximum_devices == 0) {
+      throw std::runtime_error("server returned an invalid browser-alert device count");
+   }
+   return status;
+}
+
+BrowserAlertStatus get_browser_alert_status(
+   TlsConnection& connection,
+   const uint64_t session_epoch,
+   const std::array<uint8_t, 16>& command_id,
+   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, session_epoch, request_id, command_id, request);
+   request.setGetBrowserAlertStatus();
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, session_epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   const auto response = checked_response(reader.getRoot<rpc::Envelope>(), command_id);
+   if(!response.isBrowserAlertStatus()) {
+      throw std::runtime_error("expected BrowserAlertStatus");
+   }
+   return decode_browser_alert_status(response.getBrowserAlertStatus());
+}
+
+BrowserAlertEnrollment create_browser_alert_enrollment(
+   TlsConnection& connection,
+   const uint64_t session_epoch,
+   const std::array<uint8_t, 16>& command_id,
+   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, session_epoch, request_id, command_id, request);
+   request.setCreateBrowserAlertEnrollment();
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, session_epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   const auto response = checked_response(reader.getRoot<rpc::Envelope>(), command_id);
+   if(!response.isBrowserAlertEnrollment()) {
+      throw std::runtime_error("expected BrowserAlertEnrollment");
+   }
+   const auto source = response.getBrowserAlertEnrollment();
+   const std::string url = source.getUrl().cStr();
+   if(url.rfind("https://", 0) != 0 || url.find('\r') != std::string::npos ||
+         url.find('\n') != std::string::npos) {
+      throw std::runtime_error("server returned an invalid browser-alert URL");
+   }
+   return BrowserAlertEnrollment{
+      .status = decode_browser_alert_status(source.getStatus()),
+      .url = url,
+      .expires_unix_second = source.getExpiresUnixSecond(),
+   };
+}
+
+BrowserAlertStatus revoke_all_browser_alerts(
+   TlsConnection& connection,
+   const uint64_t session_epoch,
+   const std::array<uint8_t, 16>& command_id,
+   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, session_epoch, request_id, command_id, request);
+   request.setRevokeAllBrowserAlerts();
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, session_epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   const auto response = checked_response(reader.getRoot<rpc::Envelope>(), command_id);
+   if(!response.isBrowserAlertStatus()) {
+      throw std::runtime_error("expected BrowserAlertStatus");
+   }
+   return decode_browser_alert_status(response.getBrowserAlertStatus());
+}
+
 std::optional<PlayerEvent> poll_event(TlsConnection& connection,
                                       const uint64_t session_epoch)
 {

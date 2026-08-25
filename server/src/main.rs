@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use cepheus_trader_server::admin_psk;
 use cepheus_trader_server::server::{self, AdminTlsConfig};
+use cepheus_trader_server::web_push::{WebPushConfig, initialize_vapid_key};
 use tokio::net::lookup_host;
 
 #[tokio::main(flavor = "multi_thread")]
@@ -17,6 +18,11 @@ async fn main() {
     let mut data = PathBuf::from("server-data");
     let mut admin_psk_file = None;
     let mut backup_dir = None;
+    let mut web_push_url = None;
+    let mut web_push_database = None;
+    let mut web_push_vapid_key = None;
+    let mut web_push_vapid_subject = None;
+    let mut initialize_web_push_key = None;
     let mut arguments = env::args().skip(1);
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -69,6 +75,36 @@ async fn main() {
                         .unwrap_or_else(|| usage("--backup-dir needs a directory")),
                 ));
             }
+            "--web-push-url" => {
+                web_push_url = Some(
+                    arguments
+                        .next()
+                        .unwrap_or_else(|| usage("--web-push-url needs an HTTPS URL")),
+                );
+            }
+            "--web-push-database" => {
+                web_push_database =
+                    Some(PathBuf::from(arguments.next().unwrap_or_else(|| {
+                        usage("--web-push-database needs a path")
+                    })));
+            }
+            "--web-push-vapid-key" => {
+                web_push_vapid_key =
+                    Some(PathBuf::from(arguments.next().unwrap_or_else(|| {
+                        usage("--web-push-vapid-key needs a path")
+                    })));
+            }
+            "--web-push-vapid-subject" => {
+                web_push_vapid_subject = Some(arguments.next().unwrap_or_else(|| {
+                    usage("--web-push-vapid-subject needs a mailto: or https: contact")
+                }));
+            }
+            "--init-web-push-key" => {
+                initialize_web_push_key =
+                    Some(PathBuf::from(arguments.next().unwrap_or_else(|| {
+                        usage("--init-web-push-key needs a path")
+                    })));
+            }
             "--version" | "-V" => {
                 println!("cepheus-trader-server {}", env!("CARGO_PKG_VERSION"));
                 return;
@@ -77,6 +113,30 @@ async fn main() {
             unknown => usage(&format!("unknown argument: {unknown}")),
         }
     }
+    if let Some(path) = initialize_web_push_key {
+        let public = initialize_vapid_key(&path).unwrap_or_else(|error| {
+            usage(&format!(
+                "cannot initialize Web Push key {}: {error}",
+                path.display()
+            ))
+        });
+        println!("Web Push private key created: {}", path.display());
+        println!("Web Push public key: {public}");
+        return;
+    }
+    let web_push = match (
+        web_push_url,
+        web_push_database,
+        web_push_vapid_key,
+        web_push_vapid_subject,
+    ) {
+        (None, None, None, None) => None,
+        (Some(url), Some(database), Some(key), Some(subject)) => Some(
+            WebPushConfig::new(&url, database, key, subject)
+                .unwrap_or_else(|error| usage(&error.to_string())),
+        ),
+        _ => usage("all four --web-push-* options must be supplied together"),
+    };
     let addresses = resolve_or_default(&listen, 7323)
         .await
         .unwrap_or_else(|error| usage(&format!("invalid --listen address: {error}")));
@@ -108,6 +168,7 @@ async fn main() {
         league_addresses,
         data,
         admin_tls,
+        web_push,
     )
     .await
     {
@@ -169,12 +230,15 @@ fn usage(error: &str) -> ! {
     if !error.is_empty() {
         eprintln!("{error}");
     }
-    eprintln!(
-        "Usage: cepheus-trader-server [--listen HOST:PORT]... [--data DIRECTORY] \\\n\
-         [--admin-listen LOOPBACK_HOST:PORT]... [--sysop-listen HOST:PORT]... \\\n\
-         [--league-listen HOST:PORT]... [--admin-psk-file PATH] \\\n\
-         [--backup-dir DIRECTORY] [--version]"
-    );
+    eprintln!(concat!(
+        "Usage: cepheus-trader-server [--listen HOST:PORT]... [--data DIRECTORY]\n",
+        "       [--admin-listen LOOPBACK_HOST:PORT]... [--sysop-listen HOST:PORT]...\n",
+        "       [--league-listen HOST:PORT]... [--admin-psk-file PATH]\n",
+        "       [--backup-dir DIRECTORY]\n",
+        "       [--web-push-url HTTPS_URL --web-push-database PATH\n",
+        "        --web-push-vapid-key PATH --web-push-vapid-subject CONTACT]\n",
+        "       [--init-web-push-key PATH] [--version]"
+    ));
     std::process::exit(if error.is_empty() { 0 } else { 2 });
 }
 

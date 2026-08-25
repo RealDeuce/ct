@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <functional>
 #include <initializer_list>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -90,6 +91,10 @@ std::vector<PricePlotSpan> styled_price_box_plot(
    uint64_t current,
    bool buying,
    size_t width = 21);
+std::optional<std::vector<std::string>> door_qr_code(
+   std::string_view text,
+   DoorProfile profile,
+   size_t columns);
 
 class DoorPresentation {
 public:
@@ -130,6 +135,8 @@ public:
    bool write_hanging(std::string_view text,
                       size_t continuation_indent,
                       DoorTextRole role = DoorTextRole::Normal);
+   bool write_hyperlink(std::string_view url,
+                        DoorTextRole role = DoorTextRole::Value);
 
    size_t display_width(std::string_view text) const;
    size_t labeled_field_column(

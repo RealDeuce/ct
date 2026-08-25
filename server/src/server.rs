@@ -34,6 +34,7 @@ use crate::store::{
 use crate::tls::{PskCredential, TlsServer};
 use crate::traffic::{TrafficContact, TrafficSnapshot};
 use crate::universe::UniverseInitialization;
+use crate::web_push::{PushAlert, WebPushConfig, WebPushError, WebPushHandle, WebPushWorker};
 use crate::wire::{
     CloseCode, MAX_FRAME_BYTES, PROTOCOL_VERSION, PlayerIdentity, WireError,
     decode_client_hello_with_version, decode_close, decode_protocol_version, decode_request,
@@ -157,6 +158,8 @@ pub enum ServerError {
     ListenerStopped,
     #[error("game connection limit reached")]
     ConnectionLimit,
+    #[error(transparent)]
+    WebPush(#[from] WebPushError),
 }
 
 #[derive(Clone)]
@@ -305,6 +308,206 @@ enum EngineEvent {
         reason: String,
     },
     Fatal(String),
+}
+
+fn web_alert_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn shortened_alert_text(value: &str, maximum_characters: usize) -> String {
+    let mut characters = value.chars();
+    let mut result = characters
+        .by_ref()
+        .take(maximum_characters)
+        .collect::<String>();
+    if characters.next().is_some() {
+        result.push('…');
+    }
+    result
+}
+
+fn checkpoint_push_alert(
+    identity: PlayerIdentity,
+    checkpoint: &wire::CheckpointSnapshot,
+) -> PushAlert {
+    let now = web_alert_now();
+    let location = match checkpoint.locus {
+        wire::FlightLocus::Port {
+            system_id,
+            world_id,
+            facility_id,
+        } => serde_json::json!({
+            "type": "port",
+            "systemId": system_id,
+            "worldId": world_id,
+            "facilityId": facility_id,
+        }),
+        wire::FlightLocus::JumpLocus { system_id } => {
+            serde_json::json!({ "type": "jump locus", "systemId": system_id })
+        }
+        wire::FlightLocus::Body { system_id, body_id } => serde_json::json!({
+            "type": "body",
+            "systemId": system_id,
+            "bodyId": body_id,
+        }),
+        wire::FlightLocus::DeepSpace { position } => {
+            let [coreward, spinward, north] = position.parsecs();
+            serde_json::json!({
+                "type": "deep space",
+                "corewardParsecs": coreward,
+                "spinwardParsecs": spinward,
+                "northParsecs": north,
+            })
+        }
+    };
+    let situation = match checkpoint.kind {
+        wire::CheckpointKind::PortDeparture => "Departure preparations are complete.",
+        wire::CheckpointKind::InhabitedWorld => "The ship has reached its destination.",
+        wire::CheckpointKind::GasGiant => "Gas-giant operations have reached a checkpoint.",
+        wire::CheckpointKind::JumpArrival => "The ship has arrived at its jump locus.",
+        wire::CheckpointKind::JumpDeparture => "The ship is ready to enter jump space.",
+        wire::CheckpointKind::DeepSpace => "The ship has emerged in deep space.",
+    };
+    PushAlert {
+        identity,
+        source_key: format!("checkpoint:{}", checkpoint.checkpoint_id),
+        kind: "attention-now".into(),
+        title: "Captain to the bridge!".into(),
+        body: format!("{situation} The bridge is holding for your orders."),
+        detail_json: serde_json::json!({
+            "checkpointId": checkpoint.checkpoint_id,
+            "kind": format!("{:?}", checkpoint.kind),
+            "readyGameSecond": checkpoint.ready_second,
+            "location": location,
+        })
+        .to_string(),
+        created_unix_second: now,
+        expires_unix_second: now.saturating_add(24 * 60 * 60),
+        attention_due_unix_second: now,
+    }
+}
+
+fn encounter_push_alert(
+    identity: PlayerIdentity,
+    encounter: &wire::EncounterSnapshot,
+) -> PushAlert {
+    let now = web_alert_now();
+    let body = if encounter.kind == wire::EncounterKind::Hostile {
+        let contact = if encounter.contact.ship_name.is_empty() {
+            "An armed ship".into()
+        } else {
+            format!("The armed ship {}", encounter.contact.ship_name)
+        };
+        shortened_alert_text(
+            &format!("{contact} is moving to intercept! {}", encounter.summary),
+            240,
+        )
+    } else {
+        shortened_alert_text(&format!("Encounter detected: {}", encounter.summary), 240)
+    };
+    PushAlert {
+        identity,
+        source_key: format!("encounter:{}", encounter.encounter_id),
+        kind: "attention-now".into(),
+        title: "Captain to the bridge!".into(),
+        body,
+        detail_json: serde_json::json!({
+            "encounterId": encounter.encounter_id,
+            "kind": format!("{:?}", encounter.kind),
+            "summary": encounter.summary,
+            "contact": {
+                "shipName": encounter.contact.ship_name,
+                "className": encounter.contact.class_name,
+                "transponder": encounter.contact.transponder,
+                "role": encounter.contact.role,
+                "range": encounter.contact.range,
+                "confidencePercent": encounter.contact.confidence_percent,
+                "resolution": format!("{:?}", encounter.contact.resolution),
+            },
+            "authority": format!("{:?}", encounter.authority),
+            "threat": format!("{:?}", encounter.threat),
+            "demand": encounter.demand.text,
+            "responseDeadlineGameSecond": encounter.response_deadline_second,
+        })
+        .to_string(),
+        created_unix_second: now,
+        expires_unix_second: now.saturating_add(24 * 60 * 60),
+        attention_due_unix_second: now,
+    }
+}
+
+fn upcoming_attention_push_alert(transition: &PlayerTravelTransition) -> Option<PushAlert> {
+    if !transition.attention_required_at_due
+        || transition.status.due_second <= transition.status.current_game_second
+    {
+        return None;
+    }
+    let now = web_alert_now();
+    let game_seconds = transition
+        .status
+        .due_second
+        .saturating_sub(transition.status.current_game_second);
+    let real_seconds = game_seconds.saturating_add(crate::clock::GAME_SECONDS_PER_RATE_PERIOD - 1)
+        / crate::clock::GAME_SECONDS_PER_RATE_PERIOD;
+    let due = now.saturating_add(real_seconds);
+    let destination = if !transition.status.destination_system_name.is_empty() {
+        transition.status.destination_system_name.clone()
+    } else {
+        match transition.status.destination {
+            wire::FlightLocus::DeepSpace { .. } => "the plotted deep-space coordinates".into(),
+            wire::FlightLocus::Body { body_id, .. } => format!("body {body_id}"),
+            wire::FlightLocus::JumpLocus { system_id } => {
+                format!("jump locus in system {system_id}")
+            }
+            wire::FlightLocus::Port { system_id, .. } => format!("port in system {system_id}"),
+        }
+    };
+    Some(PushAlert {
+        identity: transition.identity.clone(),
+        source_key: format!(
+            "attention-due:{}:{}:{}:{}",
+            transition.status.plan_id,
+            transition.status.plan_revision,
+            transition.status.leg_index,
+            transition.status.due_second,
+        ),
+        kind: "attention-soon".into(),
+        title: "Bridge watch reminder".into(),
+        body: shortened_alert_text(
+            &format!(
+                "{} will reach {destination} and wait for the captain's orders.",
+                transition.status.ship_name
+            ),
+            240,
+        ),
+        detail_json: serde_json::json!({
+            "shipId": transition.status.ship_id,
+            "shipName": transition.status.ship_name,
+            "destinationSystemId": transition.status.destination_system_id,
+            "destinationSystemName": transition.status.destination_system_name,
+            "stage": format!("{:?}", transition.status.stage),
+            "dueGameSecond": transition.status.due_second,
+        })
+        .to_string(),
+        created_unix_second: now,
+        expires_unix_second: due.saturating_add(60 * 60),
+        attention_due_unix_second: due,
+    })
+}
+
+async fn enqueue_web_alert(handle: &WebPushHandle, alert: PushAlert) {
+    if !handle.configured() {
+        return;
+    }
+    let handle = handle.clone();
+    match tokio::task::spawn_blocking(move || handle.enqueue(alert)).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => server_log!("browser alert queue rejected an alert: {error}"),
+        Err(error) => server_log!("browser alert queue task failed: {error}"),
+    }
 }
 
 struct SessionOpening {
@@ -1809,6 +2012,7 @@ pub async fn run(
         vec![SocketAddr::new(sysop_address.ip(), 7326)],
         data_path,
         admin_tls,
+        None,
     )
     .await
 }
@@ -1820,6 +2024,7 @@ pub async fn run_on_addresses(
     league_addresses: Vec<SocketAddr>,
     data_path: PathBuf,
     admin_tls: AdminTlsConfig,
+    web_push_config: Option<WebPushConfig>,
 ) -> Result<(), ServerError> {
     if admin_addresses
         .iter()
@@ -1837,6 +2042,12 @@ pub async fn run_on_addresses(
     let league_listener_text = listener_address_list(&league_listeners)?;
     let bbs_registry = BbsRegistry::default();
     let league_registry = LeagueRegistry::default();
+    let (web_push, _web_push_worker) = if let Some(config) = web_push_config {
+        let (handle, worker) = WebPushWorker::spawn(config)?;
+        (handle, Some(worker))
+    } else {
+        (WebPushHandle::disabled(), None)
+    };
     let (engine, mut engine_events, engine_thread, engine_ready) =
         spawn_engine(data_path, bbs_registry.clone(), league_registry.clone());
     tokio::task::spawn_blocking(move || engine_ready.recv())
@@ -1870,6 +2081,7 @@ pub async fn run_on_addresses(
     let dispatcher_sessions = Arc::clone(&sessions);
     let dispatcher_engine = engine.clone();
     let dispatcher_bbs_control_connections = Arc::clone(&bbs_control_connections);
+    let dispatcher_web_push = web_push.clone();
     let (fatal_sender, mut fatal_receiver) = oneshot::channel();
     tokio::spawn(async move {
         while let Some(event) = engine_events.recv().await {
@@ -1890,6 +2102,9 @@ pub async fn run_on_addresses(
                     }
                 }
                 EngineEvent::PhaseChanged(transition) => {
+                    if let Some(alert) = upcoming_attention_push_alert(&transition) {
+                        enqueue_web_alert(&dispatcher_web_push, alert).await;
+                    }
                     dispatcher_sessions.phase_changed(&transition).await;
                 }
                 EngineEvent::CheckpointReady {
@@ -1899,7 +2114,12 @@ pub async fn run_on_addresses(
                 } => {
                     dispatcher_sessions
                         .checkpoint_ready(&identity, committed_sequence, &checkpoint)
-                        .await
+                        .await;
+                    enqueue_web_alert(
+                        &dispatcher_web_push,
+                        checkpoint_push_alert(identity, &checkpoint),
+                    )
+                    .await;
                 }
                 EngineEvent::EncounterReady {
                     identity,
@@ -1908,7 +2128,12 @@ pub async fn run_on_addresses(
                 } => {
                     dispatcher_sessions
                         .encounter_ready(&identity, committed_sequence, &encounter)
-                        .await
+                        .await;
+                    enqueue_web_alert(
+                        &dispatcher_web_push,
+                        encounter_push_alert(identity, &encounter),
+                    )
+                    .await;
                 }
                 EngineEvent::TrafficSnapshot {
                     identity,
@@ -2011,6 +2236,7 @@ pub async fn run_on_addresses(
                         let connection_engine = engine.clone();
                         let connection_sessions = Arc::clone(&sessions);
                         let connection_registry = bbs_registry.clone();
+                        let connection_web_push = web_push.clone();
                         let Ok(authentication_permit) = Arc::clone(
                             &pending_game_authentications,
                         )
@@ -2031,6 +2257,7 @@ pub async fn run_on_addresses(
                                 connection_engine,
                                 connection_sessions,
                                 connection_registry,
+                                connection_web_push,
                                 authentication_permit,
                             )
                             .await
@@ -2124,6 +2351,7 @@ async fn handle_connection(
     engine: EngineHandle,
     sessions: Arc<Sessions>,
     bbs_registry: BbsRegistry,
+    web_push: WebPushHandle,
     authentication_permit: tokio::sync::OwnedSemaphorePermit,
 ) -> Result<(), ServerError> {
     socket.set_nodelay(true)?;
@@ -2280,6 +2508,8 @@ async fn handle_connection(
         Err(error) => return Err(error),
     };
     let epoch = opening.epoch;
+    let operational_sequence = opening.committed_sequence;
+    let operational_phase = opening.phase;
     let (replaced_sender, mut replaced_receiver) = watch::channel(false);
     let active = ActiveSession {
         epoch,
@@ -2429,6 +2659,74 @@ async fn handle_connection(
         }
         match decode_request(&frame) {
             Ok(request) if request.session_epoch == epoch => {
+                let operational_kind = match &request.command {
+                    wire::Command::GetBrowserAlertStatus => {
+                        let handle = web_push.clone();
+                        let identity = hello.identity.clone();
+                        Some(
+                            tokio::task::spawn_blocking(move || {
+                                handle
+                                    .status(identity)
+                                    .map(wire::OutcomeKind::BrowserAlertStatus)
+                            })
+                            .await
+                            .map_err(|_| ServerError::EngineStopped)?,
+                        )
+                    }
+                    wire::Command::CreateBrowserAlertEnrollment => {
+                        let handle = web_push.clone();
+                        let identity = hello.identity.clone();
+                        let command_id = request.command_id;
+                        Some(
+                            tokio::task::spawn_blocking(move || {
+                                handle
+                                    .create_enrollment(identity, command_id)
+                                    .map(wire::OutcomeKind::BrowserAlertEnrollment)
+                            })
+                            .await
+                            .map_err(|_| ServerError::EngineStopped)?,
+                        )
+                    }
+                    wire::Command::RevokeAllBrowserAlerts => {
+                        let handle = web_push.clone();
+                        let identity = hello.identity.clone();
+                        Some(
+                            tokio::task::spawn_blocking(move || {
+                                handle
+                                    .revoke_all(identity)
+                                    .map(wire::OutcomeKind::BrowserAlertStatus)
+                            })
+                            .await
+                            .map_err(|_| ServerError::EngineStopped)?,
+                        )
+                    }
+                    _ => None,
+                };
+                if let Some(result) = operational_kind {
+                    let kind = result.unwrap_or_else(|error| wire::OutcomeKind::Error {
+                        code: wire::ErrorCode::InternalFailure,
+                        message: error.to_string(),
+                    });
+                    let response = wire::Outcome {
+                        command_id: request.command_id,
+                        committed_sequence: operational_sequence,
+                        revision: 0,
+                        replayed: false,
+                        phase: operational_phase,
+                        kind,
+                    };
+                    if outbound
+                        .send(encode_response(request.request_id, epoch, &response)?)
+                        .await
+                        .is_err()
+                    {
+                        break Err(ServerError::Io(io::Error::new(
+                            io::ErrorKind::BrokenPipe,
+                            "connection writer stopped",
+                        )));
+                    }
+                    continue;
+                }
                 if engine
                     .sender
                     .send(EngineMessage::Submit {

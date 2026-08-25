@@ -40,6 +40,13 @@ screen. Letter choices are case-insensitive.
   menus and confirmations still wait for input.
 - A menu may omit an action when the present port, ship, or situation cannot
   support it.
+- `B` in the universal menu opens **Browser Alerts**. When the BBS operator has
+  enabled the service, the door displays a ten-minute link and, where it fits,
+  a QR code for the captain's portable communicator. The browser can warn you
+  before the ship reaches a waypoint that will wait for orders and call you
+  when a checkpoint or detected encounter needs attention. Push alerts are a
+  convenience, not a guarantee; game time and standing orders continue if one
+  is delayed or missed.
 
 Cepheus Trader is server-authoritative. If a command is rejected, read the
 reason and refresh the relevant screen rather than assuming that the displayed

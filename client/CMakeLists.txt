@@ -45,6 +45,54 @@ option(
 if(CT_PORTABLE_CLIENT)
   set(CT_USE_SYSTEM_BOTAN OFF CACHE BOOL "Use installed Botan" FORCE)
 endif()
+
+set(CT_QRCODEGEN_VERSION 1.8.0)
+set(
+  CT_QRCODEGEN_URL
+  "https://github.com/nayuki/QR-Code-generator/archive/refs/tags/v${CT_QRCODEGEN_VERSION}.tar.gz"
+)
+set(
+  CT_QRCODEGEN_SHA256
+  "2ec0a4d33d6f521c942eeaf473d42d5fe139abcfa57d2beffe10c5cf7d34ae60"
+)
+if(NOT CT_PORTABLE_CLIENT)
+  find_path(CT_QRCODEGEN_INCLUDE_DIR qrcodegen.hpp PATH_SUFFIXES qrcodegen)
+  find_library(CT_QRCODEGEN_LIBRARY NAMES qrcodegencpp)
+endif()
+if(CT_QRCODEGEN_INCLUDE_DIR AND CT_QRCODEGEN_LIBRARY)
+  add_library(ct-qrcodegen UNKNOWN IMPORTED GLOBAL)
+  set_target_properties(
+    ct-qrcodegen
+    PROPERTIES
+      IMPORTED_LOCATION "${CT_QRCODEGEN_LIBRARY}"
+      INTERFACE_INCLUDE_DIRECTORIES "${CT_QRCODEGEN_INCLUDE_DIR}"
+  )
+  message(STATUS "Using installed QR Code generator library")
+else()
+  include(FetchContent)
+  message(STATUS "Fetching pinned QR Code generator ${CT_QRCODEGEN_VERSION}")
+  FetchContent_Declare(
+    qrcodegen
+    URL "${CT_QRCODEGEN_URL}"
+    URL_HASH "SHA256=${CT_QRCODEGEN_SHA256}"
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  )
+  FetchContent_GetProperties(qrcodegen)
+  if(NOT qrcodegen_POPULATED)
+    if(POLICY CMP0169)
+      cmake_policy(PUSH)
+      cmake_policy(SET CMP0169 OLD)
+    endif()
+    FetchContent_Populate(qrcodegen)
+    if(POLICY CMP0169)
+      cmake_policy(POP)
+    endif()
+  endif()
+  add_library(ct-qrcodegen STATIC "${qrcodegen_SOURCE_DIR}/cpp/qrcodegen.cpp")
+  target_include_directories(ct-qrcodegen PUBLIC "${qrcodegen_SOURCE_DIR}/cpp")
+  target_compile_features(ct-qrcodegen PUBLIC cxx_std_11)
+  set_target_properties(ct-qrcodegen PROPERTIES CXX_EXTENSIONS OFF)
+endif()
 include(cmake/BotanPinned.cmake)
 
 set(
@@ -525,6 +573,7 @@ target_compile_options(
     -Werror
 )
 target_link_libraries(ct-door-presentation PUBLIC ct-display-format)
+target_link_libraries(ct-door-presentation PRIVATE ct-qrcodegen)
 
 add_executable(cepheus-trader-client src/main.cpp)
 target_link_libraries(cepheus-trader-client PRIVATE ct-client-core)
@@ -834,6 +883,7 @@ install(
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/opendoors/license.txt"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/licenses/Botan-BSD-2-Clause.txt"
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/licenses/CapnProto-MIT.txt"
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/licenses/QRCodeGenerator-MIT.txt"
     "${CMAKE_CURRENT_BINARY_DIR}/SOURCE-RELEASE.txt"
   DESTINATION "${CMAKE_INSTALL_DATADIR}/cepheus-trader"
   COMPONENT Client

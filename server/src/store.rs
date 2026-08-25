@@ -2911,6 +2911,9 @@ pub struct PlayerTravelTransition {
     pub revision: u64,
     pub phase: PlayerPhase,
     pub status: TravelStatus,
+    /// The currently scheduled leg ends at a waypoint where automation will
+    /// stop and wait for the captain.
+    pub attention_required_at_due: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -4296,12 +4299,15 @@ impl Store {
                     self.process_player_travel_in(&mut txn, current_second, ship_id)?;
                 let phase = self.player_phase_in(&txn, &identity)?;
                 let status = self.travel_status_in(&txn, &identity)?;
+                let attention_required_at_due =
+                    self.attention_required_at_due_in(&txn, &identity, &status)?;
                 player_transitions.push(PlayerTravelTransition {
                     identity: identity.clone(),
                     committed_sequence: sequence,
                     revision,
                     phase,
                     status,
+                    attention_required_at_due,
                 });
                 let combat_id = self
                     .player_and_ship_in(&txn, &identity)
@@ -4364,12 +4370,15 @@ impl Store {
                 self.process_encounter_turn_in(&mut txn, current_second, &identity, encounter_id)?;
                 let phase = self.player_phase_in(&txn, &identity)?;
                 let status = self.travel_status_in(&txn, &identity)?;
+                let attention_required_at_due =
+                    self.attention_required_at_due_in(&txn, &identity, &status)?;
                 player_transitions.push(PlayerTravelTransition {
                     identity,
                     committed_sequence: sequence,
                     revision,
                     phase,
                     status,
+                    attention_required_at_due,
                 });
                 category = Some(ProcessedScheduledCategory::EncounterTurn);
                 encode_timed_object_event_journal(0x45, current_second, encounter_id)
@@ -4380,12 +4389,15 @@ impl Store {
                 for identity in identities {
                     let phase = self.player_phase_in(&txn, &identity)?;
                     let status = self.travel_status_in(&txn, &identity)?;
+                    let attention_required_at_due =
+                        self.attention_required_at_due_in(&txn, &identity, &status)?;
                     player_transitions.push(PlayerTravelTransition {
                         identity,
                         committed_sequence: sequence,
                         revision,
                         phase,
                         status,
+                        attention_required_at_due,
                     });
                 }
                 category = Some(ProcessedScheduledCategory::EncounterTurn);
@@ -4397,12 +4409,15 @@ impl Store {
                 {
                     let phase = self.player_phase_in(&txn, &identity)?;
                     let status = self.travel_status_in(&txn, &identity)?;
+                    let attention_required_at_due =
+                        self.attention_required_at_due_in(&txn, &identity, &status)?;
                     player_transitions.push(PlayerTravelTransition {
                         identity,
                         committed_sequence: sequence,
                         revision,
                         phase,
                         status,
+                        attention_required_at_due,
                     });
                 }
                 category = Some(ProcessedScheduledCategory::ContactCheck);
@@ -5563,6 +5578,11 @@ impl Store {
             | Command::GetStartingShipOffers
             | Command::GetStartingShipOptions { .. }
             | Command::GetStartingCrewPlan { .. } => unreachable!("handled above"),
+            Command::GetBrowserAlertStatus
+            | Command::CreateBrowserAlertEnrollment
+            | Command::RevokeAllBrowserAlerts => {
+                unreachable!("browser-alert operations are intercepted by the connection layer")
+            }
         };
         Ok((kind, self.player_phase_in(txn, &queued.identity)?))
     }
@@ -5687,6 +5707,52 @@ impl Store {
                 policy: EncounterPolicy::default(),
                 suspension_reason: String::new(),
             }))
+    }
+
+    fn attention_required_at_due_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+        status: &TravelStatus,
+    ) -> Result<bool, StoreError> {
+        if status.due_second <= status.current_game_second
+            || matches!(
+                status.stage,
+                TravelStage::Docked | TravelStage::Holding | TravelStage::Encounter
+            )
+        {
+            return Ok(false);
+        }
+        // Coordinate Jumps always break out into a deep-space survey and hold
+        // for damage/arrival assessment; their plan step names the departure
+        // jump locus rather than the unknown destination coordinates.
+        if status.stage == TravelStage::JumpSpace
+            && matches!(status.destination, FlightLocus::DeepSpace { .. })
+        {
+            return Ok(true);
+        }
+        let plan = self.flight_plan_in(txn, identity)?;
+        if let Some(step) = plan
+            .steps
+            .iter()
+            .skip(usize::from(plan.current_step))
+            .find(|step| step.locus == status.destination)
+        {
+            return Ok(step.authority == WaypointAuthority::Hold);
+        }
+        // Legacy/direct voyages have no FlightPlanSnapshot policy. Their
+        // final approach (and the return leg of direct remote operations)
+        // always stops for the captain.
+        Ok(plan.plan_id == 0
+            && (status.stage == TravelStage::ApproachingStarport
+                || (matches!(status.destination, FlightLocus::Port { .. })
+                    && matches!(
+                        status.stage,
+                        TravelStage::GasGiantSkim
+                            | TravelStage::WildernessWater
+                            | TravelStage::FuelProcessing
+                            | TravelStage::BeltEgress
+                    ))))
     }
 
     fn projected_primary_approach_seconds_in(
@@ -15337,12 +15403,18 @@ impl Store {
             .iter()
             .filter(|participant| participant.directly_commanded)
         {
+            let status = self.travel_status_in(txn, &participant.identity)?;
             transitions.push(PlayerTravelTransition {
                 identity: participant.identity.clone(),
                 committed_sequence,
                 revision,
                 phase: self.player_phase_in(txn, &participant.identity)?,
-                status: self.travel_status_in(txn, &participant.identity)?,
+                attention_required_at_due: self.attention_required_at_due_in(
+                    txn,
+                    &participant.identity,
+                    &status,
+                )?,
+                status,
             });
         }
         Ok(transitions)
@@ -37659,6 +37731,11 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
                 }
             }
         }
+        Command::GetBrowserAlertStatus
+        | Command::CreateBrowserAlertEnrollment
+        | Command::RevokeAllBrowserAlerts => {
+            unreachable!("browser-alert operations are never stored in the authoritative queue")
+        }
     }
     Ok(bytes)
 }
@@ -39691,6 +39768,9 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
             bytes.extend_from_slice(&value.reception_id.to_be_bytes());
             bytes.extend_from_slice(&value.transmission_id.to_be_bytes());
             encode_text(&mut bytes, &value.body)?;
+        }
+        OutcomeKind::BrowserAlertStatus(_) | OutcomeKind::BrowserAlertEnrollment(_) => {
+            unreachable!("browser-alert outcomes are never stored in the authoritative journal")
         }
         OutcomeKind::Error { code, message } => {
             bytes.push(3);
@@ -49012,6 +49092,121 @@ mod tests {
                 .unwrap(),
             RuleResult::Rejected(message) if message.contains("one terminal waypoint")
         ));
+    }
+
+    #[test]
+    fn attention_warning_is_reserved_for_future_hold_waypoints() {
+        let directory = TempDir::new().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let destination = FlightLocus::Port {
+            system_id: 22,
+            world_id: 22,
+            facility_id: 22,
+        };
+        let mut plan = FlightPlanSnapshot {
+            plan_id: 7,
+            revision: 3,
+            current_step: 0,
+            state: FlightPlanState::Active,
+            steps: vec![FlightPlanStep {
+                locus: destination,
+                authority: WaypointAuthority::Hold,
+                action: FlightPlanAction::Dock {
+                    world_id: 22,
+                    facility_id: 22,
+                },
+                terminal: true,
+            }],
+            policy: EncounterPolicy::default(),
+            suspension_reason: String::new(),
+        };
+        let key = encode_identity(&identity());
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .flight_plans
+            .put(&mut txn, &key, &encode_flight_plan_snapshot(&plan).unwrap())
+            .unwrap();
+        txn.commit().unwrap();
+        let mut status = TravelStatus {
+            ship_id: 9,
+            ship_name: "Far Horizon".into(),
+            current_system_id: 1,
+            current_system_name: "Origin".into(),
+            destination_system_id: 22,
+            destination_system_name: "Destination".into(),
+            stage: TravelStage::ApproachingStarport,
+            current_game_second: 100,
+            due_second: 1_000,
+            current_fuel_millitons: 10,
+            jump_fuel_millitons: 20,
+            plan_id: 7,
+            plan_revision: 3,
+            leg_index: 1,
+            origin: FlightLocus::JumpLocus { system_id: 22 },
+            destination,
+        };
+        let txn = store.env.read_txn().unwrap();
+        assert!(
+            store
+                .attention_required_at_due_in(&txn, &identity(), &status)
+                .unwrap()
+        );
+        drop(txn);
+
+        plan.steps[0].authority = WaypointAuthority::Through;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .flight_plans
+            .put(&mut txn, &key, &encode_flight_plan_snapshot(&plan).unwrap())
+            .unwrap();
+        txn.commit().unwrap();
+        let txn = store.env.read_txn().unwrap();
+        assert!(
+            !store
+                .attention_required_at_due_in(&txn, &identity(), &status)
+                .unwrap()
+        );
+        drop(txn);
+
+        status.stage = TravelStage::Holding;
+        plan.steps[0].authority = WaypointAuthority::Hold;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .flight_plans
+            .put(&mut txn, &key, &encode_flight_plan_snapshot(&plan).unwrap())
+            .unwrap();
+        txn.commit().unwrap();
+        let txn = store.env.read_txn().unwrap();
+        assert!(
+            !store
+                .attention_required_at_due_in(&txn, &identity(), &status)
+                .unwrap()
+        );
+        drop(txn);
+
+        status.stage = TravelStage::JumpSpace;
+        status.destination = FlightLocus::DeepSpace {
+            position: crate::wire::Coordinate3::from_parsecs([1.0, 2.0, 3.0]),
+        };
+        let txn = store.env.read_txn().unwrap();
+        assert!(
+            store
+                .attention_required_at_due_in(&txn, &identity(), &status)
+                .unwrap()
+        );
+        drop(txn);
+
+        let mut txn = store.env.write_txn().unwrap();
+        store.flight_plans.delete(&mut txn, &key).unwrap();
+        txn.commit().unwrap();
+        status.stage = TravelStage::ApproachingStarport;
+        status.destination = destination;
+        let txn = store.env.read_txn().unwrap();
+        assert!(
+            store
+                .attention_required_at_due_in(&txn, &identity(), &status)
+                .unwrap()
+        );
     }
 
     #[test]

@@ -9,6 +9,8 @@
 #include <utility>
 #include <vector>
 
+#include <qrcodegen.hpp>
+
 namespace ct {
 namespace {
 
@@ -289,6 +291,15 @@ std::string encode_text(const std::string_view text,
       }
    }
    return result;
+}
+
+bool safe_hyperlink_url(const std::string_view url) {
+   if(!url.starts_with("https://")) {
+      return false;
+   }
+   return std::all_of(url.begin(), url.end(), [](const unsigned char value) {
+      return value >= 0x21 && value <= 0x7e && value != '\\';
+   });
 }
 
 // Longest prefix of text that renders within columns, plus the offset just past
@@ -655,6 +666,81 @@ std::vector<PricePlotSpan> styled_price_box_plot(
    return spans;
 }
 
+std::optional<std::vector<std::string>> door_qr_code(
+   const std::string_view text,
+   const DoorProfile profile,
+   const size_t columns)
+{
+   if(text.empty() || text.size() > 2048 || columns < 40) {
+      return std::nullopt;
+   }
+   std::optional<qrcodegen::QrCode> code;
+   try {
+      code.emplace(qrcodegen::QrCode::encodeText(
+         std::string(text).c_str(), qrcodegen::QrCode::Ecc::MEDIUM));
+   } catch(const qrcodegen::data_too_long&) {
+      return std::nullopt;
+   }
+   constexpr size_t quiet = 4;
+   const auto matrix = static_cast<size_t>(code->getSize()) + quiet * 2;
+   const bool square_cells = columns == 40;
+   const bool cp437 = door_profile_uses_cp437(profile);
+   const auto rendered_width = matrix * ((!square_cells && !cp437) ? 2 : 1);
+   // DoorPresentation deliberately reserves the final physical column to
+   // avoid terminals whose right margin performs an implicit wrap.
+   if(rendered_width > columns - 1) {
+      return std::nullopt;
+   }
+   const auto module = [&code](const size_t row, const size_t column) {
+      constexpr size_t border = 4;
+      if(row < border || column < border ||
+         row >= static_cast<size_t>(code->getSize()) + border ||
+         column >= static_cast<size_t>(code->getSize()) + border) {
+         return false;
+      }
+      return code->getModule(
+         static_cast<int>(column - border), static_cast<int>(row - border));
+   };
+   const auto left = (columns - 1 - rendered_width) / 2;
+   std::vector<std::string> lines;
+   if(!square_cells && cp437) {
+      for(size_t row = 0; row < matrix; row += 2) {
+         std::string line(left, ' ');
+         for(size_t column = 0; column < matrix; ++column) {
+            const bool upper = module(row, column);
+            const bool lower = row + 1 < matrix && module(row + 1, column);
+            if(upper && lower) {
+               line += "\xe2\x96\x88";  // U+2588, CP437 0xdb
+            } else if(upper) {
+               line += "\xe2\x96\x80";  // U+2580, CP437 0xdf
+            } else if(lower) {
+               line += "\xe2\x96\x84";  // U+2584, CP437 0xdc
+            } else {
+               line.push_back(' ');
+            }
+         }
+         line += "\n\r";
+         lines.push_back(std::move(line));
+      }
+   } else {
+      for(size_t row = 0; row < matrix; ++row) {
+         std::string line(left, ' ');
+         for(size_t column = 0; column < matrix; ++column) {
+            if(cp437) {
+               line += module(row, column) ? "\xe2\x96\x88" : " ";
+            } else if(square_cells) {
+               line.push_back(module(row, column) ? 'M' : ' ');
+            } else {
+               line += module(row, column) ? "MM" : "  ";
+            }
+         }
+         line += "\n\r";
+         lines.push_back(std::move(line));
+      }
+   }
+   return lines;
+}
+
 std::string door_option_prompt(
    const std::initializer_list<std::string_view> options,
    const size_t columns,
@@ -986,6 +1072,40 @@ bool DoorPresentation::write_hanging(
    emit_encoded(encoded, role, continuation_indent);
    if(color) {
       emit("\x1b[0m");
+   }
+   flush();
+   const bool completed = !write_aborted_;
+   write_aborted_ = false;
+   return completed;
+}
+
+bool DoorPresentation::write_hyperlink(const std::string_view url,
+                                       const DoorTextRole role)
+{
+   if(!safe_hyperlink_url(url)) {
+      throw std::invalid_argument("door hyperlink must be a printable HTTPS URL");
+   }
+   if(skipping_to_prompt_) {
+      if(role != DoorTextRole::Prompt) {
+         return false;
+      }
+      skipping_to_prompt_ = false;
+   }
+   write_aborted_ = false;
+   const bool color = door_profile_uses_ansi(profile_);
+   if(color) {
+      emit("\x1b]8;;");
+      emit(url);
+      emit("\x1b\\");
+      emit(role_sequence(role));
+   }
+   // The URL is deliberately emitted byte-for-byte. General ISO646 prose
+   // transliteration would turn variant punctuation such as '#' into words
+   // and make an enrollment URL unusable.
+   emit_encoded(url, role, 0);
+   if(color) {
+      emit("\x1b[0m");
+      emit("\x1b]8;;\x1b\\");
    }
    flush();
    const bool completed = !write_aborted_;

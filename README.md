@@ -98,7 +98,8 @@ See the [sysop guide](docs/sysop-guide.md) for BBS installation,
 configuration, credential bootstrap, and door setup. Client development is
 covered by the [client documentation](client/README.md), League operation by
 the [League Coordinator guide](docs/league-coordinator.md), and portable
-packages by the [release process](docs/release-process.md).
+packages by the [release process](docs/release-process.md). Optional Web Push
+deployment is covered by the [browser-alert guide](docs/browser-alerts.md).
 
 ## Documentation
 

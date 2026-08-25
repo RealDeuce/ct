@@ -207,6 +207,18 @@ socket handle. The caller may be connected to Synchronet through Telnet, but
 the door-side passthrough socket is not a Telnet stream: Synchronet handles
 Telnet negotiation, IAC expansion, and output translation itself.
 
+### Optional browser alerts
+
+The universal menu includes **Browser Alerts** when the authoritative server
+has Web Push configured. The included Synchronet SSJS companion appears as the
+captain's portable communicator and performs browser enrollment, receiving
+preferences, secure detail display, and per-device unlinking. It requires an
+HTTPS web origin, Synchronet's SpiderMonkey 1.8.5 runtime with the `SQLite` and
+`sha256_calc()` bindings enabled, and a SQLite file shared with the game server.
+Validate the server-side scripts with Synchronet's `jsexec`, not Node.js. Follow the
+[browser-alert deployment guide](browser-alerts.md) for key generation, server
+options, file placement, permissions, and security behavior.
+
 ### Supported drop files
 
 The door supports the drop-file formats recognized by its vendored OpenDoors

@@ -148,6 +148,18 @@ struct ServerHello {
    std::optional<InstitutionalAffiliation> affiliation;
 };
 
+struct BrowserAlertStatus {
+   bool configured;
+   uint32_t active_devices;
+   uint32_t maximum_devices;
+};
+
+struct BrowserAlertEnrollment {
+   BrowserAlertStatus status;
+   std::string url;
+   uint64_t expires_unix_second;
+};
+
 struct PlayerCreation {
    uint64_t setup_revision;
    uint32_t starting_offer_id;
@@ -2379,6 +2391,22 @@ SystemMappingStatus set_system_mapping_disclosure(
    uint64_t session_epoch,
    uint64_t system_id,
    SystemMappingChoice choice,
+   const std::array<uint8_t, 16>& command_id,
+   uint64_t request_id);
+
+BrowserAlertStatus get_browser_alert_status(
+   TlsConnection& connection,
+   uint64_t session_epoch,
+   const std::array<uint8_t, 16>& command_id,
+   uint64_t request_id);
+BrowserAlertEnrollment create_browser_alert_enrollment(
+   TlsConnection& connection,
+   uint64_t session_epoch,
+   const std::array<uint8_t, 16>& command_id,
+   uint64_t request_id);
+BrowserAlertStatus revoke_all_browser_alerts(
+   TlsConnection& connection,
+   uint64_t session_epoch,
    const std::array<uint8_t, 16>& command_id,
    uint64_t request_id);
 
