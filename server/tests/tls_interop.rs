@@ -17,14 +17,14 @@ use cepheus_trader_server::wire::{
 };
 
 const PAGE_PROMPTS: [&str; 3] = [
-    "[Enter/Sp] Continue  [C]ont  [Q] Menu",
-    "[Enter/Sp] [C]ont [Q]uit [X]pert",
-    "[Enter/Sp] [B]eg [C]ont [Q]uit",
+    "-- MORE -- Enter/Sp  C=All  Q=Menu",
+    "-- MORE -- Enter/Sp C=All Q=Quit X=Exp",
+    "-- MORE -- Enter/Sp B=Beg C=All Q=Quit",
 ];
 const ISO646_PAGE_PROMPTS: [&str; 3] = [
-    "(Enter/Sp) Continue  (C)ont  (Q) Menu",
-    "(Enter/Sp) (C)ont (Q)uit (X)pert",
-    "(Enter/Sp) (B)eg (C)ont (Q)uit",
+    "-- MORE -- Enter/Sp  C=All  Q=Menu",
+    "-- MORE -- Enter/Sp C=All Q=Quit X=Exp",
+    "-- MORE -- Enter/Sp B=Beg C=All Q=Quit",
 ];
 
 fn strip_ecma48(input: &str) -> String {

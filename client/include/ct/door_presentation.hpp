@@ -25,6 +25,7 @@ enum class DoorTextRole {
    Heading,
    Accent,
    Prompt,
+   PagerPrompt,
    Error,
    Muted,
    Label,

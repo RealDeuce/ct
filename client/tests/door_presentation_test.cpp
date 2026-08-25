@@ -453,6 +453,7 @@ int main() {
 
    const std::array semantic_roles{
       std::pair{ct::DoorTextRole::Label, std::string_view{"\x1b[36m"}},
+      std::pair{ct::DoorTextRole::PagerPrompt, std::string_view{"\x1b[30;46m"}},
       std::pair{ct::DoorTextRole::Value, std::string_view{"\x1b[1;37m"}},
       std::pair{ct::DoorTextRole::Number, std::string_view{"\x1b[1;33m"}},
       std::pair{ct::DoorTextRole::Identifier, std::string_view{"\x1b[1;35m"}},

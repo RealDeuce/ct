@@ -378,6 +378,8 @@ std::string_view role_sequence(const DoorTextRole role) {
          return "\x1b[1;33m";
       case DoorTextRole::Prompt:
          return "\x1b[1;32m";
+      case DoorTextRole::PagerPrompt:
+         return "\x1b[30;46m";
       case DoorTextRole::Error:
          return "\x1b[1;31m";
       case DoorTextRole::Muted:

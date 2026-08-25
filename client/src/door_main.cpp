@@ -434,8 +434,11 @@ void door_prompt(const char* format, ...)
    }
    active_prompt += text;
    active_prompt_on_current_line = false;
-   output().write(text, ct::DoorTextRole::Prompt);
+   // A final command prompt is one atomic control surface.  Paging in the
+   // middle of its wrapped lines makes a partial prompt look like the whole
+   // menu and then repeats the remaining controls after the pause.
    output().suspend_paging();
+   output().write(text, ct::DoorTextRole::Prompt);
 }
 
 void door_live_prompt(const char* format, ...)
@@ -452,8 +455,8 @@ void door_live_prompt(const char* format, ...)
    }
    active_prompt = text;
    active_prompt_on_current_line = true;
-   output().write(text, ct::DoorTextRole::Prompt);
    output().suspend_paging();
+   output().write(text, ct::DoorTextRole::Prompt);
 }
 
 void show_voyage_live_prompt()
@@ -1015,22 +1018,22 @@ void initialize_presentation(const ct::BbsConfig& config)
    });
    presentation->configure_paging(1, [] {
       constexpr std::string_view normal_prompt =
-         "[Enter/Sp] Continue  [C]ont  [Q] Menu";
+         "-- MORE -- Enter/Sp  C=All  Q=Menu";
       std::string help_prompt;
       if(active_help_level) {
          const auto target = other_help_level(*active_help_level);
-         help_prompt = "[Enter/Sp]";
+         help_prompt = "-- MORE -- Enter/Sp";
          if(target == ct::HelpLevel::Beginner) {
-            help_prompt += " [B]eg";
+            help_prompt += " B=Beg";
          }
-         help_prompt += " [C]ont [Q]uit";
+         help_prompt += " C=All Q=Quit";
          if(target == ct::HelpLevel::Expert) {
-            help_prompt += " [X]pert";
+            help_prompt += " X=Exp";
          }
       }
       const std::string_view prompt =
          active_help_level ? std::string_view(help_prompt) : normal_prompt;
-      output().write(prompt, ct::DoorTextRole::Prompt);
+      output().write(prompt, ct::DoorTextRole::PagerPrompt);
       const auto prompt_columns = prompt.size();
       const auto abort_with = [prompt_columns](const HelpPageCommand command) {
          help_page_command = command;
@@ -7882,15 +7885,10 @@ void render_command_console(const ct::ServerHello& hello)
    door_label(". ");
    door_identifier("Guided First Watch\n\r");
    door_option_prompt({
-      "[A] Abandon captain",
-      "[B] Browser alerts",
-      "[C/K/M/O/R/S/T] Manager",
-      "[H] Help browser",
-      "[P] Preferences",
-      "[W] First Watch",
+      "[Letter] Manager",
       "[Enter] Refresh",
-      "[X] Operational view",
-      "[Q] Return to BBS",
+      "[X] View",
+      "[Q] BBS",
       "[?] Help",
    });
 }
@@ -10280,10 +10278,10 @@ void render_docked_menu(const ct::DockedSnapshot& snapshot)
       door_identifier("%s\n\r", entry.second);
    }
    door_option_prompt({
-      "[Letter] Listed action",
+      "[Letter] Action",
       "[L] License",
       "[Enter] Refresh",
-      "[Q] Return to BBS",
+      "[Q] BBS",
       "[?] Help",
    });
 }

@@ -32,7 +32,7 @@ screen. Letter choices are case-insensitive.
   action changes the durable default.
 - `<` and `>` move between pages where shown. Some packet screens also accept
   the corresponding arrow keys and display letter alternatives.
-- A full page pauses at an `[Enter/Sp] Continue  [C]ont  [Q] Menu` prompt.
+- A full page pauses at a contrasting `-- MORE -- Enter/Sp  C=All  Q=Menu` prompt.
   Press Enter or Space to continue one page, `C` to suppress further page
   pauses until the next keyboard input, or `Q` to skip the remaining ordinary
   output and reach the screen's menu. The prompt is erased and output resumes
