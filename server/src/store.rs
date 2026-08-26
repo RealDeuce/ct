@@ -27784,6 +27784,7 @@ impl Store {
         self.facilities.clear(&mut txn)?;
         self.coverage_chunks.clear(&mut txn)?;
         self.markets.clear(&mut txn)?;
+        self.task_offers.clear(&mut txn)?;
         self.tasks.clear(&mut txn)?;
         self.work_assignments.clear(&mut txn)?;
         self.work_assignment_events.clear(&mut txn)?;
@@ -52669,6 +52670,41 @@ mod tests {
             )
             .unwrap();
         establish_player(&store, &identity());
+        let stale_offer_id = 91_777;
+        let stale_offer = {
+            let txn = store.env.read_txn().unwrap();
+            let ship = store.player_and_ship_in(&txn, &identity()).unwrap().1;
+            let destination_system_id = store
+                .simulation
+                .systems(&txn)
+                .unwrap()
+                .into_iter()
+                .find(|system| system.system_id != ship.system_id)
+                .unwrap()
+                .system_id;
+            test_task_offer(
+                stale_offer_id,
+                ship.system_id,
+                destination_system_id,
+                crate::wire::TaskKind::PurchaseOrder,
+            )
+        };
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .task_offers
+            .put(
+                &mut txn,
+                &stale_offer_id.to_be_bytes(),
+                &encode_stored_task_offer(&StoredTaskOffer {
+                    offer: stale_offer,
+                    claimed_by: None,
+                    claimed_task_id: 0,
+                    closure_message_id: 0,
+                })
+                .unwrap(),
+            )
+            .unwrap();
+        txn.commit().unwrap();
         let (old_epoch, _, _) = store.issue_session_epoch(&identity()).unwrap();
         store
             .enqueue(&QueuedCommand {
@@ -52713,6 +52749,17 @@ mod tests {
         let configuration = store.bbs_configuration(credential.bbs_id).unwrap();
         assert_eq!(configuration.revision, 1);
         assert_eq!(configuration.settings, settings);
+        assert!(
+            store
+                .task_offers
+                .get(
+                    &store.env.read_txn().unwrap(),
+                    &stale_offer_id.to_be_bytes()
+                )
+                .unwrap()
+                .is_none(),
+            "universe reinitialization must discard offers from the replaced simulation"
+        );
 
         store
             .enqueue(&QueuedCommand {
