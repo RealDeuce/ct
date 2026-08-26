@@ -131,6 +131,18 @@ fn spawn_server(
     server
 }
 
+fn replace_with_two_system_voyage_fixture(data: &Path) {
+    let store = Store::open(data).unwrap();
+    let system_seeds = (0..INITIAL_SYSTEMS.len())
+        .map(|index| [140_u8.wrapping_add(index as u8); 32])
+        .collect::<Vec<_>>();
+    let retained_ids = store
+        .initialize_interop_voyage_fixture(&[0xb5; 16], [0xb6; 16], &system_seeds, 1, [0xa4; 32])
+        .unwrap();
+    assert_ne!(retained_ids[0], retained_ids[1]);
+    assert_eq!(store.operational_status().unwrap().system_count, 2);
+}
+
 fn copy_directory(source: &Path, destination: &Path) {
     std::fs::create_dir_all(destination).unwrap();
     for entry in std::fs::read_dir(source).unwrap() {
@@ -1334,6 +1346,22 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     assert!(automatic_text.ends_with("trade-combat=65\nchaos-order=25\n"));
     let automatic_committed = numeric_field(&automatic_text, "committed=");
     assert!(automatic_committed > configured_committed);
+
+    // The live administrator and sysop paths above exercised production
+    // universe and BBS-frontier materialization. Rebuild the same configured
+    // capital and its complementary companion as a deliberately non-production
+    // two-system universe before the long player voyage.
+    server.stop();
+    replace_with_two_system_voyage_fixture(data.path());
+    server = spawn_server(
+        &server_executable,
+        &game_address_text,
+        &admin_address_text,
+        &sysop_address_text,
+        &league_address_text,
+        data.path(),
+    );
+
     let client = build.path().join("cepheus-trader-client");
     let rejected_installation = data.path().join("rejected-credential");
     let rejected_config = rejected_installation.join("cepheus-trader.conf");

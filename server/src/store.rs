@@ -27626,6 +27626,98 @@ impl Store {
         )
     }
 
+    /// Builds a two-system capital/companion universe for the real-door
+    /// integration voyage after its production initialization checks finish.
+    /// This deliberately does not model a production BBS settlement.
+    #[doc(hidden)]
+    pub fn initialize_interop_voyage_fixture(
+        &self,
+        command_id: &[u8; COMMAND_ID_BYTES],
+        universe_id: [u8; 16],
+        system_seeds: &[[u8; 32]],
+        bbs_id: u32,
+        placement_seed: [u8; 32],
+    ) -> Result<[u64; 2], StoreError> {
+        self.initialize_universe_with_frontiers(
+            command_id,
+            universe_id,
+            system_seeds,
+            &[BbsPlacementSeed {
+                bbs_id,
+                seed: placement_seed,
+            }],
+            false,
+        )?;
+        self.retain_two_system_test_fixture(bbs_id)
+    }
+
+    fn retain_two_system_test_fixture(&self, bbs_id: u32) -> Result<[u64; 2], StoreError> {
+        let mut txn = self.env.write_txn()?;
+        let mut home = self
+            .bbs_homes
+            .get(&txn, &bbs_id)?
+            .map(decode_bbs_home)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("interop fixture BBS home is missing"))?;
+        let retained_ids = [home.capital_system_id, home.companion_system_ids[0]];
+        if retained_ids[0] == retained_ids[1] {
+            return Err(StoreError::Corrupt(
+                "interop fixture capital and companion are identical",
+            ));
+        }
+        let retained = retained_ids.into_iter().collect::<HashSet<_>>();
+        let systems = retained_ids
+            .into_iter()
+            .map(|system_id| {
+                self.systems
+                    .get(&txn, &system_id)?
+                    .map(decode_stellar_system)
+                    .transpose()?
+                    .ok_or(StoreError::Corrupt("interop fixture system is missing"))
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        let removed_ids = self
+            .systems
+            .iter(&txn)?
+            .filter_map(|entry| match entry {
+                Ok((system_id, _)) if !retained.contains(&system_id) => Some(Ok(system_id)),
+                Ok(_) => None,
+                Err(error) => Some(Err(StoreError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for system_id in removed_ids {
+            self.systems.delete(&mut txn, &system_id)?;
+            self.facilities.delete(&mut txn, &system_id)?;
+            self.system_polity_policies.delete(&mut txn, &system_id)?;
+        }
+        self.coverage_chunks.clear(&mut txn)?;
+        self.system_publications.clear(&mut txn)?;
+        self.system_visits.clear(&mut txn)?;
+        self.unique_cargo.clear(&mut txn)?;
+        self.polity_policy_directives.clear(&mut txn)?;
+
+        home.cluster_system_ids = [retained_ids[0]; BBS_POLITY_SYSTEM_COUNT];
+        home.cluster_system_ids[FIRST_COMPANION_INDEX] = retained_ids[1];
+        home.cluster_system_ids[SECOND_COMPANION_INDEX] = retained_ids[1];
+        home.companion_system_ids = [retained_ids[1]; 2];
+        home.frontier_stub_system_id = retained_ids[1];
+        self.bbs_homes
+            .put(&mut txn, &bbs_id, &encode_bbs_home(&home))?;
+
+        let current_second = get_meta_u64(self.meta, &txn, META_GAME_SECOND)?.unwrap_or(0);
+        for system_id in retained_ids {
+            record_first_system_visit_in(self.system_visits, &mut txn, system_id, current_second)?;
+        }
+        let simulation_systems = systems
+            .into_iter()
+            .map(|system| simulation_system_from_stellar(system, true))
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        self.simulation.initialize(&mut txn, simulation_systems)?;
+        put_meta_u64(self.meta, &mut txn, META_PENDING_SYSTEM_PUBLICATIONS, 0)?;
+        txn.commit()?;
+        Ok(retained_ids)
+    }
+
     fn initialize_universe_with_frontiers(
         &self,
         command_id: &[u8; COMMAND_ID_BYTES],
@@ -48219,6 +48311,48 @@ mod tests {
         epoch
     }
 
+    fn initialize_two_system_player_fixture(store: &Store) -> u64 {
+        let epoch = initialize_player_fixture(store);
+        let retained = store
+            .retain_two_system_test_fixture(identity().bbs_id)
+            .unwrap();
+        assert_ne!(retained[0], retained[1]);
+        assert_eq!(store.stellar_systems().unwrap().len(), 2);
+        epoch
+    }
+
+    fn initialize_two_system_background_fixture(store: &Store) {
+        store
+            .initialize_universe_for_player_fixture(
+                &[0xa5; COMMAND_ID_BYTES],
+                [0xa6; 16],
+                &initial_seeds(140),
+                &[],
+            )
+            .unwrap();
+        let credential = store
+            .add_bbs(&[0xa1; COMMAND_ID_BYTES], "Traffic Test", [0xa2; 32])
+            .unwrap();
+        store
+            .configure_bbs_for_player_fixture(
+                credential.bbs_id,
+                &[0xa3; COMMAND_ID_BYTES],
+                0,
+                &BbsSettings {
+                    bbs_name: "Traffic Test".into(),
+                    polity_name: "Test Reach".into(),
+                    trade_combat: 0,
+                    chaos_order: 100,
+                },
+                [0xa4; 32],
+            )
+            .unwrap();
+        store
+            .retain_two_system_test_fixture(credential.bbs_id)
+            .unwrap();
+        assert_eq!(store.stellar_systems().unwrap().len(), 2);
+    }
+
     #[test]
     fn delayed_encounter_response_schedules_from_the_current_second() {
         let dir = TempDir::new().unwrap();
@@ -50905,7 +51039,7 @@ mod tests {
     fn belt_cycle_persists_a_sourced_lode_and_returns_to_port() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
-        let epoch = initialize_player_fixture(&store);
+        let epoch = initialize_two_system_player_fixture(&store);
         let player = store.player_record(&identity()).unwrap().unwrap();
         let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
         ship.catalog_id = 215;
@@ -51376,7 +51510,7 @@ mod tests {
     fn committed_frontier_fuel_step_uses_named_body_and_resumes_route() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
-        let epoch = initialize_player_fixture(&store);
+        let epoch = initialize_two_system_player_fixture(&store);
         let player = store.player_record(&identity()).unwrap().unwrap();
         let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
         let spec = creation::ship_status_spec(ship.catalog_id).unwrap();
@@ -53298,17 +53432,47 @@ mod tests {
     }
 
     #[test]
+    fn interop_voyage_fixture_limits_simulation_to_two_systems() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+
+        let retained_ids = store
+            .initialize_interop_voyage_fixture(
+                &[0xb5; COMMAND_ID_BYTES],
+                [0xb6; 16],
+                &initial_seeds(140),
+                identity().bbs_id,
+                [0xa4; 32],
+            )
+            .unwrap();
+        assert_ne!(retained_ids[0], retained_ids[1]);
+        assert_eq!(store.stellar_systems().unwrap().len(), 2);
+
+        let home = store.bbs_home(identity().bbs_id).unwrap().unwrap();
+        assert_eq!(home.capital_system_id, retained_ids[0]);
+        assert_eq!(home.companion_system_ids, [retained_ids[1]; 2]);
+        assert!(
+            home.cluster_system_ids
+                .iter()
+                .all(|system_id| retained_ids.contains(system_id))
+        );
+
+        let advance = store
+            .advance_simulation_to(8 * crate::simulation::SECONDS_PER_DAY)
+            .unwrap();
+        assert_eq!(advance.system_day_events, 18);
+        assert_eq!(advance.per_system.len(), 2);
+        let report = store.simulation_report().unwrap();
+        assert!(report.message_count() > 0);
+        assert!(report.traffic_ships > 0);
+    }
+
+    #[test]
     fn scheduled_mail_is_carried_delivered_deterministically_and_survives_reopen() {
         fn run(path: &std::path::Path) -> (SimulationReport, Vec<CarrierLeg>) {
             let store = Store::open(path).unwrap();
-            store
-                .initialize_universe(
-                    &[0xa1; COMMAND_ID_BYTES],
-                    [0xa2; 16],
-                    &initial_seeds(0x40),
-                    &[],
-                )
-                .unwrap();
+            initialize_two_system_background_fixture(&store);
             let system_count = store.stellar_systems().unwrap().len();
             let advance = store
                 .advance_simulation_to(8 * crate::simulation::SECONDS_PER_DAY)
@@ -53898,7 +54062,7 @@ mod tests {
     fn authoritative_trader_circuit_persists_market_cargo_and_scheduled_travel() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
-        let epoch = initialize_player_fixture(&store);
+        let epoch = initialize_two_system_player_fixture(&store);
         const CARGO_QUANTITY: u64 = MILLITONS_PER_TON + 1;
 
         store
@@ -54239,7 +54403,7 @@ mod tests {
         let (epoch, destination, departing, cargo_lot_id, message_id);
         {
             let store = Store::open(dir.path()).unwrap();
-            epoch = initialize_player_fixture(&store);
+            epoch = initialize_two_system_player_fixture(&store);
             let known = store
                 .known_destinations_in(&store.env.read_txn().unwrap(), &identity())
                 .unwrap();
@@ -54953,7 +55117,7 @@ mod tests {
     fn proper_repair_is_durable_and_completes_exactly_once() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
-        let epoch = initialize_player_fixture(&store);
+        let epoch = initialize_two_system_player_fixture(&store);
         let player = store.player_record(&identity()).unwrap().unwrap();
         let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
         let subsystem = ship
@@ -55189,7 +55353,7 @@ mod tests {
     fn weekly_training_progresses_while_the_crew_remains_on_watch() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
-        let _epoch = initialize_player_fixture(&store);
+        let _epoch = initialize_two_system_player_fixture(&store);
         let roster = store
             .crew_management_in(&store.env.read_txn().unwrap(), &identity())
             .unwrap();
@@ -55824,7 +55988,7 @@ mod tests {
     fn gas_skimming_is_timed_tracks_unrefined_fuel_and_voids_warranty() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
-        let epoch = initialize_player_fixture(&store);
+        let epoch = initialize_two_system_player_fixture(&store);
         let player = store.player_record(&identity()).unwrap().unwrap();
         let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
         ship.current_fuel_millitons = 0;
@@ -59042,7 +59206,7 @@ mod tests {
     fn market_search_completes_as_queued_work_and_records_dated_knowledge() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
-        let epoch = initialize_player_fixture(&store);
+        let epoch = initialize_two_system_player_fixture(&store);
         let player = store.player_record(&identity()).unwrap().unwrap();
         store
             .enqueue(&QueuedCommand {
@@ -59295,7 +59459,7 @@ mod tests {
     fn buyer_search_requires_owned_speculative_cargo_before_charging_a_broker() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
-        let epoch = initialize_player_fixture(&store);
+        let epoch = initialize_two_system_player_fixture(&store);
         let before = store.player_record(&identity()).unwrap().unwrap();
         let request_buyer_search = |request_id| QueuedCommand {
             identity: identity(),
