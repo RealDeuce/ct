@@ -1953,6 +1953,8 @@ fn bind_listener(address: SocketAddr) -> io::Result<TcpListener> {
         Type::STREAM,
         Some(Protocol::TCP),
     )?;
+    #[cfg(unix)]
+    socket.set_reuse_address(true)?;
     if address.is_ipv6() {
         socket.set_only_v6(true)?;
     }
@@ -3582,6 +3584,31 @@ mod tests {
                 .unwrap();
             assert!(matches!(accepted, AcceptedConnection::Game(_, _)));
         }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn served_listener_address_can_be_rebound_immediately() {
+        use std::io::Read as _;
+
+        let listener = bind_listener("127.0.0.1:0".parse().unwrap()).unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut client = StdTcpStream::connect(address).unwrap();
+        let (mut accepted, _) = listener.accept().await.unwrap();
+        assert_eq!(
+            bind_listener(address).unwrap_err().kind(),
+            io::ErrorKind::AddrInUse
+        );
+
+        accepted.shutdown().await.unwrap();
+        let mut byte = [0_u8; 1];
+        assert_eq!(client.read(&mut byte).unwrap(), 0);
+        drop(client);
+        drop(accepted);
+        drop(listener);
+
+        let rebound = bind_listener(address).unwrap();
+        assert_eq!(rebound.local_addr().unwrap(), address);
     }
 
     #[tokio::test]
