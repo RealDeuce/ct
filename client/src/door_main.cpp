@@ -196,6 +196,10 @@ void collect_player_events()
          throw std::runtime_error("the game server is stopping");
       case ct::PlayerEventKind::PhaseChanged:
          latest_phase_status = event->travel_status;
+         if(event->travel_status->phase != ct::PlayerPhase::Interplanetary ||
+               event->travel_status->stage != ct::TravelStage::Holding) {
+            latest_checkpoint.reset();
+         }
          ++phase_event_generation;
          break;
       case ct::PlayerEventKind::TrafficSnapshot:
@@ -9173,6 +9177,23 @@ void mark_final_flight_plan_step(ct::FlightPlanProposal& proposal)
    }
 }
 
+bool confirm_direct_course_replacement(const ct::FlightPlanProposal& proposal)
+{
+   if(proposal.steps.empty()) {
+      return true;
+   }
+   door_warning(
+      "This order replaces every unprocessed waypoint in the displayed course.\n\r");
+   door_option_prompt({"[R] Replace course", "[Q/Enter] Keep displayed course"}, false);
+   const auto choice = static_cast<char>(
+                          std::toupper(static_cast<unsigned char>(door_get_live_key())));
+   od_printf("\n\r");
+   if(choice != 'R') {
+      return false;
+   }
+   return true;
+}
+
 bool configure_jump_navigation(ct::FlightPlanAction& action)
 {
    door_option_prompt({
@@ -9349,7 +9370,9 @@ FlightPlanEditorResult run_flight_plan_editor(
                         connection, session_epoch, random_command_id(random), request_id++);
    ct::FlightPlanProposal proposal{
       .expected_plan_revision = current_plan.revision,
-      .steps = current_plan.steps,
+      .steps = current_plan.state == ct::FlightPlanState::Completed
+               ? std::vector<ct::FlightPlanStep>{}
+               : current_plan.steps,
       .policy = current_plan.policy,
    };
    bool previewed = false;
@@ -9384,6 +9407,7 @@ FlightPlanEditorResult run_flight_plan_editor(
          "[G] Add frontier fuel stop",
          "[U] Refine fuel aboard",
          "[B] Add belt cycle",
+         "[O] Return to primary port",
          "[X] Explore coordinates",
          "[D] Delete last leg",
          "[T] Last authority",
@@ -9563,11 +9587,13 @@ FlightPlanEditorResult run_flight_plan_editor(
             wait_for_enter();
          }
       } else if(key == 'B') {
-         if(!proposal.steps.empty() || destinations.current_system_id == 0 ||
-               travel.stage != ct::TravelStage::Docked) {
+         if(destinations.current_system_id == 0) {
             door_warning(
-               "A belt cycle can currently be filed only as the first step while docked.\n\r");
+               "A belt cycle requires a charted in-system position.\n\r");
             wait_for_enter();
+            continue;
+         }
+         if(!confirm_direct_course_replacement(proposal)) {
             continue;
          }
          if(destinations.belts.empty()) {
@@ -9595,6 +9621,7 @@ FlightPlanEditorResult run_flight_plan_editor(
             continue;
          }
          const auto& belt = destinations.belts[*selected - 1];
+         proposal.steps.clear();
          proposal.steps.push_back(ct::FlightPlanStep{
             .locus = ct::FlightLocus{
                .kind = ct::FlightLocusKind::Body,
@@ -9613,12 +9640,13 @@ FlightPlanEditorResult run_flight_plan_editor(
                                      ct::WaypointAuthority::Hold));
          mark_final_flight_plan_step(proposal);
       } else if(key == 'G') {
-         if(!proposal.steps.empty() || destinations.current_system_id == 0 ||
-               travel.stage != ct::TravelStage::Docked) {
+         if(destinations.current_system_id == 0) {
             door_warning(
-               "A frontier-fuel operation can currently be added only as "
-               "the first step while docked.\n\r");
+               "A frontier-fuel operation requires a charted in-system position.\n\r");
             wait_for_enter();
+            continue;
+         }
+         if(!confirm_direct_course_replacement(proposal)) {
             continue;
          }
          try {
@@ -9678,6 +9706,7 @@ FlightPlanEditorResult run_flight_plan_editor(
             } else {
                door_warning("No processor is fitted; this operation produces unrefined fuel.\n\r");
             }
+            proposal.steps.clear();
             proposal.steps.push_back(ct::FlightPlanStep{
                .locus = ct::FlightLocus{
                   .kind = ct::FlightLocusKind::Body,
@@ -9702,6 +9731,26 @@ FlightPlanEditorResult run_flight_plan_editor(
             door_error("%s\n\r", safe_field(error.what()).c_str());
             wait_for_enter();
          }
+      } else if(key == 'O') {
+         if(destinations.current_system_id == 0) {
+            door_warning(
+               "Return to port requires a charted in-system position.\n\r");
+            wait_for_enter();
+            continue;
+         }
+         if(travel.stage == ct::TravelStage::Docked) {
+            door_information("The ship is already at the primary port.\n\r");
+            wait_for_enter();
+            continue;
+         }
+         if(!confirm_direct_course_replacement(proposal)) {
+            continue;
+         }
+         proposal.steps.clear();
+         proposal.steps.push_back(primary_dock_step(
+                                     destinations.current_system_id,
+                                     ct::WaypointAuthority::Hold));
+         mark_final_flight_plan_step(proposal);
       } else if(key == 'U') {
          if(!proposal.steps.empty()) {
             door_warning("Standalone refining can currently be filed only as the first step.\n\r");
@@ -10455,15 +10504,20 @@ ct::PlayerPhase run_arrival_checkpoint(ct::TlsConnection& connection, const ct::
       return ct::PlayerPhase::Interplanetary;
    }
    while(true) {
+      const auto status = ct::get_travel_status(
+         connection, hello.assigned_epoch,
+         random_command_id(random), request_id++);
+      if(status.phase != ct::PlayerPhase::Interplanetary ||
+            status.stage != ct::TravelStage::Holding) {
+         latest_checkpoint.reset();
+         return status.phase;
+      }
       od_clr_scr();
       door_heading("Arrival Checkpoint\n\r==================\n\r\n\r");
       door_information("The ship is holding clear of its destination until the captain takes the arrival watch.\n\r");
       door_label("Ready since: ");
       door_number("%s\n\r", game_date(latest_checkpoint->ready_second).c_str());
       try {
-         const auto status = ct::get_travel_status(
-            connection, hello.assigned_epoch,
-            random_command_id(random), request_id++);
          const auto ledger = ct::get_task_ledger(
             connection, hello.assigned_epoch,
             random_command_id(random), request_id++);
@@ -10514,6 +10568,11 @@ ct::PlayerPhase run_arrival_checkpoint(ct::TlsConnection& connection, const ct::
       });
       const auto key = static_cast<char>(
          std::toupper(static_cast<unsigned char>(door_get_live_key())));
+      if(!latest_checkpoint) {
+         return ct::get_travel_status(
+            connection, hello.assigned_epoch,
+            random_command_id(random), request_id++).phase;
+      }
       if(key == '\r' || key == '\n') {
          continue;
       }
@@ -10524,11 +10583,19 @@ ct::PlayerPhase run_arrival_checkpoint(ct::TlsConnection& connection, const ct::
          break;
       }
    }
-   auto acknowledged = ct::acknowledge_checkpoint(connection, hello.assigned_epoch,
-      latest_checkpoint->checkpoint_id, random_command_id(random), request_id++);
-   latest_checkpoint.reset();
-   collect_player_events();
-   return acknowledged.phase;
+   try {
+      auto acknowledged = ct::acknowledge_checkpoint(
+         connection, hello.assigned_epoch, latest_checkpoint->checkpoint_id,
+         random_command_id(random), request_id++);
+      latest_checkpoint.reset();
+      collect_player_events();
+      return acknowledged.phase;
+   } catch(const ct::PlayerRequestRejected&) {
+      latest_checkpoint.reset();
+      return ct::get_travel_status(
+         connection, hello.assigned_epoch,
+         random_command_id(random), request_id++).phase;
+   }
 }
 
 const char* combat_range_name(const ct::CombatRange range)

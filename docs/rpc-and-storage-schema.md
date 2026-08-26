@@ -196,11 +196,14 @@ processing work.
 
 `FlightPlanSnapshot` is stored separately from the ship's current physical
 leg. It owns ordered typed waypoints, bounded actions, hold/through checkpoint
-authority, a separate last-step terminal marker, encounter policy, revision, current step, state, and suspension
-reason. An outbound revision may replace the not-yet-started Jump destination
-without replacing the port-to-locus leg. Once the Jump begins, that physical
-leg is immutable until its next checkpoint. Cargo and sealed mail remain on
-the ship and generate preview warnings; replanning never edits obligations.
+authority, a separate last-step terminal marker, encounter policy, revision,
+current step, state, and suspension reason. An active redirected in-system leg
+also owns a leg-identity-keyed trajectory record containing its epoch,
+position, velocity, turnover, and bounded acceleration vectors. Replacing the
+course cancels the superseded travel/contact work and writes the new leg,
+trajectory, and plan atomically. Only a Jump-space leg is immutable until its
+next checkpoint. Cargo and sealed mail remain on the ship and generate preview
+warnings; replanning never edits obligations.
 Flight Plan codec version 4 adds the per-collection refine choice and the
 standalone refine action; readers retain versions 1 through 3. Authoritative
 preview includes per-step normal and failed fuel-operation timings. Retained

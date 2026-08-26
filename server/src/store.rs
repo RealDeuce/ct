@@ -32,8 +32,9 @@ use crate::coverage::{
 use crate::creation;
 use crate::crypto::{CryptoError, SeedStream, derive_seed};
 use crate::navigation::{
-    BBS_CORE_MAXIMUM_JUMP_APPROACH_DAYS, FrontierFuelBodyKind, bbs_core_jump_guard_days,
-    body_position_au, gas_giant_fuel_source, gas_giant_fuel_sources, nearest_gas_giant_fuel_source,
+    BBS_CORE_MAXIMUM_JUMP_APPROACH_DAYS, FrontierFuelBodyKind, KinematicState, ManeuverSolution,
+    bbs_core_jump_guard_days, body_position_au, bounded_thrust_intercept, gas_giant_fuel_source,
+    gas_giant_fuel_sources, maneuver_state_at, nearest_gas_giant_fuel_source,
     nearest_wilderness_water_source, primary_world_jump_safety, rest_to_rest_travel_days,
     wilderness_water_source, wilderness_water_sources,
 };
@@ -941,6 +942,50 @@ fn settle_power_fuel(ship: &mut ShipRecord, spec: &creation::ShipStatusSpec, now
     ship.power_fuel_last_settled_second = now;
 }
 
+fn outstanding_maneuver_seconds(
+    ship: &ShipRecord,
+    leg: FlightLegRecord,
+    current_second: u64,
+) -> u64 {
+    let current_leg = leg.due_second.saturating_sub(current_second);
+    match leg.purpose {
+        FlightLegPurpose::ReachFrontierFuel {
+            service_due_second, ..
+        } => current_leg.saturating_add(ship.activity.as_ref().map_or(0, |activity| {
+            activity.due_second.saturating_sub(service_due_second)
+        })),
+        FlightLegPurpose::ProcessFrontierFuel { .. } => {
+            ship.activity.as_ref().map_or(0, |activity| {
+                activity.due_second.saturating_sub(leg.due_second)
+            })
+        }
+        FlightLegPurpose::ReachBelt(context) => current_leg.saturating_add(context.transit_seconds),
+        FlightLegPurpose::ProspectBelt(context)
+        | FlightLegPurpose::SurveyBelt(context)
+        | FlightLegPurpose::MineBelt(context)
+        | FlightLegPurpose::RefineBelt(context)
+        | FlightLegPurpose::RecoverBelt { context, .. } => context.transit_seconds,
+        FlightLegPurpose::DepartForJump { .. }
+        | FlightLegPurpose::DepartForCoordinateJump { .. }
+        | FlightLegPurpose::ApproachPort
+        | FlightLegPurpose::ReturnFromFrontierFuel { .. }
+        | FlightLegPurpose::ReturnFromBelt(_) => current_leg,
+        FlightLegPurpose::Jump { .. } => 0,
+    }
+}
+
+fn outstanding_frontier_service_seconds(leg: FlightLegRecord, current_second: u64) -> u64 {
+    match leg.purpose {
+        FlightLegPurpose::ReachFrontierFuel {
+            service_due_second, ..
+        } => service_due_second.saturating_sub(leg.due_second),
+        FlightLegPurpose::ProcessFrontierFuel { .. } => {
+            leg.due_second.saturating_sub(current_second)
+        }
+        _ => 0,
+    }
+}
+
 fn shift_price_tier(base: u64, price: u64, delta: i8, purchase: bool) -> u64 {
     let tiers: &[u64] = if purchase {
         &[80, 90, 100, 120]
@@ -1319,6 +1364,16 @@ pub struct FlightLegRecord {
     pub started_second: u64,
     pub due_second: u64,
     pub purpose: FlightLegPurpose,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct FlightTrajectoryRecord {
+    plan_id: u64,
+    plan_revision: u64,
+    started_second: u64,
+    due_second: u64,
+    origin: KinematicState,
+    solution: ManeuverSolution,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -3497,6 +3552,7 @@ pub struct Store {
     system_visits: UniverseDatabase,
     discovery_claims: UniverseDatabase,
     flight_plans: Database<Bytes, Bytes>,
+    flight_trajectories: UniverseDatabase,
     checkpoints: Database<Bytes, Bytes>,
     encounters: Database<Bytes, Bytes>,
     encounter_events: Database<Bytes, Bytes>,
@@ -3541,7 +3597,7 @@ impl Store {
         let env = unsafe {
             EnvOpenOptions::new()
                 .map_size(map_size_bytes)
-                .max_dbs(85)
+                .max_dbs(86)
                 .open(path.as_ref())?
         };
         let mut txn = env.write_txn()?;
@@ -3609,6 +3665,7 @@ impl Store {
         let system_visits = env.create_database(&mut txn, Some("system-visits"))?;
         let discovery_claims = env.create_database(&mut txn, Some("discovery-claims"))?;
         let flight_plans = env.create_database(&mut txn, Some("flight-plans"))?;
+        let flight_trajectories = env.create_database(&mut txn, Some("flight-trajectories"))?;
         let checkpoints = env.create_database(&mut txn, Some("arrival-checkpoints"))?;
         let encounters = env.create_database(&mut txn, Some("encounters"))?;
         let encounter_events = env.create_database(&mut txn, Some("encounter-turn-events"))?;
@@ -3734,6 +3791,7 @@ impl Store {
             system_visits,
             discovery_claims,
             flight_plans,
+            flight_trajectories,
             checkpoints,
             encounters,
             encounter_events,
@@ -4685,11 +4743,16 @@ impl Store {
                 },
             },
             Command::GetDockedServices => {
-                if self.player_phase_in(txn, &queued.identity)? != PlayerPhase::Docked {
+                if !matches!(
+                    self.player_phase_in(txn, &queued.identity)?,
+                    PlayerPhase::Docked | PlayerPhase::Interplanetary
+                ) {
                     return Ok((
                         OutcomeKind::Error {
                             code: ErrorCode::InvalidCommand,
-                            message: "dockside services are only available while berthed".into(),
+                            message:
+                                "local service charts are unavailable during Jump or an encounter"
+                                    .into(),
                         },
                         self.player_phase_in(txn, &queued.identity)?,
                     ));
@@ -5843,16 +5906,32 @@ impl Store {
         let mut fuel_timings = Vec::new();
         let mut available_credits =
             self.operating_account_credits_in(txn, &player, ship.ship_id)?;
-        let mut elapsed_seconds = match ship.location {
+        if matches!(
+            ship.location,
             ShipLocationRecord::InFlight(FlightLegRecord {
-                due_second,
-                purpose:
-                    FlightLegPurpose::DepartForJump { .. }
-                    | FlightLegPurpose::DepartForCoordinateJump { .. },
+                purpose: FlightLegPurpose::Jump { .. },
                 ..
-            }) => due_second.saturating_sub(game_second),
-            _ => 0,
-        };
+            })
+        ) {
+            return Ok(RuleResult::Rejected(
+                "a course cannot be changed while the ship is in Jump space".into(),
+            ));
+        }
+        let first_actionable = proposal
+            .steps
+            .iter()
+            .position(|step| !matches!(step.action, FlightPlanAction::Hold));
+        let underway = matches!(
+            ship.location,
+            ShipLocationRecord::InFlight(_)
+                | ShipLocationRecord::Holding {
+                    locus: ShipLocusRecord::Port { .. }
+                        | ShipLocusRecord::JumpLocus { .. }
+                        | ShipLocusRecord::Body { .. },
+                    ..
+                }
+        );
+        let mut elapsed_seconds = 0_u64;
         let mut at_primary_port = matches!(ship.location, ShipLocationRecord::Docked { .. });
         let mut warnings = Vec::new();
         let mut unattended_waypoints = Vec::new();
@@ -5865,6 +5944,41 @@ impl Store {
                     index + 1
                 )));
             }
+            let diversion_seconds = if underway && first_actionable == Some(index) {
+                let destination = match step.locus {
+                    FlightLocus::Port {
+                        system_id,
+                        world_id,
+                        facility_id,
+                    } => Some(ShipLocusRecord::Port {
+                        system_id,
+                        world_id,
+                        facility_id,
+                    }),
+                    FlightLocus::JumpLocus { system_id } => {
+                        Some(ShipLocusRecord::JumpLocus { system_id })
+                    }
+                    FlightLocus::Body { system_id, body_id } => {
+                        Some(ShipLocusRecord::Body { system_id, body_id })
+                    }
+                    FlightLocus::DeepSpace { .. } => None,
+                };
+                let Some(destination) = destination else {
+                    return Ok(RuleResult::Rejected(
+                        "the first underway waypoint must name an in-system destination".into(),
+                    ));
+                };
+                let Some(trajectory) =
+                    self.diversion_trajectory_in(txn, &ship, destination, game_second)?
+                else {
+                    return Ok(RuleResult::Rejected(
+                        "the navigation computer could not find a bounded-thrust intercept".into(),
+                    ));
+                };
+                Some(trajectory.solution.duration_seconds)
+            } else {
+                None
+            };
             match step.action {
                 FlightPlanAction::Jump {
                     destination_system_id,
@@ -5965,7 +6079,9 @@ impl Store {
                             spec.jump_rating
                         )));
                     }
-                    if at_primary_port {
+                    if let Some(seconds) = diversion_seconds {
+                        elapsed_seconds = elapsed_seconds.saturating_add(seconds);
+                    } else if at_primary_port {
                         elapsed_seconds = elapsed_seconds.saturating_add(
                             self.projected_primary_approach_seconds_in(
                                 txn,
@@ -5996,11 +6112,18 @@ impl Store {
                         });
                     }
                     fuel_millitons = fuel_millitons.saturating_add(leg_fuel);
-                    let projected_burn = leg_fuel.min(available_fuel_millitons);
+                    if available_fuel_millitons < leg_fuel {
+                        return Ok(RuleResult::Rejected(format!(
+                            "waypoint {} requires {:.1} tons of Jump fuel; only {:.1} tons are projected aboard",
+                            index + 1,
+                            leg_fuel as f64 / 1_000.0,
+                            available_fuel_millitons as f64 / 1_000.0,
+                        )));
+                    }
                     let (_, unrefined_burn) = proportional_fuel_burn(
                         available_fuel_millitons,
                         available_unrefined_millitons,
-                        projected_burn,
+                        leg_fuel,
                     );
                     if unrefined_burn != 0 {
                         warnings.push(FlightPlanWarning {
@@ -6012,17 +6135,7 @@ impl Store {
                     }
                     available_unrefined_millitons =
                         available_unrefined_millitons.saturating_sub(unrefined_burn);
-                    if available_fuel_millitons < leg_fuel {
-                        warnings.push(FlightPlanWarning {
-                            code: "INSUFFICIENT_CARRIED_FUEL".into(),
-                            message: "This step cannot begin with the fuel projected to be aboard."
-                                .into(),
-                            step_indices: vec![index as u16],
-                        });
-                        available_fuel_millitons = 0;
-                    } else {
-                        available_fuel_millitons -= leg_fuel;
-                    }
+                    available_fuel_millitons -= leg_fuel;
                     elapsed_seconds = elapsed_seconds.saturating_add(STANDARD_JUMP_SECONDS);
                     system_id = destination_system_id;
                     at_primary_port = false;
@@ -6074,7 +6187,9 @@ impl Store {
                             spec.jump_rating
                         )));
                     }
-                    if at_primary_port {
+                    if let Some(seconds) = diversion_seconds {
+                        elapsed_seconds = elapsed_seconds.saturating_add(seconds);
+                    } else if at_primary_port {
                         elapsed_seconds = elapsed_seconds.saturating_add(
                             self.projected_primary_approach_seconds_in(
                                 txn,
@@ -6105,11 +6220,18 @@ impl Store {
                         });
                     }
                     fuel_millitons = fuel_millitons.saturating_add(leg_fuel);
-                    let projected_burn = leg_fuel.min(available_fuel_millitons);
+                    if available_fuel_millitons < leg_fuel {
+                        return Ok(RuleResult::Rejected(format!(
+                            "waypoint {} requires {:.1} tons of Jump fuel; only {:.1} tons are projected aboard",
+                            index + 1,
+                            leg_fuel as f64 / 1_000.0,
+                            available_fuel_millitons as f64 / 1_000.0,
+                        )));
+                    }
                     let (_, unrefined_burn) = proportional_fuel_burn(
                         available_fuel_millitons,
                         available_unrefined_millitons,
-                        projected_burn,
+                        leg_fuel,
                     );
                     if unrefined_burn != 0 {
                         warnings.push(FlightPlanWarning {
@@ -6121,23 +6243,13 @@ impl Store {
                     }
                     available_unrefined_millitons =
                         available_unrefined_millitons.saturating_sub(unrefined_burn);
-                    if available_fuel_millitons < leg_fuel {
-                        warnings.push(FlightPlanWarning {
-                            code: "INSUFFICIENT_CARRIED_FUEL".into(),
-                            message: "This step cannot begin with the fuel projected to be aboard."
-                                .into(),
-                            step_indices: vec![index as u16],
-                        });
-                        available_fuel_millitons = 0;
-                    } else {
-                        available_fuel_millitons -= leg_fuel;
-                    }
+                    available_fuel_millitons -= leg_fuel;
                     elapsed_seconds = elapsed_seconds.saturating_add(STANDARD_JUMP_SECONDS);
                     system_id = 0;
                     at_primary_port = false;
                 }
                 FlightPlanAction::BeltCycle { body_id } => {
-                    if !at_primary_port {
+                    if !at_primary_port && diversion_seconds.is_none() {
                         return Ok(RuleResult::Rejected(format!(
                             "waypoint {} must begin from the system's primary berth",
                             index + 1
@@ -6213,8 +6325,9 @@ impl Store {
                     let transit = (rest_to_rest_travel_days(distance_au, f64::from(spec.thrust_g))
                         * crate::simulation::SECONDS_PER_DAY as f64)
                         .ceil() as u64;
-                    let local_cycle = transit
-                        .saturating_mul(2)
+                    let local_cycle = diversion_seconds
+                        .unwrap_or(transit)
+                        .saturating_add(transit)
                         .saturating_add(crate::mining::WATCH_SECONDS * 2)
                         .saturating_add(crate::mining::DAY_SECONDS);
                     let jump_count = proposal.steps[index + 1..=egress_index]
@@ -6278,6 +6391,12 @@ impl Store {
                     }
                     match operation {
                         FuelOperation::BuyRefined | FuelOperation::BuyUnrefined => {
+                            if !at_primary_port {
+                                return Ok(RuleResult::Rejected(format!(
+                                    "waypoint {} must first return to the fuel vendor's berth",
+                                    index + 1
+                                )));
+                            }
                             let FlightLocus::Port {
                                 system_id: port_system_id,
                                 world_id,
@@ -6419,9 +6538,17 @@ impl Store {
                                     index + 1
                                 )));
                             }
-                            let round_trip_seconds = (source.round_trip_days
+                            let port_round_trip_seconds = (source.round_trip_days
                                 * crate::simulation::SECONDS_PER_DAY as f64)
-                                .ceil() as u64;
+                                .ceil()
+                                as u64;
+                            let return_seconds = port_round_trip_seconds
+                                .saturating_sub(port_round_trip_seconds / 2)
+                                .max(1);
+                            let round_trip_seconds = diversion_seconds
+                                .map_or(port_round_trip_seconds, |outbound| {
+                                    outbound.saturating_add(return_seconds)
+                                });
                             let processing_seconds = if refine_collected {
                                 milliton_service_seconds(
                                     quantity_millitons,
@@ -6552,7 +6679,9 @@ impl Store {
                             index + 1
                         )));
                     }
-                    if !at_primary_port {
+                    if let Some(seconds) = diversion_seconds {
+                        elapsed_seconds = elapsed_seconds.saturating_add(seconds);
+                    } else if !at_primary_port {
                         elapsed_seconds = elapsed_seconds.saturating_add(
                             self.projected_primary_approach_seconds_in(
                                 txn,
@@ -6930,28 +7059,6 @@ impl Store {
                 uncovered.join(", ")
             )));
         }
-        let first_jump = request
-            .proposal
-            .steps
-            .iter()
-            .enumerate()
-            .find_map(|(index, step)| match &step.action {
-                FlightPlanAction::Jump { .. } | FlightPlanAction::JumpCoordinates { .. } => {
-                    Some((index, step.action.clone()))
-                }
-                _ => None,
-            });
-        if first_jump.is_none()
-            && !request
-                .proposal
-                .steps
-                .iter()
-                .any(|step| matches!(step.action, FlightPlanAction::BeltCycle { .. }))
-        {
-            return Ok(RuleResult::Rejected(
-                "the initial flight plan must contain a jump or belt cycle".into(),
-            ));
-        }
         let phase = self.player_phase_in(txn, identity)?;
         if phase != PlayerPhase::Docked && phase != PlayerPhase::Interplanetary {
             return Ok(RuleResult::Rejected(
@@ -6973,16 +7080,15 @@ impl Store {
         };
         if phase == PlayerPhase::Interplanetary && !holding_in_deep_space {
             let (_, ship) = self.player_and_ship_in(txn, identity)?;
-            if !matches!(
+            if matches!(
                 ship.location,
                 ShipLocationRecord::InFlight(FlightLegRecord {
-                    purpose: FlightLegPurpose::DepartForJump { .. },
+                    purpose: FlightLegPurpose::Jump { .. },
                     ..
                 })
             ) {
                 return Ok(RuleResult::Rejected(
-                    "the current physical leg is already committed; replan at its next checkpoint"
-                        .into(),
+                    "a course cannot be changed while the ship is in Jump space".into(),
                 ));
             }
         }
@@ -6997,7 +7103,7 @@ impl Store {
             .expected_plan_revision
             .checked_add(1)
             .ok_or(StoreError::Corrupt("flight-plan revision overflow"))?;
-        let mut plan = FlightPlanSnapshot {
+        let plan = FlightPlanSnapshot {
             plan_id,
             revision,
             current_step: 0,
@@ -7007,79 +7113,368 @@ impl Store {
             suspension_reason: String::new(),
         };
         if phase == PlayerPhase::Interplanetary && !holding_in_deep_space {
-            let Some((first_jump_index, first_jump)) = first_jump else {
+            return self.redirect_flight_plan_in(txn, identity, plan);
+        }
+        self.activate_flight_plan_from_in(txn, identity, plan, 0, false)
+    }
+
+    fn redirect_flight_plan_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        mut plan: FlightPlanSnapshot,
+    ) -> Result<RuleResult<FlightPlanSnapshot>, StoreError> {
+        let Some((index, step)) = plan
+            .steps
+            .iter()
+            .enumerate()
+            .find(|(_, step)| !matches!(step.action, FlightPlanAction::Hold))
+            .map(|(index, step)| (index, step.clone()))
+        else {
+            return Ok(RuleResult::Rejected(
+                "an underway course change must name a maneuver destination".into(),
+            ));
+        };
+        let (player, mut ship) = self.player_and_ship_in(txn, identity)?;
+        let (old_leg, old_origin) = match ship.location {
+            ShipLocationRecord::InFlight(leg) => (Some(leg), leg.origin),
+            ShipLocationRecord::Holding { locus, .. } if locus.system_id() != 0 => (None, locus),
+            _ => {
                 return Ok(RuleResult::Rejected(
-                    "a route revised after departure must retain its committed jump".into(),
+                    "the ship has no active in-system maneuver to revise".into(),
                 ));
-            };
-            if request.proposal.steps[..first_jump_index]
-                .iter()
-                .any(|step| !matches!(step.action, FlightPlanAction::Hold))
+            }
+        };
+        if old_leg.is_some_and(|leg| matches!(leg.purpose, FlightLegPurpose::Jump { .. })) {
+            return Ok(RuleResult::Rejected(
+                "a course cannot be changed while the ship is in Jump space".into(),
+            ));
+        }
+        let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        let spec = creation::ship_status_spec(ship.catalog_id)
+            .ok_or(StoreError::Corrupt("maneuver ship catalog is missing"))?;
+        settle_power_fuel(&mut ship, &spec, current);
+
+        let (destination, purpose, activity, extra_maneuver_seconds) = match step.action {
+            FlightPlanAction::Jump {
+                destination_system_id,
+                ..
+            } => (
+                ShipLocusRecord::JumpLocus {
+                    system_id: ship.system_id,
+                },
+                FlightLegPurpose::DepartForJump {
+                    jump_destination_system_id: destination_system_id,
+                },
+                None,
+                0,
+            ),
+            FlightPlanAction::JumpCoordinates { destination, .. } => (
+                ShipLocusRecord::JumpLocus {
+                    system_id: ship.system_id,
+                },
+                FlightLegPurpose::DepartForCoordinateJump { destination },
+                None,
+                0,
+            ),
+            FlightPlanAction::Dock {
+                world_id,
+                facility_id,
+            } => (
+                ShipLocusRecord::Port {
+                    system_id: ship.system_id,
+                    world_id,
+                    facility_id,
+                },
+                FlightLegPurpose::ApproachPort,
+                None,
+                0,
+            ),
+            FlightPlanAction::Fuel {
+                operation,
+                quantity_millitons,
+                refine_collected,
+            } if matches!(
+                operation,
+                FuelOperation::GasGiant | FuelOperation::WildernessWater
+            ) =>
             {
+                let FlightLocus::Body { system_id, body_id } = step.locus else {
+                    return Ok(RuleResult::Rejected(
+                        "the frontier-fuel waypoint no longer names a body".into(),
+                    ));
+                };
+                if system_id != ship.system_id {
+                    return Ok(RuleResult::Rejected(
+                        "the frontier-fuel body is outside the current system".into(),
+                    ));
+                }
+                let stellar = self
+                    .systems
+                    .get(txn, &ship.system_id)?
+                    .map(decode_stellar_system)
+                    .transpose()?
+                    .ok_or(StoreError::Corrupt("frontier-fuel system is missing"))?;
+                let celestial = derive_celestial_system(&stellar)?;
+                let days = current as f64 / crate::simulation::SECONDS_PER_DAY as f64;
+                let source = match operation {
+                    FuelOperation::GasGiant => {
+                        gas_giant_fuel_source(&celestial, days, f64::from(spec.thrust_g), body_id)
+                    }
+                    FuelOperation::WildernessWater => {
+                        wilderness_water_source(&celestial, days, f64::from(spec.thrust_g), body_id)
+                    }
+                    _ => unreachable!(),
+                }
+                .ok_or(StoreError::Corrupt(
+                    "previewed frontier-fuel body is no longer usable",
+                ))?;
+                let activity_id = crate::ship_condition::mix64(
+                    ship.ship_id ^ current ^ u64::from(body_id) ^ 0x4449_5645_5254,
+                );
+                let collection_seconds = if operation == FuelOperation::GasGiant {
+                    mean_skimming_seconds(quantity_millitons)
+                } else {
+                    0
+                };
+                let (processing_effect, processing_seconds, processing_damage) = if refine_collected
+                {
+                    self.resolve_fuel_processing_in(
+                        txn,
+                        identity,
+                        ship.ship_id,
+                        activity_id,
+                        quantity_millitons,
+                        spec.fuel_processing_millitons_per_day,
+                    )?
+                } else {
+                    (0, 0, false)
+                };
+                let service_seconds = collection_seconds.max(processing_seconds);
+                let return_seconds =
+                    ((source.round_trip_days * crate::simulation::SECONDS_PER_DAY as f64) / 2.0)
+                        .ceil() as u64;
+                let activity = ShipActivityRecord {
+                    activity_id,
+                    kind: if operation == FuelOperation::GasGiant {
+                        ShipActivityKind::GasGiantSkim {
+                            quantity_millitons,
+                            refine_collected,
+                            processing_effect,
+                            processing_damages_jump_drive: processing_damage,
+                        }
+                    } else {
+                        ShipActivityKind::WildernessWater {
+                            quantity_millitons,
+                            refine_collected,
+                            processing_effect,
+                            processing_damages_jump_drive: processing_damage,
+                        }
+                    },
+                    started_second: current,
+                    due_second: 0,
+                    cost_credits: 0,
+                    site: ShipActivitySite::Frontier {
+                        system_id: ship.system_id,
+                        source_body_id: body_id,
+                        return_world_id: ship.system_id,
+                        return_facility_id: ship.system_id,
+                    },
+                };
+                (
+                    ShipLocusRecord::Body {
+                        system_id: ship.system_id,
+                        body_id,
+                    },
+                    FlightLegPurpose::ReachFrontierFuel {
+                        activity_id,
+                        service_due_second: service_seconds,
+                    },
+                    Some(activity),
+                    return_seconds,
+                )
+            }
+            FlightPlanAction::BeltCycle { body_id } => {
+                let stellar = self
+                    .systems
+                    .get(txn, &ship.system_id)?
+                    .map(decode_stellar_system)
+                    .transpose()?
+                    .ok_or(StoreError::Corrupt("belt system is missing"))?;
+                let celestial = derive_celestial_system(&stellar)?;
+                let days = current as f64 / crate::simulation::SECONDS_PER_DAY as f64;
+                let primary_id = celestial
+                    .bodies
+                    .iter()
+                    .find(|body| body.is_primary_world)
+                    .map(|body| body.local_id)
+                    .ok_or(StoreError::Corrupt("system has no primary world"))?;
+                let primary = body_position_au(&celestial, days, primary_id)
+                    .ok_or(StoreError::Corrupt("primary world position is missing"))?;
+                let target = body_position_au(&celestial, days, body_id)
+                    .ok_or(StoreError::Corrupt("belt position is missing"))?;
+                let return_seconds = (rest_to_rest_travel_days(
+                    primary
+                        .iter()
+                        .zip(target)
+                        .map(|(left, right)| (left - right).powi(2))
+                        .sum::<f64>()
+                        .sqrt(),
+                    f64::from(spec.thrust_g),
+                ) * crate::simulation::SECONDS_PER_DAY as f64)
+                    .ceil() as u64;
+                let known_lode = self
+                    .resource_lodes
+                    .iter(txn)?
+                    .filter_map(|entry| entry.ok())
+                    .filter_map(|(_, bytes)| decode_resource_lode(bytes).ok())
+                    .find(|lode| {
+                        lode.system_id == ship.system_id
+                            && lode.body_id == body_id
+                            && lode.remaining_raw_millitons != 0
+                            && self
+                                .resource_observations
+                                .get(txn, &resource_observation_key(identity, lode.lode_id))
+                                .ok()
+                                .flatten()
+                                .is_some()
+                    });
+                let context = BeltCycleContext {
+                    lode_id: if let Some(lode) = known_lode {
+                        lode.lode_id
+                    } else {
+                        take_next_id(self.meta, txn, META_NEXT_RESOURCE_LODE_ID)?
+                    },
+                    body_id,
+                    return_world_id: ship.system_id,
+                    return_facility_id: ship.system_id,
+                    transit_seconds: return_seconds.max(1),
+                };
+                (
+                    ShipLocusRecord::Body {
+                        system_id: ship.system_id,
+                        body_id,
+                    },
+                    FlightLegPurpose::ReachBelt(context),
+                    None,
+                    return_seconds,
+                )
+            }
+            _ => {
                 return Ok(RuleResult::Rejected(
-                    "a route revised after departure cannot insert service before the committed jump"
+                    "the first underway waypoint must be a port, Jump locus, belt, or frontier-fuel body"
                         .into(),
                 ));
             }
-            let (player, mut ship) = self.player_and_ship_in(txn, identity)?;
-            let ShipLocationRecord::InFlight(ref mut leg) = ship.location else {
-                return Ok(RuleResult::Rejected(
-                    "the ship has no active route to revise".into(),
-                ));
-            };
-            match (&mut leg.purpose, first_jump) {
-                (
-                    FlightLegPurpose::DepartForJump {
-                        jump_destination_system_id,
-                    },
-                    FlightPlanAction::Jump {
-                        destination_system_id,
-                        ..
-                    },
-                ) => *jump_destination_system_id = destination_system_id,
-                (
-                    FlightLegPurpose::DepartForCoordinateJump { destination },
-                    FlightPlanAction::JumpCoordinates {
-                        destination: replacement,
-                        ..
-                    },
-                ) => *destination = replacement,
-                (
-                    purpose @ FlightLegPurpose::DepartForJump { .. },
-                    FlightPlanAction::JumpCoordinates { destination, .. },
-                ) => *purpose = FlightLegPurpose::DepartForCoordinateJump { destination },
-                (
-                    purpose @ FlightLegPurpose::DepartForCoordinateJump { .. },
-                    FlightPlanAction::Jump {
-                        destination_system_id,
-                        ..
-                    },
-                ) => {
-                    *purpose = FlightLegPurpose::DepartForJump {
-                        jump_destination_system_id: destination_system_id,
-                    }
-                }
-                _ => {
-                    return Ok(RuleResult::Rejected(
-                        "the current physical leg is already committed; replan at its next checkpoint".into(),
-                    ));
-                }
+        };
+
+        let Some(mut trajectory) =
+            self.diversion_trajectory_in(txn, &ship, destination, current)?
+        else {
+            return Ok(RuleResult::Rejected(
+                "the navigation computer could not find a bounded-thrust intercept".into(),
+            ));
+        };
+        let leg_index = u16::try_from(index)
+            .map_err(|_| StoreError::Corrupt("flight-plan step index overflow"))?;
+        trajectory.plan_id = plan.plan_id;
+        trajectory.plan_revision = plan.revision;
+        let outbound_seconds = trajectory.solution.duration_seconds;
+        let due_second = trajectory.due_second;
+        let purpose = match purpose {
+            FlightLegPurpose::ReachFrontierFuel {
+                activity_id,
+                service_due_second,
+            } => FlightLegPurpose::ReachFrontierFuel {
+                activity_id,
+                service_due_second: due_second.saturating_add(service_due_second),
+            },
+            other => other,
+        };
+
+        let old_remaining =
+            old_leg.map_or(0, |leg| outstanding_maneuver_seconds(&ship, leg, current));
+        let old_service_remaining =
+            old_leg.map_or(0, |leg| outstanding_frontier_service_seconds(leg, current));
+        let new_service_seconds = match purpose {
+            FlightLegPurpose::ReachFrontierFuel {
+                service_due_second, ..
+            } => service_due_second.saturating_sub(due_second),
+            _ => 0,
+        };
+        for subsystem in &mut ship.subsystems {
+            if matches!(
+                subsystem.kind,
+                ShipSubsystemKind::ManeuverDrive | ShipSubsystemKind::PowerPlant
+            ) {
+                subsystem.operating_seconds = subsystem
+                    .operating_seconds
+                    .saturating_sub(old_remaining)
+                    .saturating_add(outbound_seconds)
+                    .saturating_add(extra_maneuver_seconds);
             }
-            leg.plan_id = plan_id;
-            leg.plan_revision = revision;
-            leg.leg_index = u16::try_from(first_jump_index)
-                .map_err(|_| StoreError::Corrupt("flight-plan step index overflow"))?;
-            plan.current_step = leg.leg_index;
-            self.ships
-                .put(txn, &player.ship_id, &encode_ship_record(&ship)?)?;
-            self.flight_plans.put(
-                txn,
-                &encode_identity(identity),
-                &encode_flight_plan_snapshot(&plan)?,
-            )?;
-            return Ok(RuleResult::Applied(plan));
+            if subsystem.kind == ShipSubsystemKind::FuelSystem {
+                subsystem.operating_seconds = subsystem
+                    .operating_seconds
+                    .saturating_sub(old_service_remaining)
+                    .saturating_add(new_service_seconds);
+            }
         }
-        self.activate_flight_plan_from_in(txn, identity, plan, 0, false)
+        self.remove_player_travel_schedules_in(txn, ship.ship_id)?;
+        self.remove_ship_activity_schedules_in(txn, ship.ship_id)?;
+        self.remove_contact_schedules_in(txn, ship.ship_id)?;
+        self.checkpoints.delete(txn, &encode_identity(identity))?;
+        ship.activity = activity.map(|mut activity| {
+            let service_due = match purpose {
+                FlightLegPurpose::ReachFrontierFuel {
+                    service_due_second, ..
+                } => service_due_second,
+                _ => due_second,
+            };
+            activity.due_second = service_due.saturating_add(extra_maneuver_seconds);
+            activity
+        });
+        ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: plan.plan_id,
+            plan_revision: plan.revision,
+            leg_index,
+            origin: old_origin,
+            destination,
+            started_second: current,
+            due_second,
+            purpose,
+        });
+        ship.power_fuel_last_settled_second = current;
+        ship.revision = ship.revision.saturating_add(1);
+        self.flight_trajectories
+            .put(txn, &ship.ship_id, &encode_flight_trajectory(trajectory))?;
+        self.ships
+            .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+        self.players.put(
+            txn,
+            &encode_identity(identity),
+            &encode_player_record(&player),
+        )?;
+        self.schedule_player_travel_in(txn, ship.ship_id, due_second)?;
+        let contact_second = if matches!(
+            purpose,
+            FlightLegPurpose::DepartForJump { .. }
+                | FlightLegPurpose::DepartForCoordinateJump { .. }
+        ) {
+            due_second.saturating_sub(70).max(current.saturating_add(1))
+        } else {
+            due_second.saturating_add(1)
+        };
+        self.schedule_contact_check_in(txn, ship.ship_id, contact_second)?;
+        plan.current_step = leg_index;
+        plan.state = FlightPlanState::Active;
+        plan.suspension_reason.clear();
+        self.flight_plans.put(
+            txn,
+            &encode_identity(identity),
+            &encode_flight_plan_snapshot(&plan)?,
+        )?;
+        Ok(RuleResult::Applied(plan))
     }
 
     fn watch_can_attempt_in(
@@ -19286,6 +19681,168 @@ impl Store {
         })
     }
 
+    fn locus_kinematic_state_au_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        ship: &ShipRecord,
+        locus: ShipLocusRecord,
+        second: u64,
+    ) -> Result<Option<KinematicState>, StoreError> {
+        let Some(position) = self.radio_locus_position_au_in(txn, ship, locus, second)? else {
+            return Ok(None);
+        };
+        let sample_seconds = 30_u64;
+        let before_second = second.saturating_sub(sample_seconds);
+        let after_second = second.saturating_add(sample_seconds);
+        let before = self
+            .radio_locus_position_au_in(txn, ship, locus, before_second)?
+            .unwrap_or(position);
+        let after = self
+            .radio_locus_position_au_in(txn, ship, locus, after_second)?
+            .unwrap_or(position);
+        let elapsed = after_second.saturating_sub(before_second).max(1) as f64;
+        Ok(Some(KinematicState {
+            position_au: position,
+            velocity_au_per_second: std::array::from_fn(|index| {
+                (after[index] - before[index]) / elapsed
+            }),
+        }))
+    }
+
+    fn stored_trajectory_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        ship_id: u64,
+        leg: FlightLegRecord,
+    ) -> Result<Option<FlightTrajectoryRecord>, StoreError> {
+        Ok(self
+            .flight_trajectories
+            .get(txn, &ship_id)?
+            .map(decode_flight_trajectory)
+            .transpose()?
+            .filter(|trajectory| {
+                trajectory.plan_id == leg.plan_id
+                    && trajectory.plan_revision == leg.plan_revision
+                    && trajectory.started_second == leg.started_second
+                    && trajectory.due_second <= leg.due_second
+            }))
+    }
+
+    fn ship_kinematic_state_au_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        ship: &ShipRecord,
+        second: u64,
+    ) -> Result<Option<KinematicState>, StoreError> {
+        match ship.location {
+            ShipLocationRecord::Docked {
+                world_id,
+                facility_id,
+                ..
+            } => self.locus_kinematic_state_au_in(
+                txn,
+                ship,
+                ShipLocusRecord::Port {
+                    system_id: ship.system_id,
+                    world_id,
+                    facility_id,
+                },
+                second,
+            ),
+            ShipLocationRecord::Holding { locus, .. } => {
+                self.locus_kinematic_state_au_in(txn, ship, locus, second)
+            }
+            ShipLocationRecord::InFlight(leg) => {
+                if matches!(leg.purpose, FlightLegPurpose::Jump { .. }) {
+                    return Ok(None);
+                }
+                if let Some(trajectory) = self.stored_trajectory_in(txn, ship.ship_id, leg)? {
+                    if second >= trajectory.due_second {
+                        return self.locus_kinematic_state_au_in(
+                            txn,
+                            ship,
+                            leg.destination,
+                            second,
+                        );
+                    }
+                    return Ok(Some(maneuver_state_at(
+                        trajectory.origin,
+                        trajectory.solution,
+                        second.saturating_sub(leg.started_second),
+                    )));
+                }
+                if leg.origin == leg.destination {
+                    return self.locus_kinematic_state_au_in(txn, ship, leg.origin, second);
+                }
+                let origin =
+                    self.radio_locus_position_au_in(txn, ship, leg.origin, leg.started_second)?;
+                let destination =
+                    self.radio_locus_position_au_in(txn, ship, leg.destination, leg.due_second)?;
+                let (Some(origin), Some(destination)) = (origin, destination) else {
+                    return Ok(None);
+                };
+                let duration = leg.due_second.saturating_sub(leg.started_second).max(1);
+                let elapsed = second.saturating_sub(leg.started_second).min(duration);
+                let fraction = elapsed as f64 / duration as f64;
+                let (progress, progress_per_second) = if fraction <= 0.5 {
+                    (2.0 * fraction * fraction, 4.0 * fraction / duration as f64)
+                } else {
+                    (
+                        1.0 - 2.0 * (1.0 - fraction) * (1.0 - fraction),
+                        4.0 * (1.0 - fraction) / duration as f64,
+                    )
+                };
+                Ok(Some(KinematicState {
+                    position_au: std::array::from_fn(|index| {
+                        origin[index] + (destination[index] - origin[index]) * progress
+                    }),
+                    velocity_au_per_second: std::array::from_fn(|index| {
+                        (destination[index] - origin[index]) * progress_per_second
+                    }),
+                }))
+            }
+        }
+    }
+
+    fn diversion_trajectory_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        ship: &ShipRecord,
+        destination: ShipLocusRecord,
+        current_second: u64,
+    ) -> Result<Option<FlightTrajectoryRecord>, StoreError> {
+        let Some(origin) = self.ship_kinematic_state_au_in(txn, ship, current_second)? else {
+            return Ok(None);
+        };
+        if self
+            .locus_kinematic_state_au_in(txn, ship, destination, current_second)?
+            .is_none()
+        {
+            return Ok(None);
+        }
+        let thrust_g = creation::ship_status_spec(ship.catalog_id)
+            .ok_or(StoreError::Corrupt("maneuver ship catalog is missing"))?
+            .thrust_g;
+        let solution = bounded_thrust_intercept(origin, f64::from(thrust_g), |elapsed| {
+            self.locus_kinematic_state_au_in(
+                txn,
+                ship,
+                destination,
+                current_second.saturating_add(elapsed),
+            )
+            .ok()
+            .flatten()
+        });
+        Ok(solution.map(|solution| FlightTrajectoryRecord {
+            plan_id: 0,
+            plan_revision: 0,
+            started_second: current_second,
+            due_second: current_second.saturating_add(solution.duration_seconds),
+            origin,
+            solution,
+        }))
+    }
+
     fn radio_position_au_in(
         &self,
         txn: &heed::RoTxn<'_>,
@@ -19313,29 +19870,9 @@ impl Store {
             ShipLocationRecord::Holding { locus, .. } => {
                 self.radio_locus_position_au_in(txn, ship, locus, second)
             }
-            ShipLocationRecord::InFlight(leg) => {
-                if matches!(leg.purpose, FlightLegPurpose::Jump { .. }) {
-                    return Ok(None);
-                }
-                let origin =
-                    self.radio_locus_position_au_in(txn, ship, leg.origin, leg.started_second)?;
-                let destination =
-                    self.radio_locus_position_au_in(txn, ship, leg.destination, leg.due_second)?;
-                let (Some(origin), Some(destination)) = (origin, destination) else {
-                    return Ok(None);
-                };
-                let duration = leg.due_second.saturating_sub(leg.started_second).max(1);
-                let fraction = second.saturating_sub(leg.started_second).min(duration) as f64
-                    / duration as f64;
-                let progress = if fraction <= 0.5 {
-                    2.0 * fraction * fraction
-                } else {
-                    1.0 - 2.0 * (1.0 - fraction) * (1.0 - fraction)
-                };
-                Ok(Some(std::array::from_fn(|index| {
-                    origin[index] + (destination[index] - origin[index]) * progress
-                })))
-            }
+            ShipLocationRecord::InFlight(_) => Ok(self
+                .ship_kinematic_state_au_in(txn, ship, second)?
+                .map(|state| state.position_au)),
         }
     }
 
@@ -22720,10 +23257,9 @@ impl Store {
         identity: &PlayerIdentity,
     ) -> Result<DockedServices, StoreError> {
         let (_, ship) = self.player_and_ship_in(txn, identity)?;
-        let ShipLocationRecord::Docked { facility_id, .. } = ship.location else {
-            return Err(StoreError::Corrupt(
-                "docked services requested away from a port",
-            ));
+        let facility_id = match ship.location {
+            ShipLocationRecord::Docked { facility_id, .. } => facility_id,
+            _ => ship.system_id,
         };
         let facility = self
             .facilities
@@ -27956,27 +28492,28 @@ impl Store {
         Ok(())
     }
 
+    fn remove_player_travel_schedules_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        ship_id: u64,
+    ) -> Result<(), StoreError> {
+        remove_scheduled_objects_in(self.player_events, txn, ship_id)
+    }
+
+    fn remove_ship_activity_schedules_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        ship_id: u64,
+    ) -> Result<(), StoreError> {
+        remove_scheduled_objects_in(self.ship_activity_events, txn, ship_id)
+    }
+
     fn remove_contact_schedules_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
         ship_id: u64,
     ) -> Result<(), StoreError> {
-        let stale = self
-            .contact_events
-            .iter(txn)?
-            .filter_map(|entry| match entry {
-                Ok((key, bytes)) => match decode_scheduled_object(key, bytes) {
-                    Ok((_, _, candidate)) if candidate == ship_id => Some(Ok(key.to_vec())),
-                    Ok(_) => None,
-                    Err(error) => Some(Err(error)),
-                },
-                Err(error) => Some(Err(StoreError::Heed(error))),
-            })
-            .collect::<Result<Vec<_>, StoreError>>()?;
-        for key in stale {
-            self.contact_events.delete(txn, &key)?;
-        }
-        Ok(())
+        remove_scheduled_objects_in(self.contact_events, txn, ship_id)
     }
 
     fn traffic_contact_matches_watch_locus_in(
@@ -35585,6 +36122,28 @@ fn decode_scheduled_object(key: &[u8], value: &[u8]) -> Result<(u64, u64, u64), 
     ))
 }
 
+fn remove_scheduled_objects_in(
+    database: Database<Bytes, Bytes>,
+    txn: &mut heed::RwTxn<'_>,
+    object_id: u64,
+) -> Result<(), StoreError> {
+    let keys = database
+        .iter(txn)?
+        .filter_map(|entry| match entry {
+            Ok((key, bytes)) => match decode_scheduled_object(key, bytes) {
+                Ok((_, _, candidate)) if candidate == object_id => Some(Ok(key.to_vec())),
+                Ok(_) => None,
+                Err(error) => Some(Err(error)),
+            },
+            Err(error) => Some(Err(StoreError::Heed(error))),
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    for key in keys {
+        database.delete(txn, &key)?;
+    }
+    Ok(())
+}
+
 fn encode_market_state(state: &MarketStateRecord) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(11 + state.consumed_millitons.len() * 10);
     bytes.push(1);
@@ -41466,6 +42025,84 @@ fn decode_flight_leg_purpose(decoder: &mut Decoder<'_>) -> Result<FlightLegPurpo
         13 => Ok(FlightLegPurpose::ReturnFromBelt(context(decoder)?)),
         _ => Err(StoreError::Corrupt("unknown flight-leg purpose")),
     }
+}
+
+fn encode_flight_trajectory(record: FlightTrajectoryRecord) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(1 + 8 * 18);
+    bytes.push(1);
+    for value in [
+        record.plan_id,
+        record.plan_revision,
+        record.started_second,
+        record.due_second,
+        record.solution.duration_seconds,
+        record.solution.turnover_seconds,
+    ] {
+        bytes.extend_from_slice(&value.to_be_bytes());
+    }
+    for value in record
+        .origin
+        .position_au
+        .into_iter()
+        .chain(record.origin.velocity_au_per_second)
+        .chain(record.solution.first_acceleration_au_per_second_squared)
+        .chain(record.solution.second_acceleration_au_per_second_squared)
+    {
+        bytes.extend_from_slice(&value.to_bits().to_be_bytes());
+    }
+    bytes
+}
+
+fn decode_flight_trajectory(bytes: &[u8]) -> Result<FlightTrajectoryRecord, StoreError> {
+    fn vector(decoder: &mut Decoder<'_>) -> Result<[f64; 3], StoreError> {
+        Ok([
+            f64::from_bits(decoder.u64()?),
+            f64::from_bits(decoder.u64()?),
+            f64::from_bits(decoder.u64()?),
+        ])
+    }
+    let mut decoder = Decoder::new(bytes);
+    if decoder.u8()? != 1 {
+        return Err(StoreError::Corrupt("unsupported flight trajectory version"));
+    }
+    let plan_id = decoder.u64()?;
+    let plan_revision = decoder.u64()?;
+    let started_second = decoder.u64()?;
+    let due_second = decoder.u64()?;
+    let duration_seconds = decoder.u64()?;
+    let turnover_seconds = decoder.u64()?;
+    let record = FlightTrajectoryRecord {
+        plan_id,
+        plan_revision,
+        started_second,
+        due_second,
+        origin: KinematicState {
+            position_au: vector(&mut decoder)?,
+            velocity_au_per_second: vector(&mut decoder)?,
+        },
+        solution: ManeuverSolution {
+            duration_seconds,
+            turnover_seconds,
+            first_acceleration_au_per_second_squared: vector(&mut decoder)?,
+            second_acceleration_au_per_second_squared: vector(&mut decoder)?,
+        },
+    };
+    decoder.finish()?;
+    if record
+        .origin
+        .position_au
+        .iter()
+        .chain(&record.origin.velocity_au_per_second)
+        .chain(&record.solution.first_acceleration_au_per_second_squared)
+        .chain(&record.solution.second_acceleration_au_per_second_squared)
+        .any(|value| !value.is_finite())
+        || record.solution.duration_seconds == 0
+        || record.solution.turnover_seconds == 0
+        || record.solution.turnover_seconds >= record.solution.duration_seconds
+    {
+        return Err(StoreError::Corrupt("invalid flight trajectory"));
+    }
+    Ok(record)
 }
 
 fn encode_career_state(
@@ -49118,6 +49755,443 @@ mod tests {
     }
 
     #[test]
+    fn flight_plan_preview_rejects_projected_jump_fuel_shortfall() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap()
+            .1;
+        let known = store
+            .known_destinations_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let destination = known
+            .systems
+            .iter()
+            .find(|system| system.within_jump_rating && system.system_id != ship.system_id)
+            .unwrap()
+            .system_id;
+        ship.current_fuel_millitons = 0;
+        ship.unrefined_fuel_millitons = 0;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        txn.commit().unwrap();
+
+        let proposal = FlightPlanProposal {
+            expected_plan_revision: 0,
+            steps: vec![
+                FlightPlanStep {
+                    locus: FlightLocus::JumpLocus {
+                        system_id: ship.system_id,
+                    },
+                    authority: WaypointAuthority::Through,
+                    action: FlightPlanAction::Jump {
+                        destination_system_id: destination,
+                        navigation: crate::wire::JumpNavigationMethod::Onboard,
+                        proceed_on_known_bad_plot: false,
+                    },
+                    terminal: false,
+                },
+                FlightPlanStep {
+                    locus: FlightLocus::Port {
+                        system_id: destination,
+                        world_id: destination,
+                        facility_id: destination,
+                    },
+                    authority: WaypointAuthority::Hold,
+                    action: FlightPlanAction::Dock {
+                        world_id: destination,
+                        facility_id: destination,
+                    },
+                    terminal: true,
+                },
+            ],
+            policy: EncounterPolicy::default(),
+        };
+        assert!(matches!(
+            store.preview_flight_plan_in(
+                &store.env.read_txn().unwrap(),
+                &identity(),
+                &proposal,
+            )
+            .unwrap(),
+            RuleResult::Rejected(message)
+                if message.contains("waypoint 1")
+                    && message.contains("Jump fuel")
+                    && message.contains("projected aboard")
+        ));
+    }
+
+    #[test]
+    fn underway_plan_can_reverse_to_port_with_persisted_vector_maneuver() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let known = store
+            .known_destinations_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let destination = known
+            .systems
+            .iter()
+            .find(|system| system.within_jump_rating && system.system_id != known.current_system_id)
+            .unwrap()
+            .system_id;
+        let outbound = FlightPlanProposal {
+            expected_plan_revision: 0,
+            steps: vec![
+                FlightPlanStep {
+                    locus: FlightLocus::JumpLocus {
+                        system_id: known.current_system_id,
+                    },
+                    authority: WaypointAuthority::Through,
+                    action: FlightPlanAction::Jump {
+                        destination_system_id: destination,
+                        navigation: crate::wire::JumpNavigationMethod::Onboard,
+                        proceed_on_known_bad_plot: false,
+                    },
+                    terminal: false,
+                },
+                FlightPlanStep {
+                    locus: FlightLocus::Port {
+                        system_id: destination,
+                        world_id: destination,
+                        facility_id: destination,
+                    },
+                    authority: WaypointAuthority::Hold,
+                    action: FlightPlanAction::Dock {
+                        world_id: destination,
+                        facility_id: destination,
+                    },
+                    terminal: true,
+                },
+            ],
+            policy: EncounterPolicy::default(),
+        };
+        let mut txn = store.env.write_txn().unwrap();
+        let preview = match store
+            .preview_flight_plan_in(&txn, &identity(), &outbound)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("outbound preview failed: {message}"),
+        };
+        let committed = match store
+            .commit_flight_plan_in(
+                &mut txn,
+                &identity(),
+                &CommitFlightPlanRequest {
+                    proposal: outbound,
+                    preview_hash: preview.preview_hash,
+                    acknowledge_warnings: true,
+                },
+            )
+            .unwrap()
+        {
+            RuleResult::Applied(plan) => plan,
+            RuleResult::Rejected(message) => panic!("outbound commit failed: {message}"),
+        };
+        let (_, outbound_ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        let ShipLocationRecord::InFlight(outbound_leg) = outbound_ship.location else {
+            panic!("outbound plan did not create a maneuver leg");
+        };
+        let diversion_second = outbound_leg.started_second
+            + outbound_leg
+                .due_second
+                .saturating_sub(outbound_leg.started_second)
+                / 4;
+        put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, diversion_second).unwrap();
+        let return_plan = FlightPlanProposal {
+            expected_plan_revision: committed.revision,
+            steps: vec![FlightPlanStep {
+                locus: FlightLocus::Port {
+                    system_id: known.current_system_id,
+                    world_id: known.current_system_id,
+                    facility_id: known.current_system_id,
+                },
+                authority: WaypointAuthority::Hold,
+                action: FlightPlanAction::Dock {
+                    world_id: known.current_system_id,
+                    facility_id: known.current_system_id,
+                },
+                terminal: true,
+            }],
+            policy: EncounterPolicy::default(),
+        };
+        let preview = match store
+            .preview_flight_plan_in(&txn, &identity(), &return_plan)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("return preview failed: {message}"),
+        };
+        assert!(preview.elapsed_seconds > 0);
+        let revised = match store
+            .commit_flight_plan_in(
+                &mut txn,
+                &identity(),
+                &CommitFlightPlanRequest {
+                    proposal: return_plan,
+                    preview_hash: preview.preview_hash,
+                    acknowledge_warnings: true,
+                },
+            )
+            .unwrap()
+        {
+            RuleResult::Applied(plan) => plan,
+            RuleResult::Rejected(message) => panic!("return commit failed: {message}"),
+        };
+        let (_, returning_ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        let ShipLocationRecord::InFlight(return_leg) = returning_ship.location else {
+            panic!("return plan did not create a maneuver leg");
+        };
+        assert_eq!(return_leg.purpose, FlightLegPurpose::ApproachPort);
+        assert_eq!(return_leg.plan_revision, revised.revision);
+        assert_eq!(
+            return_leg.due_second - diversion_second,
+            preview.elapsed_seconds
+        );
+        let trajectory = store
+            .stored_trajectory_in(&txn, returning_ship.ship_id, return_leg)
+            .unwrap()
+            .expect("diversion coefficients must be stored with the active leg");
+        let arrival = maneuver_state_at(
+            trajectory.origin,
+            trajectory.solution,
+            trajectory.solution.duration_seconds,
+        );
+        let target = store
+            .locus_kinematic_state_au_in(
+                &txn,
+                &returning_ship,
+                return_leg.destination,
+                return_leg.due_second,
+            )
+            .unwrap()
+            .unwrap();
+        for index in 0..3 {
+            assert!((arrival.position_au[index] - target.position_au[index]).abs() < 1.0e-9);
+            assert!(
+                (arrival.velocity_au_per_second[index] - target.velocity_au_per_second[index])
+                    .abs()
+                    < 1.0e-12
+            );
+        }
+        let scheduled = store
+            .player_events
+            .iter(&txn)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter_map(|(key, bytes)| decode_scheduled_object(key, bytes).ok())
+            .filter(|(_, _, ship_id)| *ship_id == returning_ship.ship_id)
+            .collect::<Vec<_>>();
+        assert_eq!(scheduled.len(), 1);
+        assert_eq!(scheduled[0].0, return_leg.due_second);
+        txn.commit().unwrap();
+        drop(store);
+
+        let reopened = Store::open(dir.path()).unwrap();
+        let txn = reopened.env.read_txn().unwrap();
+        let (_, persisted_ship) = reopened.player_and_ship_in(&txn, &identity()).unwrap();
+        let ShipLocationRecord::InFlight(persisted_leg) = persisted_ship.location else {
+            panic!("reopened ship lost its diversion leg");
+        };
+        assert!(
+            reopened
+                .stored_trajectory_in(&txn, persisted_ship.ship_id, persisted_leg)
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn underway_plan_can_divert_directly_to_frontier_fuel() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut txn = store.env.write_txn().unwrap();
+        let (_, mut ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        let system_id = ship.system_id;
+        ship.current_fuel_millitons = ship
+            .current_fuel_millitons
+            .saturating_sub(MILLITONS_PER_TON);
+        ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: 77,
+            plan_revision: 1,
+            leg_index: 0,
+            origin: ShipLocusRecord::Port {
+                system_id,
+                world_id: system_id,
+                facility_id: system_id,
+            },
+            destination: ShipLocusRecord::JumpLocus { system_id },
+            started_second: 0,
+            due_second: 100_000,
+            purpose: FlightLegPurpose::DepartForJump {
+                jump_destination_system_id: system_id.saturating_add(1),
+            },
+        });
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        store
+            .flight_plans
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_flight_plan_snapshot(&FlightPlanSnapshot {
+                    plan_id: 77,
+                    revision: 1,
+                    current_step: 0,
+                    state: FlightPlanState::Active,
+                    steps: vec![FlightPlanStep {
+                        locus: FlightLocus::JumpLocus { system_id },
+                        authority: WaypointAuthority::Through,
+                        action: FlightPlanAction::Hold,
+                        terminal: true,
+                    }],
+                    policy: EncounterPolicy::default(),
+                    suspension_reason: String::new(),
+                })
+                .unwrap(),
+            )
+            .unwrap();
+        store
+            .schedule_player_travel_in(&mut txn, ship.ship_id, 100_000)
+            .unwrap();
+        put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, 25_000).unwrap();
+        let source = store
+            .docked_services_in(&txn, &identity())
+            .unwrap()
+            .fuel
+            .into_iter()
+            .find(|service| {
+                service.available
+                    && service.source_body_id.is_some()
+                    && matches!(
+                        service.kind,
+                        DockedFuelServiceKind::GasGiant | DockedFuelServiceKind::WildernessWater
+                    )
+            })
+            .expect("fixture system must offer frontier fuel");
+        let body_id = source.source_body_id.unwrap();
+        let proposal = FlightPlanProposal {
+            expected_plan_revision: 1,
+            steps: vec![FlightPlanStep {
+                locus: FlightLocus::Body { system_id, body_id },
+                authority: WaypointAuthority::Through,
+                action: FlightPlanAction::Fuel {
+                    operation: if source.kind == DockedFuelServiceKind::GasGiant {
+                        FuelOperation::GasGiant
+                    } else {
+                        FuelOperation::WildernessWater
+                    },
+                    quantity_millitons: MILLITONS_PER_TON,
+                    refine_collected: false,
+                },
+                terminal: true,
+            }],
+            policy: EncounterPolicy::default(),
+        };
+        let preview = match store
+            .preview_flight_plan_in(&txn, &identity(), &proposal)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("frontier diversion preview failed: {message}"),
+        };
+        let revised = match store
+            .commit_flight_plan_in(
+                &mut txn,
+                &identity(),
+                &CommitFlightPlanRequest {
+                    proposal,
+                    preview_hash: preview.preview_hash,
+                    acknowledge_warnings: true,
+                },
+            )
+            .unwrap()
+        {
+            RuleResult::Applied(plan) => plan,
+            RuleResult::Rejected(message) => panic!("frontier diversion commit failed: {message}"),
+        };
+        assert_eq!(revised.current_step, 0);
+        let (_, diverted) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        let ShipLocationRecord::InFlight(leg) = diverted.location else {
+            panic!("frontier diversion did not create an outbound leg");
+        };
+        assert!(matches!(
+            leg.purpose,
+            FlightLegPurpose::ReachFrontierFuel { .. }
+        ));
+        assert!(diverted.activity.is_some());
+        assert!(
+            store
+                .stored_trajectory_in(&txn, diverted.ship_id, leg)
+                .unwrap()
+                .is_some()
+        );
+        txn.abort();
+    }
+
+    #[test]
+    fn flight_plan_cannot_be_revised_during_a_physical_jump() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut txn = store.env.write_txn().unwrap();
+        let (_, mut ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        let system_id = ship.system_id;
+        ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: 81,
+            plan_revision: 1,
+            leg_index: 1,
+            origin: ShipLocusRecord::JumpLocus { system_id },
+            destination: ShipLocusRecord::JumpLocus {
+                system_id: system_id.saturating_add(1),
+            },
+            started_second: 10,
+            due_second: 100,
+            purpose: FlightLegPurpose::Jump {
+                inaccurate_extra_days: 0,
+                critical_transition: false,
+            },
+        });
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        let proposal = FlightPlanProposal {
+            expected_plan_revision: 0,
+            steps: vec![FlightPlanStep {
+                locus: FlightLocus::Port {
+                    system_id,
+                    world_id: system_id,
+                    facility_id: system_id,
+                },
+                authority: WaypointAuthority::Hold,
+                action: FlightPlanAction::Dock {
+                    world_id: system_id,
+                    facility_id: system_id,
+                },
+                terminal: true,
+            }],
+            policy: EncounterPolicy::default(),
+        };
+        assert!(matches!(
+            store
+                .preview_flight_plan_in(&txn, &identity(), &proposal)
+                .unwrap(),
+            RuleResult::Rejected(message) if message.contains("Jump space")
+        ));
+        txn.abort();
+    }
+
+    #[test]
     fn advance_warning_classifies_future_waypoint_authority() {
         let directory = TempDir::new().unwrap();
         let store = Store::open(directory.path()).unwrap();
@@ -49800,6 +50874,56 @@ mod tests {
                 &encode_person_record(&prospector).unwrap(),
             )
             .unwrap();
+        ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: 76,
+            plan_revision: 1,
+            leg_index: 0,
+            origin: ShipLocusRecord::Port {
+                system_id: ship.system_id,
+                world_id: ship.system_id,
+                facility_id: ship.system_id,
+            },
+            destination: ShipLocusRecord::JumpLocus {
+                system_id: ship.system_id,
+            },
+            started_second: 0,
+            due_second: 100_000,
+            purpose: FlightLegPurpose::DepartForCoordinateJump {
+                destination: crate::wire::Coordinate3::from_parsecs([1.0, 0.0, 0.0]),
+            },
+        });
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        store
+            .flight_plans
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_flight_plan_snapshot(&FlightPlanSnapshot {
+                    plan_id: 76,
+                    revision: 1,
+                    current_step: 0,
+                    state: FlightPlanState::Active,
+                    steps: vec![FlightPlanStep {
+                        locus: FlightLocus::JumpLocus {
+                            system_id: ship.system_id,
+                        },
+                        authority: WaypointAuthority::Through,
+                        action: FlightPlanAction::Hold,
+                        terminal: true,
+                    }],
+                    policy: EncounterPolicy::default(),
+                    suspension_reason: String::new(),
+                })
+                .unwrap(),
+            )
+            .unwrap();
+        store
+            .schedule_player_travel_in(&mut txn, ship.ship_id, 100_000)
+            .unwrap();
+        put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, 25_000).unwrap();
         txn.commit().unwrap();
 
         let known = store
@@ -49810,7 +50934,7 @@ mod tests {
             .first()
             .expect("fixture system must have a belt");
         let proposal = FlightPlanProposal {
-            expected_plan_revision: 0,
+            expected_plan_revision: 1,
             steps: vec![
                 FlightPlanStep {
                     locus: FlightLocus::Body {

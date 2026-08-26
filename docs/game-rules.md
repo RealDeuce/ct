@@ -1101,6 +1101,18 @@ Flight time uses the orbital positions at departure and the vessel's actual
 acceleration, so a moving destination or later departure can change the
 answer.
 
+An underway ship may replace its course during any in-system maneuver. The
+new estimate starts from the ship's position and velocity relative to the
+moving destination at the instant the replacement is filed; it does not
+pretend that the ship has stopped. The navigation computer finds the shortest
+whole-second two-burn intercept whose acceleration never exceeds the ship's
+effective maneuver thrust and which reaches the destination with the
+destination's orbital velocity. A velocity shared by the whole system cancels
+out of this calculation. The captain may turn back to the primary port,
+redirect to the Jump locus, or redirect to a selected belt or lawful frontier
+fuel source. A ship already in Jump space cannot maneuver or replace that
+physical Jump leg.
+
 ### Jump range and fuel
 
 A Jump drive rating is the maximum parsecs in one Jump. Any positive

@@ -9,6 +9,8 @@ pub const JUMP_EXCLUSION_DIAMETERS: f64 = 100.0;
 pub const MINIMUM_JUMP_APPROACH_DAYS: f64 = 0.5;
 pub const BBS_CORE_MAXIMUM_JUMP_APPROACH_DAYS: f64 = 3.5;
 
+const MAXIMUM_MANEUVER_SECONDS: u64 = 20 * 365 * 24 * 60 * 60;
+
 const DIRECTION_SAMPLES: usize = 1_024;
 const LOCUS_CLEARANCE_AU: f64 = 1e-10;
 
@@ -19,6 +21,146 @@ pub struct JumpSafetySolution {
     pub distance_au: f64,
     /// Constant-thrust, midpoint-turnover time from the primary world.
     pub travel_days: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct KinematicState {
+    pub position_au: [f64; 3],
+    pub velocity_au_per_second: [f64; 3],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ManeuverSolution {
+    pub duration_seconds: u64,
+    pub turnover_seconds: u64,
+    pub first_acceleration_au_per_second_squared: [f64; 3],
+    pub second_acceleration_au_per_second_squared: [f64; 3],
+}
+
+/// Find the shortest whole-second, two-burn intercept which starts at
+/// `origin`, reaches the moving target with its velocity, and never commands
+/// more than `thrust_g`. The target callback is evaluated at elapsed seconds,
+/// so a common inertial-frame velocity cancels from the relative solution.
+pub fn bounded_thrust_intercept<F>(
+    origin: KinematicState,
+    thrust_g: f64,
+    target_at: F,
+) -> Option<ManeuverSolution>
+where
+    F: Fn(u64) -> Option<KinematicState>,
+{
+    if !thrust_g.is_finite() || thrust_g <= 0.0 {
+        return None;
+    }
+    let maximum_acceleration = thrust_g * STANDARD_GRAVITY_METERS_PER_SECOND_SQUARED / AU_METERS;
+    let solve = |duration_seconds| {
+        maneuver_for_duration(origin, target_at(duration_seconds)?, duration_seconds).filter(
+            |solution| {
+                magnitude(solution.first_acceleration_au_per_second_squared)
+                    <= maximum_acceleration * (1.0 + 1.0e-12)
+                    && magnitude(solution.second_acceleration_au_per_second_squared)
+                        <= maximum_acceleration * (1.0 + 1.0e-12)
+            },
+        )
+    };
+
+    let mut upper = 2_u64;
+    while upper < MAXIMUM_MANEUVER_SECONDS && solve(upper).is_none() {
+        upper = upper.saturating_mul(2).min(MAXIMUM_MANEUVER_SECONDS);
+    }
+    solve(upper)?;
+    let mut lower = 1_u64;
+    while lower < upper {
+        let middle = lower + (upper - lower) / 2;
+        if solve(middle).is_some() {
+            upper = middle;
+        } else {
+            lower = middle + 1;
+        }
+    }
+    solve(lower)
+}
+
+pub fn maneuver_state_at(
+    origin: KinematicState,
+    solution: ManeuverSolution,
+    elapsed_seconds: u64,
+) -> KinematicState {
+    let elapsed = elapsed_seconds.min(solution.duration_seconds);
+    let first_seconds = solution.turnover_seconds;
+    if elapsed <= first_seconds {
+        return integrate_acceleration(
+            origin,
+            solution.first_acceleration_au_per_second_squared,
+            elapsed as f64,
+        );
+    }
+    let turnover = integrate_acceleration(
+        origin,
+        solution.first_acceleration_au_per_second_squared,
+        first_seconds as f64,
+    );
+    integrate_acceleration(
+        turnover,
+        solution.second_acceleration_au_per_second_squared,
+        (elapsed - first_seconds) as f64,
+    )
+}
+
+fn maneuver_for_duration(
+    origin: KinematicState,
+    target: KinematicState,
+    duration_seconds: u64,
+) -> Option<ManeuverSolution> {
+    let first_seconds = duration_seconds / 2;
+    let second_seconds = duration_seconds - first_seconds;
+    if first_seconds == 0 || second_seconds == 0 {
+        return None;
+    }
+    let duration = duration_seconds as f64;
+    let first = first_seconds as f64;
+    let second = second_seconds as f64;
+    let displacement: [f64; 3] = std::array::from_fn(|index| {
+        target.position_au[index]
+            - origin.position_au[index]
+            - origin.velocity_au_per_second[index] * duration
+    });
+    let velocity_change: [f64; 3] = std::array::from_fn(|index| {
+        target.velocity_au_per_second[index] - origin.velocity_au_per_second[index]
+    });
+    let first_acceleration = std::array::from_fn(|index| {
+        (2.0 * displacement[index] - velocity_change[index] * second) / (first * duration)
+    });
+    let second_acceleration = std::array::from_fn(|index| {
+        (velocity_change[index] - first_acceleration[index] * first) / second
+    });
+    first_acceleration
+        .iter()
+        .chain(&second_acceleration)
+        .all(|value| value.is_finite())
+        .then_some(ManeuverSolution {
+            duration_seconds,
+            turnover_seconds: first_seconds,
+            first_acceleration_au_per_second_squared: first_acceleration,
+            second_acceleration_au_per_second_squared: second_acceleration,
+        })
+}
+
+fn integrate_acceleration(
+    origin: KinematicState,
+    acceleration: [f64; 3],
+    seconds: f64,
+) -> KinematicState {
+    KinematicState {
+        position_au: std::array::from_fn(|index| {
+            origin.position_au[index]
+                + origin.velocity_au_per_second[index] * seconds
+                + 0.5 * acceleration[index] * seconds * seconds
+        }),
+        velocity_au_per_second: std::array::from_fn(|index| {
+            origin.velocity_au_per_second[index] + acceleration[index] * seconds
+        }),
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -465,6 +607,87 @@ mod tests {
         let distance = rest_to_rest_distance_au(0.5, 1.0);
         assert!((rest_to_rest_travel_days(distance, 1.0) - 0.5).abs() < 1e-12);
         assert!((distance - 0.030_59).abs() < 0.000_01);
+    }
+
+    #[test]
+    fn bounded_intercept_matches_stationary_midpoint_turnover() {
+        let origin = KinematicState {
+            position_au: [0.0; 3],
+            velocity_au_per_second: [0.0; 3],
+        };
+        let solution = bounded_thrust_intercept(origin, 1.0, |_| {
+            Some(KinematicState {
+                position_au: [1.0, 0.0, 0.0],
+                velocity_au_per_second: [0.0; 3],
+            })
+        })
+        .unwrap();
+        let expected = rest_to_rest_travel_days(1.0, 1.0) * SECONDS_PER_GAME_DAY;
+        assert!((solution.duration_seconds as f64 - expected).abs() <= 1.0);
+        let arrival = maneuver_state_at(origin, solution, solution.duration_seconds);
+        assert!((arrival.position_au[0] - 1.0).abs() < 1.0e-10);
+        assert!(magnitude(arrival.velocity_au_per_second) < 1.0e-12);
+    }
+
+    #[test]
+    fn bounded_intercept_depends_on_relative_not_common_velocity() {
+        let relative_origin = KinematicState {
+            position_au: [0.0; 3],
+            velocity_au_per_second: [2.0e-6, 0.0, 0.0],
+        };
+        let relative = bounded_thrust_intercept(relative_origin, 1.0, |_| {
+            Some(KinematicState {
+                position_au: [0.5, 0.0, 0.0],
+                velocity_au_per_second: [0.0; 3],
+            })
+        })
+        .unwrap();
+        let stopped = bounded_thrust_intercept(
+            KinematicState {
+                velocity_au_per_second: [0.0; 3],
+                ..relative_origin
+            },
+            1.0,
+            |_| {
+                Some(KinematicState {
+                    position_au: [0.5, 0.0, 0.0],
+                    velocity_au_per_second: [0.0; 3],
+                })
+            },
+        )
+        .unwrap();
+        assert_ne!(relative.duration_seconds, stopped.duration_seconds);
+        let common_velocity = -7.0e-6;
+        let shifted_origin = KinematicState {
+            position_au: relative_origin.position_au,
+            velocity_au_per_second: [
+                relative_origin.velocity_au_per_second[0] + common_velocity,
+                0.0,
+                0.0,
+            ],
+        };
+        let shifted = bounded_thrust_intercept(shifted_origin, 1.0, |elapsed| {
+            Some(KinematicState {
+                position_au: [0.5 + common_velocity * elapsed as f64, 0.0, 0.0],
+                velocity_au_per_second: [common_velocity, 0.0, 0.0],
+            })
+        })
+        .unwrap();
+        assert_eq!(relative.duration_seconds, shifted.duration_seconds);
+        for index in 0..3 {
+            assert!(
+                (relative.first_acceleration_au_per_second_squared[index]
+                    - shifted.first_acceleration_au_per_second_squared[index])
+                    .abs()
+                    < 1.0e-18
+            );
+            assert!(
+                (relative.second_acceleration_au_per_second_squared[index]
+                    - shifted.second_acceleration_au_per_second_squared[index])
+                    .abs()
+                    < 1.0e-18
+            );
+        }
     }
 
     #[test]

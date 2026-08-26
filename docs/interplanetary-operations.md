@@ -182,12 +182,15 @@ bounded frontier-fuel operation. A Jump begins at the exact departure port and
 runs toward a typed Jump locus using current seed-derived celestial positions,
 catalogued thrust, and the half-day safety minimum.
 
-While that outbound maneuver remains unprocessed, the captain may atomically
-replace its Jump destination and all later waypoints. Once a Jump or other
-physical leg begins, that leg cannot be rewritten; replanning resumes at its
-next checkpoint. Carried cargo and sealed mail remain authoritative ship
-state and produce diversion/custody warnings rather than being altered by the
-route editor.
+During any in-system maneuver, the captain may atomically replace the active
+destination and all later waypoints. The replacement begins from the ship's
+current relative position and velocity, solves a new bounded-thrust intercept
+to the destination's moving orbital state, and replaces the old scheduled
+movement. This permits returning to the primary port or diverting directly to
+the Jump locus, a selected planetoid belt, or a lawful frontier-fuel source.
+Only a physical Jump-space leg is immutable until breakout. Carried cargo and
+sealed mail remain authoritative ship state and produce diversion/custody
+warnings rather than being altered by the route editor.
 
 The due-time scheduler then commits three transitions independently:
 

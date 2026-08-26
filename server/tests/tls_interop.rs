@@ -214,13 +214,35 @@ impl DoorSession {
 
     fn return_to_bbs(&mut self) {
         if normalized_display_text(&self.output()).contains("Ship status: Unregistered") {
-            let (state, _) = self.wait_for_any_without_paging(&["Enter/Sp)", "Register captain"]);
+            let (state, _) = self.wait_for_any_without_paging(&["Enter/Sp", "Register captain"]);
             if state == 0 {
                 self.send(b"q");
                 self.wait_for("Register captain");
             }
         }
-        self.send_through_page_prompt(b"q", "Return to the BBS?", "Return to the BBS?");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let prompt_before = normalized_display_text(&self.output())
+            .matches("Return to the BBS?")
+            .count();
+        let mut retry_at = Instant::now();
+        loop {
+            let now = Instant::now();
+            if now >= retry_at {
+                self.send(b"q");
+                retry_at = now + Duration::from_millis(250);
+            }
+            let output = self.output();
+            let semantic = normalized_display_text(&output);
+            self.acknowledge_page_prompts(&semantic);
+            if semantic.matches("Return to the BBS?").count() > prompt_before {
+                break;
+            }
+            assert!(
+                now < deadline,
+                "door did not render the return confirmation; output: {output:?}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
         self.send(b"y");
     }
 
@@ -341,6 +363,7 @@ impl DoorSession {
         let initial = normalized_display_text(&self.output());
         let rendered_before = initial.matches(&rendered).count();
         let progress_before = initial.matches(&progress).count();
+        let mut source_prompts = initial.matches("Help:").count();
         let mut acknowledged_prompts = self.acknowledged_page_prompts;
         self.send(bytes);
         loop {
@@ -350,11 +373,19 @@ impl DoorSession {
             if semantic.matches(&rendered).count() > rendered_before {
                 return output;
             }
-            if self.acknowledged_page_prompts > acknowledged_prompts {
+            let page_prompt_cleared = self.acknowledged_page_prompts > acknowledged_prompts;
+            if page_prompt_cleared {
                 acknowledged_prompts = self.acknowledged_page_prompts;
-                if semantic.matches(&progress).count() == progress_before {
-                    self.send(bytes);
-                }
+            }
+            let current_source_prompts = semantic.matches("Help:").count();
+            let source_prompt_redrawn = current_source_prompts > source_prompts;
+            if source_prompt_redrawn {
+                source_prompts = current_source_prompts;
+            }
+            if (page_prompt_cleared || source_prompt_redrawn)
+                && semantic.matches(&progress).count() == progress_before
+            {
+                self.send(bytes);
             }
             assert!(
                 Instant::now() < deadline,
@@ -714,7 +745,7 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
     if arrival_result == 0 {
         session.wait_for("Take arrival watch");
         session.send(b"a");
-        let (watch_result, _) = session.wait_for_any(&["Console", "console", "Return to BBS"]);
+        let (watch_result, _) = session.wait_for_any(&["Console", "console", "Action"]);
         if watch_result < 2 {
             session.send_to_menu(b"\r", "Captain's Command Console");
         } else {
@@ -724,7 +755,7 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
         session.wait_for_any(&["Console", "console"]);
         session.send_to_menu(b"\r", "Captain's Command Console");
     } else {
-        session.wait_for("Return to BBS");
+        session.wait_for("Action");
         session.send_to_menu(b"u", "Captain's Command Console");
     }
     const MESSAGE_HEADING: &str = "Message Management\r\n==================";
@@ -769,7 +800,7 @@ fn complete_arrival_and_trade(
     session.wait_for("Arrival Communications Receipt");
     session.wait_for("(Enter) Continue");
     session.send(b"\r");
-    session.wait_for("Return to BBS");
+    session.wait_for("Action");
 
     session.send_to_menu(b"f", "Fuel and Supplies");
     let fuel_sources =
@@ -867,6 +898,13 @@ fn complete_arrival_and_trade(
     session.send(format!("{cargo_selection}\r").as_bytes());
     session.wait_for("Tonnes (maximum");
     session.send_to_menu(b"1\r", "Cargo Exchange -");
+    session.send_to_menu(b"q", "Docked Operations");
+
+    let flight_plan = session.send_to_menu(b"d", "Flight Plan\r\n===========");
+    assert!(
+        normalized_display_text(&flight_plan).contains("No route has been entered."),
+        "completed flight plan remained in Depart: {flight_plan:?}"
+    );
     session.send_to_menu(b"q", "Docked Operations");
     session.return_to_bbs();
     session.finish()
@@ -1579,7 +1617,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     docked_door.wait_for("Arrival Communications Receipt");
     docked_door.wait_for("(Enter) Continue");
     docked_door.send(b"\r");
-    docked_door.wait_for("Return to BBS");
+    docked_door.wait_for("Action");
     let offer_list = normalized_display_text(&docked_door.send_to_menu(b"j", "Task Ledger"));
     let offer_section = &offer_list[offer_list.rfind("Offers available here (").unwrap()..];
     let offer_header_end =
@@ -1646,7 +1684,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     docked_door.send(b"q");
     docked_door.wait_for_occurrences("Task Ledger", 4);
     docked_door.send_to_menu(b"q", "Docked Operations");
-    docked_door.wait_for_occurrences("Return to BBS", 2);
+    docked_door.wait_for_occurrences("Action", 2);
     docked_door.return_to_bbs();
     let docked_screen = docked_door.finish();
     let docked_semantic = normalized_display_text(&docked_screen);
@@ -1682,7 +1720,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     ] {
         let mut time_door = DoorSession::spawn(&door, data.path(), profile, columns);
         time_door.send(b"\r");
-        let screen = time_door.wait_for("Return to BBS");
+        let screen = time_door.wait_for("Action");
         let semantic = normalized_display_text(&screen);
         assert!(
             semantic.contains("Ship time: Day"),
@@ -1720,14 +1758,14 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     }
     let mut reconnected_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     reconnected_door.send(b"\r");
-    reconnected_door.wait_for("Return to BBS");
+    reconnected_door.wait_for("Action");
     // Enter refreshes the docked display; leaving the game requires Q and a
     // separate affirmative confirmation.
     reconnected_door.send(b"\r");
-    reconnected_door.wait_for_occurrences("Return to BBS", 2);
+    reconnected_door.wait_for_occurrences("Action", 2);
     reconnected_door.send_to_menu(b"j", "Task Ledger");
     reconnected_door.send_to_menu(b"q", "Docked Operations");
-    reconnected_door.wait_for_occurrences("Return to BBS", 3);
+    reconnected_door.wait_for_occurrences("Action", 3);
     reconnected_door.return_to_bbs();
     let reconnect_screen = reconnected_door.finish();
     assert!(reconnect_screen.contains("Accepted obligations"));
@@ -1738,7 +1776,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     // but may voluntarily open and hide the BBS-local guidance at 40 columns.
     let mut first_watch_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     first_watch_door.send(b"\r");
-    first_watch_door.wait_for("Return to BBS");
+    first_watch_door.wait_for("Action");
     assert!(!normalized_display_text(&first_watch_door.output()).contains("Guided First Watch"));
     first_watch_door.send_to_menu(b"u", "Captain's Command Console");
     first_watch_door.send_to_menu(b"w", "Taking the watch");
@@ -1755,7 +1793,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let mut help_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     help_door.send(b"\r");
     help_door.wait_for("Docked Operations");
-    help_door.wait_for("Return to BBS");
+    help_door.wait_for("Action");
     help_door.send(b"?");
     help_door.wait_for("Help - Docked operations");
     help_door.wait_for("(Enter) Resume");
@@ -1771,7 +1809,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     assert!(expert_help.contains("(B) Beginner"), "{expert_help:?}");
     assert!(!expert_help.contains("(X) Expert"), "{expert_help:?}");
     help_door.send(b"\r");
-    help_door.wait_for_occurrences("Return to BBS", 2);
+    help_door.wait_for_occurrences("Action", 2);
     help_door.return_to_bbs();
     let help_screen = normalized_display_text(&help_door.finish());
     assert!(help_screen.contains("services actually available here"));
@@ -1782,7 +1820,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     // its actual action prompt, and the choice must survive a new door process.
     let mut preference_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     preference_door.send(b"\r");
-    preference_door.wait_for("Return to BBS");
+    preference_door.wait_for("Action");
     preference_door.send_to_menu(b"u", "Captain's Command Console");
     preference_door.send_to_menu(b"p", "Player Preferences");
     preference_door.wait_for("Page pauses:  Enabled");
@@ -1826,7 +1864,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
 
     let mut persisted_preference_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     persisted_preference_door.send(b"\r");
-    persisted_preference_door.wait_for("Return to BBS");
+    persisted_preference_door.wait_for("Action");
     persisted_preference_door.send_to_menu(b"u", "Captain's Command Console");
     persisted_preference_door.send_to_menu(b"p", "Player Preferences");
     persisted_preference_door.wait_for("Page pauses:  Disabled");
@@ -1848,7 +1886,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     // when the generated home port provides that optional service.
     let mut services_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     services_door.send(b"\r");
-    let services_menu = services_door.wait_for("Return to BBS");
+    let services_menu = services_door.wait_for("Action");
     let banking_available = services_menu.contains("Banking and Accounts");
     if banking_available {
         services_door.send_to_menu(b"b", "Banking and Accounts");
@@ -1860,12 +1898,12 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         services_door.send_to_menu(b"q", "Docked Operations");
     }
     services_door.send_to_menu(b"u", "Captain's Command Console");
-    services_door.wait_for("(C/K/M/O/R/S/T) Manager");
+    services_door.wait_for("(Letter) Manager");
     services_door.send_to_menu(b"c", "Crew Management -");
     services_door.wait_for("Complement:");
     services_door.wait_for("managed appointments");
     services_door.send_to_menu(b"q", "Captain's Command Console");
-    services_door.wait_for_occurrences("(C/K/M/O/R/S/T) Manager", 2);
+    services_door.wait_for_occurrences("(Letter) Manager", 2);
     services_door.send_to_menu(b"s", "Ship Status -");
     services_door.wait_for("Next automatic upkeep:");
     services_door.wait_for("no yard order is needed");
@@ -1886,7 +1924,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     services_door.send_to_menu(b"q", "Subsystem Status -");
     services_door.send_to_menu(b"q", "Ship Status -");
     services_door.send_to_menu(b"q", "Captain's Command Console");
-    services_door.wait_for_occurrences("(C/K/M/O/R/S/T) Manager", 3);
+    services_door.wait_for_occurrences("(Letter) Manager", 3);
     services_door.send_to_menu(b"m", "Message Management");
     services_door.send_through_page_prompt(b"c", "Recipient", "Recipient");
     services_door.send(b"c");
@@ -1904,11 +1942,11 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     services_door.wait_for("(Enter) Previous menu");
     services_door.send_to_menu(b"\r", "Message Management");
     services_door.send_to_menu(b"q", "Captain's Command Console");
-    services_door.wait_for_occurrences("(C/K/M/O/R/S/T) Manager", 4);
+    services_door.wait_for_occurrences("(Letter) Manager", 4);
     services_door.send_to_menu(b"x", "Docked Operations");
     let final_docked_occurrence = if banking_available { 3 } else { 2 };
     services_door.wait_for_occurrences("Docked Operations", final_docked_occurrence);
-    services_door.wait_for_occurrences("Return to BBS", final_docked_occurrence);
+    services_door.wait_for_occurrences("Action", final_docked_occurrence);
     services_door.return_to_bbs();
     let services_screen = services_door.finish();
     let services_semantic = normalized_display_text(&services_screen);
@@ -2034,9 +2072,9 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         refit_door.wait_for("Arrival Communications Receipt");
         refit_door.wait_for("(Enter) Continue");
         refit_door.send(b"\r");
-        refit_door.wait_for("Return to BBS");
+        refit_door.wait_for("Action");
     } else {
-        refit_door.wait_for("Return to BBS");
+        refit_door.wait_for("Action");
     }
     refit_door.send_to_menu(b"u", "Captain's Command Console");
     refit_door.send_to_menu(b"s", "Ship Status -");
@@ -2121,11 +2159,11 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         );
         let mut combat_door = DoorSession::spawn(&door, combat_root.path(), "iso646", "40");
         combat_door.send(b"\r");
-        combat_door.wait_for("Return to BBS");
+        combat_door.wait_for("Action");
         combat_door.send_to_menu(b"u", "Captain's Command Console");
-        combat_door.wait_for("(C/K/M/O/R/S/T) Manager");
+        combat_door.wait_for("(Letter) Manager");
         combat_door.send(b"o");
-        combat_door.wait_for_any_without_paging(&["Enter/Sp) Continue (C)ont (Q) Menu"]);
+        combat_door.wait_for_any_without_paging(&["Enter/Sp"]);
         combat_door.send(b"q");
         combat_door.wait_for_occurrences("Accept order or file report", 1);
         combat_door.send_to_menu(b"q", "Captain's Command Console");
@@ -2221,7 +2259,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     // refined nor bulk unrefined fuel; Milestone 3 owns frontier alternatives.
     let mut voyage_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     voyage_door.send(b"\r");
-    voyage_door.wait_for("Return to BBS");
+    voyage_door.wait_for("Action");
     voyage_door.send_to_menu(b"u", "Captain's Command Console");
     voyage_door.send_to_menu(b"p", "Player Preferences");
     voyage_door.send_to_menu(b"r", "Taking the watch");

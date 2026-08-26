@@ -641,7 +641,13 @@ either type generate Hold checkpoints instead without changing a filed plan.
 Course knowledge and course execution are separate. A carried or purchased
 plot can still be risky, and warnings about a known bad plot require a
 deliberate choice. Filing a plan commits the route; revising it later does not
-undo travel or obligations already completed.
+undo travel or obligations already completed. While the ship remains in normal
+space, revising the first unprocessed waypoint calculates a new maneuver from
+the ship's current motion. You may turn back to the primary port, choose a new
+Jump destination, or replace the route with a belt cycle or lawful frontier
+fuel stop. The displayed estimate includes the time needed to cancel the old
+relative motion and intercept the moving destination. A Jump already in
+progress cannot be redirected before breakout.
 
 The voyage screen shows the present stage, origin, destination, ship time,
 next scheduled event, and fuel. You may revise the plan or enter the command
