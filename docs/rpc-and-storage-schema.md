@@ -1,6 +1,6 @@
 # RPC and Storage Schema
 
-*Current implementation: player CT-RPC 8, sysop/admin protocols 2, League Coordinator protocol 1, storage format 2, and independently versioned record codecs.*
+*Current implementation: player CT-RPC 9, sysop/admin protocols 2, League Coordinator protocol 1, storage format 2, and independently versioned record codecs.*
 
 ## Authority boundary
 
@@ -23,7 +23,7 @@ explain state, but it is never the machine-readable discriminator.
 
 ## Current protocol
 
-CT-RPC 8 is the only accepted player protocol. The sysop and administrator
+CT-RPC 9 is the only accepted player protocol. The sysop and administrator
 protocols likewise accept only version 2. The distinct League Coordinator
 endpoint accepts only CT-League version 1 and authenticates a numeric League
 ID with that League's PSK. Each player, sysop, and administrator TLS connection begins with a
@@ -211,9 +211,10 @@ warnings; replanning never edits obligations.
 Flight Plan codec version 4 adds the per-collection refine choice and the
 standalone refine action; readers retain versions 1 through 3. Authoritative
 preview includes per-step normal and failed fuel-operation timings. Retained
-outcome codec version 21 preserves those timings, the added quotation and
-activity metadata, terminal reports, and BBS/League affiliation for
-idempotent replay.
+outcome codec version 22 preserves those timings, the added quotation and
+activity metadata, terminal reports, BBS/League affiliation, and effective
+fuel capacity for idempotent replay. Version 21 outcomes decode with an unknown
+zero fuel capacity, matching the field's absence before CT-RPC 9.
 
 Arrival does not directly rewrite an approaching ship as docked. It creates a
 durable checkpoint at the exact port locus. Hold authority waits for an
@@ -231,11 +232,12 @@ as Hold plus a terminal marker. Encounter-record codec version 4 stores
 Through/automation use and the optional acknowledged terminal-report snapshot
 while retaining readers for versions 1 through 3. Older terminal records derive
 the same report from retained encounter, combat, ship, and personnel state when
-first reviewed. Outcome codec version 21 preserves terminal-report transaction
+first reviewed. Outcome codec version 22 preserves terminal-report transaction
 replay; older outcomes decode absent additive fields as empty or zero. A
 pre-field proposal with no explicit terminal bit is normalized at the wire
-boundary by marking its last step. CT-RPC 8 adds durable ship commissions and
-construction activity.
+boundary by marking its last step. CT-RPC 8 added durable ship commissions and
+construction activity. CT-RPC 9 adds browser-alert enrollment and effective
+fuel capacity.
 
 ## Persistence contract
 
