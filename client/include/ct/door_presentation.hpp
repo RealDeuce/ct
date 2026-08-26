@@ -138,6 +138,8 @@ public:
                       DoorTextRole role = DoorTextRole::Normal);
    bool write_hyperlink(std::string_view url,
                         DoorTextRole role = DoorTextRole::Value);
+   bool write_qr_hyperlink(std::string_view url,
+                           DoorTextRole role = DoorTextRole::Value);
 
    size_t display_width(std::string_view text) const;
    size_t labeled_field_column(

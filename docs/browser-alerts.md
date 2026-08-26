@@ -98,9 +98,10 @@ proxy is used, preserve the configured origin exactly.
 ## Pairing and use
 
 The player opens the universal menu and chooses `Browser Alerts`. The door
-requests a ten-minute, single-use pairing address and prints the complete URL
-as its OSC 8 link text. It also renders a QR code when the terminal is wide
-enough:
+requests a ten-minute, single-use pairing address. When the terminal is wide
+enough, it renders the QR code followed immediately by the complete, centred
+URL as its OSC 8 link text. If the QR cannot be rendered, the complete URL is
+shown on its own:
 
 - CP437 at exactly 40 columns uses square full cells;
 - CP437 above 40 columns packs two vertical modules into upper/lower

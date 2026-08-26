@@ -7776,21 +7776,10 @@ void show_browser_alerts(
       door_information(
          "\n\rOpen this secure channel on the captain's portable device. "
          "The pairing code remains valid for ten minutes.\n\r\n\r");
-      output().write_hyperlink(enrollment.url, ct::DoorTextRole::Value);
-      door_write("\n\r\n\r", ct::DoorTextRole::Normal);
-      if(const auto qr = ct::door_qr_code(
-            enrollment.url, output().profile(), output().columns())) {
-         // A pager prompt inside the matrix destroys the symbol. Let the
-         // terminal scroll the complete QR as one uninterrupted unit.
-         output().suspend_paging();
-         for(const auto& line : *qr) {
-            if(!output().write(line, ct::DoorTextRole::Normal)) {
-               break;
-            }
-         }
-         output().reset_paging();
-         output().resume_paging();
-      } else {
+      if(!output().write_qr_hyperlink(
+            enrollment.url, ct::DoorTextRole::Value)) {
+         output().write_hyperlink(enrollment.url, ct::DoorTextRole::Value);
+         door_write("\n\r", ct::DoorTextRole::Normal);
          door_information(
             "QR rendering is unavailable at this width; use the URL above.\n\r");
       }

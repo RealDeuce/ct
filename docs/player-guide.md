@@ -46,7 +46,8 @@ screen. Letter choices are case-insensitive.
   support it.
 - `B` in the universal menu opens **Browser Alerts**. When the BBS operator has
   enabled the service, the door displays a ten-minute link and, where it fits,
-  a QR code for the captain's portable communicator. The browser can warn you
+  a QR code with the complete fallback address immediately below it for the
+  captain's portable communicator. The browser can warn you
   before the ship reaches a waypoint that will wait for orders, optionally
   warn before standing orders carry the ship through a waypoint, and call you
   when a checkpoint or detected encounter needs attention. Hold warnings,

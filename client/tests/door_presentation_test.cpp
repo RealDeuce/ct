@@ -60,6 +60,16 @@ size_t maximum_visible_width(const std::string_view output) {
    return std::max(maximum, current);
 }
 
+std::string emitted_qr(const std::vector<std::string>& lines) {
+   std::string result;
+   for(const auto& line : lines) {
+      check(line.ends_with("\n\r"));
+      result.append(line.begin(), line.end() - 2);
+      result += "\r\n";
+   }
+   return result;
+}
+
 void check_profile_and_width(const ct::DoorProfile profile,
                              const size_t columns,
                              const size_t rows) {
@@ -133,6 +143,70 @@ int main() {
       [&plain_link](const std::string_view bytes) { plain_link.append(bytes); });
    check(plain_hyperlink_presentation.write_hyperlink(enrollment_url));
    check(plain_link == enrollment_url);
+
+   for(const size_t columns : {size_t{40}, size_t{80}}) {
+      std::string pairing;
+      unsigned pauses = 0;
+      ct::DoorPresentation presentation(
+         ct::DoorProfile::Iso646,
+         columns,
+         24,
+         [&pairing](const std::string_view bytes) { pairing.append(bytes); });
+      presentation.configure_paging(1, [&pauses] {
+         ++pauses;
+         return ct::DoorPresentation::PagePauseAction::Continue;
+      });
+      presentation.resume_paging();
+      check(presentation.write_qr_hyperlink(enrollment_url));
+      check(pauses == 0);
+
+      const auto qr = ct::door_qr_code(
+         enrollment_url, ct::DoorProfile::Iso646, columns);
+      check(qr.has_value());
+      const auto matrix = emitted_qr(*qr);
+      const auto indent =
+         (presentation.content_columns() - enrollment_url.size()) / 2;
+      check(pairing == matrix + std::string(indent, ' ') + enrollment_url +
+                       "\r\n");
+   }
+
+   std::string colored_pairing;
+   ct::DoorPresentation colored_pairing_presentation(
+      ct::DoorProfile::Cp437Color,
+      80,
+      24,
+      [&colored_pairing](const std::string_view bytes) {
+         colored_pairing.append(bytes);
+      });
+   check(colored_pairing_presentation.write_qr_hyperlink(enrollment_url));
+   const auto hyperlink_start =
+      colored_pairing.find("\x1b]8;;" + enrollment_url + "\x1b\\");
+   check(hyperlink_start != std::string::npos);
+   check(hyperlink_start > colored_pairing.size() / 2);
+
+   const std::string long_enrollment_url =
+      "https://x.io/#" + std::string(100, 'a');
+   std::string wrapped_pairing;
+   ct::DoorPresentation wrapped_pairing_presentation(
+      ct::DoorProfile::Cp437,
+      80,
+      24,
+      [&wrapped_pairing](const std::string_view bytes) {
+         wrapped_pairing.append(bytes);
+      });
+   check(wrapped_pairing_presentation.write_qr_hyperlink(long_enrollment_url));
+   const auto long_qr = ct::door_qr_code(
+      long_enrollment_url, ct::DoorProfile::Cp437, 80);
+   check(long_qr.has_value());
+   const auto wrapped_url_start = wrapped_pairing.find("https://");
+   check(wrapped_url_start != std::string::npos);
+   check(wrapped_url_start > wrapped_pairing.size() / 2);
+   check(wrapped_url_start != 0 &&
+         wrapped_pairing[wrapped_url_start - 1] == '\n');
+   auto wrapped_url = wrapped_pairing.substr(wrapped_url_start);
+   std::erase(wrapped_url, '\r');
+   std::erase(wrapped_url, '\n');
+   check(wrapped_url == long_enrollment_url);
 
    const auto price_plot =
       ct::price_box_plot(900, 1'000, 1'100, 1'200, 1'300, 1'150);

@@ -1115,6 +1115,37 @@ bool DoorPresentation::write_hyperlink(const std::string_view url,
    return completed;
 }
 
+bool DoorPresentation::write_qr_hyperlink(const std::string_view url,
+                                          const DoorTextRole role)
+{
+   if(!safe_hyperlink_url(url)) {
+      throw std::invalid_argument("door hyperlink must be a printable HTTPS URL");
+   }
+   const auto qr = door_qr_code(url, profile_, columns_);
+   if(!qr.has_value()) {
+      return false;
+   }
+
+   // A pager prompt inside the matrix destroys the symbol. Keep the complete
+   // QR and its fallback address together, then restart paging below them.
+   suspend_paging();
+   for(const auto& line : *qr) {
+      write(line, DoorTextRole::Normal);
+   }
+   // Safe hyperlink URLs are printable ASCII and are emitted byte-for-byte,
+   // including ISO 646 variant punctuation such as '#'.
+   const auto url_width = url.size();
+   if(url_width <= content_columns()) {
+      write(std::string((content_columns() - url_width) / 2, ' '),
+            DoorTextRole::Normal);
+   }
+   write_hyperlink(url, role);
+   write("\n\r", DoorTextRole::Normal);
+   reset_paging();
+   resume_paging();
+   return true;
+}
+
 size_t DoorPresentation::display_width(const std::string_view text) const {
    return encode_text(text, profile_).size();
 }
