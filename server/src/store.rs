@@ -6374,9 +6374,28 @@ impl Store {
                     quantity_millitons,
                     refine_collected,
                 } => {
-                    if quantity_millitons == 0 || quantity_millitons % MILLITONS_PER_TON != 0 {
+                    if quantity_millitons == 0 {
                         return Ok(RuleResult::Rejected(format!(
-                            "waypoint {} must acquire a positive whole-ton fuel quantity",
+                            "waypoint {} must acquire a positive fuel quantity",
+                            index + 1
+                        )));
+                    }
+                    if matches!(
+                        operation,
+                        FuelOperation::GasGiant | FuelOperation::WildernessWater
+                    ) && quantity_millitons % MILLITONS_PER_TON != 0
+                    {
+                        return Ok(RuleResult::Rejected(format!(
+                            "waypoint {} must collect a whole-ton fuel quantity",
+                            index + 1
+                        )));
+                    }
+                    if operation == FuelOperation::BuyUnrefined
+                        && refine_collected
+                        && quantity_millitons % MILLITONS_PER_TON != 0
+                    {
+                        return Ok(RuleResult::Rejected(format!(
+                            "waypoint {} must buy a whole-ton quantity when the fuel is also refined",
                             index + 1
                         )));
                     }
@@ -23886,9 +23905,9 @@ impl Store {
         identity: &PlayerIdentity,
         quantity_millitons: u64,
     ) -> Result<RuleResult<FuelPurchaseReceipt>, StoreError> {
-        if quantity_millitons == 0 || quantity_millitons % MILLITONS_PER_TON != 0 {
+        if quantity_millitons == 0 {
             return Ok(RuleResult::Rejected(
-                "refined fuel must be purchased in a positive whole-ton quantity".into(),
+                "refined fuel must be purchased in a positive quantity".into(),
             ));
         }
         let (mut player, mut ship) = self.player_and_ship_in(txn, identity)?;
@@ -23920,8 +23939,7 @@ impl Store {
                 "the requested fuel exceeds tank capacity".into(),
             ));
         }
-        let cost = REFINED_FUEL_PRICE_PER_TON
-            .checked_mul(quantity_millitons / MILLITONS_PER_TON)
+        let cost = purchase_cost_credits(REFINED_FUEL_PRICE_PER_TON, quantity_millitons)
             .ok_or(StoreError::Corrupt("fuel price overflow"))?;
         let Some(payment) =
             self.charge_operating_account_with_receipt_in(txn, &mut player, ship.ship_id, cost)?
@@ -24128,9 +24146,9 @@ impl Store {
         identity: &PlayerIdentity,
         quantity_millitons: u64,
     ) -> Result<RuleResult<FuelPurchaseReceipt>, StoreError> {
-        if quantity_millitons == 0 || quantity_millitons % MILLITONS_PER_TON != 0 {
+        if quantity_millitons == 0 {
             return Ok(RuleResult::Rejected(
-                "unrefined fuel must be purchased in a positive whole-ton quantity".into(),
+                "unrefined fuel must be purchased in a positive quantity".into(),
             ));
         }
         let (mut player, mut ship) = self.player_and_ship_in(txn, identity)?;
@@ -24162,8 +24180,7 @@ impl Store {
                 "the requested fuel exceeds tank capacity".into(),
             ));
         }
-        let cost = UNREFINED_FUEL_PRICE_PER_TON
-            .checked_mul(quantity_millitons / MILLITONS_PER_TON)
+        let cost = purchase_cost_credits(UNREFINED_FUEL_PRICE_PER_TON, quantity_millitons)
             .ok_or(StoreError::Corrupt("fuel price overflow"))?;
         let Some(payment) =
             self.charge_operating_account_with_receipt_in(txn, &mut player, ship.ship_id, cost)?
@@ -51173,7 +51190,8 @@ mod tests {
                 .unwrap()
                 .unwrap_or(0);
         let berth_fee = crate::ship_condition::berth_fee_credits(arrived_second, current_second);
-        ship.current_fuel_millitons -= MILLITONS_PER_TON;
+        const PURCHASE_MILLITONS: u64 = MILLITONS_PER_TON + 1;
+        ship.current_fuel_millitons -= PURCHASE_MILLITONS;
         let mut txn = store.env.write_txn().unwrap();
         store
             .ships
@@ -51204,7 +51222,7 @@ mod tests {
                     authority: WaypointAuthority::Through,
                     action: FlightPlanAction::Fuel {
                         operation: FuelOperation::BuyRefined,
-                        quantity_millitons: MILLITONS_PER_TON,
+                        quantity_millitons: PURCHASE_MILLITONS,
                         refine_collected: false,
                     },
                     terminal: false,
@@ -51244,15 +51262,33 @@ mod tests {
             RuleResult::Applied(preview) => preview,
             RuleResult::Rejected(message) => panic!("fuel-purchase plan was rejected: {message}"),
         };
-        let mut bought_unrefined_then_refined = proposal.clone();
+        let mut fractional_buy_and_refine = proposal.clone();
         if let FlightPlanAction::Fuel {
             operation,
             refine_collected,
             ..
-        } = &mut bought_unrefined_then_refined.steps[0].action
+        } = &mut fractional_buy_and_refine.steps[0].action
         {
             *operation = FuelOperation::BuyUnrefined;
             *refine_collected = true;
+        }
+        assert!(matches!(
+            store
+                .preview_flight_plan_in(
+                    &store.env.read_txn().unwrap(),
+                    &identity(),
+                    &fractional_buy_and_refine,
+                )
+                .unwrap(),
+            RuleResult::Rejected(message) if message.contains("whole-ton quantity")
+        ));
+
+        let mut bought_unrefined_then_refined = fractional_buy_and_refine;
+        if let FlightPlanAction::Fuel {
+            quantity_millitons, ..
+        } = &mut bought_unrefined_then_refined.steps[0].action
+        {
+            *quantity_millitons = MILLITONS_PER_TON;
         }
         let bought_unrefined_then_refined_preview = match store
             .preview_flight_plan_in(
@@ -51282,9 +51318,12 @@ mod tests {
 
         let mut bought_unrefined = bought_unrefined_then_refined;
         if let FlightPlanAction::Fuel {
-            refine_collected, ..
+            quantity_millitons,
+            refine_collected,
+            ..
         } = &mut bought_unrefined.steps[0].action
         {
+            *quantity_millitons = PURCHASE_MILLITONS;
             *refine_collected = false;
         }
         let bought_unrefined_preview = match store
@@ -51327,7 +51366,9 @@ mod tests {
         let updated_player = store.player_record(&identity()).unwrap().unwrap();
         assert_eq!(
             updated_player.credits,
-            player.credits - REFINED_FUEL_PRICE_PER_TON - berth_fee
+            player.credits
+                - purchase_cost_credits(REFINED_FUEL_PRICE_PER_TON, PURCHASE_MILLITONS).unwrap()
+                - berth_fee
         );
     }
 
@@ -56726,7 +56767,8 @@ mod tests {
                 &ship,
                 &creation::ship_status_spec(ship.catalog_id).unwrap(),
             );
-            ship.current_fuel_millitons = capacity - 10 * MILLITONS_PER_TON;
+            let quantity = 10 * MILLITONS_PER_TON + 1;
+            ship.current_fuel_millitons = capacity - quantity;
             ship.unrefined_fuel_millitons = 0;
             player.credits = liquid;
             let finance_key = ship_finance_key(ship.ship_id);
@@ -56753,12 +56795,12 @@ mod tests {
                 .unwrap();
             txn.commit().unwrap();
 
-            let quantity = 10 * MILLITONS_PER_TON;
-            let cost = match kind {
-                DockedFuelServiceKind::Refined => 5_000,
-                DockedFuelServiceKind::Unrefined => 1_000,
+            let price = match kind {
+                DockedFuelServiceKind::Refined => REFINED_FUEL_PRICE_PER_TON,
+                DockedFuelServiceKind::Unrefined => UNREFINED_FUEL_PRICE_PER_TON,
                 _ => unreachable!(),
             };
+            let cost = purchase_cost_credits(price, quantity).unwrap();
             let expected_restricted = restricted.min(cost);
             let expected_liquid = cost - expected_restricted;
             let order = crate::wire::DockedServiceOrder {

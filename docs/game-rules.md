@@ -910,13 +910,16 @@ their berth support instead. Ammunition belongs to installed compatible
 weapons and is removed when fired. Departure rejects a known shortage rather
 than creating supplies through a background charge.
 
-Fuel and cargo transactions use 0.001-ton units, but dockside fuel is bought
-in positive whole tons. Refined fuel costs Cr500 per ton and unrefined fuel
-Cr100 per ton where the port table permits it. A tank can contain both; the
-unrefined portion is tracked. Every power-plant or Jump burn draws refined and
-unrefined fuel proportionally to the tank mixture (with deterministic integer
-rounding), so the Jump penalty follows whether that specific burn consumes any
-unrefined fuel rather than assuming refined fuel is always used first.
+Fuel and cargo transactions use 0.001-ton units. Dockside fuel may be bought
+in any positive quantity at that resolution, allowing an exact fill after
+fractional consumption. The final charge rounds up to a whole credit, so
+splitting a purchase cannot reduce its price. Refined fuel costs Cr500 per ton
+and unrefined fuel Cr100 per ton where the port table permits it. A tank can
+contain both; the unrefined portion is tracked. Every power-plant or Jump burn
+draws refined and unrefined fuel proportionally to the tank mixture (with
+deterministic integer rounding), so the Jump penalty follows whether that
+specific burn consumes any unrefined fuel rather than assuming refined fuel is
+always used first.
 
 New ships begin with 30 person-days of provisions for every awake-accommodation
 place and can store at most 180 per place. Away from a berth, one person-day is

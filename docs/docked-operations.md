@@ -94,9 +94,11 @@ Known Universe observations are described in
 
 Refined fuel costs the CE Cr500 per ton and is sold only by class A or B
 starports. Unrefined port fuel costs Cr100 per ton at class A through C ports.
-The server validates whole-ton quantity, tank capacity, equipment, source,
-and available credits. It tracks the unrefined fraction in the tanks rather
-than treating all fuel as interchangeable bookkeeping.
+The server accepts vendor quantities at 0.001-ton resolution, rounds the final
+proportional charge up to a whole credit, and validates tank capacity, source,
+and available credits. Frontier collection and onboard processing remain
+whole-ton work orders. The server tracks the unrefined fraction in the tanks
+rather than treating all fuel as interchangeable bookkeeping.
 
 The Fuel and Supplies screen can instead schedule a bounded gas-giant or
 wilderness water/ice expedition. The server lists every qualifying named body

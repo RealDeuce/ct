@@ -8746,7 +8746,8 @@ std::optional<ct::TravelStatus> run_fuel_service(
             door_label(", unoccupied routine-access source)");
          }
          door_label("  tank room ");
-         door_number("%.1f t\n\r", item.maximum_millitons / 1000.0);
+         door_number(
+            "%s t\n\r", ct::format_tonnage(item.maximum_millitons).c_str());
       }
       for(const auto& item : services.fuel) {
          if(!item.available) {
@@ -8766,14 +8767,31 @@ std::optional<ct::TravelStatus> run_fuel_service(
          return std::nullopt;
       }
       const auto& item = *available_sources[*choice - 1];
-      const auto max_tons = std::min<uint64_t>(item.maximum_millitons / 1000,
-         std::numeric_limits<unsigned>::max());
-      const auto tons = input_number("Tonnes", 1, static_cast<unsigned>(max_tons));
-      if(!tons) {
-         return std::nullopt;
-      }
       const bool frontier = item.kind == ct::DockedFuelServiceKind::GasGiant ||
                             item.kind == ct::DockedFuelServiceKind::WildernessWater;
+      uint64_t quantity_millitons = 0;
+      if(frontier) {
+         const auto max_tons = std::min<uint64_t>(
+            item.maximum_millitons / 1000,
+            std::numeric_limits<unsigned>::max());
+         if(max_tons == 0) {
+            door_information("There is less than one whole tonne of tank room.\n\r");
+            wait_for_enter();
+            return std::nullopt;
+         }
+         const auto tons = input_number(
+            "Whole tonnes", 1, static_cast<unsigned>(max_tons));
+         if(!tons) {
+            return std::nullopt;
+         }
+         quantity_millitons = uint64_t{*tons} * 1000;
+      } else {
+         const auto quantity = input_tonnage("Tonnes", item.maximum_millitons);
+         if(!quantity) {
+            return std::nullopt;
+         }
+         quantity_millitons = *quantity;
+      }
       if(frontier) {
          bool refine_collected = item.can_refine;
          if(item.can_refine) {
@@ -8816,7 +8834,7 @@ std::optional<ct::TravelStatus> run_fuel_service(
                      .fuel_operation = item.kind == ct::DockedFuelServiceKind::GasGiant
                         ? ct::FuelOperation::GasGiant
                         : ct::FuelOperation::WildernessWater,
-                     .quantity_millitons = uint64_t{*tons} * 1000,
+                     .quantity_millitons = quantity_millitons,
                      .refine_collected = refine_collected},
                   .terminal = true}},
                .policy = plan.policy,
@@ -8865,7 +8883,7 @@ std::optional<ct::TravelStatus> run_fuel_service(
       order.kind = ct::DockedServiceOrder::Kind::Fuel;
       order.fuel_kind = item.kind;
       order.source_body_id = item.source_body_id;
-      order.quantity_millitons = uint64_t(*tons) * 1000;
+      order.quantity_millitons = quantity_millitons;
    } else if(key == 'P') {
       if(!services.provisions_available) {
          door_warning("No bonded chandlery supplies starships at this port.\n\r");
@@ -8956,14 +8974,20 @@ std::optional<ct::TravelStatus> run_fuel_service(
                                  : "unrefined";
          door_success("\n\rFueling complete.\n\r");
          door_label("Loaded: ");
-         door_number("%.1f t", fuel->quantity_millitons / 1000.0);
+         door_number(
+            "%s t", ct::format_tonnage(fuel->quantity_millitons).c_str());
          door_label(" of ");
          door_identifier("%s fuel\n\r", fuel_name);
          door_label("Tanks: ");
-         door_number("%.1f/%.1f t\n\r", fuel->current_fuel_millitons / 1000.0,
-                     fuel->fuel_capacity_millitons / 1000.0);
+         door_number(
+            "%s/", ct::format_tonnage(fuel->current_fuel_millitons).c_str());
+         door_number(
+            "%s t\n\r",
+            ct::format_tonnage(fuel->fuel_capacity_millitons).c_str());
          door_label("Unrefined aboard: ");
-         door_number("%.1f t\n\r", fuel->unrefined_fuel_millitons / 1000.0);
+         door_number(
+            "%s t\n\r",
+            ct::format_tonnage(fuel->unrefined_fuel_millitons).c_str());
          door_label("Charge: ");
          door_number("Cr%llu\n\r", static_cast<unsigned long long>(fuel->cost_credits));
          door_label("Paid from:\n\r  Restricted operating: ");

@@ -812,10 +812,10 @@ fn complete_arrival_and_trade(
         .and_then(|number| number.parse::<u32>().ok());
     if let Some(option) = unrefined_option {
         session.send(format!("{option}\r").as_bytes());
-        // The 40-column profile may wrap the prompt between "to" and
-        // "cancel"; match the semantic prefix shared by every width.
-        session.wait_for("Tonnes (Q to");
-        session.send(b"1\r");
+        // The maximum value varies with the voyage's fractional fuel burn;
+        // match the stable semantic prefix shared by every width.
+        session.wait_for("Tonnes (maximum");
+        session.send(b"0.001\r");
         session.wait_for("Fueling complete");
         session.wait_for("(Enter) Previous menu");
         session.send_to_menu(b"\r", "Docked Operations");
@@ -2543,7 +2543,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         if completed_screen.contains("Unavailable: Unrefined bulk fuel") {
             assert_eq!(ship.current_fuel_millitons, docked_fuel);
         } else {
-            assert_eq!(ship.current_fuel_millitons, docked_fuel + 1_000);
+            assert_eq!(ship.current_fuel_millitons, docked_fuel + 1);
             for expected in [
                 "Fueling complete",
                 "Loaded:",
