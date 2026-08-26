@@ -1438,6 +1438,7 @@ pub struct TravelStatus {
     pub current_game_second: u64,
     pub due_second: u64,
     pub current_fuel_millitons: u64,
+    pub fuel_capacity_millitons: u64,
     pub jump_fuel_millitons: u64,
     pub plan_id: u64,
     pub plan_revision: u64,
@@ -6041,6 +6042,7 @@ fn set_travel_status(
     builder.set_current_game_second(snapshot.current_game_second);
     builder.set_due_second(snapshot.due_second);
     builder.set_current_fuel_millitons(snapshot.current_fuel_millitons);
+    builder.set_fuel_capacity_millitons(snapshot.fuel_capacity_millitons);
     builder.set_jump_fuel_millitons(snapshot.jump_fuel_millitons);
     builder.set_clock_rate_game_seconds(crate::clock::GAME_SECONDS_PER_RATE_PERIOD);
     builder.set_clock_rate_real_seconds(crate::clock::RATE_PERIOD.as_secs());

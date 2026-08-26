@@ -650,8 +650,9 @@ relative motion and intercept the moving destination. A Jump already in
 progress cannot be redirected before breakout.
 
 The voyage screen shows the present stage, origin, destination, ship time,
-next scheduled event, and fuel. You may revise the plan or enter the command
-console while the voyage continues.
+next scheduled event, and fuel aboard compared with effective total tank
+capacity. You may revise the plan or enter the command console while the voyage
+continues.
 
 Travel can stop for a checkpoint, validation problem, traffic contact, or
 encounter. An arrival packet may contain news, mail, market observations, and

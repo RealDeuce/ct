@@ -4293,8 +4293,6 @@ void show_ship_manager(
       print_millitons(snapshot.current_fuel_millitons);
       door_label(" / ");
       print_millitons(snapshot.fuel_capacity_millitons);
-      door_label("  Jump reserve: ");
-      print_millitons(snapshot.jump_fuel_millitons);
       od_printf("\n\r");
       door_label("Cargo capacity: ");
       print_millitons(snapshot.cargo_capacity_millitons);
@@ -10456,8 +10454,11 @@ void show_travel_screen(
    door_label(")\n\r");
    door_label("Fuel:        ");
    door_number("%.1f t", status.current_fuel_millitons / 1000.0);
-   door_label("  Jump reserve ");
-   door_number("%.1f t\n\r", status.jump_fuel_millitons / 1000.0);
+   if(status.fuel_capacity_millitons != 0) {
+      door_label(" / ");
+      door_number("%.1f t", status.fuel_capacity_millitons / 1000.0);
+   }
+   od_printf("\n\r");
    door_information(
       "\n\rCrew, ship, task, message, and Known Universe management remain "
       "available while the scheduled voyage continues.\n\r");

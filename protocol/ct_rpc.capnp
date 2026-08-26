@@ -1440,6 +1440,7 @@ struct TravelStatus {
   legIndex @15 :UInt16;
   origin @16 :FlightLocus;
   destination @17 :FlightLocus;
+  fuelCapacityMillitons @18 :UInt64;
 }
 
 struct FlightLocus {

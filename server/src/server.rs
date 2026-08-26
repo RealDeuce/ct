@@ -3491,6 +3491,7 @@ mod tests {
                 current_game_second: 1_000,
                 due_second: 2_000,
                 current_fuel_millitons: 10_000,
+                fuel_capacity_millitons: 12_000,
                 jump_fuel_millitons: 5_000,
                 plan_id: 7,
                 plan_revision: 3,

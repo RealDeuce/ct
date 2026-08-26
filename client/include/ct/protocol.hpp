@@ -1188,6 +1188,7 @@ struct TravelStatus {
    uint64_t current_game_second;
    uint64_t due_second;
    uint64_t current_fuel_millitons;
+   uint64_t fuel_capacity_millitons;
    uint64_t jump_fuel_millitons;
    uint64_t clock_rate_game_seconds;
    uint64_t clock_rate_real_seconds;

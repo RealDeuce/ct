@@ -101,7 +101,11 @@ until the last performance settles or the obligation defaults.
 
 - stable `planId`, `planRevision`, and `legIndex` values;
 - typed origin and destination loci (port, Jump locus, or celestial body);
-- a typed stage and the current leg's due second.
+- a typed stage and the current leg's due second; and
+- fuel aboard plus the ship's effective total tank capacity.
+
+The legacy nominal Jump-fuel allocation remains on the wire for older clients,
+but it is not a live reserve and the current door does not display it.
 
 A docked ship has plan/revision/index zero and identical port loci. A ship may
 also hold at an exact deep-space coordinate after exploration or a misjump.

@@ -24866,6 +24866,7 @@ impl Store {
         }
         let spec = creation::ship_status_spec(ship.catalog_id)
             .ok_or(StoreError::Corrupt("ship catalog status data is missing"))?;
+        let fuel_capacity_millitons = effective_fuel_capacity(&ship, &spec);
         Ok(TravelStatus {
             ship_id: ship.ship_id,
             ship_name: ship.name,
@@ -24878,6 +24879,7 @@ impl Store {
             current_game_second,
             due_second,
             current_fuel_millitons: ship.current_fuel_millitons,
+            fuel_capacity_millitons,
             jump_fuel_millitons: spec.jump_fuel_millitons,
             plan_id,
             plan_revision,
@@ -40100,7 +40102,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(21);
+    bytes.push(22);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -40396,6 +40398,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 19
         && version != 20
         && version != 21
+        && version != 22
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -40441,7 +40444,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         11 => OutcomeKind::DockedSnapshot(decode_docked_snapshot(&mut decoder, version)?),
         12 => OutcomeKind::KnownDestinations(decode_known_destinations(&mut decoder, version)?),
         13 => OutcomeKind::Market(decode_market_snapshot(&mut decoder, version)?),
-        14 => OutcomeKind::TravelStatus(decode_travel_status(&mut decoder)?),
+        14 => OutcomeKind::TravelStatus(decode_travel_status(&mut decoder, version)?),
         15 => OutcomeKind::CoursePlot(decode_course_plot(&mut decoder, version >= 2)?),
         16 => OutcomeKind::ArrivalPacket(decode_arrival_packet(&mut decoder)?),
         17 => OutcomeKind::MessageManagement(decode_message_management(&mut decoder)?),
@@ -45377,10 +45380,14 @@ fn encode_travel_status_into(
     bytes.extend_from_slice(&snapshot.leg_index.to_be_bytes());
     encode_flight_locus_status(bytes, snapshot.origin);
     encode_flight_locus_status(bytes, snapshot.destination);
+    bytes.extend_from_slice(&snapshot.fuel_capacity_millitons.to_be_bytes());
     Ok(())
 }
 
-fn decode_travel_status(decoder: &mut Decoder<'_>) -> Result<TravelStatus, StoreError> {
+fn decode_travel_status(
+    decoder: &mut Decoder<'_>,
+    version: u8,
+) -> Result<TravelStatus, StoreError> {
     let ship_id = decoder.u64()?;
     let ship_name = decoder.text()?;
     let current_system_id = decoder.u64()?;
@@ -45411,7 +45418,7 @@ fn decode_travel_status(decoder: &mut Decoder<'_>) -> Result<TravelStatus, Store
     let due_second = decoder.u64()?;
     let current_fuel_millitons = decoder.u64()?;
     let jump_fuel_millitons = decoder.u64()?;
-    Ok(TravelStatus {
+    let mut status = TravelStatus {
         ship_id,
         ship_name,
         current_system_id,
@@ -45422,13 +45429,18 @@ fn decode_travel_status(decoder: &mut Decoder<'_>) -> Result<TravelStatus, Store
         current_game_second,
         due_second,
         current_fuel_millitons,
+        fuel_capacity_millitons: 0,
         jump_fuel_millitons,
         plan_id: decoder.u64()?,
         plan_revision: decoder.u64()?,
         leg_index: decoder.u16()?,
         origin: decode_flight_locus_status(decoder)?,
         destination: decode_flight_locus_status(decoder)?,
-    })
+    };
+    if version >= 22 {
+        status.fuel_capacity_millitons = decoder.u64()?;
+    }
+    Ok(status)
 }
 
 fn encode_message_item_into(bytes: &mut Vec<u8>, item: &MessageItem) -> Result<(), StoreError> {
@@ -46852,6 +46864,53 @@ mod tests {
             panic!("expected course plot");
         };
         assert_eq!(plot.current_game_second, 0);
+    }
+
+    #[test]
+    fn travel_status_outcome_preserves_capacity_and_reads_version_twenty_one() {
+        let outcome = Outcome {
+            command_id: [8; COMMAND_ID_BYTES],
+            committed_sequence: 13,
+            revision: 14,
+            replayed: false,
+            phase: PlayerPhase::Interplanetary,
+            kind: OutcomeKind::TravelStatus(TravelStatus {
+                ship_id: 21,
+                ship_name: "Wayfarer".into(),
+                current_system_id: 1,
+                current_system_name: "Origin".into(),
+                destination_system_id: 2,
+                destination_system_name: "Destination".into(),
+                stage: TravelStage::DepartingForJump,
+                current_game_second: 100,
+                due_second: 200,
+                current_fuel_millitons: 18_000,
+                fuel_capacity_millitons: 22_000,
+                jump_fuel_millitons: 20_000,
+                plan_id: 3,
+                plan_revision: 4,
+                leg_index: 0,
+                origin: FlightLocus::Port {
+                    system_id: 1,
+                    world_id: 1,
+                    facility_id: 1,
+                },
+                destination: FlightLocus::JumpLocus { system_id: 1 },
+            }),
+        };
+
+        let encoded = encode_outcome(&outcome).unwrap();
+        assert_eq!(decode_outcome(&encoded).unwrap(), outcome);
+
+        let mut version_twenty_one = encoded;
+        version_twenty_one[0] = 21;
+        version_twenty_one.truncate(version_twenty_one.len() - 8);
+        let decoded = decode_outcome(&version_twenty_one).unwrap();
+        let OutcomeKind::TravelStatus(legacy) = decoded.kind else {
+            panic!("expected travel status");
+        };
+        assert_eq!(legacy.fuel_capacity_millitons, 0);
+        assert_eq!(legacy.current_fuel_millitons, 18_000);
     }
 
     #[test]
@@ -50235,6 +50294,7 @@ mod tests {
             current_game_second: 100,
             due_second: 1_000,
             current_fuel_millitons: 10,
+            fuel_capacity_millitons: 30,
             jump_fuel_millitons: 20,
             plan_id: 7,
             plan_revision: 3,
@@ -53974,6 +54034,13 @@ mod tests {
             departing.destination,
             FlightLocus::JumpLocus { .. }
         ));
+        assert_eq!(
+            departing.fuel_capacity_millitons,
+            store
+                .ship_status_in(&store.env.read_txn().unwrap(), &identity())
+                .unwrap()
+                .fuel_capacity_millitons
+        );
         let fuel_before_jump = departing.current_fuel_millitons;
         store
             .enqueue(&QueuedCommand {

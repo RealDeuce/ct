@@ -1904,7 +1904,10 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     services_door.wait_for("managed appointments");
     services_door.send_to_menu(b"q", "Captain's Command Console");
     services_door.wait_for_occurrences("(Letter) Manager", 2);
-    services_door.send_to_menu(b"s", "Ship Status -");
+    let ship_status_screen = services_door.send_to_menu(b"s", "Ship Status -");
+    let ship_status_semantic = normalized_display_text(&ship_status_screen);
+    assert!(ship_status_semantic.contains("Fuel:"));
+    assert!(!ship_status_semantic.contains("Jump reserve"));
     services_door.wait_for("Next automatic upkeep:");
     services_door.wait_for("no yard order is needed");
     services_door.wait_for("operating account funded");
@@ -2297,6 +2300,8 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         assert!(voyage_screen.contains(expected), "{voyage_screen:?}");
     }
     let voyage_semantic = normalized_display_text(&voyage_screen);
+    assert!(voyage_semantic.contains("Fuel:"));
+    assert!(!voyage_semantic.contains("Jump reserve"));
     for expected in [
         "terminal",
         "(1) Warning:",
