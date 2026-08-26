@@ -239,6 +239,17 @@ say that the corresponding station or service is unavailable, not discuss
 unimplemented code. Treat every newly added or materially changed door screen
 as requiring an in-world-language review.
 
+Every change to a door menu or operational view must review its context help
+in the same change. This includes changes to displayed fields, labels, columns,
+states, warnings, indicators, actions, shortcut order, action availability,
+prompts, or consequences. Beginner help must explain why the screen is useful,
+what every displayed item means and why it matters, which actions are available
+and what they do, why an action may be absent, and a sensible first use of the
+screen. Expert help must remain an accurate compact reference. The change is
+incomplete while either help level disagrees with the live screen. Help is
+paged output: never omit necessary guidance merely to keep a topic on one
+terminal screen.
+
 ### Player-facing rules synchronization
 
 [`docs/game-rules.md`](docs/game-rules.md) is the player-facing rules subset

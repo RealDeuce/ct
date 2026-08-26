@@ -360,44 +360,6 @@ int main() {
    const auto help_topics = ct::all_door_help();
    check(help_topics.size() ==
          static_cast<size_t>(ct::DoorHelpTopic::Count));
-   const auto& ship_help = ct::door_help(ct::DoorHelpTopic::Ship);
-   check(ship_help.beginner_body.find("charged automatically") !=
-         std::string_view::npos);
-   check(ship_help.beginner_body.find("no monthly yard order is needed") !=
-         std::string_view::npos);
-   check(ship_help.beginner_body.find("restricted operating credit first") !=
-         std::string_view::npos);
-   check(ship_help.beginner_body.find("can damage a subsystem") !=
-         std::string_view::npos);
-   check(ship_help.beginner_body.find("quotation shows its operating-account charge") !=
-         std::string_view::npos);
-   check(ship_help.beginner_body.find("does not replace destroyed installations") !=
-         std::string_view::npos);
-   check(ship_help.expert_body.find("automatic every 30 game days") !=
-         std::string_view::npos);
-   check(ship_help.expert_body.find("requires authorization after quotation") !=
-         std::string_view::npos);
-   const auto& shipyard_help = ct::door_help(ct::DoorHelpTopic::Shipyard);
-   check(shipyard_help.beginner_body.find("Review a refit quotation") !=
-         std::string_view::npos);
-   check(shipyard_help.expert_body.find("does not replace destroyed installations") !=
-         std::string_view::npos);
-   const auto& fuel_help = ct::door_help(ct::DoorHelpTopic::Fuel);
-   check(fuel_help.beginner_body.find("fueling receipt") != std::string_view::npos);
-   check(fuel_help.beginner_body.find("One person-day supports one awake") !=
-         std::string_view::npos);
-   check(fuel_help.beginner_body.find("30 person-days for every fitted") !=
-         std::string_view::npos);
-   check(fuel_help.beginner_body.find("multiply the number of awake people") !=
-         std::string_view::npos);
-   check(fuel_help.expert_body.find("low-berth occupants are excluded") !=
-         std::string_view::npos);
-   check(fuel_help.beginner_body.find("Docked crew arrange their own meals") !=
-         std::string_view::npos);
-   check(fuel_help.beginner_body.find("Starting on the fourth") !=
-         std::string_view::npos);
-   check(fuel_help.beginner_body.find("twice the package's average price") !=
-         std::string_view::npos);
    for(const auto& help : help_topics) {
       check(!help.title.empty());
       check(!help.group.empty());

@@ -21,8 +21,12 @@ screen. Letter choices are case-insensitive.
   or the docked menu it offers to return to the BBS; you must confirm with
   `Y` before the game exits.
 - `?` opens help for the screen or decision in front of you. **Beginner** help
-  introduces the game concept before explaining the screen; **Expert** help is
-  a shorter operational reference. Each BBS player has a durable default.
+  explains why the screen is useful, every field, column, state, warning, and
+  indicator it can show, why those details matter, every available action and
+  consequence, why conditional actions may be absent, and a sensible first
+  use. **Expert** help is a shorter, accurate operational reference. Each BBS
+  player has a durable default. Help may span as many pages as it needs; it is
+  not shortened to fit one terminal screen.
 - During help paging, Enter or Space advances, `C` continues without more page
   pauses, `B` restarts the topic in Beginner mode, `X` restarts it in Expert
   mode, and `Q` stops help. The B/X choice lasts for that help visit only.
