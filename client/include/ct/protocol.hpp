@@ -1985,6 +1985,37 @@ struct ArrivalPacket {
    PlayerPhase phase;
 };
 
+enum class OperationalDamageCause {
+   JumpTransition,
+   FuelProcessing,
+   MaintenanceNeglect,
+};
+
+struct OperationalDamageReport {
+   bool present;
+   uint64_t report_id;
+   uint64_t occurred_second;
+   uint64_t ship_id;
+   std::string ship_name;
+   OperationalDamageCause cause;
+   uint64_t origin_system_id;
+   std::string origin_system_name;
+   uint64_t destination_system_id;
+   std::string destination_system_name;
+   uint8_t inaccurate_extra_days;
+   bool misjump;
+   uint16_t subsystem_id;
+   ShipSubsystemKind subsystem_kind;
+   std::string subsystem_label;
+   uint16_t damage_hits;
+   uint16_t sustained_hits;
+   uint16_t maximum_hits;
+   std::string operational_effect;
+   uint64_t committed_sequence;
+   uint64_t revision;
+   PlayerPhase phase;
+};
+
 struct MessageManagement {
    std::vector<MessageItem> items;
    std::vector<MessageFilter> filters;
@@ -2047,6 +2078,7 @@ enum class PlayerEventKind {
    CheckpointReady,
    EncounterReady,
    RadioUnread,
+   OperationalDamageReady,
 };
 
 struct PlayerEvent {
@@ -2057,6 +2089,7 @@ struct PlayerEvent {
    std::optional<TrafficContact> traffic_contact;
    std::optional<CheckpointSnapshot> checkpoint;
    std::optional<EncounterSnapshot> encounter;
+   std::optional<OperationalDamageReport> operational_damage_report;
    uint64_t observed_second = 0;
    uint64_t system_id = 0;
    uint64_t ship_id = 0;
@@ -2365,6 +2398,19 @@ ArrivalPacket open_arrival_packet(TlsConnection& connection,
                                   uint64_t session_epoch,
                                   const std::array<uint8_t, 16>& command_id,
                                   uint64_t request_id);
+
+OperationalDamageReport get_operational_damage_report(
+   TlsConnection& connection,
+   uint64_t session_epoch,
+   const std::array<uint8_t, 16>& command_id,
+   uint64_t request_id);
+
+OperationalDamageReport acknowledge_operational_damage_report(
+   TlsConnection& connection,
+   uint64_t session_epoch,
+   uint64_t report_id,
+   const std::array<uint8_t, 16>& command_id,
+   uint64_t request_id);
 
 MessageManagement get_message_management(
    TlsConnection& connection,

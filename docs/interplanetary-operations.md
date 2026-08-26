@@ -140,6 +140,13 @@ The plan is suspended when:
 - the bounded plan completes at a hold point; or
 - the player replaces, cancels, or deliberately pauses it.
 
+Automatic non-combat subsystem damage does not by itself suspend a still-valid
+plan. The damaging transaction creates a durable Engineering Casualty Report;
+an online door is interrupted at its next safe prompt, an offline captain sees
+the same oldest report at sign-on, and explicit acknowledgement removes it.
+Jump, fuel-processing, and maintenance reports are kept separate from combat's
+aggregated result and command-loss reporting.
+
 An encounter retains the suspended continuation. After resolution, the server
 revalidates it against the resulting state. If it remains viable, the player
 may continue all still-authorized steps without rebuilding the itinerary. If

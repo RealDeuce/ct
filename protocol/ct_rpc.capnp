@@ -181,6 +181,8 @@ struct Request {
     getBrowserAlertStatus @78 :Void;
     createBrowserAlertEnrollment @79 :Void;
     revokeAllBrowserAlerts @80 :Void;
+    getOperationalDamageReport @81 :Void;
+    acknowledgeOperationalDamageReport @82 :AcknowledgeOperationalDamageReportRequest;
   }
 }
 
@@ -229,6 +231,7 @@ struct Response {
     terminalReport @39 :TerminalReport;
     browserAlertStatus @40 :BrowserAlertStatus;
     browserAlertEnrollment @41 :BrowserAlertEnrollment;
+    operationalDamageReport @42 :OperationalDamageReport;
   }
 }
 
@@ -1781,6 +1784,38 @@ struct AcknowledgeTerminalReportRequest {
   expectedRevision @1 :UInt64;
 }
 
+enum OperationalDamageCause {
+  jumpTransition @0;
+  fuelProcessing @1;
+  maintenanceNeglect @2;
+}
+
+struct OperationalDamageReport {
+  present @0 :Bool;
+  reportId @1 :UInt64;
+  occurredSecond @2 :UInt64;
+  shipId @3 :UInt64;
+  shipName @4 :Text;
+  cause @5 :OperationalDamageCause;
+  originSystemId @6 :UInt64;
+  originSystemName @7 :Text;
+  destinationSystemId @8 :UInt64;
+  destinationSystemName @9 :Text;
+  inaccurateExtraDays @10 :UInt8;
+  misjump @11 :Bool;
+  subsystemId @12 :UInt16;
+  subsystemKind @13 :ShipSubsystemKind;
+  subsystemLabel @14 :Text;
+  damageHits @15 :UInt16;
+  sustainedHits @16 :UInt16;
+  maximumHits @17 :UInt16;
+  operationalEffect @18 :Text;
+}
+
+struct AcknowledgeOperationalDamageReportRequest {
+  reportId @0 :UInt64;
+}
+
 enum CombatRange {
   adjacent @0;
   close @1;
@@ -2236,6 +2271,7 @@ struct Event {
     checkpointReady @6 :CheckpointSnapshot;
     encounterReady @7 :EncounterSnapshot;
     radioUnread @8 :RadioUnread;
+    operationalDamageReady @9 :OperationalDamageReport;
   }
 }
 

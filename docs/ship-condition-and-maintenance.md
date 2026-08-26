@@ -123,6 +123,16 @@ The underlying sustained value is retained and displayed even while a patch
 is working. Ending the encounter clears battlefield coverage; it does not add
 new damage because the covered damage was never removed.
 
+Automatic non-combat damage also writes a separate, independently versioned
+engineering-casualty record in the same transaction as the subsystem hit.
+Discordant Jump transitions, exceptional fuel-processing failures, and missed-
+maintenance degradation each create one report per damaging operation or
+check. Reports are ordered per captain and deleted only by the exactly-once
+positive-acknowledgement command. The live event is only a delivery hint;
+reconnect reads the oldest retained report. Combat retains its own aggregated
+encounter and command-loss reporting and never creates one casualty report per
+weapon hit.
+
 ## Condition and Service Ledgers
 
 Each subsystem has independent state for:

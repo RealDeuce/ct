@@ -88,10 +88,14 @@ std::optional<ct::TravelStatus> latest_phase_status;
 std::optional<ct::TrafficSnapshot> latest_traffic_snapshot;
 std::optional<ct::CheckpointSnapshot> latest_checkpoint;
 std::optional<ct::EncounterSnapshot> latest_encounter;
+std::optional<ct::OperationalDamageReport> latest_operational_damage_report;
 std::vector<std::string> pending_traffic_notices;
 uint64_t pending_radio_unread = 0;
 uint64_t observed_radio_ship_id = 0;
 uint64_t observed_radio_unread = 0;
+
+struct OperationalDamageReadyInterrupt {};
+bool operational_damage_report_active = false;
 uint64_t phase_event_generation = 0;
 uint64_t displayed_phase_event_generation = 0;
 std::string active_prompt;
@@ -236,6 +240,12 @@ void collect_player_events()
          }
          observed_radio_unread = event->unread_count;
          break;
+      case ct::PlayerEventKind::OperationalDamageReady:
+         if(event->operational_damage_report->present &&
+               !latest_operational_damage_report) {
+            latest_operational_damage_report = event->operational_damage_report;
+         }
+         break;
       }
    }
 }
@@ -329,6 +339,9 @@ int door_get_live_key()
 {
    for(;;) {
       collect_player_events();
+      if(latest_operational_damage_report && !operational_damage_report_active) {
+         throw OperationalDamageReadyInterrupt{};
+      }
       flush_player_events();
       const auto key = od_get_key(FALSE);
       if(key != 0) {
@@ -351,8 +364,13 @@ int door_get_live_key()
 int door_get_translated_key()
 {
    while(true) {
+      collect_player_events();
+      if(latest_operational_damage_report && !operational_damage_report_active) {
+         throw OperationalDamageReadyInterrupt{};
+      }
       tODInputEvent event{};
-      while(!od_get_input(&event, OD_NO_TIMEOUT, GETIN_NORMAL)) {
+      if(!od_get_input(&event, 50, GETIN_NORMAL)) {
+         continue;
       }
       const auto key = static_cast<unsigned char>(event.chKeyPress);
       output().reset_paging();
@@ -11563,16 +11581,121 @@ void show_terminal_incident_log(const ct::TerminalReport& report)
    wait_for_enter();
 }
 
-void run_operational_loop(ct::TlsConnection& connection, ct::ServerHello& hello)
+void render_operational_damage_report(const ct::OperationalDamageReport& report)
 {
-   ct::CommandIdGenerator random;
-   uint64_t request_id = 1000;
-   uint64_t packet_generation = std::numeric_limits<uint64_t>::max();
+   od_clr_scr();
+   door_heading("Engineering Casualty Report\n\r===========================\n\r\n\r");
+   door_label("Date:      ");
+   door_number("%s\n\r", game_date(report.occurred_second).c_str());
+   door_label("Ship:      ");
+   door_identifier("%s\n\r", safe_field(report.ship_name).c_str());
+   door_label("Cause:     ");
+   switch(report.cause) {
+   case ct::OperationalDamageCause::JumpTransition:
+      door_warning("Discordant Jump transition\n\r");
+      door_label("Plot:      ");
+      door_identifier("%s", safe_field(report.origin_system_name).c_str());
+      door_label(" to ");
+      door_identifier("%s\n\r", safe_field(report.destination_system_name).c_str());
+      if(report.misjump) {
+         door_error("Outcome:   Misjump into deep space\n\r");
+      } else {
+         door_warning("Outcome:   Inaccurate emergence; ");
+         door_number("%u", report.inaccurate_extra_days);
+         door_warning(" additional approach day%s\n\r",
+                      report.inaccurate_extra_days == 1 ? "" : "s");
+      }
+      break;
+   case ct::OperationalDamageCause::FuelProcessing:
+      door_warning("Exceptional fuel-processing failure\n\r");
+      door_label("Location:  ");
+      door_identifier("%s\n\r", safe_field(report.destination_system_name).c_str());
+      break;
+   case ct::OperationalDamageCause::MaintenanceNeglect:
+      door_warning("Deterioration after unpaid routine upkeep\n\r");
+      door_label("Location:  ");
+      door_identifier("%s\n\r", safe_field(report.destination_system_name).c_str());
+      break;
+   }
+   door_label("Subsystem: ");
+   door_identifier("%s\n\r", safe_field(report.subsystem_label).c_str());
+   door_label("Damage:    +");
+   door_number("%u hit%s", report.damage_hits, report.damage_hits == 1 ? "" : "s");
+   door_label("; ");
+   door_number("%u/%u", report.sustained_hits, report.maximum_hits);
+   door_label(" sustained\n\r");
+   door_label("Effect:    ");
+   door_warning("%s\n\r", safe_field(report.operational_effect).c_str());
+   door_information(
+      "\n\rThe filed plan and game clock continue. Acknowledgement confirms receipt; "
+      "it does not repair the subsystem.\n\r");
+}
+
+bool run_operational_damage_reports(
+   ct::TlsConnection& connection,
+   const ct::ServerHello& hello,
+   ct::CommandIdGenerator& random,
+   uint64_t& request_id)
+{
+   const HelpScope help_scope(ct::DoorHelpTopic::OperationalDamageReport);
+   struct ActiveReportGuard {
+      ActiveReportGuard() { operational_damage_report_active = true; }
+      ~ActiveReportGuard() { operational_damage_report_active = false; }
+   } guard;
+
+   auto report = ct::get_operational_damage_report(
+      connection, hello.assigned_epoch, random_command_id(random), request_id++);
+   latest_operational_damage_report.reset();
+   while(report.present) {
+      render_operational_damage_report(report);
+      door_option_prompt({
+         "[Enter] Acknowledge report",
+         "[Q] Leave game",
+         "[?] Help",
+      });
+      const auto action = static_cast<char>(std::toupper(
+         static_cast<unsigned char>(od_get_key(TRUE))));
+      if(action == '?') {
+         show_context_help();
+         continue;
+      }
+      if(action == 'Q') {
+         if(confirm_return_to_bbs()) {
+            latest_operational_damage_report = report;
+            return false;
+         }
+         continue;
+      }
+      if(action != '\r' && action != '\n' && action != 0) {
+         continue;
+      }
+      report = ct::acknowledge_operational_damage_report(
+         connection, hello.assigned_epoch, report.report_id,
+         random_command_id(random), request_id++);
+   }
+   return true;
+}
+
+void run_operational_session_loop(
+   ct::TlsConnection& connection,
+   ct::ServerHello& hello,
+   ct::CommandIdGenerator& random,
+   uint64_t& request_id,
+   uint64_t& packet_generation,
+   bool& damage_reports_checked)
+{
    for(;;) {
       if(hello.phase == ct::PlayerPhase::NewUser) {
          return;
       }
       collect_player_events();
+      if(!damage_reports_checked || latest_operational_damage_report) {
+         damage_reports_checked = true;
+         if(!run_operational_damage_reports(
+               connection, hello, random, request_id)) {
+            return;
+         }
+      }
       if(latest_phase_status.has_value()) {
          hello.phase = latest_phase_status->phase;
       }
@@ -11751,6 +11874,28 @@ void run_operational_loop(ct::TlsConnection& connection, ct::ServerHello& hello)
       }
       if(run_command_console(connection, hello, random, request_id)) {
          return;
+      }
+   }
+}
+
+void run_operational_loop(ct::TlsConnection& connection, ct::ServerHello& hello)
+{
+   ct::CommandIdGenerator random;
+   uint64_t request_id = 1000;
+   uint64_t packet_generation = std::numeric_limits<uint64_t>::max();
+   bool damage_reports_checked = false;
+   for(;;) {
+      try {
+         run_operational_session_loop(
+            connection,
+            hello,
+            random,
+            request_id,
+            packet_generation,
+            damage_reports_checked);
+         return;
+      } catch(const OperationalDamageReadyInterrupt&) {
+         continue;
       }
    }
 }

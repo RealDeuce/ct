@@ -665,6 +665,18 @@ offers accumulated in transit. Review or classify it, then take the arrival
 watch when required. Uneventful authorized stages can complete without an
 extra prompt.
 
+If a discordant Jump transition, exceptional fuel-processing failure, or
+unpaid-upkeep check damages a subsystem, an **Engineering Casualty Report**
+interrupts the next safe prompt or appears before ordinary command work on the
+next sign-on. It identifies the operation, ship, subsystem, new and resulting
+hits, operational effect, and any inaccurate-Jump approach delay. Reports are
+shown oldest first and remain until Enter positively acknowledges them. Q
+leaves the current report pending. Acknowledgement records that the captain saw
+the consequence; it neither repairs the ship nor stops the game clock or a
+still-valid plan. Combat consequences remain consolidated in their encounter,
+combat, and Command Loss Report screens rather than producing a report for
+every hit.
+
 ## Encounters and combat
 
 An encounter presents only the actions legal in that situation, such as fighting,

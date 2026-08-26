@@ -21,7 +21,7 @@ namespace ct
 namespace
 {
 
-constexpr uint16_t PROTOCOL_VERSION = 9;
+constexpr uint16_t PROTOCOL_VERSION = 10;
 constexpr size_t MAX_FRAME_BYTES = 1024 * 1024;
 
 void send_frame(TlsConnection& connection, const kj::ArrayPtr<const kj::byte> message)
@@ -1405,6 +1405,50 @@ ArrivalPacket decode_arrival_packet(const rpc::Response::Reader response)
       result.items.push_back(decode_message_item(item));
    }
    return result;
+}
+
+OperationalDamageReport decode_operational_damage_report(
+   const rpc::OperationalDamageReport::Reader source,
+   const uint64_t committed_sequence,
+   const uint64_t revision,
+   const PlayerPhase phase)
+{
+   OperationalDamageCause cause;
+   switch(source.getCause()) {
+   case rpc::OperationalDamageCause::JUMP_TRANSITION:
+      cause = OperationalDamageCause::JumpTransition;
+      break;
+   case rpc::OperationalDamageCause::FUEL_PROCESSING:
+      cause = OperationalDamageCause::FuelProcessing;
+      break;
+   case rpc::OperationalDamageCause::MAINTENANCE_NEGLECT:
+      cause = OperationalDamageCause::MaintenanceNeglect;
+      break;
+   }
+   return OperationalDamageReport{
+      .present = source.getPresent(),
+      .report_id = source.getReportId(),
+      .occurred_second = source.getOccurredSecond(),
+      .ship_id = source.getShipId(),
+      .ship_name = source.getShipName().cStr(),
+      .cause = cause,
+      .origin_system_id = source.getOriginSystemId(),
+      .origin_system_name = source.getOriginSystemName().cStr(),
+      .destination_system_id = source.getDestinationSystemId(),
+      .destination_system_name = source.getDestinationSystemName().cStr(),
+      .inaccurate_extra_days = source.getInaccurateExtraDays(),
+      .misjump = source.getMisjump(),
+      .subsystem_id = source.getSubsystemId(),
+      .subsystem_kind = decode_ship_subsystem_kind(source.getSubsystemKind()),
+      .subsystem_label = source.getSubsystemLabel().cStr(),
+      .damage_hits = source.getDamageHits(),
+      .sustained_hits = source.getSustainedHits(),
+      .maximum_hits = source.getMaximumHits(),
+      .operational_effect = source.getOperationalEffect().cStr(),
+      .committed_sequence = committed_sequence,
+      .revision = revision,
+      .phase = phase,
+   };
 }
 
 rpc::SystemMappingChoice encode_system_mapping_choice(
@@ -4074,6 +4118,53 @@ ArrivalPacket open_arrival_packet(
              checked_response(reader.getRoot<rpc::Envelope>(), command_id));
 }
 
+OperationalDamageReport get_operational_damage_report(
+   TlsConnection& connection,
+   const uint64_t session_epoch,
+   const std::array<uint8_t, 16>& command_id,
+   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, session_epoch, request_id, command_id, request);
+   request.setGetOperationalDamageReport();
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, session_epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   const auto response = checked_response(reader.getRoot<rpc::Envelope>(), command_id);
+   if(!response.isOperationalDamageReport()) {
+      throw std::runtime_error("expected OperationalDamageReport");
+   }
+   return decode_operational_damage_report(
+      response.getOperationalDamageReport(), response.getCommittedSequence(),
+      response.getRevision(), decode_response_phase(response.getPhase()));
+}
+
+OperationalDamageReport acknowledge_operational_damage_report(
+   TlsConnection& connection,
+   const uint64_t session_epoch,
+   const uint64_t report_id,
+   const std::array<uint8_t, 16>& command_id,
+   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, session_epoch, request_id, command_id, request);
+   request.initAcknowledgeOperationalDamageReport().setReportId(report_id);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, session_epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   const auto response = checked_response(reader.getRoot<rpc::Envelope>(), command_id);
+   if(!response.isOperationalDamageReport()) {
+      throw std::runtime_error("expected OperationalDamageReport");
+   }
+   return decode_operational_damage_report(
+      response.getOperationalDamageReport(), response.getCommittedSequence(),
+      response.getRevision(), decode_response_phase(response.getPhase()));
+}
+
 MessageManagement get_message_management(
    TlsConnection& connection,
    const uint64_t session_epoch,
@@ -4399,6 +4490,7 @@ std::optional<PlayerEvent> poll_event(TlsConnection& connection,
       .traffic_contact = std::nullopt,
       .checkpoint = std::nullopt,
       .encounter = std::nullopt,
+      .operational_damage_report = std::nullopt,
       .observed_second = 0,
       .system_id = 0,
    };
@@ -4519,6 +4611,11 @@ std::optional<PlayerEvent> poll_event(TlsConnection& connection,
       const auto unread = event.getRadioUnread();
       result.ship_id = unread.getShipId();
       result.unread_count = unread.getUnreadCount();
+   } else if(event.isOperationalDamageReady()) {
+      result.kind = PlayerEventKind::OperationalDamageReady;
+      result.operational_damage_report = decode_operational_damage_report(
+         event.getOperationalDamageReady(), event.getCommittedSequence(), 0,
+         PlayerPhase::Interplanetary);
    } else {
       throw std::runtime_error("unknown unsolicited CT-RPC event");
    }

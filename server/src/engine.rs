@@ -222,6 +222,13 @@ impl Engine {
         Ok(self.store.pending_encounter(identity)?)
     }
 
+    pub fn pending_operational_damage_report(
+        &self,
+        identity: &PlayerIdentity,
+    ) -> Result<crate::wire::OperationalDamageReport, EngineError> {
+        Ok(self.store.pending_operational_damage_report(identity)?)
+    }
+
     pub fn radio_unread_count(&self, identity: &PlayerIdentity) -> Result<(u64, u64), EngineError> {
         Ok(self.store.radio_unread_count(identity)?)
     }

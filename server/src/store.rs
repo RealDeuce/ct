@@ -66,12 +66,13 @@ use crate::wire::{
     FlightPlanProposal, FlightPlanSnapshot, FlightPlanState, FlightPlanStep, FlightPlanWarning,
     FuelAccessKind, FuelOperation, FuelOperationTiming, FuelPurchaseReceipt, FuelSourceBodyKind,
     InstitutionalAffiliation, KnownBelt, KnownDestinations, KnownSystemSummary, MarketOffer,
-    MarketSnapshot, MessageClassification, MessageItem, MessageManagement, OriginDossier, Outcome,
-    OutcomeKind, PlayerCreation, PlayerIdentity, PlayerPhase, PriceDistribution,
-    ProvisionPurchaseReceipt, ShipActivityKind as WireShipActivityKind, ShipActivityStatus,
-    ShipAmmunitionStatus, ShipProvisionStatus, ShipStatusSnapshot, ShipSubsystemKind,
-    ShipSubsystemStatus, SystemMappingChoice, SystemMappingState, SystemMappingStatus,
-    TaskRouteAssessment, TerminalReport, TravelStage, TravelStatus, WaypointAuthority,
+    MarketSnapshot, MessageClassification, MessageItem, MessageManagement, OperationalDamageCause,
+    OperationalDamageReport, OriginDossier, Outcome, OutcomeKind, PlayerCreation, PlayerIdentity,
+    PlayerPhase, PriceDistribution, ProvisionPurchaseReceipt,
+    ShipActivityKind as WireShipActivityKind, ShipActivityStatus, ShipAmmunitionStatus,
+    ShipProvisionStatus, ShipStatusSnapshot, ShipSubsystemKind, ShipSubsystemStatus,
+    SystemMappingChoice, SystemMappingState, SystemMappingStatus, TaskRouteAssessment,
+    TerminalReport, TravelStage, TravelStatus, WaypointAuthority,
 };
 
 type SequenceDatabase = Database<U64<BE>, Bytes>;
@@ -103,6 +104,7 @@ const META_NEXT_ENCOUNTER_ID: &str = "next-encounter-id";
 const META_NEXT_RADIO_TRANSMISSION_ID: &str = "next-radio-transmission-id";
 const META_NEXT_RADIO_RECEPTION_ID: &str = "next-radio-reception-id";
 const META_NEXT_RESOURCE_LODE_ID: &str = "next-resource-lode-id";
+const META_NEXT_OPERATIONAL_DAMAGE_REPORT_ID: &str = "next-operational-damage-report-id";
 const META_PENDING_SYSTEM_PUBLICATIONS: &str = "pending-system-publications";
 const META_SYSTEM_VISITS_BACKFILL_VERSION: &str = "system-visits-backfill-version";
 const META_GAME_SECOND: &str = "game-second";
@@ -881,7 +883,7 @@ fn reserved_unrefined_fuel(ship: &ShipRecord) -> u64 {
     }
 }
 
-fn apply_fuel_processing_damage(ship: &mut ShipRecord) {
+fn apply_fuel_processing_damage(ship: &mut ShipRecord) -> Option<DamageApplication> {
     for kind in [
         ShipSubsystemKind::JumpDrive,
         ShipSubsystemKind::ManeuverDrive,
@@ -896,9 +898,13 @@ fn apply_fuel_processing_damage(ship: &mut ShipRecord) {
             .min_by_key(|subsystem| subsystem.subsystem_id)
         {
             subsystem.sustained_hits = subsystem.sustained_hits.saturating_add(1);
-            return;
+            return Some(DamageApplication {
+                subsystem: subsystem.clone(),
+                damage_hits: 1,
+            });
         }
     }
+    None
 }
 
 /// Charges ordinary power-plant operation while the vessel is away from a
@@ -1164,6 +1170,12 @@ struct PlayerArrivalRecord {
     mail_expired: u64,
     stipend_credits: u64,
     presented: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DamageApplication {
+    subsystem: ShipSubsystemRecord,
+    damage_hits: u16,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2049,16 +2061,19 @@ fn apply_combat_damage_to_ship(vessel: &crate::combat::VesselState, ship: &mut S
     ship.revision = ship.revision.saturating_add(1);
 }
 
-fn apply_jump_transition_critical(ship: &mut ShipRecord, entropy: u64) {
+fn apply_jump_transition_critical(
+    ship: &mut ShipRecord,
+    entropy: u64,
+) -> Option<DamageApplication> {
     let eligible = ship
         .subsystems
         .iter()
         .enumerate()
-        .filter(|(_, subsystem)| subsystem.maximum_hits != 0)
+        .filter(|(_, subsystem)| subsystem.sustained_hits < subsystem.maximum_hits)
         .map(|(index, _)| index)
         .collect::<Vec<_>>();
     if eligible.is_empty() {
-        return;
+        return None;
     }
     let selected =
         eligible[crate::ship_condition::mix64(entropy ^ ship.ship_id) as usize % eligible.len()];
@@ -2070,6 +2085,10 @@ fn apply_jump_transition_critical(ship: &mut ShipRecord, entropy: u64) {
     subsystem.battlefield_repair_hits = subsystem
         .battlefield_repair_hits
         .min(subsystem.sustained_hits);
+    Some(DamageApplication {
+        subsystem: subsystem.clone(),
+        damage_hits: 1,
+    })
 }
 
 fn wire_combat_order(
@@ -3237,6 +3256,42 @@ fn reconcile_resource_lode_identifier_metadata_in(
     Ok(())
 }
 
+fn reconcile_operational_damage_report_identifier_metadata_in(
+    meta: Database<Str, Bytes>,
+    reports: Database<Bytes, Bytes>,
+    txn: &mut heed::RwTxn<'_>,
+) -> Result<(), StoreError> {
+    if meta.get(txn, META_UNIVERSE_ID)?.is_none() {
+        return Ok(());
+    }
+    let minimum =
+        reports
+            .iter(txn)?
+            .try_fold(1_u64, |minimum, entry| -> Result<u64, StoreError> {
+                let (key, encoded) = entry?;
+                decode_operational_damage_report(encoded)?;
+                let report_id = key
+                    .get(8..16)
+                    .ok_or(StoreError::Corrupt("invalid operational damage report key"))
+                    .and_then(decode_u64)?;
+                let next = report_id.checked_add(1).ok_or(StoreError::Corrupt(
+                    "operational damage report identifier overflow",
+                ))?;
+                Ok(minimum.max(next))
+            })?;
+    let actual = get_meta_u64(meta, txn, META_NEXT_OPERATIONAL_DAMAGE_REPORT_ID)?;
+    let reconciled = actual.unwrap_or(1).max(minimum);
+    if actual != Some(reconciled) {
+        put_meta_u64(
+            meta,
+            txn,
+            META_NEXT_OPERATIONAL_DAMAGE_REPORT_ID,
+            reconciled,
+        )?;
+    }
+    Ok(())
+}
+
 fn reconcile_initial_system_publications_in(
     meta: Database<Str, Bytes>,
     systems: UniverseDatabase,
@@ -3544,6 +3599,7 @@ pub struct Store {
     ship_condition_events: Database<Bytes, Bytes>,
     person_training_events: Database<Bytes, Bytes>,
     ship_activity_events: Database<Bytes, Bytes>,
+    operational_damage_reports: Database<Bytes, Bytes>,
     player_arrivals: Database<Bytes, Bytes>,
     player_message_state: Database<Bytes, Bytes>,
     player_feed_cursors: Database<Bytes, Bytes>,
@@ -3597,7 +3653,7 @@ impl Store {
         let env = unsafe {
             EnvOpenOptions::new()
                 .map_size(map_size_bytes)
-                .max_dbs(86)
+                .max_dbs(87)
                 .open(path.as_ref())?
         };
         let mut txn = env.write_txn()?;
@@ -3656,6 +3712,8 @@ impl Store {
             env.create_database(&mut txn, Some("person-training-events"))?;
         let ship_activity_events: Database<Bytes, Bytes> =
             env.create_database(&mut txn, Some("ship-activity-events"))?;
+        let operational_damage_reports =
+            env.create_database(&mut txn, Some("operational-damage-reports"))?;
         let player_arrivals = env.create_database(&mut txn, Some("player-arrivals"))?;
         let player_message_state = env.create_database(&mut txn, Some("player-message-state"))?;
         let player_feed_cursors = env.create_database(&mut txn, Some("player-feed-cursors"))?;
@@ -3711,6 +3769,11 @@ impl Store {
             &mut txn,
         )?;
         reconcile_resource_lode_identifier_metadata_in(meta, resource_lodes, &mut txn)?;
+        reconcile_operational_damage_report_identifier_metadata_in(
+            meta,
+            operational_damage_reports,
+            &mut txn,
+        )?;
         reconcile_initial_system_publications_in(meta, systems, system_publications, &mut txn)?;
         reconcile_system_visits_in(
             meta,
@@ -3783,6 +3846,7 @@ impl Store {
             ship_condition_events,
             person_training_events,
             ship_activity_events,
+            operational_damage_reports,
             player_arrivals,
             player_message_state,
             player_feed_cursors,
@@ -4996,6 +5060,22 @@ impl Store {
                     message,
                 },
             },
+            Command::GetOperationalDamageReport => OutcomeKind::OperationalDamageReport(
+                self.pending_operational_damage_report_in(txn, &queued.identity)?,
+            ),
+            Command::AcknowledgeOperationalDamageReport { report_id } => {
+                match self.acknowledge_operational_damage_report_in(
+                    txn,
+                    &queued.identity,
+                    report_id,
+                )? {
+                    RuleResult::Applied(report) => OutcomeKind::OperationalDamageReport(report),
+                    RuleResult::Rejected(message) => OutcomeKind::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message,
+                    },
+                }
+            }
             Command::ResolveEncounter(ref request) => {
                 match self.resolve_encounter_in(txn, &queued.identity, request)? {
                     RuleResult::Applied(result) => OutcomeKind::EncounterResult(result),
@@ -13473,6 +13553,15 @@ impl Store {
             self.interception_watches.delete(txn, &ship_id)?;
         }
 
+        let damage_report_keys = self
+            .operational_damage_reports
+            .prefix_iter(txn, &identity_key)?
+            .map(|entry| entry.map(|(key, _)| key.to_vec()).map_err(StoreError::Heed))
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for key in damage_report_keys {
+            self.operational_damage_reports.delete(txn, &key)?;
+        }
+
         self.careers.delete(txn, &identity_key)?;
         self.carriage_declarations.delete(txn, &identity_key)?;
         self.radio_cooldowns.delete(txn, &identity_key)?;
@@ -17093,6 +17182,120 @@ impl Store {
             items,
             mapping_status: self.system_mapping_status_in(txn, identity, system.id)?,
         })
+    }
+
+    fn pending_operational_damage_report_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+    ) -> Result<OperationalDamageReport, StoreError> {
+        let prefix = encode_identity(identity);
+        let mut reports = self.operational_damage_reports.prefix_iter(txn, &prefix)?;
+        match reports.next() {
+            Some(entry) => {
+                let (_, encoded) = entry?;
+                decode_operational_damage_report(encoded)
+            }
+            None => Ok(OperationalDamageReport::none()),
+        }
+    }
+
+    pub fn pending_operational_damage_report(
+        &self,
+        identity: &PlayerIdentity,
+    ) -> Result<OperationalDamageReport, StoreError> {
+        let txn = self.env.read_txn()?;
+        self.pending_operational_damage_report_in(&txn, identity)
+    }
+
+    fn acknowledge_operational_damage_report_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        report_id: u64,
+    ) -> Result<RuleResult<OperationalDamageReport>, StoreError> {
+        let pending = self.pending_operational_damage_report_in(txn, identity)?;
+        if !pending.present {
+            return Ok(RuleResult::Rejected(
+                "there is no engineering casualty report awaiting acknowledgement".into(),
+            ));
+        }
+        if pending.report_id != report_id {
+            return Ok(RuleResult::Rejected(
+                "that engineering casualty report is no longer current".into(),
+            ));
+        }
+        self.operational_damage_reports
+            .delete(txn, &operational_damage_report_key(identity, report_id))?;
+        Ok(RuleResult::Applied(
+            self.pending_operational_damage_report_in(txn, identity)?,
+        ))
+    }
+
+    fn operational_damage_system_name_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        system_id: u64,
+    ) -> Result<String, StoreError> {
+        if system_id == 0 {
+            return Ok("Deep space".into());
+        }
+        self.systems
+            .get(txn, &system_id)?
+            .map(decode_stellar_system)
+            .transpose()?
+            .map(|system| system.name)
+            .ok_or(StoreError::Corrupt("damage report system is missing"))
+    }
+
+    fn record_operational_damage_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        ship: &ShipRecord,
+        occurred_second: u64,
+        cause: OperationalDamageCause,
+        origin_system_id: u64,
+        destination_system_id: u64,
+        inaccurate_extra_days: u8,
+        misjump: bool,
+        damage: DamageApplication,
+    ) -> Result<OperationalDamageReport, StoreError> {
+        let report_id = take_next_id(self.meta, txn, META_NEXT_OPERATIONAL_DAMAGE_REPORT_ID)?;
+        let report = OperationalDamageReport {
+            present: true,
+            report_id,
+            occurred_second,
+            ship_id: ship.ship_id,
+            ship_name: ship.name.clone(),
+            cause,
+            origin_system_id,
+            origin_system_name: self.operational_damage_system_name_in(txn, origin_system_id)?,
+            destination_system_id,
+            destination_system_name: self
+                .operational_damage_system_name_in(txn, destination_system_id)?,
+            inaccurate_extra_days,
+            misjump,
+            subsystem_id: damage.subsystem.subsystem_id,
+            subsystem_kind: damage.subsystem.kind,
+            subsystem_label: damage.subsystem.label.clone(),
+            damage_hits: damage.damage_hits,
+            sustained_hits: damage.subsystem.sustained_hits,
+            maximum_hits: damage.subsystem.maximum_hits,
+            operational_effect: subsystem_operational_effect(
+                damage.subsystem.kind,
+                damage
+                    .subsystem
+                    .sustained_hits
+                    .saturating_sub(damage.subsystem.battlefield_repair_hits),
+                damage.subsystem.maximum_hits,
+            ),
+        };
+        self.operational_damage_reports.put(
+            txn,
+            &operational_damage_report_key(&ship.command, report_id),
+            &encode_operational_damage_report(&report)?,
+        )?;
+        Ok(report)
     }
 
     fn message_management_in(
@@ -27805,6 +28008,7 @@ impl Store {
         self.ship_condition_events.clear(&mut txn)?;
         self.person_training_events.clear(&mut txn)?;
         self.ship_activity_events.clear(&mut txn)?;
+        self.operational_damage_reports.clear(&mut txn)?;
         self.player_arrivals.clear(&mut txn)?;
         self.player_message_state.clear(&mut txn)?;
         self.player_feed_cursors.clear(&mut txn)?;
@@ -27926,6 +28130,12 @@ impl Store {
         put_meta_u64(self.meta, &mut txn, META_NEXT_RADIO_TRANSMISSION_ID, 1)?;
         put_meta_u64(self.meta, &mut txn, META_NEXT_RADIO_RECEPTION_ID, 1)?;
         put_meta_u64(self.meta, &mut txn, META_NEXT_RESOURCE_LODE_ID, 1)?;
+        put_meta_u64(
+            self.meta,
+            &mut txn,
+            META_NEXT_OPERATIONAL_DAMAGE_REPORT_ID,
+            1,
+        )?;
         put_meta_u64(self.meta, &mut txn, META_GAME_SECOND, 0)?;
         put_meta_u64(
             self.meta,
@@ -30124,7 +30334,7 @@ impl Store {
                     .filter(|(_, subsystem)| subsystem.sustained_hits < subsystem.maximum_hits)
                     .map(|(index, _)| index)
                     .collect::<Vec<_>>();
-                if let Some(choice) =
+                let damage = if let Some(choice) =
                     crate::ship_condition::stable_index(entropy ^ 0x4441_4d41_4745, eligible.len())
                 {
                     let subsystem = &mut ship.subsystems[eligible[choice]];
@@ -30136,6 +30346,25 @@ impl Store {
                     subsystem.sustained_hits += hits;
                     subsystem.neglect_damage_hits =
                         subsystem.neglect_damage_hits.saturating_add(hits);
+                    Some(DamageApplication {
+                        subsystem: subsystem.clone(),
+                        damage_hits: hits,
+                    })
+                } else {
+                    None
+                };
+                if let Some(damage) = damage {
+                    self.record_operational_damage_in(
+                        txn,
+                        &ship,
+                        due_second,
+                        OperationalDamageCause::MaintenanceNeglect,
+                        ship.system_id,
+                        ship.system_id,
+                        0,
+                        false,
+                        damage,
+                    )?;
                 }
             }
         }
@@ -31407,7 +31636,19 @@ impl Store {
                     ship.maintenance.warranty_voided = true;
                 }
                 if *processing_damages_jump_drive {
-                    apply_fuel_processing_damage(&mut ship);
+                    if let Some(damage) = apply_fuel_processing_damage(&mut ship) {
+                        self.record_operational_damage_in(
+                            txn,
+                            &ship,
+                            due_second,
+                            OperationalDamageCause::FuelProcessing,
+                            ship.system_id,
+                            ship.system_id,
+                            0,
+                            false,
+                            damage,
+                        )?;
+                    }
                 }
                 for subsystem in &mut ship.subsystems {
                     if matches!(
@@ -31491,7 +31732,19 @@ impl Store {
                         .saturating_sub(*quantity_millitons);
                 }
                 if *processing_damages_jump_drive {
-                    apply_fuel_processing_damage(&mut ship);
+                    if let Some(damage) = apply_fuel_processing_damage(&mut ship) {
+                        self.record_operational_damage_in(
+                            txn,
+                            &ship,
+                            due_second,
+                            OperationalDamageCause::FuelProcessing,
+                            ship.system_id,
+                            ship.system_id,
+                            0,
+                            false,
+                            damage,
+                        )?;
+                    }
                 }
             }
             ShipActivityKind::Refurbishment {
@@ -32205,7 +32458,19 @@ impl Store {
                     }
                 }
                 if critical_transition {
-                    apply_jump_transition_critical(&mut ship, due_second);
+                    if let Some(damage) = apply_jump_transition_critical(&mut ship, due_second) {
+                        self.record_operational_damage_in(
+                            txn,
+                            &ship,
+                            due_second,
+                            OperationalDamageCause::JumpTransition,
+                            leg.origin.system_id(),
+                            0,
+                            0,
+                            true,
+                            damage,
+                        )?;
+                    }
                 }
                 ship.system_id = 0;
                 ship.location = ShipLocationRecord::Holding {
@@ -32289,7 +32554,19 @@ impl Store {
                     unreachable!()
                 };
                 if critical_transition {
-                    apply_jump_transition_critical(&mut ship, due_second);
+                    if let Some(damage) = apply_jump_transition_critical(&mut ship, due_second) {
+                        self.record_operational_damage_in(
+                            txn,
+                            &ship,
+                            due_second,
+                            OperationalDamageCause::JumpTransition,
+                            origin_system_id,
+                            destination_system_id,
+                            inaccurate_extra_days,
+                            false,
+                            damage,
+                        )?;
+                    }
                 }
                 ship.maintenance.transit_count = ship.maintenance.transit_count.saturating_add(1);
                 for subsystem in &mut ship.subsystems {
@@ -36009,6 +36286,76 @@ fn player_system_mapping_key(identity: &PlayerIdentity, system_id: u64) -> [u8; 
     player_feed_cursor_key(identity, system_id)
 }
 
+fn operational_damage_report_key(identity: &PlayerIdentity, report_id: u64) -> [u8; 16] {
+    player_feed_cursor_key(identity, report_id)
+}
+
+fn encode_operational_damage_report(
+    report: &OperationalDamageReport,
+) -> Result<Vec<u8>, StoreError> {
+    let mut bytes = vec![1, u8::from(report.present)];
+    bytes.extend_from_slice(&report.report_id.to_be_bytes());
+    bytes.extend_from_slice(&report.occurred_second.to_be_bytes());
+    bytes.extend_from_slice(&report.ship_id.to_be_bytes());
+    encode_text(&mut bytes, &report.ship_name)?;
+    bytes.push(match report.cause {
+        OperationalDamageCause::JumpTransition => 0,
+        OperationalDamageCause::FuelProcessing => 1,
+        OperationalDamageCause::MaintenanceNeglect => 2,
+    });
+    bytes.extend_from_slice(&report.origin_system_id.to_be_bytes());
+    encode_text(&mut bytes, &report.origin_system_name)?;
+    bytes.extend_from_slice(&report.destination_system_id.to_be_bytes());
+    encode_text(&mut bytes, &report.destination_system_name)?;
+    bytes.push(report.inaccurate_extra_days);
+    bytes.push(u8::from(report.misjump));
+    bytes.extend_from_slice(&report.subsystem_id.to_be_bytes());
+    bytes.push(encode_ship_subsystem_kind(report.subsystem_kind));
+    encode_text(&mut bytes, &report.subsystem_label)?;
+    bytes.extend_from_slice(&report.damage_hits.to_be_bytes());
+    bytes.extend_from_slice(&report.sustained_hits.to_be_bytes());
+    bytes.extend_from_slice(&report.maximum_hits.to_be_bytes());
+    encode_text(&mut bytes, &report.operational_effect)?;
+    Ok(bytes)
+}
+
+fn decode_operational_damage_report(bytes: &[u8]) -> Result<OperationalDamageReport, StoreError> {
+    let mut decoder = Decoder::new(bytes);
+    if decoder.u8()? != 1 {
+        return Err(StoreError::Corrupt(
+            "unsupported operational damage report record",
+        ));
+    }
+    let report = OperationalDamageReport {
+        present: decoder.u8()? != 0,
+        report_id: decoder.u64()?,
+        occurred_second: decoder.u64()?,
+        ship_id: decoder.u64()?,
+        ship_name: decoder.text()?,
+        cause: match decoder.u8()? {
+            0 => OperationalDamageCause::JumpTransition,
+            1 => OperationalDamageCause::FuelProcessing,
+            2 => OperationalDamageCause::MaintenanceNeglect,
+            _ => return Err(StoreError::Corrupt("unknown operational damage cause")),
+        },
+        origin_system_id: decoder.u64()?,
+        origin_system_name: decoder.text()?,
+        destination_system_id: decoder.u64()?,
+        destination_system_name: decoder.text()?,
+        inaccurate_extra_days: decoder.u8()?,
+        misjump: decoder.u8()? != 0,
+        subsystem_id: decoder.u16()?,
+        subsystem_kind: decode_ship_subsystem_kind(decoder.u8()?)?,
+        subsystem_label: decoder.text()?,
+        damage_hits: decoder.u16()?,
+        sustained_hits: decoder.u16()?,
+        maximum_hits: decoder.u16()?,
+        operational_effect: decoder.text()?,
+    };
+    decoder.finish()?;
+    Ok(report)
+}
+
 fn encode_player_arrival(record: &PlayerArrivalRecord) -> Vec<u8> {
     let mut bytes = vec![1];
     for value in [
@@ -38029,6 +38376,11 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
             bytes.extend_from_slice(&encounter_id.to_be_bytes());
             bytes.extend_from_slice(&expected_revision.to_be_bytes());
         }
+        Command::GetOperationalDamageReport => bytes.push(85),
+        Command::AcknowledgeOperationalDamageReport { report_id } => {
+            bytes.push(86);
+            bytes.extend_from_slice(&report_id.to_be_bytes());
+        }
         Command::ResolveEncounter(ref request) => {
             bytes.push(35);
             bytes.extend_from_slice(&request.encounter_id.to_be_bytes());
@@ -38550,6 +38902,10 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
         84 => Command::AcknowledgeTerminalReport {
             encounter_id: decoder.u64()?,
             expected_revision: decoder.u64()?,
+        },
+        85 => Command::GetOperationalDamageReport,
+        86 => Command::AcknowledgeOperationalDamageReport {
+            report_id: decoder.u64()?,
         },
         35 => {
             let encounter_id = decoder.u64()?;
@@ -40212,7 +40568,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(22);
+    bytes.push(23);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -40366,6 +40722,12 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
             bytes.push(36);
             encode_terminal_report_record(&mut bytes, value)?;
         }
+        OutcomeKind::OperationalDamageReport(value) => {
+            bytes.push(37);
+            let encoded = encode_operational_damage_report(value)?;
+            bytes.extend_from_slice(&(encoded.len() as u32).to_be_bytes());
+            bytes.extend_from_slice(&encoded);
+        }
         OutcomeKind::TaskLedger(value) => {
             bytes.push(24);
             encode_task_ledger_into(&mut bytes, value)?;
@@ -40509,6 +40871,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 20
         && version != 21
         && version != 22
+        && version != 23
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -40728,6 +41091,12 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         }
         36 if version >= 20 => {
             OutcomeKind::TerminalReport(decode_terminal_report_record(&mut decoder)?)
+        }
+        37 if version >= 23 => {
+            let length = decoder.u32()? as usize;
+            OutcomeKind::OperationalDamageReport(decode_operational_damage_report(
+                decoder.take(length)?,
+            )?)
         }
         _ => return Err(StoreError::Corrupt("unknown outcome kind")),
     };
@@ -46816,7 +47185,8 @@ mod tests {
             .find(|subsystem| subsystem.subsystem_id == jump_id)
             .unwrap()
             .sustained_hits;
-        apply_fuel_processing_damage(&mut ship);
+        let damage = apply_fuel_processing_damage(&mut ship).unwrap();
+        assert_eq!(damage.subsystem.subsystem_id, jump_id);
         assert_eq!(
             ship.subsystems
                 .iter()
@@ -46838,7 +47208,8 @@ mod tests {
             .map(|subsystem| subsystem.subsystem_id)
             .min()
             .expect("fixture ship needs a maneuver drive");
-        apply_fuel_processing_damage(&mut ship);
+        let damage = apply_fuel_processing_damage(&mut ship).unwrap();
+        assert_eq!(damage.subsystem.subsystem_id, maneuver_id);
         assert_eq!(
             ship.subsystems
                 .iter()
@@ -46860,7 +47231,8 @@ mod tests {
             .map(|subsystem| subsystem.subsystem_id)
             .min()
             .expect("fixture ship needs a fuel system");
-        apply_fuel_processing_damage(&mut ship);
+        let damage = apply_fuel_processing_damage(&mut ship).unwrap();
+        assert_eq!(damage.subsystem.subsystem_id, fuel_system_id);
         assert_eq!(
             ship.subsystems
                 .iter()
@@ -48263,6 +48635,46 @@ mod tests {
             assert_eq!(publication.state, SystemPublicationState::UniversallyKnown);
             assert_eq!(publication.completed_second, 0);
         }
+    }
+
+    #[test]
+    fn reopening_an_older_universe_reconciles_operational_report_ids() {
+        let directory = TempDir::new().unwrap();
+        {
+            let store = Store::open(directory.path()).unwrap();
+            store
+                .initialize_universe(
+                    &[0xb1; COMMAND_ID_BYTES],
+                    *b"CT-DMG-MIGRATE1!",
+                    &initial_seeds(181),
+                    &[],
+                )
+                .unwrap();
+            let mut report = OperationalDamageReport::none();
+            report.present = true;
+            report.report_id = 7;
+            let mut txn = store.env.write_txn().unwrap();
+            store
+                .operational_damage_reports
+                .put(
+                    &mut txn,
+                    &operational_damage_report_key(&identity(), report.report_id),
+                    &encode_operational_damage_report(&report).unwrap(),
+                )
+                .unwrap();
+            store
+                .meta
+                .delete(&mut txn, META_NEXT_OPERATIONAL_DAMAGE_REPORT_ID)
+                .unwrap();
+            txn.commit().unwrap();
+        }
+
+        let store = Store::open(directory.path()).unwrap();
+        let txn = store.env.read_txn().unwrap();
+        assert_eq!(
+            get_meta_u64(store.meta, &txn, META_NEXT_OPERATIONAL_DAMAGE_REPORT_ID).unwrap(),
+            Some(8)
+        );
     }
 
     fn initialize_player_fixture(store: &Store) -> u64 {
@@ -51957,7 +52369,7 @@ mod tests {
         {
             let store = Store::open(dir.path()).unwrap();
             establish_player(&store, &identity());
-            let player = store.player_record(&identity()).unwrap().unwrap();
+            let mut player = store.player_record(&identity()).unwrap().unwrap();
             ship_id = player.ship_id;
             due = store
                 .ship_record(ship_id)
@@ -51966,6 +52378,15 @@ mod tests {
                 .maintenance
                 .next_accounting_second;
             let mut txn = store.env.write_txn().unwrap();
+            player.credits = u64::MAX / 2;
+            store
+                .players
+                .put(
+                    &mut txn,
+                    &encode_identity(&identity()),
+                    &encode_player_record(&player),
+                )
+                .unwrap();
             store
                 .schedule_ship_condition_in(&mut txn, ship_id, due)
                 .unwrap();
@@ -52543,6 +52964,162 @@ mod tests {
             coverage_revision
         );
         assert_eq!(store.systems.len(&txn).unwrap(), system_count);
+    }
+
+    #[test]
+    fn discordant_jump_damage_waits_durably_for_positive_acknowledgement() {
+        let dir = TempDir::new().unwrap();
+        {
+            let store = Store::open(dir.path()).unwrap();
+            initialize_player_fixture(&store);
+            let player = store.player_record(&identity()).unwrap().unwrap();
+            let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+            let origin_system_id = ship.system_id;
+            let destination_system_id = player
+                .known_system_ids
+                .iter()
+                .copied()
+                .find(|system_id| *system_id != origin_system_id)
+                .expect("fixture needs a second known system");
+            let due_second = 100;
+            ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+                plan_id: 92,
+                plan_revision: 1,
+                leg_index: 1,
+                origin: ShipLocusRecord::JumpLocus {
+                    system_id: origin_system_id,
+                },
+                destination: ShipLocusRecord::JumpLocus {
+                    system_id: destination_system_id,
+                },
+                started_second: 0,
+                due_second,
+                purpose: FlightLegPurpose::Jump {
+                    inaccurate_extra_days: 4,
+                    critical_transition: true,
+                },
+            });
+            let mut txn = store.env.write_txn().unwrap();
+            store
+                .ships
+                .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+                .unwrap();
+            put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, due_second).unwrap();
+            store
+                .process_player_travel_in(&mut txn, due_second, ship.ship_id)
+                .unwrap();
+            let mut arrived_ship = store
+                .ships
+                .get(&txn, &ship.ship_id)
+                .unwrap()
+                .map(decode_ship_record)
+                .transpose()
+                .unwrap()
+                .unwrap();
+            let second_damage = apply_fuel_processing_damage(&mut arrived_ship)
+                .expect("fixture needs a second damageable subsystem");
+            let second_report = store
+                .record_operational_damage_in(
+                    &mut txn,
+                    &arrived_ship,
+                    due_second + 1,
+                    OperationalDamageCause::FuelProcessing,
+                    destination_system_id,
+                    destination_system_id,
+                    0,
+                    false,
+                    second_damage,
+                )
+                .unwrap();
+            store
+                .ships
+                .put(
+                    &mut txn,
+                    &arrived_ship.ship_id,
+                    &encode_ship_record(&arrived_ship).unwrap(),
+                )
+                .unwrap();
+            txn.commit().unwrap();
+
+            let report = store
+                .pending_operational_damage_report(&identity())
+                .unwrap();
+            assert!(report.present);
+            assert_eq!(report.cause, OperationalDamageCause::JumpTransition);
+            assert_eq!(report.origin_system_id, origin_system_id);
+            assert_eq!(report.destination_system_id, destination_system_id);
+            assert_eq!(report.inaccurate_extra_days, 4);
+            assert!(!report.misjump);
+            assert_eq!(report.damage_hits, 1);
+            assert_eq!(report.sustained_hits, 1);
+            assert!(!report.operational_effect.is_empty());
+            assert!(report.report_id < second_report.report_id);
+        }
+
+        let store = Store::open(dir.path()).unwrap();
+        let pending = store
+            .pending_operational_damage_report(&identity())
+            .unwrap();
+        assert!(pending.present);
+        let (epoch, _, _) = store.issue_session_epoch(&identity()).unwrap();
+        let acknowledge = QueuedCommand {
+            identity: identity(),
+            request: request(
+                epoch,
+                190,
+                Command::AcknowledgeOperationalDamageReport {
+                    report_id: pending.report_id,
+                },
+            ),
+        };
+        store.enqueue(&acknowledge).unwrap();
+        let acknowledged = store.process_next().unwrap().unwrap();
+        assert!(matches!(
+            &acknowledged.outcome.kind,
+            OutcomeKind::OperationalDamageReport(OperationalDamageReport {
+                present: true,
+                cause: OperationalDamageCause::FuelProcessing,
+                ..
+            })
+        ));
+        store.enqueue(&acknowledge).unwrap();
+        let replay = store.process_next().unwrap().unwrap();
+        assert!(replay.outcome.replayed);
+        assert!(matches!(
+            &replay.outcome.kind,
+            OutcomeKind::OperationalDamageReport(OperationalDamageReport {
+                present: true,
+                cause: OperationalDamageCause::FuelProcessing,
+                ..
+            })
+        ));
+        let second = store
+            .pending_operational_damage_report(&identity())
+            .unwrap();
+        assert_eq!(second.cause, OperationalDamageCause::FuelProcessing);
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(
+                    epoch,
+                    191,
+                    Command::AcknowledgeOperationalDamageReport {
+                        report_id: second.report_id,
+                    },
+                ),
+            })
+            .unwrap();
+        let acknowledged = store.process_next().unwrap().unwrap();
+        assert!(matches!(
+            acknowledged.outcome.kind,
+            OutcomeKind::OperationalDamageReport(OperationalDamageReport { present: false, .. })
+        ));
+        assert!(
+            !store
+                .pending_operational_damage_report(&identity())
+                .unwrap()
+                .present
+        );
     }
 
     #[test]
@@ -62042,6 +62619,13 @@ mod tests {
             .unwrap();
         assert_eq!(power.sustained_hits, hits);
         assert_eq!(power.battlefield_repair_hits, 0);
+        assert!(
+            !store
+                .pending_operational_damage_report(&identity())
+                .unwrap()
+                .present,
+            "combat damage stays in its aggregated encounter reporting path"
+        );
     }
 
     #[test]

@@ -12,7 +12,7 @@ use crate::ct_rpc_capnp::{
 };
 use crate::i18n::DisplayFormatting;
 
-pub const PROTOCOL_VERSION: u16 = 9;
+pub const PROTOCOL_VERSION: u16 = 10;
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 pub const COMMAND_ID_BYTES: usize = 16;
 pub const MAX_NAME_BYTES: usize = 128;
@@ -2294,6 +2294,62 @@ pub struct SystemMappingStatus {
     pub changed_second: u64,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OperationalDamageCause {
+    JumpTransition,
+    FuelProcessing,
+    MaintenanceNeglect,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OperationalDamageReport {
+    pub present: bool,
+    pub report_id: u64,
+    pub occurred_second: u64,
+    pub ship_id: u64,
+    pub ship_name: String,
+    pub cause: OperationalDamageCause,
+    pub origin_system_id: u64,
+    pub origin_system_name: String,
+    pub destination_system_id: u64,
+    pub destination_system_name: String,
+    pub inaccurate_extra_days: u8,
+    pub misjump: bool,
+    pub subsystem_id: u16,
+    pub subsystem_kind: ShipSubsystemKind,
+    pub subsystem_label: String,
+    pub damage_hits: u16,
+    pub sustained_hits: u16,
+    pub maximum_hits: u16,
+    pub operational_effect: String,
+}
+
+impl OperationalDamageReport {
+    pub fn none() -> Self {
+        Self {
+            present: false,
+            report_id: 0,
+            occurred_second: 0,
+            ship_id: 0,
+            ship_name: String::new(),
+            cause: OperationalDamageCause::JumpTransition,
+            origin_system_id: 0,
+            origin_system_name: String::new(),
+            destination_system_id: 0,
+            destination_system_name: String::new(),
+            inaccurate_extra_days: 0,
+            misjump: false,
+            subsystem_id: 0,
+            subsystem_kind: ShipSubsystemKind::Other,
+            subsystem_label: String::new(),
+            damage_hits: 0,
+            sustained_hits: 0,
+            maximum_hits: 0,
+            operational_effect: String::new(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Command {
     Ping,
@@ -2374,6 +2430,10 @@ pub enum Command {
     AcknowledgeTerminalReport {
         encounter_id: u64,
         expected_revision: u64,
+    },
+    GetOperationalDamageReport,
+    AcknowledgeOperationalDamageReport {
+        report_id: u64,
     },
     ResolveEncounter(ResolveEncounterRequest),
     GetCombat,
@@ -2541,6 +2601,7 @@ impl Command {
             | Self::PreviewFlightPlan(_)
             | Self::GetEncounter
             | Self::GetTerminalReport
+            | Self::GetOperationalDamageReport
             | Self::GetCombat
             | Self::GetCombatCareer => CommandPersistence::Observation,
             Self::GetTaskLedger
@@ -2566,7 +2627,8 @@ impl Command {
             | Self::CommitFlightPlan(_)
             | Self::AcknowledgeCheckpoint { .. }
             | Self::ResolveEncounter(_) => CommandPersistence::Transaction,
-            Self::AcknowledgeTerminalReport { .. } => CommandPersistence::Transaction,
+            Self::AcknowledgeTerminalReport { .. }
+            | Self::AcknowledgeOperationalDamageReport { .. } => CommandPersistence::Transaction,
             Self::SubmitCombatOrder(_) | Self::SetCombatAutomationPolicy(_) => {
                 CommandPersistence::Transaction
             }
@@ -2663,6 +2725,7 @@ pub enum OutcomeKind {
     RadioContent(RadioContent),
     BrowserAlertStatus(crate::web_push::BrowserAlertStatus),
     BrowserAlertEnrollment(crate::web_push::BrowserAlertEnrollment),
+    OperationalDamageReport(OperationalDamageReport),
     Error { code: ErrorCode, message: String },
 }
 
@@ -3562,6 +3625,12 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
         request::GetBrowserAlertStatus(()) => Command::GetBrowserAlertStatus,
         request::CreateBrowserAlertEnrollment(()) => Command::CreateBrowserAlertEnrollment,
         request::RevokeAllBrowserAlerts(()) => Command::RevokeAllBrowserAlerts,
+        request::GetOperationalDamageReport(()) => Command::GetOperationalDamageReport,
+        request::AcknowledgeOperationalDamageReport(value) => {
+            Command::AcknowledgeOperationalDamageReport {
+                report_id: value?.get_report_id(),
+            }
+        }
     };
     Ok(CommandRequest {
         request_id,
@@ -3750,6 +3819,12 @@ pub fn encode_response(
             wire.set_url(&enrollment.url);
             wire.set_expires_unix_second(enrollment.expires_unix_second);
         }
+        OutcomeKind::OperationalDamageReport(report) => {
+            set_operational_damage_report(
+                response.reborrow().init_operational_damage_report(),
+                report,
+            );
+        }
         OutcomeKind::Combat(snapshot) => {
             set_combat_snapshot(response.reborrow().init_combat(), snapshot)?;
         }
@@ -3928,6 +4003,21 @@ pub fn encode_radio_unread(
     let mut unread = event.init_radio_unread();
     unread.set_ship_id(ship_id);
     unread.set_unread_count(unread_count);
+    finish_message(&message)
+}
+
+pub fn encode_operational_damage_ready(
+    epoch: u64,
+    committed_sequence: u64,
+    report: &OperationalDamageReport,
+) -> Result<Vec<u8>, WireError> {
+    let mut message = Builder::new_default();
+    let mut envelope = message.init_root::<envelope::Builder>();
+    envelope.set_protocol_version(PROTOCOL_VERSION);
+    envelope.set_session_epoch(epoch);
+    let mut event = envelope.init_event();
+    event.set_committed_sequence(committed_sequence);
+    set_operational_damage_report(event.init_operational_damage_ready(), report);
     finish_message(&message)
 }
 
@@ -4581,6 +4671,10 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
         Command::GetBrowserAlertStatus => builder.set_get_browser_alert_status(()),
         Command::CreateBrowserAlertEnrollment => builder.set_create_browser_alert_enrollment(()),
         Command::RevokeAllBrowserAlerts => builder.set_revoke_all_browser_alerts(()),
+        Command::GetOperationalDamageReport => builder.set_get_operational_damage_report(()),
+        Command::AcknowledgeOperationalDamageReport { report_id } => builder
+            .init_acknowledge_operational_damage_report()
+            .set_report_id(report_id),
     }
     finish_message(&message)
 }
@@ -6509,6 +6603,41 @@ fn set_terminal_report(
     Ok(())
 }
 
+pub fn set_operational_damage_report(
+    mut builder: crate::ct_rpc_capnp::operational_damage_report::Builder<'_>,
+    value: &OperationalDamageReport,
+) {
+    builder.set_present(value.present);
+    builder.set_report_id(value.report_id);
+    builder.set_occurred_second(value.occurred_second);
+    builder.set_ship_id(value.ship_id);
+    builder.set_ship_name(&value.ship_name);
+    builder.set_cause(match value.cause {
+        OperationalDamageCause::JumpTransition => {
+            crate::ct_rpc_capnp::OperationalDamageCause::JumpTransition
+        }
+        OperationalDamageCause::FuelProcessing => {
+            crate::ct_rpc_capnp::OperationalDamageCause::FuelProcessing
+        }
+        OperationalDamageCause::MaintenanceNeglect => {
+            crate::ct_rpc_capnp::OperationalDamageCause::MaintenanceNeglect
+        }
+    });
+    builder.set_origin_system_id(value.origin_system_id);
+    builder.set_origin_system_name(&value.origin_system_name);
+    builder.set_destination_system_id(value.destination_system_id);
+    builder.set_destination_system_name(&value.destination_system_name);
+    builder.set_inaccurate_extra_days(value.inaccurate_extra_days);
+    builder.set_misjump(value.misjump);
+    builder.set_subsystem_id(value.subsystem_id);
+    builder.set_subsystem_kind(encode_ship_subsystem_kind(value.subsystem_kind));
+    builder.set_subsystem_label(&value.subsystem_label);
+    builder.set_damage_hits(value.damage_hits);
+    builder.set_sustained_hits(value.sustained_hits);
+    builder.set_maximum_hits(value.maximum_hits);
+    builder.set_operational_effect(&value.operational_effect);
+}
+
 fn set_browser_alert_status(
     mut builder: crate::ct_rpc_capnp::browser_alert_status::Builder<'_>,
     status: &crate::web_push::BrowserAlertStatus,
@@ -7847,6 +7976,18 @@ mod tests {
                 session_epoch: 23,
                 command_id: [0xb8; COMMAND_ID_BYTES],
                 command: Command::RevokeAllBrowserAlerts,
+            },
+            CommandRequest {
+                request_id: 37,
+                session_epoch: 23,
+                command_id: [0xb9; COMMAND_ID_BYTES],
+                command: Command::GetOperationalDamageReport,
+            },
+            CommandRequest {
+                request_id: 38,
+                session_epoch: 23,
+                command_id: [0xba; COMMAND_ID_BYTES],
+                command: Command::AcknowledgeOperationalDamageReport { report_id: 91 },
             },
         ] {
             let frame = encode_request(&expected).unwrap();

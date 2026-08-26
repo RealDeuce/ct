@@ -52,6 +52,7 @@ enum class DoorHelpTopic : size_t {
    Personnel,
    Arrival,
    ArrivalPacket,
+   OperationalDamageReport,
    Voyage,
    Encounter,
    Combat,

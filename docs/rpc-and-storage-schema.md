@@ -1,6 +1,6 @@
 # RPC and Storage Schema
 
-*Current implementation: player CT-RPC 9, sysop/admin protocols 2, League Coordinator protocol 1, storage format 2, and independently versioned record codecs.*
+*Current implementation: player CT-RPC 10, sysop/admin protocols 2, League Coordinator protocol 1, storage format 2, and independently versioned record codecs.*
 
 ## Authority boundary
 
@@ -23,7 +23,7 @@ explain state, but it is never the machine-readable discriminator.
 
 ## Current protocol
 
-CT-RPC 9 is the only accepted player protocol. The sysop and administrator
+CT-RPC 10 is the only accepted player protocol. The sysop and administrator
 protocols likewise accept only version 2. The distinct League Coordinator
 endpoint accepts only CT-League version 1 and authenticates a numeric League
 ID with that League's PSK. Each player, sysop, and administrator TLS connection begins with a
@@ -58,7 +58,8 @@ Established connections never interpret legacy envelopes.
 During one release-development cycle, incompatible schema work shares the next
 protocol number. The number advances again only after that contract has shipped
 in a release; intermediate feature commits do not consume additional protocol
-versions.
+versions. CT-RPC 9 shipped in v0.7.13; current post-release development
+therefore uses CT-RPC 10.
 
 Both builds generate bindings from `protocol/ct_rpc.capnp`.
 `InitialCrewDraft` contains only the authoritative slot ID, name, and
@@ -135,7 +136,11 @@ facility capability, including provision and ammunition availability.
 Preview and commit are separate ordered calls; commit repeats the proposal and
 its 16-byte preview hash so intervening state cannot silently change a warned
 choice. Reliable checkpoint and encounter events are emitted on transition and
-replayed from current state when a session opens.
+replayed from current state when a session opens. Automatic non-combat
+subsystem damage instead creates a chronological engineering casualty report.
+The oldest unacknowledged report is replayed at session opening, a best-effort
+event wakes an already connected door, and acknowledgement is an exactly-once
+transaction. The persisted queue, not the event socket, remains authoritative.
 
 Encounter snapshots carry sensor resolution, apparent authority, coarse
 threat, a capacity-limited cargo-demand breakdown, the exact legal posture and
@@ -211,9 +216,10 @@ warnings; replanning never edits obligations.
 Flight Plan codec version 4 adds the per-collection refine choice and the
 standalone refine action; readers retain versions 1 through 3. Authoritative
 preview includes per-step normal and failed fuel-operation timings. Retained
-outcome codec version 22 preserves those timings, the added quotation and
-activity metadata, terminal reports, BBS/League affiliation, and effective
-fuel capacity for idempotent replay. Version 21 outcomes decode with an unknown
+outcome codec version 23 preserves those timings, the added quotation and
+activity metadata, terminal reports, BBS/League affiliation, effective fuel
+capacity, and engineering-casualty acknowledgement results for idempotent
+replay. Version 21 outcomes decode with an unknown
 zero fuel capacity, matching the field's absence before CT-RPC 9.
 
 Arrival does not directly rewrite an approaching ship as docked. It creates a
@@ -232,12 +238,14 @@ as Hold plus a terminal marker. Encounter-record codec version 4 stores
 Through/automation use and the optional acknowledged terminal-report snapshot
 while retaining readers for versions 1 through 3. Older terminal records derive
 the same report from retained encounter, combat, ship, and personnel state when
-first reviewed. Outcome codec version 22 preserves terminal-report transaction
-replay; older outcomes decode absent additive fields as empty or zero. A
+first reviewed. Outcome codec version 23 preserves terminal-report and
+engineering-casualty acknowledgement replay; older outcomes decode absent
+additive fields as empty or zero. A
 pre-field proposal with no explicit terminal bit is normalized at the wire
 boundary by marking its last step. CT-RPC 8 added durable ship commissions and
 construction activity. CT-RPC 9 adds browser-alert enrollment and effective
-fuel capacity.
+fuel capacity. CT-RPC 10 adds durable operational-damage reports, positive
+acknowledgement, and live-session wake events.
 
 ## Persistence contract
 
@@ -271,7 +279,14 @@ titled cargo, catalog-capacity ammunition, physical provisions, per-component
 construction data and warranty, latent quirks, a completed-service ledger,
 salaried crew service, combat policy, career state, and recovery state. It
 also contains passenger manifests, physical shore assignments, deferred
-treatment results, and persistent facility capability overlays. These are
+treatment results, and persistent facility capability overlays. The
+independently versioned `operational-damage-reports` records form a
+per-captain chronological queue containing the automatic cause, ship,
+subsystem hit delta and resulting condition, and Jump route/timing details
+when applicable. Reports remain until positive acknowledgement. Adding this
+database does not change storage manifest format 2 and does not require a
+v0.7.13 universe to be reinitialized; opening an existing universe creates the
+empty database and initializes its independent report-ID allocator. These are
 direct current formats with no legacy decoder.
 
 Field-alpha control state includes active/suspended/removed player-access

@@ -94,6 +94,14 @@ For example, compact news review can show one item at a time and accept
 printable commands for ignore, mark, next, and act as well as convenient arrow
 aliases.
 
+An authoritative server event may interrupt a menu only at a safe input
+boundary. The door then replaces the current page with the required report;
+after acknowledgement it returns to the current operational flow rather than
+attempting to restore a partially rendered screen. Engineering casualty
+events are delivery hints: the door queries the durable oldest report before
+display, so reconnects and duplicate events cannot lose or duplicate an
+acknowledgement.
+
 Height affects pagination rather than layout coordinates. The door may use
 OpenDoors' reported screen length to place a continuation prompt, accounting
 for any line reserved by the BBS or prompt. It must remain usable on an actual

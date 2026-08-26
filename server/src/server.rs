@@ -300,6 +300,11 @@ enum EngineEvent {
         ship_id: u64,
         unread_count: u64,
     },
+    OperationalDamageReady {
+        identity: PlayerIdentity,
+        committed_sequence: u64,
+        report: Box<wire::OperationalDamageReport>,
+    },
     UniverseReset,
     PlayerAccessChanged(Box<PlayerAccessRecord>),
     BbsAccessChanged {
@@ -531,6 +536,7 @@ struct SessionOpening {
     encounter: Option<wire::EncounterSnapshot>,
     radio_ship_id: u64,
     radio_unread_count: u64,
+    operational_damage_report: wire::OperationalDamageReport,
     affiliation: Option<wire::InstitutionalAffiliation>,
 }
 
@@ -540,6 +546,7 @@ struct Observer {
     system_id: Option<u64>,
     last_second: u64,
     radio_unread_count: u64,
+    operational_damage_report_id: u64,
 }
 
 fn online_ship_ids(observers: &HashMap<PlayerIdentity, Observer>) -> HashSet<u64> {
@@ -757,6 +764,26 @@ fn emit_advance(
 ) -> Result<bool, EngineError> {
     for transition in advance.player_transitions {
         if !emit_transition(engine, sender, observers, transition)? {
+            return Ok(false);
+        }
+    }
+    let committed_sequence = engine.committed_sequence()?;
+    for (identity, observer) in observers.iter_mut() {
+        let report = engine.pending_operational_damage_report(identity)?;
+        if report.report_id == observer.operational_damage_report_id {
+            continue;
+        }
+        observer.operational_damage_report_id = report.report_id;
+        if report.present
+            && !emit_best_effort(
+                sender,
+                EngineEvent::OperationalDamageReady {
+                    identity: identity.clone(),
+                    committed_sequence,
+                    report: Box::new(report),
+                },
+            )
+        {
             return Ok(false);
         }
     }
@@ -1179,6 +1206,8 @@ fn spawn_engine(
                                     let (radio_ship_id, radio_unread_count) = engine
                                         .radio_unread_count(&identity)
                                         .unwrap_or((0, 0));
+                                    let operational_damage_report =
+                                        engine.pending_operational_damage_report(&identity)?;
                                     let active_ship_id = engine.active_ship_id(&identity)?.unwrap_or(0);
                                     observers.insert(
                                         identity.clone(),
@@ -1190,6 +1219,8 @@ fn spawn_engine(
                                                 .map(|snapshot| snapshot.system_id),
                                             last_second: current_second,
                                             radio_unread_count,
+                                            operational_damage_report_id:
+                                                operational_damage_report.report_id,
                                         },
                                     );
                                     if let Some(snapshot) = &mut traffic_snapshot {
@@ -1204,6 +1235,7 @@ fn spawn_engine(
                                         encounter: engine.pending_encounter(&identity)?,
                                         radio_ship_id,
                                         radio_unread_count,
+                                        operational_damage_report,
                                         affiliation: engine.home_affiliation(identity.bbs_id)?,
                                     }));
                                 }
@@ -1853,6 +1885,25 @@ impl Sessions {
             }
         }
     }
+
+    async fn operational_damage_ready(
+        &self,
+        identity: &PlayerIdentity,
+        committed_sequence: u64,
+        report: &wire::OperationalDamageReport,
+    ) {
+        let session = {
+            let players = self.players.lock().await;
+            players.get(identity).cloned()
+        };
+        if let Some(session) = session {
+            if let Ok(frame) =
+                wire::encode_operational_damage_ready(session.epoch, committed_sequence, report)
+            {
+                let _ = session.outbound.try_send(frame);
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -2183,6 +2234,15 @@ pub async fn run_on_addresses(
                 } => {
                     dispatcher_sessions
                         .radio_unread(&identity, committed_sequence, ship_id, unread_count)
+                        .await;
+                }
+                EngineEvent::OperationalDamageReady {
+                    identity,
+                    committed_sequence,
+                    report,
+                } => {
+                    dispatcher_sessions
+                        .operational_damage_ready(&identity, committed_sequence, &report)
                         .await;
                 }
                 EngineEvent::UniverseReset => {
@@ -2610,6 +2670,21 @@ async fn handle_connection(
                 opening.committed_sequence,
                 opening.radio_ship_id,
                 opening.radio_unread_count,
+            )?)
+            .await
+            .map_err(|_| {
+                ServerError::Io(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "connection writer stopped",
+                ))
+            })?;
+    }
+    if opening.operational_damage_report.present {
+        outbound
+            .send(wire::encode_operational_damage_ready(
+                epoch,
+                opening.committed_sequence,
+                &opening.operational_damage_report,
             )?)
             .await
             .map_err(|_| {
@@ -3457,6 +3532,7 @@ mod tests {
                 system_id: Some(1),
                 last_second: 0,
                 radio_unread_count: 0,
+                operational_damage_report_id: 0,
             },
         )]);
         let online = online_ship_ids(&observers);

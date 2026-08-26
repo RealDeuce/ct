@@ -1159,7 +1159,19 @@ for a dice penalty.
 
 A normal Jump lasts **148 + 6D6 hours**. Inaccurate emergence, misjump, and
 transition critical damage persist as physical results; disconnecting cannot
-avoid them.
+avoid them. An inaccurate emergence or misjump that damages a subsystem also
+creates a durable Engineering Casualty Report naming the route, timing
+consequence, damaged installation, resulting hit total, and operational
+effect. A connected captain receives it at the next safe prompt; a disconnected
+captain receives it on the next sign-on. It remains until positively
+acknowledged, while the game clock and any still-valid filed plan continue.
+
+The same report and acknowledgement rule applies when an exceptional
+fuel-processing failure damages a subsystem or unpaid routine upkeep causes
+neglect damage. These are one report per damaging operation or upkeep check,
+not one report per damage hit. Combat damage remains aggregated in the combat,
+encounter-result, and Command Loss Report procedures instead of entering this
+non-combat report queue.
 
 ### Staged Jump and frontier fuel
 
