@@ -463,15 +463,15 @@ void door_live_prompt(const char* format, ...)
 void show_voyage_live_prompt()
 {
    constexpr const char* wide_prompt =
-      "[F] Revise Flight Plan  [Enter] Command console  [?] Help";
+      "[F] Revise Flight Plan  [R] Refresh  [Enter] Command console  [?] Help";
    constexpr const char* narrow_prompt =
-      "[F] Plan  [Enter] Console  [?] Help";
+      "[F] Plan  [R] Refresh  [?] Help\n\r[Enter] Console";
    door_write("\n\r", ct::DoorTextRole::Normal);
-   door_live_prompt(
-      "%s",
-      output().content_columns() >= std::strlen(wide_prompt)
-         ? wide_prompt
-         : narrow_prompt);
+   if(output().content_columns() >= std::strlen(wide_prompt)) {
+      door_live_prompt("%s", wide_prompt);
+   } else {
+      door_prompt("%s", narrow_prompt);
+   }
 }
 
 void door_option_prompt(
@@ -10421,18 +10421,8 @@ ct::PlayerPhase run_docked_menu(
    }
 }
 
-void show_travel_screen(
-   ct::TlsConnection& connection,
-   const ct::ServerHello& hello,
-   ct::CommandIdGenerator& random,
-   uint64_t& request_id)
+void render_travel_status(const ct::TravelStatus& status)
 {
-   const HelpScope help_scope(ct::DoorHelpTopic::Voyage);
-   auto status = ct::get_travel_status(
-                    connection,
-                    hello.assigned_epoch,
-                    random_command_id(random),
-                    request_id++);
    od_clr_scr();
    door_heading("Voyage Status - ");
    door_value("%s\n\r", safe_field(status.ship_name).c_str());
@@ -10463,6 +10453,21 @@ void show_travel_screen(
       "\n\rCrew, ship, task, message, and Known Universe management remain "
       "available while the scheduled voyage continues.\n\r");
    show_voyage_live_prompt();
+}
+
+void show_travel_screen(
+   ct::TlsConnection& connection,
+   const ct::ServerHello& hello,
+   ct::CommandIdGenerator& random,
+   uint64_t& request_id)
+{
+   const HelpScope help_scope(ct::DoorHelpTopic::Voyage);
+   auto status = ct::get_travel_status(
+                    connection,
+                    hello.assigned_epoch,
+                    random_command_id(random),
+                    request_id++);
+   render_travel_status(status);
    while(true) {
       const auto generation = phase_event_generation;
       const auto key = door_get_live_key();
@@ -10478,6 +10483,20 @@ void show_travel_screen(
             return;
          }
          show_voyage_live_prompt();
+         continue;
+      }
+      if(key == 'R' || key == 'r') {
+         status = ct::get_travel_status(
+            connection,
+            hello.assigned_epoch,
+            random_command_id(random),
+            request_id++);
+         if(status.phase != ct::PlayerPhase::Interplanetary &&
+               status.phase != ct::PlayerPhase::Jump) {
+            latest_phase_status = status;
+            return;
+         }
+         render_travel_status(status);
          continue;
       }
       if(key == 'F' || key == 'f') {

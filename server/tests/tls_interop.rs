@@ -2285,6 +2285,8 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     voyage_door.send_to_menu(b"p", "Flight Plan Preview");
     voyage_door.send_through_page_prompt(b"f", "Previous menu", "Departure authorized.");
     voyage_door.send_through_page_prompt(b"\r", "Voyage Status -", "Voyage Status -");
+    voyage_door.send(b"r");
+    voyage_door.wait_for_occurrences("Voyage Status -", 2);
     voyage_door.send_to_menu(b"\r", "Captain's Command Console");
     voyage_door.send_to_menu(b"p", "Player Preferences");
     voyage_door.wait_for("First Watch:  Complete");
@@ -2297,6 +2299,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         "Enter/Sp",
         "Departure authorized.",
         "The flight plan has been filed.",
+        "Refresh",
     ] {
         assert!(voyage_screen.contains(expected), "{voyage_screen:?}");
     }

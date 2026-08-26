@@ -415,7 +415,7 @@ int main() {
 
    const std::array semantic_roles{
       std::pair{ct::DoorTextRole::Label, std::string_view{"\x1b[36m"}},
-      std::pair{ct::DoorTextRole::PagerPrompt, std::string_view{"\x1b[30;46m"}},
+      std::pair{ct::DoorTextRole::PagerPrompt, std::string_view{"\x1b[0;30;46m"}},
       std::pair{ct::DoorTextRole::Value, std::string_view{"\x1b[1;37m"}},
       std::pair{ct::DoorTextRole::Number, std::string_view{"\x1b[1;33m"}},
       std::pair{ct::DoorTextRole::Identifier, std::string_view{"\x1b[1;35m"}},
@@ -620,6 +620,30 @@ int main() {
       paged.find(
          "(Enter/Space) Continue\r                      \rrecord") !=
       std::string::npos);
+
+   std::string colored_paged;
+   ct::DoorPresentation colored_pager(
+      ct::DoorProfile::Iso646Color,
+      40,
+      24,
+      [&colored_paged](const std::string_view bytes) {
+         colored_paged.append(bytes);
+      });
+   colored_pager.configure_paging(1, [&colored_pager] {
+      colored_pager.write(
+         "[Enter/Space] Continue", ct::DoorTextRole::PagerPrompt);
+      colored_pager.erase_prompt(22);
+      return ct::DoorPresentation::PagePauseAction::Continue;
+   });
+   colored_pager.resume_paging();
+   colored_pager.clear();
+   colored_pager.write(
+      std::string(23, '\n') + "resumed", ct::DoorTextRole::Value);
+   check(
+      colored_paged.find(
+         "\x1b[0;30;46m(Enter/Space) Continue\x1b[0m") !=
+      std::string::npos);
+   check(colored_paged.find("\r\x1b[1;37mresumed") != std::string::npos);
    pager.suspend_paging();
    for(unsigned line = 0; line < 40; ++line) {
       pager.write("unpaged\n\r");
