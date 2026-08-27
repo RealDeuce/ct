@@ -1321,16 +1321,25 @@ intercept.
 
 ### Encounter posture and fallback
 
-An arrival encounter first asks for Fight, Flee, Comply, Surrender, or Board
-posture and a set of Surrender, Abandon, Jettison Cargo, and Break Off
-fallbacks. Filed Flight Plan policy supplies those choices at a Through
-checkpoint. The default policy flees hostile contacts with Surrender fallback,
-complies with inspections, reports distress, and does not divert to assist.
+The arrival screen describes responses in terms of the actual contact. Routine
+traffic exchanges identification and continues immediately. Traffic-control
+orders may be followed or declined while maneuvering clear; an inspection may
+be submitted to or refused; distress and derelict contacts may be assisted or
+investigated instead of reported while continuing; debris may be avoided or
+tracked while holding course; and a naval challenge may be answered or
+refused. At a captain-held encounter, a physical inspection, assistance
+attempt, sensor pass, or maneuver queues one kilosecond of authoritative
+action time. The pending display reports that completion time; it is not a
+wait for the other vessel's approval.
 
-Routine non-hostile contact resolves by identification or the rule belonging
-to its kind. Complying with an Inspection applies the customs rule above.
-Complying with a hostile demand releases the ship; Surrender immediately loses
-the command. Other hostile postures resolve each kilosecond with:
+Hostile encounters use Fight, Flee, Meet Demand, Surrender, or Board posture
+and may carry Surrender, Abandon, Jettison Cargo, and Break Off fallbacks.
+Filed Flight Plan policy supplies responses at a Through checkpoint. The
+default policy flees hostile contacts with Surrender fallback, complies with
+inspections, reports distress, and does not divert to assist. Complying with an
+Inspection applies the customs rule above. Meeting a hostile demand releases
+the ship; Surrender immediately loses the command. Other hostile postures
+resolve each kilosecond with:
 
 **captain total = 2D6 + highest of Pilot (Spacecraft), Tactics (Naval), or
 Gunner (Turrets) level + posture DM + intervention DM**

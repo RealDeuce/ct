@@ -688,9 +688,15 @@ every hit.
 
 ## Encounters and combat
 
-An encounter presents only the actions legal in that situation, such as fighting,
-running, complying, surrendering, boarding, pursuing a contact that has broken
-off, or continuing the filed course. Contact identity is sensor-qualified:
+An encounter presents actions named for that situation. Routine traffic uses
+Enter to exchange identification and continue immediately. Traffic-control,
+inspection, distress, derelict, hazard, and military contacts instead describe
+the specific order, assistance, investigation, maneuver, or refusal being
+chosen. Physical work may take authoritative time; the pending screen shows
+when it completes, and does not mean the other vessel is deciding whether to
+approve your response. Hostile contacts retain fighting, running, meeting a
+demand, surrendering, and boarding, while a departing contact can be pursued
+or allowed to go. Contact identity is sensor-qualified:
 a radio hail, transponder return, approximate size class, and positively
 identified vessel are different levels of information. The contact screen also
 shows the apparent authority, range, confidence, and a coarse threat assessment;

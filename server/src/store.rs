@@ -197,6 +197,51 @@ fn encounter_kind_for_policy(entropy: u64, policy: Option<&SystemPolityPolicy>) 
     EncounterKind::RoutineTraffic
 }
 
+fn available_postures_for_encounter(kind: EncounterKind) -> Vec<EncounterPosture> {
+    match kind {
+        EncounterKind::Hostile => vec![
+            EncounterPosture::Fight,
+            EncounterPosture::Flee,
+            EncounterPosture::Comply,
+            EncounterPosture::Surrender,
+            EncounterPosture::Board,
+        ],
+        EncounterKind::DepartingContact => {
+            vec![EncounterPosture::Pursue, EncounterPosture::ContinueCourse]
+        }
+        EncounterKind::RoutineTraffic => vec![EncounterPosture::Comply],
+        EncounterKind::Distress | EncounterKind::Derelict | EncounterKind::Hazard => {
+            vec![EncounterPosture::Comply, EncounterPosture::ContinueCourse]
+        }
+        EncounterKind::TrafficControl | EncounterKind::Inspection | EncounterKind::Military => {
+            vec![EncounterPosture::Comply, EncounterPosture::Flee]
+        }
+    }
+}
+
+fn posture_for_encounter_policy(kind: EncounterKind, policy: &EncounterPolicy) -> EncounterPosture {
+    match kind {
+        EncounterKind::Hostile => policy.hostile_posture,
+        EncounterKind::DepartingContact => EncounterPosture::ContinueCourse,
+        EncounterKind::Inspection | EncounterKind::TrafficControl | EncounterKind::Military => {
+            if policy.comply_with_inspection {
+                EncounterPosture::Comply
+            } else {
+                EncounterPosture::Flee
+            }
+        }
+        EncounterKind::Distress => {
+            if policy.assist_distress {
+                EncounterPosture::Comply
+            } else {
+                EncounterPosture::ContinueCourse
+            }
+        }
+        EncounterKind::Derelict => EncounterPosture::ContinueCourse,
+        EncounterKind::Hazard | EncounterKind::RoutineTraffic => EncounterPosture::Comply,
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum StoreError {
     #[error("LMDB error: {0}")]
@@ -8906,7 +8951,7 @@ impl Store {
                     "A naval picket challenges the ship and requests identification."
                 }
                 EncounterKind::RoutineTraffic => {
-                    "A vessel crosses your arrival lane and exchanges routine identification."
+                    "A vessel crosses your arrival lane and hails for a routine identification exchange."
                 }
                 EncounterKind::DepartingContact => {
                     "An unlit armed contact abandons its intercept and accelerates away."
@@ -8948,19 +8993,7 @@ impl Store {
                     ship.catalog_id,
                 ),
                 demand,
-                available_postures: if departing {
-                    vec![EncounterPosture::Pursue, EncounterPosture::ContinueCourse]
-                } else if hostile {
-                    vec![
-                        EncounterPosture::Fight,
-                        EncounterPosture::Flee,
-                        EncounterPosture::Comply,
-                        EncounterPosture::Surrender,
-                        EncounterPosture::Board,
-                    ]
-                } else {
-                    vec![EncounterPosture::Comply, EncounterPosture::Flee]
-                },
+                available_postures: available_postures_for_encounter(kind),
                 available_fallbacks: if hostile {
                     vec![
                         EncounterFallback::Surrender,
@@ -9643,6 +9676,56 @@ impl Store {
         let response_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?
             .unwrap_or(0)
             .max(record.snapshot.started_second);
+        if record.snapshot.kind == EncounterKind::RoutineTraffic {
+            record.snapshot.state = EncounterState::Resolved;
+            record.snapshot.turn = 0;
+            record.snapshot.next_turn_second = response_second;
+            record.snapshot.summary =
+                "Identification is exchanged and both vessels continue on course.".into();
+            let result = EncounterResult {
+                encounter_id: record.snapshot.encounter_id,
+                resolved: true,
+                terminal: false,
+                outcome: record.snapshot.summary.clone(),
+                turns: 0,
+                cargo_lost_millitons: 0,
+                fuel_lost_millitons: 0,
+                damage_hits: 0,
+            };
+            record.result = Some(result.clone());
+            self.encounters
+                .put(txn, &key, &encode_encounter_record(&record)?)?;
+            if let Some(mut plan) = self
+                .flight_plans
+                .get(txn, &key)?
+                .map(decode_flight_plan_snapshot)
+                .transpose()?
+            {
+                plan.state = FlightPlanState::Checkpoint;
+                plan.suspension_reason = "routine contact acknowledged".into();
+                self.flight_plans
+                    .put(txn, &key, &encode_flight_plan_snapshot(&plan)?)?;
+            }
+            if let Some(checkpoint) = self
+                .checkpoints
+                .get(txn, &key)?
+                .map(decode_checkpoint_snapshot)
+                .transpose()?
+            {
+                self.finish_checkpoint_arrival_in(txn, identity, &checkpoint)?;
+            } else if let Some(mut plan) = self
+                .flight_plans
+                .get(txn, &key)?
+                .map(decode_flight_plan_snapshot)
+                .transpose()?
+            {
+                plan.state = FlightPlanState::Active;
+                plan.suspension_reason.clear();
+                self.flight_plans
+                    .put(txn, &key, &encode_flight_plan_snapshot(&plan)?)?;
+            }
+            return Ok(RuleResult::Applied(result));
+        }
         record.snapshot.next_turn_second = response_second.saturating_add(1_000);
         let refusal_escalates = matches!(
             record.snapshot.kind,
@@ -9798,14 +9881,49 @@ impl Store {
                 "General quarters. Joint crew orders are due before the one-kilosecond activation closes."
             }.into();
         } else {
-            record.snapshot.summary =
-                "The declared response is queued for authoritative resolution.".into();
+            record.snapshot.summary = match (record.snapshot.kind, request.posture) {
+                (EncounterKind::TrafficControl, EncounterPosture::Comply) => {
+                    "The ship is carrying out the assigned crossing order."
+                }
+                (EncounterKind::TrafficControl, EncounterPosture::Flee) => {
+                    "The ship is maneuvering clear after declining the crossing order."
+                }
+                (EncounterKind::Inspection, EncounterPosture::Comply) => {
+                    "The ship is holding while the inspection is completed."
+                }
+                (EncounterKind::Distress, EncounterPosture::Comply) => {
+                    "The ship is rendering assistance to the distressed vessel."
+                }
+                (EncounterKind::Distress, EncounterPosture::ContinueCourse) => {
+                    "The bridge is relaying the distress call before continuing."
+                }
+                (EncounterKind::Derelict, EncounterPosture::Comply) => {
+                    "The ship is making a close sensor pass of the drifting vessel."
+                }
+                (EncounterKind::Derelict, EncounterPosture::ContinueCourse) => {
+                    "The bridge is filing a derelict report before continuing."
+                }
+                (EncounterKind::Hazard, EncounterPosture::Comply) => {
+                    "The ship is altering course around the reported debris."
+                }
+                (EncounterKind::Hazard, EncounterPosture::ContinueCourse) => {
+                    "The bridge is updating the debris solution while holding the plotted course."
+                }
+                (EncounterKind::Military, EncounterPosture::Comply) => {
+                    "The bridge is answering the naval challenge."
+                }
+                (EncounterKind::DepartingContact, EncounterPosture::ContinueCourse) => {
+                    "The contact is clearing while the ship continues on course."
+                }
+                _ => "The declared response is being carried out.",
+            }
+            .into();
         }
         let result = EncounterResult {
             encounter_id: record.snapshot.encounter_id,
             resolved: false,
             terminal: false,
-            outcome: "Encounter turn queued".into(),
+            outcome: record.snapshot.summary.clone(),
             turns: 0,
             cargo_lost_millitons: 0,
             fuel_lost_millitons: 0,
@@ -14988,7 +15106,40 @@ impl Store {
                     )
                 }
             } else {
-                "Identification is exchanged and both vessels continue on course.".to_string()
+                match (record.snapshot.kind, posture) {
+                    (EncounterKind::TrafficControl, EncounterPosture::Comply) =>
+                        "The ship follows the assigned crossing order and resumes its approach."
+                            .into(),
+                    (EncounterKind::TrafficControl, EncounterPosture::Flee) =>
+                        "The ship declines the crossing order, maneuvers clear, and resumes its approach."
+                            .into(),
+                    (EncounterKind::Distress, EncounterPosture::Comply) =>
+                        "The ship renders assistance and transfers the distress report to local control."
+                            .into(),
+                    (EncounterKind::Distress, EncounterPosture::ContinueCourse) =>
+                        "The distress call is logged and passed to local control as the ship continues."
+                            .into(),
+                    (EncounterKind::Derelict, EncounterPosture::Comply) =>
+                        "The ship makes a close sensor pass and forwards its derelict report."
+                            .into(),
+                    (EncounterKind::Derelict, EncounterPosture::ContinueCourse) =>
+                        "The drifting contact is logged for local authorities as the ship continues."
+                            .into(),
+                    (EncounterKind::Hazard, EncounterPosture::Comply) =>
+                        "The pilot alters course around the reported debris and resumes the approach."
+                            .into(),
+                    (EncounterKind::Hazard, EncounterPosture::ContinueCourse) =>
+                        "The pilot holds the plotted course after updating the debris solution."
+                            .into(),
+                    (EncounterKind::Military, EncounterPosture::Comply) =>
+                        "The ship answers the naval challenge and the picket releases it."
+                            .into(),
+                    (EncounterKind::DepartingContact, EncounterPosture::ContinueCourse) =>
+                        "The departing contact is allowed to clear while the ship continues on course."
+                            .into(),
+                    _ => "Identification is exchanged and both vessels continue on course."
+                        .into(),
+                }
             };
         } else if posture == EncounterPosture::Surrender {
             resolved = true;
@@ -16350,6 +16501,10 @@ impl Store {
             .get(txn, &key)?
             .map(decode_flight_plan_snapshot)
             .transpose()?;
+        let policy = filed_plan
+            .as_ref()
+            .map(|plan| plan.policy.clone())
+            .unwrap_or_default();
         let through_authorized = filed_plan.as_ref().is_some_and(|plan| {
             if matches!(
                 ship.location,
@@ -16398,19 +16553,7 @@ impl Store {
             EncounterKind::Military => EncounterAuthority::Naval,
             _ => EncounterAuthority::None,
         };
-        let available_postures = match kind {
-            EncounterKind::Hostile => vec![
-                EncounterPosture::Fight,
-                EncounterPosture::Flee,
-                EncounterPosture::Comply,
-                EncounterPosture::Surrender,
-                EncounterPosture::Board,
-            ],
-            EncounterKind::DepartingContact => {
-                vec![EncounterPosture::Pursue, EncounterPosture::ContinueCourse]
-            }
-            _ => vec![EncounterPosture::Comply, EncounterPosture::Flee],
-        };
+        let available_postures = available_postures_for_encounter(kind);
         let available_fallbacks = if hostile {
             vec![
                 EncounterFallback::Surrender,
@@ -16468,14 +16611,7 @@ impl Store {
                 EncounterKind::TrafficControl => {
                     "The assigned traffic crossing completes without delay."
                 }
-                EncounterKind::Distress
-                    if self
-                        .flight_plans
-                        .get(txn, &key)?
-                        .map(decode_flight_plan_snapshot)
-                        .transpose()?
-                        .is_some_and(|plan| plan.policy.assist_distress) =>
-                {
+                EncounterKind::Distress if policy.assist_distress => {
                     "Standing orders render assistance before the voyage continues."
                 }
                 EncounterKind::Distress => {
@@ -16506,7 +16642,7 @@ impl Store {
                 &encode_encounter_record(&EncounterRecord {
                     snapshot,
                     opponent_catalog_id: contact.catalog_id,
-                    posture: Some(EncounterPosture::Comply),
+                    posture: Some(posture_for_encounter_policy(kind, &policy)),
                     fallbacks: Vec::new(),
                     result: Some(result),
                     combat: None,
@@ -16540,10 +16676,6 @@ impl Store {
                 pending_interventions: Vec::new(),
             })?,
         )?;
-        let policy = filed_plan
-            .as_ref()
-            .map(|plan| plan.policy.clone())
-            .unwrap_or_default();
         if let Some(mut plan) = self
             .flight_plans
             .get(txn, &key)?
@@ -16587,16 +16719,7 @@ impl Store {
             )?;
             return Ok(Some(identity));
         }
-        let posture = match kind {
-            EncounterKind::Hostile => policy.hostile_posture,
-            EncounterKind::Inspection | EncounterKind::TrafficControl | EncounterKind::Military
-                if policy.comply_with_inspection =>
-            {
-                EncounterPosture::Comply
-            }
-            EncounterKind::Distress if policy.assist_distress => EncounterPosture::Comply,
-            _ => EncounterPosture::Flee,
-        };
+        let posture = posture_for_encounter_policy(kind, &policy);
         let _ = self.resolve_encounter_in(
             txn,
             &identity,
@@ -33724,17 +33847,7 @@ impl Store {
                     &crate::wire::ResolveEncounterRequest {
                         encounter_id: encounter.snapshot.encounter_id,
                         expected_revision: encounter.snapshot.revision,
-                        posture: if matches!(
-                            encounter.snapshot.kind,
-                            EncounterKind::Inspection
-                                | EncounterKind::TrafficControl
-                                | EncounterKind::Military
-                        ) && policy.comply_with_inspection
-                        {
-                            EncounterPosture::Comply
-                        } else {
-                            policy.hostile_posture
-                        },
+                        posture: posture_for_encounter_policy(encounter.snapshot.kind, &policy),
                         fallbacks: policy.hostile_fallbacks,
                     },
                 )?;
@@ -49127,6 +49240,187 @@ mod tests {
         assert_eq!(due_second, current_second + 1_000);
         assert_eq!(event_identity, identity());
         assert_eq!(encounter_id, encounter.snapshot.encounter_id);
+    }
+
+    #[test]
+    fn routine_identification_resolves_immediately_without_an_encounter_turn() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let epoch = initialize_player_fixture(&store);
+        let current_second = 5_000;
+        let key = encode_identity(&identity());
+        let (_, mut ship) = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let ShipLocationRecord::Docked {
+            world_id,
+            facility_id,
+            ..
+        } = ship.location
+        else {
+            panic!("fixture ship is not docked");
+        };
+        let port = ShipLocusRecord::Port {
+            system_id: ship.system_id,
+            world_id,
+            facility_id,
+        };
+        ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: 88,
+            plan_revision: 1,
+            leg_index: 0,
+            origin: ShipLocusRecord::JumpLocus {
+                system_id: ship.system_id,
+            },
+            destination: port,
+            started_second: 0,
+            due_second: current_second,
+            purpose: FlightLegPurpose::ApproachPort,
+        });
+        let checkpoint = CheckpointSnapshot {
+            checkpoint_id: 77,
+            plan_id: 88,
+            plan_revision: 1,
+            step_index: 0,
+            locus: FlightLocus::Port {
+                system_id: ship.system_id,
+                world_id,
+                facility_id,
+            },
+            kind: CheckpointKind::InhabitedWorld,
+            ready_second: current_second,
+            acknowledged: true,
+        };
+        let plan = FlightPlanSnapshot {
+            plan_id: 88,
+            revision: 1,
+            current_step: 0,
+            state: FlightPlanState::Encounter,
+            steps: vec![FlightPlanStep {
+                locus: checkpoint.locus,
+                authority: WaypointAuthority::Hold,
+                action: FlightPlanAction::Dock {
+                    world_id,
+                    facility_id,
+                },
+                terminal: true,
+            }],
+            policy: EncounterPolicy::default(),
+            suspension_reason: "contact at arrival checkpoint".into(),
+        };
+        let mut encounter =
+            test_encounter_record(EncounterState::AwaitingPosture, current_second, 0, None);
+        encounter.snapshot.kind = EncounterKind::RoutineTraffic;
+        encounter.snapshot.authority = EncounterAuthority::None;
+        encounter.snapshot.available_postures =
+            available_postures_for_encounter(EncounterKind::RoutineTraffic);
+        encounter.snapshot.available_fallbacks.clear();
+        encounter.fallbacks.clear();
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        store
+            .flight_plans
+            .put(&mut txn, &key, &encode_flight_plan_snapshot(&plan).unwrap())
+            .unwrap();
+        store
+            .checkpoints
+            .put(
+                &mut txn,
+                &key,
+                &encode_checkpoint_snapshot(&checkpoint).unwrap(),
+            )
+            .unwrap();
+        store
+            .encounters
+            .put(
+                &mut txn,
+                &key,
+                &encode_encounter_record(&encounter).unwrap(),
+            )
+            .unwrap();
+        put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, current_second).unwrap();
+        txn.commit().unwrap();
+
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(
+                    epoch,
+                    201,
+                    Command::ResolveEncounter(crate::wire::ResolveEncounterRequest {
+                        encounter_id: encounter.snapshot.encounter_id,
+                        expected_revision: encounter.snapshot.revision,
+                        posture: EncounterPosture::Comply,
+                        fallbacks: Vec::new(),
+                    }),
+                ),
+            })
+            .unwrap();
+        let delivery = store.process_next().unwrap().unwrap();
+        assert_eq!(delivery.outcome.phase, PlayerPhase::Docked);
+        let OutcomeKind::EncounterResult(result) = delivery.outcome.kind else {
+            panic!("expected an encounter result");
+        };
+        assert!(result.resolved);
+        assert_eq!(result.turns, 0);
+
+        let txn = store.env.read_txn().unwrap();
+        let encounter = store.encounter_in(&txn, &identity()).unwrap().unwrap();
+        assert_eq!(encounter.snapshot.state, EncounterState::Resolved);
+        assert_eq!(encounter.snapshot.next_turn_second, current_second);
+        assert_eq!(
+            encounter.snapshot.summary,
+            "Identification is exchanged and both vessels continue on course."
+        );
+        assert!(
+            first_encounter_event(store.encounter_events, &txn)
+                .unwrap()
+                .is_none()
+        );
+        assert!(store.checkpoints.get(&txn, &key).unwrap().is_none());
+        assert_eq!(
+            store.flight_plan_in(&txn, &identity()).unwrap().state,
+            FlightPlanState::Completed
+        );
+        let (_, ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        assert!(matches!(
+            ship.location,
+            ShipLocationRecord::Docked {
+                arrived_second: 5_000,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn non_hostile_encounters_offer_kind_specific_responses() {
+        assert_eq!(
+            available_postures_for_encounter(EncounterKind::RoutineTraffic),
+            vec![EncounterPosture::Comply]
+        );
+        for kind in [
+            EncounterKind::Distress,
+            EncounterKind::Derelict,
+            EncounterKind::Hazard,
+        ] {
+            assert_eq!(
+                available_postures_for_encounter(kind),
+                vec![EncounterPosture::Comply, EncounterPosture::ContinueCourse]
+            );
+        }
+        for kind in [
+            EncounterKind::TrafficControl,
+            EncounterKind::Inspection,
+            EncounterKind::Military,
+        ] {
+            assert_eq!(
+                available_postures_for_encounter(kind),
+                vec![EncounterPosture::Comply, EncounterPosture::Flee]
+            );
+        }
     }
 
     #[test]

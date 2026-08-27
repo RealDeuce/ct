@@ -11307,50 +11307,119 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
          // Non-combat encounter responses still use the same resolving state
          // while their authoritative turn is queued.
       }
-      door_information("\n\rThe ship's declared response is awaiting resolution.\n\r");
+      door_information("\n\rThe crew is carrying out the selected response.\n\r");
+      if(encounter.next_turn_second != 0) {
+         door_label("Action completes: ");
+         door_number("%s\n\r", game_date(encounter.next_turn_second).c_str());
+      }
+      door_information("This is elapsed action time, not approval from the other vessel.\n\r");
       wait_for_enter();
+      latest_encounter.reset();
       return ct::PlayerPhase::Encounter;
    }
    const auto posture_available = [&](const ct::EncounterPosture posture) {
       return std::find(encounter.available_postures.begin(), encounter.available_postures.end(),
                        posture) != encounter.available_postures.end();
    };
+   struct EncounterChoice {
+      char key;
+      ct::EncounterPosture posture;
+      std::string_view option;
+      std::string_view description;
+   };
+   std::vector<EncounterChoice> choices;
+   const auto add_choice = [&](const char key, const ct::EncounterPosture posture,
+                               const std::string_view option,
+                               const std::string_view description) {
+      if(posture_available(posture)) {
+         choices.push_back({key, posture, option, description});
+      }
+   };
+   const auto continue_posture = posture_available(ct::EncounterPosture::ContinueCourse)
+      ? ct::EncounterPosture::ContinueCourse : ct::EncounterPosture::Flee;
+   switch(encounter.kind) {
+   case ct::EncounterKind::RoutineTraffic:
+      add_choice('\r', ct::EncounterPosture::Comply,
+                 "[Enter] Exchange ID and continue",
+                 "Exchange identification and continue");
+      break;
+   case ct::EncounterKind::TrafficControl:
+      add_choice('F', ct::EncounterPosture::Comply, "[F] Follow crossing order",
+                 "Follow the assigned crossing order");
+      add_choice('D', ct::EncounterPosture::Flee, "[D] Decline and maneuver clear",
+                 "Decline the crossing order and maneuver clear");
+      break;
+   case ct::EncounterKind::Inspection:
+      add_choice('S', ct::EncounterPosture::Comply, "[S] Submit to inspection",
+                 "Submit to the inspection");
+      add_choice('R', ct::EncounterPosture::Flee, "[R] Refuse and run",
+                 "Refuse the inspection and run");
+      break;
+   case ct::EncounterKind::Distress:
+      add_choice('A', ct::EncounterPosture::Comply, "[A] Assist",
+                 "Render assistance");
+      add_choice('C', continue_posture, "[C] Relay and continue",
+                 "Relay the distress call and continue");
+      break;
+   case ct::EncounterKind::Derelict:
+      add_choice('I', ct::EncounterPosture::Comply, "[I] Investigate",
+                 "Make a close sensor pass");
+      add_choice('C', continue_posture, "[C] Report and continue",
+                 "Report the derelict and continue");
+      break;
+   case ct::EncounterKind::Hazard:
+      add_choice('A', ct::EncounterPosture::Comply, "[A] Avoid debris",
+                 "Alter course around the debris");
+      add_choice('C', continue_posture, "[C] Continue plotted course",
+                 "Continue after updating the debris solution");
+      break;
+   case ct::EncounterKind::Military:
+      add_choice('I', ct::EncounterPosture::Comply, "[I] Identify and comply",
+                 "Answer the naval challenge");
+      add_choice('R', ct::EncounterPosture::Flee, "[R] Refuse and run",
+                 "Refuse the challenge and run");
+      break;
+   case ct::EncounterKind::DepartingContact:
+      add_choice('P', ct::EncounterPosture::Pursue, "[P] Pursue", "Pursue the contact");
+      add_choice('O', ct::EncounterPosture::ContinueCourse, "[O] Continue course",
+                 "Let the contact go and continue course");
+      break;
+   case ct::EncounterKind::Hostile:
+      if(encounter.authority == ct::EncounterAuthority::Warrant) {
+         add_choice('C', ct::EncounterPosture::Comply, "[C] Submit to enforcement",
+                    "Submit to warrant enforcement");
+      } else {
+         add_choice('C', ct::EncounterPosture::Comply, "[C] Meet demand",
+                    "Meet the displayed demand");
+      }
+      add_choice('F', ct::EncounterPosture::Fight, "[F] Fight", "Fight the contact");
+      add_choice('R', ct::EncounterPosture::Flee, "[R] Run", "Run from the contact");
+      add_choice('S', ct::EncounterPosture::Surrender, "[S] Surrender",
+                 "Surrender the ship and crew");
+      add_choice('B', ct::EncounterPosture::Board, "[B] Board", "Attempt to board");
+      break;
+   }
    std::vector<std::string_view> options;
-   if(posture_available(ct::EncounterPosture::Fight)) options.emplace_back("[F] Fight");
-   if(posture_available(ct::EncounterPosture::Flee)) options.emplace_back("[R] Run");
-   if(posture_available(ct::EncounterPosture::Comply)) options.emplace_back("[C] Comply");
-   if(posture_available(ct::EncounterPosture::Surrender)) options.emplace_back("[S] Surrender");
-   if(posture_available(ct::EncounterPosture::Board)) options.emplace_back("[B] Board");
-   if(posture_available(ct::EncounterPosture::Pursue)) options.emplace_back("[P] Pursue");
-   if(posture_available(ct::EncounterPosture::ContinueCourse))
-      options.emplace_back("[O] Continue course");
-   options.emplace_back("[Enter] Refresh");
+   for(const auto& choice : choices) {
+      options.push_back(choice.option);
+   }
+   if(encounter.kind != ct::EncounterKind::RoutineTraffic) {
+      options.emplace_back("[Enter] Refresh");
+   }
    options.emplace_back("[?] Help");
    door_option_prompt(options);
    char key = static_cast<char>(std::toupper(static_cast<unsigned char>(door_get_live_key())));
-   if(key == '\r' || key == '\n') {
+   if((key == '\r' || key == '\n') && encounter.kind != ct::EncounterKind::RoutineTraffic) {
       latest_encounter.reset();
       return ct::PlayerPhase::Encounter;
    }
-   std::optional<ct::EncounterPosture> posture;
-   if(key == 'F') {
-      posture = ct::EncounterPosture::Fight;
-   } else if(key == 'R') {
-      posture = ct::EncounterPosture::Flee;
-   } else if(key == 'C') {
-      posture = ct::EncounterPosture::Comply;
-   } else if(key == 'S') {
-      posture = ct::EncounterPosture::Surrender;
-   } else if(key == 'B') {
-      posture = ct::EncounterPosture::Board;
-   } else if(key == 'P') {
-      posture = ct::EncounterPosture::Pursue;
-   } else if(key == 'O') {
-      posture = ct::EncounterPosture::ContinueCourse;
-   }
-   if(!posture.has_value() || !posture_available(*posture)) {
+   const auto selected = std::find_if(choices.begin(), choices.end(), [&](const auto& choice) {
+      return choice.key == key || (choice.key == '\r' && key == '\n');
+   });
+   if(selected == choices.end()) {
       return ct::PlayerPhase::Encounter;
    }
+   const auto posture = selected->posture;
    std::vector<ct::EncounterFallback> fallbacks;
    if(!encounter.available_fallbacks.empty()) {
       while(true) {
@@ -11392,10 +11461,15 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
             fallbacks.push_back(ct::EncounterFallback::BreakOff);
       }
    }
-   door_heading("\n\rConfirm response\n\r");
-   door_information("The selected posture will be transmitted now. ");
+   if(encounter.kind != ct::EncounterKind::RoutineTraffic) {
+      door_heading("\n\rConfirm response\n\r");
+      door_information("%s. The order will be transmitted now. ",
+                       safe_field(selected->description).c_str());
+   }
    if(fallbacks.empty()) {
-      door_information("No emergency fallback is attached.\n\r");
+      if(encounter.kind != ct::EncounterKind::RoutineTraffic) {
+         door_information("No emergency fallback is attached.\n\r");
+      }
    } else {
       door_information("Emergency sequence: ");
       for(size_t index = 0; index < fallbacks.size(); ++index) {
@@ -11409,19 +11483,21 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
       }
       door_information("\n\r");
    }
-   door_option_prompt({"[Y] Transmit", "[N] Reconsider"}, false);
-   const auto confirm = static_cast<char>(std::toupper(static_cast<unsigned char>(
-      door_get_live_key())));
-   od_printf("\n\r");
-   if(confirm != 'Y') {
-      return ct::PlayerPhase::Encounter;
+   if(encounter.kind != ct::EncounterKind::RoutineTraffic) {
+      door_option_prompt({"[Y] Transmit", "[N] Reconsider"}, false);
+      const auto confirm = static_cast<char>(std::toupper(static_cast<unsigned char>(
+         door_get_live_key())));
+      od_printf("\n\r");
+      if(confirm != 'Y') {
+         return ct::PlayerPhase::Encounter;
+      }
    }
    auto result = ct::resolve_encounter(
                     connection,
                     hello.assigned_epoch,
                     encounter.encounter_id,
                     encounter.revision,
-                    *posture,
+                    posture,
                     fallbacks,
                     random_command_id(random),
                     request_id++);
