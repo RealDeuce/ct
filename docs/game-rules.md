@@ -1306,6 +1306,15 @@ approximate size class and tonnage at **45% + 10% per point above 6**,
 maximum 75%. A lower total provides only its transponder at 25% confidence.
 Approximate data does not reveal the hidden catalog design.
 
+A cooperative vessel's identification transmission includes its declared ship
+name, transponder, and registered class. Those are claims made by the contact,
+not additional sensor resolution. The encounter view therefore presents them
+separately from the sensor classification and confidence: an exact declared
+class can accompany only a 45% approximate size-class return. A dark or
+non-identifying contact has no declared class to display. Sensor classification
+continues to expose only the generic size class, never the hidden catalog
+design inferred from the declaration.
+
 Each polity also has two public 0-100 orientations: **Trade-Combat** describes
 commercial versus martial priorities, and **Chaos-Order** describes loose
 versus controlled administration. Neither replaces the world's Law Level.
@@ -1332,8 +1341,16 @@ attempt, sensor pass, or maneuver queues one kilosecond of authoritative
 action time. The pending display reports that completion time; it is not a
 wait for the other vessel's approval.
 
-Hostile encounters use Fight, Flee, Meet Demand, Surrender, or Board posture
-and may carry Surrender, Abandon, Jettison Cargo, and Break Off fallbacks.
+Every encounter also permits **Fight**, which immediately treats the displayed
+contact as hostile and enters Vessel Combat. The immediate routine-identification
+completion applies only when identification is exchanged, not when Fight is
+chosen. Unless a locally accepted Naval Order or Privateer Commission names
+that exact contact, fighting a contact that has not already attacked is an
+unauthorized armed interception: it adds 10 public heat, files a 75%-evidence
+warrant, and changes an Independent force-career record to Pirate.
+
+Hostile encounters additionally use Flee, Meet Demand, Surrender, or Board
+posture and may carry Surrender, Abandon, Jettison Cargo, and Break Off fallbacks.
 Filed Flight Plan policy supplies responses at a Through checkpoint. The
 default policy flees hostile contacts with Surrender fallback, complies with
 inspections, reports distress, and does not divert to assist. Complying with an

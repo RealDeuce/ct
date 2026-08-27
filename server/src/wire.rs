@@ -1740,6 +1740,7 @@ pub struct EncounterContact {
     pub contact_id: u64,
     pub ship_name: String,
     pub class_name: String,
+    pub declared_class_name: String,
     pub transponder: String,
     pub role: String,
     pub range: String,
@@ -6446,6 +6447,7 @@ fn set_encounter_snapshot(
     contact.set_contact_id(value.contact.contact_id);
     contact.set_ship_name(&value.contact.ship_name);
     contact.set_class_name(&value.contact.class_name);
+    contact.set_declared_class_name(&value.contact.declared_class_name);
     contact.set_transponder(&value.contact.transponder);
     contact.set_role(&value.contact.role);
     contact.set_range(&value.contact.range);
@@ -6529,6 +6531,7 @@ fn set_terminal_report(
     contact.set_contact_id(value.contact.contact_id);
     contact.set_ship_name(&value.contact.ship_name);
     contact.set_class_name(&value.contact.class_name);
+    contact.set_declared_class_name(&value.contact.declared_class_name);
     contact.set_transponder(&value.contact.transponder);
     contact.set_role(&value.contact.role);
     contact.set_range(&value.contact.range);

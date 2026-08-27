@@ -11234,8 +11234,16 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
    latest_encounter = encounter;
    od_clr_scr();
    door_heading("Contact on Arrival\n\r==================\n\r\n\r");
-   door_label("Contact: ");
+   const auto declared_identity = !encounter.contact.declared_class_name.empty();
+   door_label(declared_identity ? "Declared identity: " : "Contact: ");
    door_identifier("%s\n\r", safe_field(encounter.contact.ship_name).c_str());
+   door_label("Transponder: ");
+   door_value("%s\n\r", encounter.contact.transponder.empty()
+      ? "No transponder information" : safe_field(encounter.contact.transponder).c_str());
+   if(declared_identity) {
+      door_label("Declared class: ");
+      door_identifier("%s\n\r", safe_field(encounter.contact.declared_class_name).c_str());
+   }
    door_label("Sensor resolution: ");
    switch(encounter.contact.resolution) {
    case ct::EncounterResolution::RadioOnly:
@@ -11251,10 +11259,7 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
       door_value("identified\n\r");
       break;
    }
-   door_label("Transponder: ");
-   door_value("%s\n\r", encounter.contact.transponder.empty()
-      ? "No transponder information" : safe_field(encounter.contact.transponder).c_str());
-   door_label("Classification: ");
+   door_label("Sensor classification: ");
    door_value("%s  confidence %u%%\n\r", encounter.contact.class_name.empty()
       ? "Not resolved" : safe_field(encounter.contact.class_name).c_str(),
               encounter.contact.confidence_percent);
@@ -11342,47 +11347,55 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
       add_choice('\r', ct::EncounterPosture::Comply,
                  "[Enter] Exchange ID and continue",
                  "Exchange identification and continue");
+      add_choice('F', ct::EncounterPosture::Fight, "[F] Fight", "Fight the contact");
       break;
    case ct::EncounterKind::TrafficControl:
-      add_choice('F', ct::EncounterPosture::Comply, "[F] Follow crossing order",
+      add_choice('C', ct::EncounterPosture::Comply, "[C] Comply with crossing order",
                  "Follow the assigned crossing order");
       add_choice('D', ct::EncounterPosture::Flee, "[D] Decline and maneuver clear",
                  "Decline the crossing order and maneuver clear");
+      add_choice('F', ct::EncounterPosture::Fight, "[F] Fight", "Fight the contact");
       break;
    case ct::EncounterKind::Inspection:
       add_choice('S', ct::EncounterPosture::Comply, "[S] Submit to inspection",
                  "Submit to the inspection");
       add_choice('R', ct::EncounterPosture::Flee, "[R] Refuse and run",
                  "Refuse the inspection and run");
+      add_choice('F', ct::EncounterPosture::Fight, "[F] Fight", "Fight the contact");
       break;
    case ct::EncounterKind::Distress:
       add_choice('A', ct::EncounterPosture::Comply, "[A] Assist",
                  "Render assistance");
       add_choice('C', continue_posture, "[C] Relay and continue",
                  "Relay the distress call and continue");
+      add_choice('F', ct::EncounterPosture::Fight, "[F] Fight", "Fight the contact");
       break;
    case ct::EncounterKind::Derelict:
       add_choice('I', ct::EncounterPosture::Comply, "[I] Investigate",
                  "Make a close sensor pass");
       add_choice('C', continue_posture, "[C] Report and continue",
                  "Report the derelict and continue");
+      add_choice('F', ct::EncounterPosture::Fight, "[F] Fight", "Fight the contact");
       break;
    case ct::EncounterKind::Hazard:
       add_choice('A', ct::EncounterPosture::Comply, "[A] Avoid debris",
                  "Alter course around the debris");
       add_choice('C', continue_posture, "[C] Continue plotted course",
                  "Continue after updating the debris solution");
+      add_choice('F', ct::EncounterPosture::Fight, "[F] Fight", "Fight the contact");
       break;
    case ct::EncounterKind::Military:
       add_choice('I', ct::EncounterPosture::Comply, "[I] Identify and comply",
                  "Answer the naval challenge");
       add_choice('R', ct::EncounterPosture::Flee, "[R] Refuse and run",
                  "Refuse the challenge and run");
+      add_choice('F', ct::EncounterPosture::Fight, "[F] Fight", "Fight the contact");
       break;
    case ct::EncounterKind::DepartingContact:
       add_choice('P', ct::EncounterPosture::Pursue, "[P] Pursue", "Pursue the contact");
       add_choice('O', ct::EncounterPosture::ContinueCourse, "[O] Continue course",
                  "Let the contact go and continue course");
+      add_choice('F', ct::EncounterPosture::Fight, "[F] Fight", "Fight the contact");
       break;
    case ct::EncounterKind::Hostile:
       if(encounter.authority == ct::EncounterAuthority::Warrant) {
@@ -11461,13 +11474,22 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
             fallbacks.push_back(ct::EncounterFallback::BreakOff);
       }
    }
-   if(encounter.kind != ct::EncounterKind::RoutineTraffic) {
+   const auto immediate_identification = encounter.kind == ct::EncounterKind::RoutineTraffic
+      && posture == ct::EncounterPosture::Comply;
+   if(!immediate_identification) {
       door_heading("\n\rConfirm response\n\r");
       door_information("%s. The order will be transmitted now. ",
                        safe_field(selected->description).c_str());
+      if(posture == ct::EncounterPosture::Fight
+         && encounter.kind != ct::EncounterKind::Hostile
+         && encounter.kind != ct::EncounterKind::DepartingContact) {
+         door_warning(
+            "Unless an accepted Naval Order or Privateer Commission names this contact, "
+            "the armed interception will create public heat and a warrant.\n\r");
+      }
    }
    if(fallbacks.empty()) {
-      if(encounter.kind != ct::EncounterKind::RoutineTraffic) {
+      if(!immediate_identification) {
          door_information("No emergency fallback is attached.\n\r");
       }
    } else {
@@ -11483,7 +11505,7 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
       }
       door_information("\n\r");
    }
-   if(encounter.kind != ct::EncounterKind::RoutineTraffic) {
+   if(!immediate_identification) {
       door_option_prompt({"[Y] Transmit", "[N] Reconsider"}, false);
       const auto confirm = static_cast<char>(std::toupper(static_cast<unsigned char>(
          door_get_live_key())));
@@ -11578,12 +11600,17 @@ void render_command_loss_report(const ct::TerminalReport& report)
    door_number("%s\n\r", game_date(report.resolved_second).c_str());
    door_label("Location: ");
    door_information("%s\n\r", safe_field(report.location).c_str());
-   door_label("Contact: ");
+   const auto declared_identity = !report.contact.declared_class_name.empty();
+   door_label(declared_identity ? "Declared identity: " : "Contact: ");
    door_information("%s\n\r", safe_field(report.contact.ship_name).c_str());
    door_label("Transponder: ");
    door_information("%s\n\r", safe_field(report.contact.transponder).c_str());
+   if(declared_identity) {
+      door_label("Declared class: ");
+      door_information("%s\n\r", safe_field(report.contact.declared_class_name).c_str());
+   }
    if(!report.contact.class_name.empty()) {
-      door_label("Classification: ");
+      door_label("Sensor classification: ");
       door_information("%s  confidence %u%%\n\r",
                        safe_field(report.contact.class_name).c_str(),
                        report.contact.confidence_percent);

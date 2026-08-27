@@ -1682,6 +1682,7 @@ struct EncounterContact {
   range @5 :Text;
   confidencePercent @6 :UInt8;
   resolution @7 :EncounterResolution;
+  declaredClassName @8 :Text;
 }
 
 enum EncounterResolution { radioOnly @0; transponderOnly @1; approximate @2; identified @3; }

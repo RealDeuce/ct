@@ -696,11 +696,18 @@ chosen. Physical work may take authoritative time; the pending screen shows
 when it completes, and does not mean the other vessel is deciding whether to
 approve your response. Hostile contacts retain fighting, running, meeting a
 demand, surrendering, and boarding, while a departing contact can be pursued
-or allowed to go. Contact identity is sensor-qualified:
-a radio hail, transponder return, approximate size class, and positively
-identified vessel are different levels of information. The contact screen also
-shows the apparent authority, range, confidence, and a coarse threat assessment;
-it does not silently substitute an exact hull class for an uncertain return.
+or allowed to go. Every displayed contact can instead be fought immediately.
+Doing so against a contact that has not attacked is an armed interception;
+without an accepted Naval Order or Privateer Commission naming that exact
+contact, it creates public heat and a propagating warrant and changes an
+Independent force-career record to Pirate. When a vessel identifies itself,
+its **Declared identity**, **Transponder**, and **Declared class** are transmitted
+claims. They are displayed separately from **Sensor resolution** and **Sensor
+classification**, so an exact registered-class claim may appear beside a 45%
+approximate size-class estimate. A dark or non-identifying contact instead has
+no declared class. The contact screen also shows the apparent authority, range,
+confidence, and a coarse threat assessment; it does not silently substitute a
+claimed exact hull class for an uncertain sensor return.
 
 Pirate demands state the owned cargo and entrusted freight actually exposed.
 The demand does not imply that pirates already possess your manifest: it states

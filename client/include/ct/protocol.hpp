@@ -1373,6 +1373,7 @@ struct EncounterContact {
    uint64_t contact_id;
    std::string ship_name;
    std::string class_name;
+   std::string declared_class_name;
    std::string transponder;
    std::string role;
    std::string range;
