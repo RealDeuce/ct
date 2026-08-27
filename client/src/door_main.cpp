@@ -4399,7 +4399,15 @@ void show_ship_manager(
          door_label("Completes: ");
          door_number("%s\n\r", game_date(activity.due_second).c_str());
          door_label("Time remaining: ");
-         door_number("%s\n\r", course_duration(remaining_seconds).c_str());
+         door_number("%s", course_duration(remaining_seconds).c_str());
+         door_label(" (wall time ");
+         door_number(
+            "%s",
+            wall_duration(
+               remaining_seconds,
+               snapshot.clock_rate_game_seconds,
+               snapshot.clock_rate_real_seconds).c_str());
+         door_label(")\n\r");
          if(activity.kind == ct::ShipActivityKind::Refit) {
             door_label("Refit charge: ");
             door_number(

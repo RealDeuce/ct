@@ -247,7 +247,9 @@ pre-field proposal with no explicit terminal bit is normalized at the wire
 boundary by marking its last step. CT-RPC 8 added durable ship commissions and
 construction activity. CT-RPC 9 adds browser-alert enrollment and effective
 fuel capacity. CT-RPC 10 adds durable operational-damage reports, positive
-acknowledgement, and live-session wake events.
+acknowledgement, live-session wake events, and authoritative game-to-real clock
+rates on ship status so scheduled yard work can display its wall-time
+equivalent. Older servers leave the additive clock fields at zero.
 
 ## Persistence contract
 

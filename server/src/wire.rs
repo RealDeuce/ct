@@ -5210,6 +5210,8 @@ fn set_ship_status(
     builder.set_unrefined_fuel_millitons(snapshot.unrefined_fuel_millitons);
     builder.set_warranty_voided(snapshot.warranty_voided);
     builder.set_monthly_life_support_credits(snapshot.monthly_life_support_credits);
+    builder.set_clock_rate_game_seconds(crate::clock::GAME_SECONDS_PER_RATE_PERIOD);
+    builder.set_clock_rate_real_seconds(crate::clock::RATE_PERIOD.as_secs());
     builder.set_recovery_status(&snapshot.recovery_status);
     let ammunition_count = u32::try_from(snapshot.ammunition.len())
         .map_err(|_| WireError::Expected("fewer ammunition lots"))?;

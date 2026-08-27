@@ -202,7 +202,11 @@ upkeep allowance already represents ordinary parts and repair items, so the
 first implementation accounts for elapsed shop access without inventing an
 unsupported per-hit material-price curve. A destroyed installation is
 explicitly rejected: it requires component refurbishment or replacement with
-a catalog-derived component price.
+a catalog-derived component price. The work order is berth-bound. Flight Plan
+preview warns before a planned departure, and a successful departure removes
+the scheduled completion and leaves the damage untouched. Refit,
+refurbishment, and other active yard work remain non-interruptible departure
+blockers.
 
 Refits enforce the *Port of Entry* hull-size limits, take a deterministic four
 to six weeks, and cost four monthly maintenance payments. A refit clears

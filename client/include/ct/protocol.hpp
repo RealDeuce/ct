@@ -483,6 +483,8 @@ struct ShipStatusSnapshot {
    ShipProvisionStatus provisions;
    std::vector<std::string> manifested_symptoms;
    std::vector<ShipSubsystemStatus> subsystems;
+   uint64_t clock_rate_game_seconds;
+   uint64_t clock_rate_real_seconds;
    uint64_t committed_sequence;
    uint64_t revision;
    PlayerPhase phase;

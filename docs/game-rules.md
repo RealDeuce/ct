@@ -988,7 +988,9 @@ different operations.
 - A proper repair removes eligible underlying damage at a capable facility.
   It takes one game day per sustained hit, has no parts charge beyond accrued
   berth because routine upkeep covers ordinary repair items, and does not
-  change age or service history.
+  change age or service history. It remains tied to that berth: a successful
+  departure cancels unfinished work and its completion event, leaving the
+  underlying damage unchanged.
 - A refit overhauls the ship, takes four to six game weeks, and costs four
   monthly maintenance payments. It clears eligible wear penalties but does
   not replace destroyed installations.
@@ -1042,10 +1044,13 @@ in the editor.
 A plan can include port purchases, wilderness water or ice collection,
 gas-giant skimming, Jump loci, known systems, surveyed coordinates, imported
 plotted courses, and mining-drone Belt Cycles at catalogued planetoid belts.
-Preview calculates known time, fuel, purchases, and
-obligation warnings. Warnings are numbered once below the route and referenced
-beside every affected step. If a required service, source, payment, or course is no
-longer valid when reached, the plan holds instead of silently substituting
+Preview calculates known time, fuel, purchases, and obligation warnings. When
+proper repair is active, preview marks the first planned berth-clearing step and
+requires acknowledgement that departure will cancel the work; refit and other
+yard operations remain departure blockers. Warnings are numbered once below
+the route and referenced beside every affected step. If a required service,
+source, payment, or course is no longer valid when reached, the plan holds
+instead of silently substituting
 another one.
 
 ### Belt prospecting and mining

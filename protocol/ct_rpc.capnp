@@ -652,6 +652,8 @@ struct ShipStatusSnapshot {
   ammunition @33 :List(ShipAmmunitionStatus);
   provisions @34 :ShipProvisionStatus;
   manifestedSymptoms @35 :List(Text);
+  clockRateGameSeconds @36 :UInt64;
+  clockRateRealSeconds @37 :UInt64;
 }
 
 enum DockedFuelServiceKind {

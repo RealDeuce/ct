@@ -425,7 +425,11 @@ arrears and the missed cycle can damage a subsystem.
 
 Battlefield patches, proper repairs, routine upkeep, refits, and component
 replacement are different kinds of work. A temporary patch does not remove
-underlying damage.
+underlying damage. Ship Management shows an active operation's completion in
+game time and the corresponding real-world wait. Proper repair remains tied
+to the berth: Flight Plan preview warns about a departure, and actually
+clearing the berth cancels unfinished repair without removing the damage.
+Refits and other yard work still prevent departure.
 
 Choosing **Begin refit** opens a quotation before any money is spent. It shows
 the operating-account charge, expected yard time, damage the yard will repair,
@@ -631,8 +635,10 @@ the plan. A Flight Plan preview reports estimated time, fuel, and warnings
 before the plan is filed. Each warning appears once as a numbered footnote,
 with its number repeated beside every affected step. A provision-shortage
 warning is repeated beside every step where cumulative projected consumption
-has exceeded the person-days aboard. Keep enough operating cash available: a purchase
-step that cannot be paid for or executed when reached holds the plan for the
+has exceeded the person-days aboard. An active proper-repair warning marks the
+first departure step that will cancel the work and leave the damage in place. Keep
+enough operating cash available: a purchase step that cannot be paid for or
+executed when reached holds the plan for the
 captain's attention. The preview marks a deadline warning in red when the
 planned route would dock after an accepted task's deadline, would run past its
 deadline without reaching its destination, or reaches a Hold checkpoint in

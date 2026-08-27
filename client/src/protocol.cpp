@@ -860,6 +860,8 @@ ShipStatusSnapshot decode_ship_status_snapshot(
       },
       .manifested_symptoms = {},
       .subsystems = {},
+      .clock_rate_game_seconds = source.getClockRateGameSeconds(),
+      .clock_rate_real_seconds = source.getClockRateRealSeconds(),
       .committed_sequence = committed_sequence,
       .revision = revision,
       .phase = phase,

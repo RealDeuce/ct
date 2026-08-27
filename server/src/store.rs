@@ -5382,6 +5382,7 @@ impl Store {
                     &queued.identity,
                     destination_system_id,
                     crate::wire::JumpNavigationMethod::Onboard,
+                    false,
                 )? {
                     RuleResult::Applied(status) => OutcomeKind::TravelStatus(status),
                     RuleResult::Rejected(message) => OutcomeKind::Error {
@@ -6123,6 +6124,46 @@ impl Store {
         let mut elapsed_seconds = 0_u64;
         let mut at_primary_port = matches!(ship.location, ShipLocationRecord::Docked { .. });
         let mut warnings = Vec::new();
+        if matches!(ship.location, ShipLocationRecord::Docked { .. }) {
+            if let Some(ShipActivityKind::ProperRepair { subsystem_id }) =
+                ship.activity.as_ref().map(|activity| &activity.kind)
+            {
+                let departure_steps = proposal
+                    .steps
+                    .iter()
+                    .enumerate()
+                    .find_map(|(index, step)| {
+                        matches!(
+                            step.action,
+                            FlightPlanAction::Jump { .. }
+                                | FlightPlanAction::JumpCoordinates { .. }
+                                | FlightPlanAction::Fuel {
+                                    operation: FuelOperation::GasGiant
+                                        | FuelOperation::WildernessWater,
+                                    ..
+                                }
+                                | FlightPlanAction::BeltCycle { .. }
+                        )
+                        .then_some(index as u16)
+                    })
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                if !departure_steps.is_empty() {
+                    let subsystem = ship
+                        .subsystems
+                        .iter()
+                        .find(|subsystem| subsystem.subsystem_id == *subsystem_id)
+                        .map_or("selected subsystem", |subsystem| subsystem.label.as_str());
+                    warnings.push(FlightPlanWarning {
+                        code: "ACTIVE_REPAIR_CANCELLED_ON_DEPARTURE".into(),
+                        message: format!(
+                            "Proper repair of {subsystem} is still in progress. Clearing the berth cancels that work; the damage remains."
+                        ),
+                        step_indices: departure_steps,
+                    });
+                }
+            }
+        }
         let mut unattended_waypoints = Vec::new();
         let mut docked_arrivals = HashMap::new();
         let mut step_elapsed_seconds = Vec::with_capacity(proposal.steps.len());
@@ -7323,7 +7364,11 @@ impl Store {
         if phase == PlayerPhase::Interplanetary && !holding_in_deep_space {
             return self.redirect_flight_plan_in(txn, identity, plan);
         }
-        self.activate_flight_plan_from_in(txn, identity, plan, 0, false)
+        let cancel_proper_repair = preview
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "ACTIVE_REPAIR_CANCELLED_ON_DEPARTURE");
+        self.activate_flight_plan_from_in(txn, identity, plan, 0, false, cancel_proper_repair)
     }
 
     fn redirect_flight_plan_in(
@@ -8015,6 +8060,7 @@ impl Store {
         mut plan: FlightPlanSnapshot,
         start_index: usize,
         hold_on_rejection: bool,
+        cancel_proper_repair: bool,
     ) -> Result<RuleResult<FlightPlanSnapshot>, StoreError> {
         let key = encode_identity(identity);
         for index in start_index..plan.steps.len() {
@@ -8089,7 +8135,13 @@ impl Store {
                         proceed_on_known_bad_plot,
                     )?
                 } else {
-                    self.begin_voyage_in(txn, identity, destination_system_id, navigation)?
+                    self.begin_voyage_in(
+                        txn,
+                        identity,
+                        destination_system_id,
+                        navigation,
+                        cancel_proper_repair,
+                    )?
                 } {
                     RuleResult::Rejected(message) => {
                         return self.reject_or_hold_plan_in(
@@ -8123,7 +8175,13 @@ impl Store {
                     navigation,
                     ..
                 } => {
-                    match self.begin_coordinate_voyage_in(txn, identity, destination, navigation)? {
+                    match self.begin_coordinate_voyage_in(
+                        txn,
+                        identity,
+                        destination,
+                        navigation,
+                        cancel_proper_repair,
+                    )? {
                         RuleResult::Rejected(message) => {
                             return self.reject_or_hold_plan_in(
                                 txn,
@@ -8280,6 +8338,7 @@ impl Store {
                         gas_giant,
                         Some(refine_collected),
                         Some(body_id),
+                        cancel_proper_repair,
                     )? {
                         RuleResult::Rejected(message) => {
                             return self.reject_or_hold_plan_in(
@@ -8332,7 +8391,7 @@ impl Store {
                     }
                 },
                 FlightPlanAction::BeltCycle { body_id } => {
-                    match self.begin_belt_cycle_in(txn, identity, body_id)? {
+                    match self.begin_belt_cycle_in(txn, identity, body_id, cancel_proper_repair)? {
                         RuleResult::Rejected(message) => {
                             return self.reject_or_hold_plan_in(
                                 txn,
@@ -9142,8 +9201,14 @@ impl Store {
             if continues && current + 1 < plan.steps.len() {
                 plan.state = FlightPlanState::Active;
                 plan.suspension_reason.clear();
-                let _ =
-                    self.activate_flight_plan_from_in(txn, identity, plan, current + 1, true)?;
+                let _ = self.activate_flight_plan_from_in(
+                    txn,
+                    identity,
+                    plan,
+                    current + 1,
+                    true,
+                    false,
+                )?;
             } else {
                 plan.state = FlightPlanState::Completed;
                 plan.suspension_reason.clear();
@@ -24110,6 +24175,7 @@ impl Store {
                 true,
                 None,
                 Some(*source_body_id),
+                false,
             )? {
                 RuleResult::Applied(_) => {}
                 RuleResult::Rejected(reason) => return Ok(RuleResult::Rejected(reason)),
@@ -24125,6 +24191,7 @@ impl Store {
                 false,
                 None,
                 Some(*source_body_id),
+                false,
             )? {
                 RuleResult::Applied(_) => {}
                 RuleResult::Rejected(reason) => return Ok(RuleResult::Rejected(reason)),
@@ -24536,6 +24603,7 @@ impl Store {
         gas_giant: bool,
         requested_refining: Option<bool>,
         selected_body_id: Option<u32>,
+        cancel_proper_repair: bool,
     ) -> Result<RuleResult<TravelStatus>, StoreError> {
         if quantity_millitons == 0 || quantity_millitons % MILLITONS_PER_TON != 0 {
             return Ok(RuleResult::Rejected(
@@ -24553,7 +24621,9 @@ impl Store {
                 "a frontier fueling expedition can only begin while docked".into(),
             ));
         };
-        if ship.activity.is_some() {
+        if ship.activity.as_ref().is_some_and(|activity| {
+            !cancel_proper_repair || !matches!(activity.kind, ShipActivityKind::ProperRepair { .. })
+        }) {
             return Ok(RuleResult::Rejected(
                 "the ship already has active work".into(),
             ));
@@ -24682,6 +24752,9 @@ impl Store {
             .checked_add(return_seconds)
             .ok_or(StoreError::Corrupt("frontier return time overflow"))?;
         let plan_id = crate::ship_condition::mix64(ship.ship_id ^ current ^ activity_id);
+        if cancel_proper_repair {
+            self.cancel_proper_repair_for_departure_in(txn, &mut ship)?;
+        }
         ship.activity = Some(ShipActivityRecord {
             activity_id,
             kind: if gas_giant {
@@ -24868,6 +24941,7 @@ impl Store {
         txn: &mut heed::RwTxn<'_>,
         identity: &PlayerIdentity,
         body_id: u32,
+        cancel_proper_repair: bool,
     ) -> Result<RuleResult<TravelStatus>, StoreError> {
         let (mut player, mut ship) = self.player_and_ship_in(txn, identity)?;
         let ShipLocationRecord::Docked {
@@ -24880,7 +24954,9 @@ impl Store {
                 "a belt cycle can only begin while docked".into(),
             ));
         };
-        if ship.activity.is_some() {
+        if ship.activity.as_ref().is_some_and(|activity| {
+            !cancel_proper_repair || !matches!(activity.kind, ShipActivityKind::ProperRepair { .. })
+        }) {
             return Ok(RuleResult::Rejected(
                 "the ship already has active work".into(),
             ));
@@ -25000,6 +25076,9 @@ impl Store {
         let due = current
             .checked_add(context.transit_seconds)
             .ok_or(StoreError::Corrupt("belt transit time overflow"))?;
+        if cancel_proper_repair {
+            self.cancel_proper_repair_for_departure_in(txn, &mut ship)?;
+        }
         ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
             plan_id: crate::ship_condition::mix64(ship.ship_id ^ current ^ u64::from(body_id)),
             plan_revision: 1,
@@ -25227,9 +25306,12 @@ impl Store {
         identity: &PlayerIdentity,
         destination_system_id: u64,
         navigation: crate::wire::JumpNavigationMethod,
+        cancel_proper_repair: bool,
     ) -> Result<RuleResult<TravelStatus>, StoreError> {
         let (mut player, mut ship) = self.player_and_ship_in(txn, identity)?;
-        if ship.activity.is_some() {
+        if ship.activity.as_ref().is_some_and(|activity| {
+            !cancel_proper_repair || !matches!(activity.kind, ShipActivityKind::ProperRepair { .. })
+        }) {
             return Ok(RuleResult::Rejected(
                 "the ship cannot depart while yard work is active".into(),
             ));
@@ -25376,6 +25458,9 @@ impl Store {
                 "departure requires Cr{departure_cost} (Cr{berth_fee} berth and Cr{tape_cost} navigation); the operating account is short"
             )));
         }
+        if cancel_proper_repair {
+            self.cancel_proper_repair_for_departure_in(txn, &mut ship)?;
+        }
         let celestial = derive_celestial_system(&origin)?;
         let approach = primary_world_jump_safety(
             &celestial,
@@ -25452,6 +25537,7 @@ impl Store {
         identity: &PlayerIdentity,
         destination: crate::wire::Coordinate3,
         navigation: crate::wire::JumpNavigationMethod,
+        cancel_proper_repair: bool,
     ) -> Result<RuleResult<TravelStatus>, StoreError> {
         if !destination.is_finite() {
             return Ok(RuleResult::Rejected(
@@ -25459,7 +25545,10 @@ impl Store {
             ));
         }
         let (mut player, mut ship) = self.player_and_ship_in(txn, identity)?;
-        if ship.activity.is_some() || ship.provisions.person_days_remaining == 0 {
+        if ship.activity.as_ref().is_some_and(|activity| {
+            !cancel_proper_repair || !matches!(activity.kind, ShipActivityKind::ProperRepair { .. })
+        }) || ship.provisions.person_days_remaining == 0
+        {
             return Ok(RuleResult::Rejected(
                 "the ship is not ready to leave the berth".into(),
             ));
@@ -25544,6 +25633,9 @@ impl Store {
             return Ok(RuleResult::Rejected(format!(
                 "departure requires Cr{departure_cost} (Cr{berth_fee} berth and Cr{tape_cost} navigation); the operating account is short"
             )));
+        }
+        if cancel_proper_repair {
+            self.cancel_proper_repair_for_departure_in(txn, &mut ship)?;
         }
         let celestial = derive_celestial_system(&origin)?;
         let approach = primary_world_jump_safety(
@@ -28923,6 +29015,26 @@ impl Store {
         Ok(())
     }
 
+    fn cancel_proper_repair_for_departure_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        ship: &mut ShipRecord,
+    ) -> Result<(), StoreError> {
+        if !matches!(
+            ship.activity.as_ref().map(|activity| &activity.kind),
+            Some(ShipActivityKind::ProperRepair { .. })
+        ) {
+            return Ok(());
+        }
+        self.remove_ship_activity_schedules_in(txn, ship.ship_id)?;
+        ship.activity = None;
+        // A recovery plan paired with proper repair is the automatic post-loss
+        // recovery chain. Departure abandons that chain along with the work order.
+        ship.recovery_plan = None;
+        ship.revision = ship.revision.saturating_add(1);
+        Ok(())
+    }
+
     fn schedule_encounter_turn_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
@@ -32081,8 +32193,14 @@ impl Store {
                         )
                     })
                 {
-                    let _ =
-                        self.activate_flight_plan_from_in(txn, &command, plan, current + 1, true)?;
+                    let _ = self.activate_flight_plan_from_in(
+                        txn,
+                        &command,
+                        plan,
+                        current + 1,
+                        true,
+                        false,
+                    )?;
                 }
             }
         }
@@ -33590,6 +33708,7 @@ impl Store {
                         plan,
                         current + 1,
                         true,
+                        false,
                     )?;
                 }
             }
@@ -49381,6 +49500,7 @@ mod tests {
                     &identity(),
                     destination.system_id,
                     crate::wire::JumpNavigationMethod::Onboard,
+                    false,
                 )
                 .unwrap(),
             RuleResult::Applied(_)
@@ -56038,6 +56158,180 @@ mod tests {
                 .unwrap()
                 .activity
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn flight_plan_warns_before_departure_cancels_proper_repair() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_two_system_player_fixture(&store);
+        let player = store.player_record(&identity()).unwrap().unwrap();
+        let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        let subsystem = ship
+            .subsystems
+            .iter_mut()
+            .find(|subsystem| subsystem.maximum_hits > 1)
+            .unwrap();
+        subsystem.sustained_hits = 1;
+        let subsystem_id = subsystem.subsystem_id;
+        let subsystem_label = subsystem.label.clone();
+        let known = store
+            .known_destinations_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let destination = known
+            .systems
+            .iter()
+            .find(|system| system.within_jump_rating && system.system_id != ship.system_id)
+            .unwrap()
+            .system_id;
+        let proposal = FlightPlanProposal {
+            expected_plan_revision: 0,
+            steps: vec![
+                FlightPlanStep {
+                    locus: FlightLocus::JumpLocus {
+                        system_id: ship.system_id,
+                    },
+                    authority: WaypointAuthority::Through,
+                    action: FlightPlanAction::Jump {
+                        destination_system_id: destination,
+                        navigation: crate::wire::JumpNavigationMethod::Onboard,
+                        proceed_on_known_bad_plot: false,
+                    },
+                    terminal: false,
+                },
+                FlightPlanStep {
+                    locus: FlightLocus::Port {
+                        system_id: destination,
+                        world_id: destination,
+                        facility_id: destination,
+                    },
+                    authority: WaypointAuthority::Hold,
+                    action: FlightPlanAction::Dock {
+                        world_id: destination,
+                        facility_id: destination,
+                    },
+                    terminal: true,
+                },
+            ],
+            policy: EncounterPolicy::default(),
+        };
+
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        let scheduled = match store
+            .begin_proper_repair_in(&mut txn, &identity(), subsystem_id)
+            .unwrap()
+        {
+            RuleResult::Applied(status) => status,
+            RuleResult::Rejected(message) => panic!("repair rejected unexpectedly: {message}"),
+        };
+        let repair_due = scheduled.active_activity.unwrap().due_second;
+        let preview = match store
+            .preview_flight_plan_in(&txn, &identity(), &proposal)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("preview rejected unexpectedly: {message}"),
+        };
+        let warning = preview
+            .warnings
+            .iter()
+            .find(|warning| warning.code == "ACTIVE_REPAIR_CANCELLED_ON_DEPARTURE")
+            .expect("active repair warning");
+        assert_eq!(warning.step_indices, vec![0]);
+        assert!(warning.message.contains(&subsystem_label));
+        assert!(warning.message.contains("damage remains"));
+
+        let unacknowledged = store
+            .commit_flight_plan_in(
+                &mut txn,
+                &identity(),
+                &CommitFlightPlanRequest {
+                    proposal: proposal.clone(),
+                    preview_hash: preview.preview_hash.clone(),
+                    acknowledge_warnings: false,
+                },
+            )
+            .unwrap();
+        assert!(matches!(
+            unacknowledged,
+            RuleResult::Rejected(message) if message.contains("must be acknowledged")
+        ));
+        let still_repairing = store
+            .ships
+            .get(&txn, &ship.ship_id)
+            .unwrap()
+            .map(decode_ship_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            still_repairing.activity.unwrap().kind,
+            ShipActivityKind::ProperRepair { subsystem_id: actual }
+                if actual == subsystem_id
+        ));
+        let unreviewed_departure = store
+            .begin_voyage_in(
+                &mut txn,
+                &identity(),
+                destination,
+                crate::wire::JumpNavigationMethod::Onboard,
+                false,
+            )
+            .unwrap();
+        assert!(matches!(
+            unreviewed_departure,
+            RuleResult::Rejected(message) if message.contains("yard work is active")
+        ));
+
+        let committed = store
+            .commit_flight_plan_in(
+                &mut txn,
+                &identity(),
+                &CommitFlightPlanRequest {
+                    proposal,
+                    preview_hash: preview.preview_hash,
+                    acknowledge_warnings: true,
+                },
+            )
+            .unwrap();
+        assert!(matches!(committed, RuleResult::Applied(_)));
+        let departed = store
+            .ships
+            .get(&txn, &ship.ship_id)
+            .unwrap()
+            .map(decode_ship_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert!(matches!(departed.location, ShipLocationRecord::InFlight(_)));
+        assert!(departed.activity.is_none());
+        assert_eq!(
+            departed
+                .subsystems
+                .iter()
+                .find(|subsystem| subsystem.subsystem_id == subsystem_id)
+                .unwrap()
+                .sustained_hits,
+            1
+        );
+        txn.commit().unwrap();
+
+        let advanced = store.advance_simulation_to(repair_due).unwrap();
+        assert_eq!(advanced.ship_activity_events, 0);
+        let after_due = store.ship_record(ship.ship_id).unwrap().unwrap();
+        assert_eq!(
+            after_due
+                .subsystems
+                .iter()
+                .find(|subsystem| subsystem.subsystem_id == subsystem_id)
+                .unwrap()
+                .sustained_hits,
+            1
         );
     }
 
