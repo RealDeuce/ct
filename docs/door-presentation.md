@@ -57,13 +57,19 @@ same colour across creation, trading, navigation, and combat screens.
 | Number | bright yellow | quantities, ratings, money, dates, and choices |
 | Identifier | bright magenta | careers, phases, packages, and record IDs |
 | Information | green | descriptions and informational state |
-| Prompt | bright green | available commands and input prompts |
+| Prompt | bright green | command shortcuts and input prompts |
 | Success | bright green | valid totals and completed/ready state |
 | Warning/Error | bright red | invalid, negative, dangerous, or failed state |
 | Normal/Muted | grey | prose and deliberately de-emphasized text |
 
 The ISO 646 plain profile ignores roles and emits the exact same visible text
 without rendition controls. No game meaning is conveyed by colour alone.
+
+Option menus split their presentation into two semantic layers: bracketed
+shortcuts and the final input marker use bright-green Prompt, while the action
+descriptions use grey Muted text. Free-form input prompts remain wholly bright
+green. This keeps dense command menus scannable without changing their text,
+sorting, wrapping, keyboard access, or plain-profile output.
 
 There is no TUI or general Unicode presentation profile. Apart from the
 clear-and-home page boundary, the renderer must not depend on cursor

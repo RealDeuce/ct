@@ -815,7 +815,7 @@ int main() {
    check(skip_pauses == 1);
    check(!skipping_pager.write("hidden record\n\r"));
    check(skipped_page.find("hidden record") == std::string::npos);
-   check(skipping_pager.write("[Q] Back", ct::DoorTextRole::Prompt));
+   check(skipping_pager.write_option_prompt("[Q] Back: "));
    check(skipped_page.find("(Q) Back") != std::string::npos);
    check(skipping_pager.write("\n\rvisible again"));
    check(skipped_page.find("visible again") != std::string::npos);
@@ -997,6 +997,47 @@ int main() {
          {"[Q] Quit", "[B] Beta", "[?] Help", "[2] Two", "[< >] Page", "[A] Alpha"},
          80) ==
       "\n\r[2] Two  [< >] Page  [A] Alpha  [B] Beta  [Q] Quit  [?] Help: ");
+
+   std::string colored_option_output;
+   ct::DoorPresentation colored_options(
+      ct::DoorProfile::Cp437Color,
+      80,
+      24,
+      [&colored_option_output](const std::string_view bytes) {
+         colored_option_output.append(bytes);
+      });
+   colored_options.write_option_prompt(
+      "\n\r[A] Add charted leg  [Q] Keep existing plan  [?] Help: ");
+   check(colored_option_output.find(
+            "\x1b[1;32m[A]\x1b[0m"
+            "\x1b[37m Add charted leg  \x1b[0m"
+            "\x1b[1;32m[Q]\x1b[0m") != std::string::npos);
+   check(colored_option_output.find(
+            "\x1b[1;32m[?]\x1b[0m"
+            "\x1b[37m Help\x1b[0m"
+            "\x1b[1;32m: \x1b[0m") != std::string::npos);
+
+   std::string plain_option_output;
+   std::string legacy_plain_option_output;
+   ct::DoorPresentation plain_options(
+      ct::DoorProfile::Iso646,
+      80,
+      24,
+      [&plain_option_output](const std::string_view bytes) {
+         plain_option_output.append(bytes);
+      });
+   ct::DoorPresentation legacy_plain_options(
+      ct::DoorProfile::Iso646,
+      80,
+      24,
+      [&legacy_plain_option_output](const std::string_view bytes) {
+         legacy_plain_option_output.append(bytes);
+      });
+   constexpr std::string_view option_text =
+      "\n\r[A] Add charted leg  [Q] Keep existing plan  [?] Help: ";
+   plain_options.write_option_prompt(option_text);
+   legacy_plain_options.write(option_text, ct::DoorTextRole::Prompt);
+   check(plain_option_output == legacy_plain_option_output);
 
    const auto subsystem_row =
       [](const ct::DoorProfile profile, const size_t columns,

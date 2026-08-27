@@ -1047,6 +1047,64 @@ bool DoorPresentation::write(const std::string_view text,
    return completed;
 }
 
+bool DoorPresentation::write_option_prompt(const std::string_view text) {
+   if(skipping_to_prompt_) {
+      skipping_to_prompt_ = false;
+   }
+   write_aborted_ = false;
+   const bool color = door_profile_uses_ansi(profile_);
+   const auto write_fragment = [this, color](
+      const std::string_view fragment,
+      const DoorTextRole visual_role) {
+      if(fragment.empty() || write_aborted_) {
+         return;
+      }
+      if(color) {
+         emit(role_sequence(visual_role));
+      }
+      emit_encoded(encode_text(fragment, profile_), DoorTextRole::Prompt, 0);
+      if(color) {
+         emit("\x1b[0m");
+      }
+   };
+
+   size_t offset = 0;
+   while(offset < text.size() && !write_aborted_) {
+      if(text[offset] == '[') {
+         const auto close = text.find(']', offset + 1);
+         if(close != std::string_view::npos) {
+            write_fragment(
+               text.substr(offset, close - offset + 1),
+               DoorTextRole::Prompt);
+            offset = close + 1;
+            continue;
+         }
+      }
+      const auto next_shortcut = text.find('[', offset + 1);
+      const auto end = next_shortcut == std::string_view::npos
+                          ? text.size()
+                          : next_shortcut;
+      auto description = text.substr(offset, end - offset);
+      const bool final_input_marker = end == text.size() &&
+                                      description.size() >= 2 &&
+                                      description.ends_with(": ");
+      if(final_input_marker) {
+         write_fragment(
+            description.substr(0, description.size() - 2),
+            DoorTextRole::Muted);
+         write_fragment(description.substr(description.size() - 2),
+                        DoorTextRole::Prompt);
+      } else {
+         write_fragment(description, DoorTextRole::Muted);
+      }
+      offset = end;
+   }
+   flush();
+   const bool completed = !write_aborted_;
+   write_aborted_ = false;
+   return completed;
+}
+
 bool DoorPresentation::write_hanging(
    const std::string_view text,
    const size_t continuation_indent,

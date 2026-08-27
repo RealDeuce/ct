@@ -133,6 +133,7 @@ public:
    void clear();
    bool write(std::string_view text,
               DoorTextRole role = DoorTextRole::Normal);
+   bool write_option_prompt(std::string_view text);
    bool write_hanging(std::string_view text,
                       size_t continuation_indent,
                       DoorTextRole role = DoorTextRole::Normal);

@@ -100,6 +100,7 @@ uint64_t phase_event_generation = 0;
 uint64_t displayed_phase_event_generation = 0;
 std::string active_prompt;
 bool active_prompt_on_current_line = false;
+bool active_prompt_is_option = false;
 ct::DoorHelpTopic active_help_topic = ct::DoorHelpTopic::General;
 ct::HelpLevel default_help_level = ct::HelpLevel::Beginner;
 std::optional<ct::HelpLevel> active_help_level;
@@ -265,10 +266,12 @@ void flush_player_events()
 
    const auto prompt = active_prompt;
    const auto prompt_on_current_line = active_prompt_on_current_line;
+   const auto prompt_is_option = active_prompt_is_option;
    if(prompt_on_current_line && !prompt.empty()) {
       output().erase_prompt(prompt.size());
       active_prompt.clear();
       active_prompt_on_current_line = false;
+      active_prompt_is_option = false;
    }
    output().resume_paging();
    const auto event_prefix = prompt_on_current_line ? "" : "\n\r";
@@ -307,8 +310,13 @@ void flush_player_events()
    }
    active_prompt = prompt;
    if(!active_prompt.empty()) {
-      output().write(active_prompt, ct::DoorTextRole::Prompt);
+      if(prompt_is_option) {
+         output().write_option_prompt(active_prompt);
+      } else {
+         output().write(active_prompt, ct::DoorTextRole::Prompt);
+      }
       active_prompt_on_current_line = prompt_on_current_line;
+      active_prompt_is_option = prompt_is_option;
    }
    output().suspend_paging();
 }
@@ -332,6 +340,7 @@ void echo_prompt_key(const int key, const bool preserve_prompt)
    if(!preserve_prompt) {
       active_prompt.clear();
       active_prompt_on_current_line = false;
+      active_prompt_is_option = false;
    }
 }
 
@@ -389,6 +398,7 @@ void door_clear_screen()
 {
    active_prompt.clear();
    active_prompt_on_current_line = false;
+   active_prompt_is_option = false;
    output().clear();
    output().resume_paging();
 }
@@ -399,6 +409,7 @@ void door_write(const std::string_view text,
    if(role != ct::DoorTextRole::Prompt) {
       active_prompt.clear();
       active_prompt_on_current_line = false;
+      active_prompt_is_option = false;
    }
    output().write(text, role);
 }
@@ -456,6 +467,7 @@ void door_prompt(const char* format, ...)
    }
    active_prompt += text;
    active_prompt_on_current_line = false;
+   active_prompt_is_option = false;
    output().write(text, ct::DoorTextRole::Prompt);
    output().suspend_paging();
 }
@@ -474,6 +486,7 @@ void door_live_prompt(const char* format, ...)
    }
    active_prompt = text;
    active_prompt_on_current_line = true;
+   active_prompt_is_option = false;
    output().write(text, ct::DoorTextRole::Prompt);
    output().suspend_paging();
 }
@@ -498,7 +511,11 @@ void door_option_prompt(
 {
    const auto prompt =
       ct::door_option_prompt(options, output().columns(), leading_newline);
-   door_prompt("%s", prompt.c_str());
+   active_prompt += prompt;
+   active_prompt_on_current_line = false;
+   active_prompt_is_option = true;
+   output().write_option_prompt(prompt);
+   output().suspend_paging();
 }
 
 void door_option_prompt(
@@ -509,7 +526,11 @@ void door_option_prompt(
       std::span<const std::string_view>(options),
       output().columns(),
       leading_newline);
-   door_prompt("%s", prompt.c_str());
+   active_prompt += prompt;
+   active_prompt_on_current_line = false;
+   active_prompt_is_option = true;
+   output().write_option_prompt(prompt);
+   output().suspend_paging();
 }
 
 void render_combat_countdown_prompt(const uint64_t remaining_seconds)
@@ -518,6 +539,7 @@ void render_combat_countdown_prompt(const uint64_t remaining_seconds)
       output().erase_prompt(active_prompt.size());
       active_prompt.clear();
       active_prompt_on_current_line = false;
+      active_prompt_is_option = false;
    }
    const auto minutes = remaining_seconds / 60;
    const auto seconds = remaining_seconds % 60;
@@ -1117,6 +1139,7 @@ void door_input_str(char* input,
    output().resume_paging();
    active_prompt.clear();
    active_prompt_on_current_line = false;
+   active_prompt_is_option = false;
 }
 
 #define od_input_str(...) door_input_str(__VA_ARGS__)
@@ -1313,6 +1336,7 @@ HelpTopicResult show_help_topic(const ct::DoorHelpTopic topic,
       output().suspend_paging();
       active_prompt.clear();
       active_prompt_on_current_line = false;
+      active_prompt_is_option = false;
       std::vector<std::string_view> options;
       options.emplace_back(from_browser ? "[Enter] Topics" : "[Enter] Resume");
       if(!from_browser) {
@@ -1358,6 +1382,7 @@ std::optional<unsigned> read_help_browser_number(const char* label,
       output().resume_paging();
       active_prompt.clear();
       active_prompt_on_current_line = false;
+      active_prompt_is_option = false;
       if((input[0] == 'q' || input[0] == 'Q') && input[1] == '\0') {
          return std::nullopt;
       }
@@ -1685,15 +1710,22 @@ void show_help_browser(ct::HelpLevel& level)
 }
 
 void restore_help_caller_prompt(const std::string& saved_prompt,
-                                const bool saved_prompt_on_current_line)
+                                const bool saved_prompt_on_current_line,
+                                const bool saved_prompt_is_option)
 {
    active_help_level.reset();
    active_prompt.clear();
    active_prompt_on_current_line = false;
+   active_prompt_is_option = false;
    active_prompt = saved_prompt;
    if(!saved_prompt.empty()) {
-      output().write(saved_prompt, ct::DoorTextRole::Prompt);
+      if(saved_prompt_is_option) {
+         output().write_option_prompt(saved_prompt);
+      } else {
+         output().write(saved_prompt, ct::DoorTextRole::Prompt);
+      }
       active_prompt_on_current_line = saved_prompt_on_current_line;
+      active_prompt_is_option = saved_prompt_is_option;
    }
    output().suspend_paging();
 }
@@ -1702,26 +1734,32 @@ void show_context_help()
 {
    const auto saved_prompt = active_prompt;
    const auto saved_prompt_on_current_line = active_prompt_on_current_line;
+   const auto saved_prompt_is_option = active_prompt_is_option;
    active_prompt.clear();
    active_prompt_on_current_line = false;
+   active_prompt_is_option = false;
    auto level = default_help_level;
    const auto result = show_help_topic(active_help_topic, level, false);
    if(result == HelpTopicResult::Browse) {
       show_help_browser(level);
    }
-   restore_help_caller_prompt(saved_prompt, saved_prompt_on_current_line);
+   restore_help_caller_prompt(
+      saved_prompt, saved_prompt_on_current_line, saved_prompt_is_option);
 }
 
 void show_help_browser_direct()
 {
    const auto saved_prompt = active_prompt;
    const auto saved_prompt_on_current_line = active_prompt_on_current_line;
+   const auto saved_prompt_is_option = active_prompt_is_option;
    active_prompt.clear();
    active_prompt_on_current_line = false;
+   active_prompt_is_option = false;
    auto level = default_help_level;
    active_help_level = level;
    show_help_browser(level);
-   restore_help_caller_prompt(saved_prompt, saved_prompt_on_current_line);
+   restore_help_caller_prompt(
+      saved_prompt, saved_prompt_on_current_line, saved_prompt_is_option);
 }
 
 const char* first_watch_disposition_name(
