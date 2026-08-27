@@ -193,7 +193,11 @@ secret mapping choices. Public mapping notices and sealed Earth filings enter
 the ordinary physical envelope queues; committed dispatches cannot be
 retracted. The current route-invariant carrier stipend is explicitly
 provisional and versioned for later balance work; it never causes or redirects
-a voyage. Acceptance is exercised by the real TLS/OpenDoors harness: the same
+a voyage. Communication importance thresholds apply consistently to arrival
+review and Message Management. Ordinary daily processing creates only the
+physical commercial instruments needed by Task Management; offers are not
+duplicated in communication screens, and generic boilerplate is neither
+generated nor retained. Acceptance is exercised by the real TLS/OpenDoors harness: the same
 persisted voyage carries speculative cargo and physical mail state across
 restart, presents actionable arrival copy in every output profile, retains
 classifications, and completes destination sale. The deterministic store

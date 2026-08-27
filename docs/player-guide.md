@@ -448,15 +448,18 @@ available only when supported by the task's current state.
 
 ### Message Management
 
-Messages include news, public-service reports, offers, traffic notices, and
-private correspondence. You can inspect, ignore, mark for later, action, or
-archive delivered records. Classification changes how you organize a message;
+Messages include meaningful news, public-service reports, traffic notices,
+operational and financial notices, and private correspondence. Commercial
+offers appear only in Task Management, alongside their current availability
+and complete terms. You can inspect, ignore, mark for later, action, or archive
+delivered correspondence. Classification changes how you organize a message;
 it does not erase the underlying event or obligation.
 
-Arrival-packet filters set the minimum importance shown for each service
-class. Material filtered out of the arrival review remains available in the
-message archive. Some messages carry direct links to the relevant Task,
-Finance, Mapping, or Operations record.
+Communication Filters set the minimum importance shown for News, Public
+service, Traffic, and Private copy. The same thresholds apply to the Message
+Management list and arrival review. Raising a threshold hides lower-priority
+retained copy; lowering it reveals that copy again. Some messages carry direct
+links to the relevant Task, Finance, Mapping, or Operations record.
 
 Information and private correspondence travel through the universe. A report
 may be old when it reaches you, and a message cannot reveal facts that have not

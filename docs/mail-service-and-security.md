@@ -12,12 +12,13 @@ revocation, or balance update across a Jump boundary. Beacons and relays use
 the persistent due-time event queue and ordinary carrier capacity described in
 the simulation design.
 
-Messages have stable IDs, origin and dispatch times, a service class, one of
-four importance bands, an immutable subject/article body, addresses, payload
-metadata, propagation plan, and an absolute game-time
-`expires_at` where the service requires a TTL. The immutable archive is
-retained after expiry; TTL ends routing, holding, acceptance, or delivery. It
-is never a hop counter.
+Meaningful messages have stable IDs, origin and dispatch times, a service
+class, one of four importance bands, an immutable subject/article body,
+addresses, payload metadata, propagation plan, and an absolute game-time
+`expires_at` where the service requires a TTL. A captain's retained filing copy
+survives expiry; TTL ends routing, holding, acceptance, or delivery. It is
+never a hop counter. Generated commercial instruments are retained by the Task
+service instead of being duplicated in the captain's correspondence file.
 
 The initial fixed-system simulation substrate now implements immutable
 messages, destination envelopes, beacon queues, ordinary simulated carrier
@@ -29,18 +30,25 @@ arrival hands it off and pays the recorded stipend atomically, and replay
 cannot deliver or pay it twice. Arrival receipts and per-captain
 readership/classification are separate from institutional availability.
 
-Each captain's arrival packet applies a durable minimum importance per service
-class. The default suppresses routine public-service and traffic copy while
-retaining notable news and all commercial offers. Filtering does not delete a
-message, prevent receipt classification, or suppress structured Known Universe
-updates; Message Management always permits the retained copy to be found and
-the door can revise all five thresholds.
+Each captain has a durable minimum importance for each visible communication
+class: agency news, public service, traffic, and private correspondence. The
+same thresholds apply to arrival review and Message Management. The default
+suppresses routine public-service and traffic copy. Filtering does not delete a
+meaningful message or suppress structured Known Universe updates; lowering a
+threshold reveals retained copy again. Commercial offers are intentionally
+absent from both communication surfaces and remain available through Task
+Management.
+
+Ordinary `SystemDay` processing creates only the signed commercial instruments
+needed by Task Management. It no longer emits generic market reports, public
+information bulletins, traffic advisories, or recipientless private dispatches.
+Meaningful notices created by actual mapping, operational, legal, financial,
+and player actions continue to use physical mail.
 
 The initial mapping path also dispatches authenticated public notices through
 normal public-service envelopes and sealed direct filings through one private
 route to Earth. Withholding and secret classification create no mail, and a
-committed dispatch cannot be retracted. News/public-service fan-out and initial
-message rates are calibration constants pending the full dispatch/tariff model. See
+committed dispatch cannot be retracted. See
 [`non-interactive-universe-tour.md`](non-interactive-universe-tour.md).
 
 The initial player carrier tariff is deliberately provisional: every nonempty

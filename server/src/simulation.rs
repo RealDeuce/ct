@@ -360,6 +360,13 @@ pub struct SimulationReport {
     pub carrier_legs_delivered: u64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct FocusedInboxReconciliation {
+    pub removed_message_ids: BTreeSet<u64>,
+    pub offer_message_ids: BTreeSet<u64>,
+    pub changed_mailbag_envelope_counts: BTreeMap<u64, u16>,
+}
+
 impl SimulationReport {
     pub fn message_count(&self) -> u64 {
         self.messages_by_class.iter().sum()
@@ -515,6 +522,144 @@ impl SimulationDatabases {
             system.generated_traffic_enabled = visited_system_ids.contains(&system.system_id);
         }
         self.rewrite_traffic_neighbors(txn, systems)
+    }
+
+    /// Remove only the exact boilerplate emitted by the original SystemDay
+    /// message generator. Contract-offer messages remain as physical,
+    /// delayed instruments for Task Management, but their identifiers are
+    /// returned so the game store can remove any legacy inbox filing rows.
+    pub fn reconcile_focused_inbox(
+        &self,
+        txn: &mut RwTxn<'_>,
+        addressed_private_message_ids: &BTreeSet<u64>,
+    ) -> Result<FocusedInboxReconciliation, SimulationError> {
+        let systems = self
+            .systems(txn)?
+            .into_iter()
+            .map(|system| (system.system_id, system))
+            .collect::<BTreeMap<_, _>>();
+        let messages = self
+            .records
+            .prefix_iter(txn, &[RECORD_MESSAGE])?
+            .map(|entry| {
+                let (key, value) = entry?;
+                decode_message(key_id(key)?, value)
+            })
+            .collect::<Result<Vec<_>, SimulationError>>()?;
+        let mut reconciliation = FocusedInboxReconciliation::default();
+        for message in messages {
+            if message.class == MessageClass::ContractOffer {
+                reconciliation.offer_message_ids.insert(message.message_id);
+                continue;
+            }
+            let Some(origin) = systems.get(&message.origin_system_id) else {
+                return Err(SimulationError::Corrupt("message origin system is missing"));
+            };
+            if is_legacy_generated_filler(&message, origin)
+                && (message.class != MessageClass::Private
+                    || !addressed_private_message_ids.contains(&message.message_id))
+            {
+                reconciliation
+                    .removed_message_ids
+                    .insert(message.message_id);
+            }
+        }
+        if reconciliation.removed_message_ids.is_empty() {
+            return Ok(reconciliation);
+        }
+
+        let envelopes = self
+            .records
+            .prefix_iter(txn, &[RECORD_ENVELOPE])?
+            .map(|entry| {
+                let (key, value) = entry?;
+                decode_envelope(key_id(key)?, value)
+            })
+            .collect::<Result<Vec<_>, SimulationError>>()?;
+        let removed_envelope_ids = envelopes
+            .iter()
+            .filter(|envelope| {
+                reconciliation
+                    .removed_message_ids
+                    .contains(&envelope.message_id)
+            })
+            .map(|envelope| envelope.envelope_id)
+            .collect::<BTreeSet<_>>();
+
+        let mailbags = self
+            .records
+            .prefix_iter(txn, &[RECORD_MAILBAG])?
+            .map(|entry| {
+                let (key, value) = entry?;
+                decode_mailbag(key_id(key)?, value)
+            })
+            .collect::<Result<Vec<_>, SimulationError>>()?;
+        for mut mailbag in mailbags {
+            let prior_count = mailbag.envelope_ids.len();
+            mailbag
+                .envelope_ids
+                .retain(|id| !removed_envelope_ids.contains(id));
+            if mailbag.envelope_ids.len() != prior_count {
+                let count = u16::try_from(mailbag.envelope_ids.len())
+                    .map_err(|_| SimulationError::Corrupt("mailbag too large"))?;
+                reconciliation
+                    .changed_mailbag_envelope_counts
+                    .insert(mailbag.mailbag_id, count);
+                self.records.put(
+                    txn,
+                    &record_key(RECORD_MAILBAG, mailbag.mailbag_id),
+                    &encode_mailbag(&mailbag)?,
+                )?;
+            }
+        }
+
+        let delivery_keys = self
+            .records
+            .prefix_iter(txn, &[RECORD_DELIVERY])?
+            .filter_map(|entry| match entry {
+                Ok((key, value)) => Some(
+                    key_id(key)
+                        .and_then(|id| decode_delivery(id, value))
+                        .map(|delivery| {
+                            (reconciliation
+                                .removed_message_ids
+                                .contains(&delivery.message_id)
+                                || delivery
+                                    .envelope_id
+                                    .is_some_and(|id| removed_envelope_ids.contains(&id)))
+                            .then(|| key.to_vec())
+                        }),
+                ),
+                Err(error) => Some(Err(SimulationError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, SimulationError>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        let queue_keys = self
+            .records
+            .prefix_iter(txn, &[RECORD_QUEUE])?
+            .filter_map(|entry| match entry {
+                Ok((key, _)) => match key_id(key) {
+                    Ok(id) if removed_envelope_ids.contains(&id) => Some(Ok(key.to_vec())),
+                    Ok(_) => None,
+                    Err(error) => Some(Err(error)),
+                },
+                Err(error) => Some(Err(SimulationError::Heed(error))),
+            })
+            .collect::<Result<Vec<_>, SimulationError>>()?;
+        for key in delivery_keys.into_iter().chain(queue_keys) {
+            self.records.delete(txn, &key)?;
+        }
+        for envelope_id in removed_envelope_ids {
+            self.records
+                .delete(txn, &record_key(RECORD_ENVELOPE, envelope_id))?;
+        }
+        for message_id in &reconciliation.removed_message_ids {
+            self.records
+                .delete(txn, &record_key(RECORD_MESSAGE, *message_id))?;
+        }
+        Ok(reconciliation)
     }
 
     pub fn enable_generated_traffic(
@@ -1356,19 +1501,10 @@ impl SimulationDatabases {
         let systems = self.connected_polity_systems(txn, &system)?;
         let traffic_systems = self.systems(txn)?;
 
-        let rates = [
-            (MessageClass::AgencyNews, u64::from(system.population) * 12),
-            (
-                MessageClass::PublicService,
-                if system.population >= 6 { 8 } else { 1 },
-            ),
-            (
-                MessageClass::ContractOffer,
-                u64::from(system.population.saturating_sub(3)) * 20,
-            ),
-            (MessageClass::TrafficNotice, departures * 25),
-            (MessageClass::Private, 20 + departures * 35),
-        ];
+        let rates = [(
+            MessageClass::ContractOffer,
+            u64::from(system.population.saturating_sub(3)) * 20,
+        )];
         let mut generated = 0_u64;
         let mut envelopes = 0_u64;
         for (class, rate) in rates {
@@ -2519,6 +2655,45 @@ fn generated_message_text(
     }
 }
 
+fn is_legacy_generated_filler(message: &Message, origin: &SimulationSystem) -> bool {
+    if message.created_second % SECONDS_PER_DAY != 0
+        || message.expires_second
+            != message
+                .created_second
+                .saturating_add(message.class.lifetime_days() * SECONDS_PER_DAY)
+    {
+        return false;
+    }
+    let day = message.created_second / SECONDS_PER_DAY;
+    let bulletin_marker = match message.class {
+        MessageClass::AgencyNews => "agency bulletin ",
+        MessageClass::PublicService => "issued bulletin ",
+        MessageClass::TrafficNotice => "movement advisory ",
+        MessageClass::Private => {
+            let (importance, subject, body) = generated_message_text(origin, message.class, day, 0);
+            return message.importance == importance
+                && message.subject == subject
+                && message.body == body;
+        }
+        MessageClass::ContractOffer => return false,
+    };
+    let Some((_, after_marker)) = message.body.split_once(bulletin_marker) else {
+        return false;
+    };
+    let Some(number) = after_marker.split_whitespace().next() else {
+        return false;
+    };
+    let Ok(bulletin) = number.parse::<u64>() else {
+        return false;
+    };
+    if bulletin == 0 || bulletin.to_string() != number {
+        return false;
+    }
+    let (importance, subject, body) =
+        generated_message_text(origin, message.class, day, bulletin - 1);
+    message.importance == importance && message.subject == subject && message.body == body
+}
+
 fn decode_message(id: u64, bytes: &[u8]) -> Result<Message, SimulationError> {
     let mut decoder = Decoder::new(bytes);
     if decoder.u8()? != 3 {
@@ -3145,6 +3320,199 @@ mod tests {
         let summary = simulation.process_departure(&mut txn, 0, 1, 2).unwrap();
         assert!(summary.contains("suppressed"));
         assert_eq!(simulation.report(&txn, 0).unwrap().traffic_ships, 0);
+    }
+
+    #[test]
+    fn system_day_generates_only_task_offer_instruments() {
+        let directory = TempDir::new().unwrap();
+        // SAFETY: this test owns the temporary directory and opens it once.
+        let env = unsafe {
+            EnvOpenOptions::new()
+                .map_size(16 * 1024 * 1024)
+                .max_dbs(4)
+                .open(directory.path())
+                .unwrap()
+        };
+        let mut txn = env.write_txn().unwrap();
+        let simulation = SimulationDatabases::create(&env, &mut txn).unwrap();
+        simulation
+            .initialize(&mut txn, vec![test_system(1, 0.0)])
+            .unwrap();
+        let head = simulation.scheduled_head(&txn).unwrap().unwrap();
+        let event = simulation.take_scheduled(&mut txn, head).unwrap();
+        simulation.process_queued(&mut txn, &event, 0).unwrap();
+
+        let report = simulation.report(&txn, 0).unwrap();
+        assert_eq!(
+            report.messages_by_class[MessageClass::AgencyNews as usize],
+            0
+        );
+        assert_eq!(
+            report.messages_by_class[MessageClass::PublicService as usize],
+            0
+        );
+        assert!(report.messages_by_class[MessageClass::ContractOffer as usize] > 0);
+        assert_eq!(
+            report.messages_by_class[MessageClass::TrafficNotice as usize],
+            0
+        );
+        assert_eq!(report.messages_by_class[MessageClass::Private as usize], 0);
+    }
+
+    #[test]
+    fn focused_inbox_reconciliation_is_exact_and_preserves_custody_history() {
+        let directory = TempDir::new().unwrap();
+        // SAFETY: this test owns the temporary directory and opens it once.
+        let env = unsafe {
+            EnvOpenOptions::new()
+                .map_size(16 * 1024 * 1024)
+                .max_dbs(4)
+                .open(directory.path())
+                .unwrap()
+        };
+        let mut txn = env.write_txn().unwrap();
+        let simulation = SimulationDatabases::create(&env, &mut txn).unwrap();
+        let origin = test_system(1, 0.0);
+        simulation
+            .initialize(&mut txn, vec![origin.clone(), test_system(2, 1.0)])
+            .unwrap();
+
+        let mut bagged_ids = Vec::new();
+        for class in [
+            MessageClass::AgencyNews,
+            MessageClass::PublicService,
+            MessageClass::TrafficNotice,
+            MessageClass::Private,
+        ] {
+            let (importance, subject, body) = generated_message_text(&origin, class, 0, 0);
+            let id = simulation
+                .dispatch_message(&mut txn, 0, 1, class, importance, &subject, &body, &[2])
+                .unwrap()
+                .0;
+            bagged_ids.push(id);
+        }
+        let pickup = simulation
+            .pickup_player_mail(&mut txn, 91, 1, 2, 0, STANDARD_JUMP_SECONDS)
+            .unwrap()
+            .unwrap();
+        assert_eq!(pickup.envelope_count, 4);
+
+        let (importance, subject, body) =
+            generated_message_text(&origin, MessageClass::TrafficNotice, 0, 1);
+        let queued_id = simulation
+            .dispatch_message(
+                &mut txn,
+                0,
+                1,
+                MessageClass::TrafficNotice,
+                importance,
+                &subject,
+                &body,
+                &[2],
+            )
+            .unwrap()
+            .0;
+        let (importance, subject, body) =
+            generated_message_text(&origin, MessageClass::AgencyNews, 0, 2);
+        let delivered_id = simulation
+            .dispatch_message(
+                &mut txn,
+                0,
+                1,
+                MessageClass::AgencyNews,
+                importance,
+                &subject,
+                &body,
+                &[],
+            )
+            .unwrap()
+            .0;
+        assert!(
+            simulation
+                .deliver_player_carried_message(&mut txn, delivered_id, 2, 1)
+                .unwrap()
+        );
+
+        let (importance, subject, mut body) =
+            generated_message_text(&origin, MessageClass::PublicService, 0, 3);
+        body.push_str(" Signed by the harbor master.");
+        let near_match_id = simulation
+            .dispatch_message(
+                &mut txn,
+                0,
+                1,
+                MessageClass::PublicService,
+                importance,
+                &subject,
+                &body,
+                &[2],
+            )
+            .unwrap()
+            .0;
+        let (importance, subject, body) =
+            generated_message_text(&origin, MessageClass::Private, 0, 4);
+        let addressed_private_id = simulation
+            .dispatch_message(
+                &mut txn,
+                0,
+                1,
+                MessageClass::Private,
+                importance,
+                &subject,
+                &body,
+                &[2],
+            )
+            .unwrap()
+            .0;
+        let offer_id = simulation
+            .dispatch_message(
+                &mut txn,
+                0,
+                1,
+                MessageClass::ContractOffer,
+                MessageImportance::Notable,
+                "Commercial offer filed at Test 1",
+                "A signed commercial instrument accompanies this notice.",
+                &[2],
+            )
+            .unwrap()
+            .0;
+
+        let reconciliation = simulation
+            .reconcile_focused_inbox(&mut txn, &BTreeSet::from([addressed_private_id]))
+            .unwrap();
+        assert!(bagged_ids.iter().all(|id| {
+            reconciliation.removed_message_ids.contains(id)
+                && simulation.message(&txn, *id).is_err()
+        }));
+        assert!(reconciliation.removed_message_ids.contains(&queued_id));
+        assert!(reconciliation.removed_message_ids.contains(&delivered_id));
+        assert_eq!(
+            reconciliation
+                .changed_mailbag_envelope_counts
+                .get(&pickup.mailbag_id),
+            Some(&0)
+        );
+        assert!(reconciliation.offer_message_ids.contains(&offer_id));
+        assert!(
+            simulation
+                .mailbag(&txn, pickup.mailbag_id)
+                .unwrap()
+                .envelope_ids
+                .is_empty()
+        );
+        assert!(simulation.message(&txn, near_match_id).is_ok());
+        assert!(simulation.message(&txn, addressed_private_id).is_ok());
+        assert!(simulation.message(&txn, offer_id).is_ok());
+        assert_eq!(simulation.audit_mail_custody(&txn).unwrap(), 1);
+        assert!(simulation.available_messages(&txn, 2, 1, true).is_ok());
+
+        let repeated = simulation
+            .reconcile_focused_inbox(&mut txn, &BTreeSet::from([addressed_private_id]))
+            .unwrap();
+        assert!(repeated.removed_message_ids.is_empty());
+        assert!(repeated.offer_message_ids.contains(&offer_id));
+        assert!(repeated.changed_mailbag_envelope_counts.is_empty());
     }
 
     #[test]

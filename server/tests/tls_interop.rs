@@ -697,63 +697,27 @@ fn advance_until_flight_leg(
     panic!("voyage did not reach the requested flight-leg purpose");
 }
 
-fn latest_arrival_page(output: &str) -> String {
-    let semantic = strip_ecma48(output);
-    semantic
-        .rsplit_once("Arrival Packet -")
-        .map(|(_, page)| page.to_owned())
-        .unwrap_or(semantic)
-}
-
 fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &str) -> String {
     let mut session = DoorSession::spawn(door, data, profile, columns);
     session.send(b"\r");
-
-    let packet_key: &[u8] = match profile {
-        "iso646" => b"\x1b[D",
-        "iso646-color" => b"\x1b[C",
-        "cp437-color" => b"\x1b[B",
-        other => panic!("arrival profile has no arrow-key case: {other}"),
-    };
-
-    let mut page_number = 1;
-    let mut claimed = false;
-    while !claimed {
-        let output = session.wait_for_occurrences("Stop review", page_number);
-        let page = latest_arrival_page(&output);
-        let offer = page.contains("Service:  Offer");
-        if offer {
-            session.send(b"\r");
-            session.wait_for("Claim signed offer");
-            session.send(b"a");
-            session.wait_for("entered it in the task ledger");
-            session.wait_for_any(&["(Enter) Previous menu", "[Enter] Previous menu"]);
-            session.send(b"\r");
-            claimed = true;
-            page_number += 1;
-        } else {
-            // Exercise all three arrival-packet arrow actions across
-            // representative profiles using the sequences a caller sends.
-            session.send(packet_key);
-            page_number += 1;
-        }
-        assert!(
-            page_number < 128,
-            "arrival packet did not contain an actionable offer; output: {:?}",
-            session.output()
-        );
-    }
-
-    session.wait_for_occurrences("Stop review", page_number);
-    session.send(b"q");
-    session.wait_for("Arrival Communications Receipt");
-    session.wait_for_any(&["(Enter) Continue", "[Enter] Continue"]);
-    session.send(b"\r");
-    let (arrival_result, _) = session.wait_for_any(&[
+    let arrival_screens = [
         "Arrival Checkpoint",
         "Voyage Status -",
         "Docked Operations -",
+    ];
+    let (entry, _) = session.wait_for_any(&[
+        "Arrival Communications Receipt",
+        arrival_screens[0],
+        arrival_screens[1],
+        arrival_screens[2],
     ]);
+    let arrival_result = if entry == 0 {
+        session.wait_for_any(&["(Enter) Continue", "[Enter] Continue"]);
+        session.send(b"\r");
+        session.wait_for_any(&arrival_screens).0
+    } else {
+        entry - 1
+    };
     if arrival_result == 0 {
         session.wait_for("Take arrival watch");
         session.send(b"a");
@@ -770,8 +734,19 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
         session.wait_for("Action");
         session.send_to_menu(b"u", "Captain's Command Console");
     }
+    session.send_to_menu(b"t", "Task Ledger");
+    session.wait_for("Offers available here");
+    session.send_to_menu(b"q", "Captain's Command Console");
     const MESSAGE_HEADING: &str = "Message Management\r\n==================";
     session.send_to_menu(b"m", MESSAGE_HEADING);
+    let filters = session.send_to_menu(b"f", "Communication Filters");
+    let filters = normalized_display_text(&filters);
+    let filters = filters
+        .rsplit_once("Communication Filters")
+        .map_or(filters.as_str(), |(_, screen)| screen);
+    assert!(filters.contains("4. Private"), "filter output: {filters:?}");
+    assert!(!filters.contains("Offer"), "filter output: {filters:?}");
+    session.send_to_menu(b"q", MESSAGE_HEADING);
     session.send_through_page_prompt(
         b"i",
         "Message number on this page",
@@ -799,6 +774,31 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
     session.terminate()
 }
 
+fn finish_docked_login(session: &mut DoorSession) {
+    let (entry, _) = session.wait_for_any(&[
+        "Stop review",
+        "Arrival Communications Receipt",
+        "Docked Operations",
+    ]);
+    let receipt = match entry {
+        0 => {
+            session.send(b"q");
+            let (next, _) =
+                session.wait_for_any(&["Arrival Communications Receipt", "Docked Operations"]);
+            next == 0
+        }
+        1 => true,
+        2 => false,
+        _ => unreachable!(),
+    };
+    if receipt {
+        session.wait_for_any(&["(Enter) Continue", "[Enter] Continue"]);
+        session.send(b"\r");
+        session.wait_for("Docked Operations");
+    }
+    session.wait_for("Action");
+}
+
 fn complete_arrival_and_trade(
     door: &Path,
     data: &Path,
@@ -807,12 +807,7 @@ fn complete_arrival_and_trade(
 ) -> String {
     let mut session = DoorSession::spawn(door, data, "iso646", "40");
     session.send(b"\r");
-    session.wait_for("Stop review");
-    session.send(b"q");
-    session.wait_for("Arrival Communications Receipt");
-    session.wait_for("(Enter) Continue");
-    session.send(b"\r");
-    session.wait_for("Action");
+    finish_docked_login(&mut session);
 
     session.send_to_menu(b"f", "Fuel and Supplies");
     let fuel_sources =
@@ -1640,12 +1635,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         .unwrap();
     let mut docked_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     docked_door.send(b"\r");
-    docked_door.wait_for("Stop review");
-    docked_door.send(b"q");
-    docked_door.wait_for("Arrival Communications Receipt");
-    docked_door.wait_for("(Enter) Continue");
-    docked_door.send(b"\r");
-    docked_door.wait_for("Action");
+    finish_docked_login(&mut docked_door);
     let offer_list = normalized_display_text(&docked_door.send_to_menu(b"j", "Task Ledger"));
     let offer_section = &offer_list[offer_list.rfind("Offers available here (").unwrap()..];
     let offer_header_end =
@@ -2097,17 +2087,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     );
     let mut refit_door = DoorSession::spawn(&door, refit_root.path(), "iso646", "40");
     refit_door.send(b"\r");
-    let (refit_entry, _) = refit_door.wait_for_any(&["Docked Operations", "Arrival Packet -"]);
-    if refit_entry == 1 {
-        refit_door.wait_for("Stop review");
-        refit_door.send(b"q");
-        refit_door.wait_for("Arrival Communications Receipt");
-        refit_door.wait_for("(Enter) Continue");
-        refit_door.send(b"\r");
-        refit_door.wait_for("Action");
-    } else {
-        refit_door.wait_for("Action");
-    }
+    finish_docked_login(&mut refit_door);
     refit_door.send_to_menu(b"u", "Captain's Command Console");
     refit_door.send_to_menu(b"s", "Ship Status -");
     refit_door.send_to_menu(b"r", "Refit Quotation -");
@@ -2469,9 +2449,9 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         );
     }
 
-    // Save an unpresented arrival state for representative terminal profiles.
-    // Each copy uses the real TLS server and OpenDoors executable, while
-    // preserving the canonical voyage for the final continuation.
+    // Save representative communication-manager states for supported terminal
+    // profiles. Each copy uses the real TLS server and OpenDoors executable,
+    // while preserving the canonical voyage for the final continuation.
     let profile_root = tempfile::tempdir().unwrap();
     let profile_cases = [
         ("iso646", "40"),
@@ -2483,6 +2463,13 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         copy_directory(data.path(), &profile_data);
         let mut profile_request_id = settlement_request_id;
         settle_arrival_checkpoint(&profile_data, &identity, &mut profile_request_id);
+        // Supply consequential destination notices explicitly. Ordinary
+        // SystemDay work now creates Task-backed commercial instruments only,
+        // so arrival presentation tests must not depend on generic filler.
+        Store::open(&profile_data)
+            .unwrap()
+            .initialize_interop_arrival_notice_fixture(&identity)
+            .unwrap();
         let mut profile_server = spawn_server(
             &server_executable,
             &game_address_text,
@@ -2494,11 +2481,11 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         let profile_screen = exercise_arrival_profile(&door, &profile_data, profile, columns);
         let semantic = normalized_display_text(&profile_screen);
         for expected in [
-            "Arrival Packet -",
             "Communications Record",
-            "entered it in the task ledger",
-            "Arrival Communications Receipt",
+            "Task Ledger",
+            "Offers available here",
             "Message Management",
+            "Communication Filters",
             "Review",
         ] {
             assert!(semantic.contains(expected), "{profile}: {profile_screen:?}");

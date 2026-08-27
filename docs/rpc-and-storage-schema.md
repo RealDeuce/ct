@@ -73,20 +73,22 @@ messages use the embedded Fluent English bundle. Persisted articles and
 simulation narrative remain English until they can be stored as semantic
 message identifiers and typed arguments, then rendered for each connection.
 
-An Offer `MessageItem` carries the rendered signed instrument, its offer
-identifier, and whether the finite instrument remains claimable. That
-identifier names one persistent server record used by Message Management, the
-arrival packet, and the Task manager. Claiming updates the record in the same
-authoritative transaction, so another captain cannot accept the advertised
-work afterward.
+A generated offer remains a signed, physically delivered message instrument
+inside the simulation, but only Task Management presents it to captains. Its
+identifier names the persistent offer record and claiming updates that record
+in the same authoritative transaction, so another captain cannot accept the
+advertised work afterward. The existing Offer `MessageItem` union arm remains
+reserved for CT-RPC 10 compatibility; normal Message Management and arrival
+responses do not emit it.
 
 Every message also carries an authoritative importance band (`Routine`,
 `Notable`, `Important`, or `Headline`) and a persisted article body. Each
-captain owns a server-side minimum band for every service class. Changing a
-filter is a queued transaction; the complete filter set returns with Message
-Management. Arrival filtering changes presentation only: filtered messages
-are still retained, classified as received, and allowed to update structured
-knowledge.
+captain owns a server-side minimum band for every visible communication class.
+Changing a filter is a queued transaction; the four-class filter set returns
+with Message Management. The server applies it to both Message Management and
+arrival review. Filtered messages are still retained, classified as received,
+and allowed to update structured knowledge. The stored offer-class slot remains
+for player-record codec compatibility but cannot be configured or presented.
 
 Every message may also carry one closed typed action reference: claim the
 attached finite offer, review a Task, review Operations, review Finance, or

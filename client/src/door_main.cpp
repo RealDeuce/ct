@@ -5924,11 +5924,11 @@ void configure_message_filters(
       const auto snapshot = ct::get_message_management(
                                connection, session_epoch, random_command_id(random), request_id++);
       od_clr_scr();
-      door_heading("Arrival Packet Filters\n\r");
-      door_heading("======================\n\r\n\r");
+      door_heading("Communication Filters\n\r");
+      door_heading("=====================\n\r\n\r");
       door_information(
-         "Messages below a service's threshold remain in the archive but do "
-         "not interrupt arrival review.\n\r\n\r");
+         "A service's threshold applies here and during arrival review. "
+         "Lower it again to reveal retained messages.\n\r\n\r");
       for(size_t index = 0; index < snapshot.filters.size(); ++index) {
          const auto& filter = snapshot.filters[index];
          door_number("%zu", index + 1);
@@ -5938,7 +5938,7 @@ void configure_message_filters(
          door_value("%s\n\r", message_importance_name(filter.minimum_importance));
       }
       door_option_prompt({
-         "[1-5] Change service",
+         "[1-4] Change service",
          "[Enter] Refresh",
          "[Q] Messages",
          "[?] Help",
@@ -5951,16 +5951,17 @@ void configure_message_filters(
          continue;
       }
       const auto index = static_cast<size_t>(selected - '1');
-      if(selected < '1' || selected > '5' || index >= snapshot.filters.size()) {
+      if(selected < '1' || selected > '4' || index >= snapshot.filters.size()) {
          continue;
       }
       door_label("Minimum importance\n\r");
       door_option_prompt({
-         "[R] Routine",
-         "[N] Notable",
-         "[I] Important",
          "[H] Headline",
+         "[I] Important",
+         "[N] Notable",
          "[Q] Cancel",
+         "[R] Routine",
+         "[?] Help",
       }, false);
       const auto key = od_get_key(TRUE);
       std::optional<ct::MessageImportance> importance;
@@ -6081,7 +6082,7 @@ void show_message_manager(
       door_heading("Message Management\n\r");
       door_heading("==================\n\r\n\r");
       if(snapshot.items.empty()) {
-         door_information("No communications have been received.\n\r");
+         door_information("No messages match the current filters.\n\r");
       } else {
          for(size_t index = first; index < last; ++index) {
             const auto& item = snapshot.items[index];
@@ -6097,15 +6098,15 @@ void show_message_manager(
       door_number("%zu/%zu", page + 1, page_count);
       door_option_prompt({
          "[1-7] Inspect",
-         "[N/P] Page",
+         "[Enter] Refresh",
+         "[A] Actioned",
+         "[C] Compose",
+         "[F] Filters",
          "[I] Ignore",
          "[L] Later",
-         "[A] Actioned",
-         "[R] Archive",
-         "[F] Filters",
-         "[C] Compose",
-         "[Enter] Refresh",
+         "[N/P] Page",
          "[Q] Console",
+         "[R] Archive",
          "[?] Help",
       });
       const auto key = od_get_key(TRUE);

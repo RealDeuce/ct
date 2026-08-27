@@ -174,30 +174,31 @@ not replace Flight Plan preview's authoritative deadline warnings.
 
 ## Message Management
 
-Message Management owns the complete collection of material already delivered
-to the player:
+Message Management owns the filtered collection of meaningful correspondence
+already delivered to the player:
 
 - news and headlines;
-- market reports and observations;
-- contract offers, orders, missions, and bounties;
+- operational orders, mission results, and financial notices;
 - danger, traffic, customs, and navigation notices;
 - personal and institutional mail; and
 - expired or historically archived material.
 
-The player can browse untagged, ignored, marked-for-later, accepted-task, and
-archived classifications; search old material; and filter by origin, age,
-distance, topic, authority, urgency, significance, expiry, or authenticity.
-Classification and filters do not delete the underlying retained message.
+Commercial offers are deliberately absent because Task Management already owns
+their availability, full terms, inspection, and claim actions. The player can
+browse untagged, ignored, marked-for-later, actioned, and archived
+classifications. Classification and importance filters do not delete the
+underlying retained message.
 Routine system-discovery notices are hidden by the default filters, but their
 delivered structured observations still update the recipient's Known Universe
 repository.
 
-The implemented first filter surface stores one minimum importance band for
-each service class. The four bands are Routine, Notable, Important, and
-Headline. The door edits them from Message Management, and the server applies
-them only when assembling arrival review. Origin, age, distance, topic,
-authority, expiry, and authenticity filters remain later refinements; the
-archive browser deliberately continues to show copy suppressed at arrival.
+The implemented filter surface stores one minimum importance band for each of
+four visible classes: news, public service, traffic, and private. The four
+bands are Routine, Notable, Important, and Headline. The server applies the
+same thresholds when assembling arrival review and Message Management. Raising
+a threshold hides lower-priority retained copy from both; lowering it reveals
+that copy again. Origin, age, distance, topic, authority, expiry, and
+authenticity filters remain later refinements.
 
 The manager exposes provenance including origin system, origin date, delivery
 age or path where known, expiry, and authentication. During an isolated
@@ -206,9 +207,8 @@ it cannot observe mail or news that arrived elsewhere while the encounter was
 being resolved.
 
 Typed message action references contain only the authoritative record kind and
-identifier. The door may open Claim Offer, Task, Finance, Mapping, or
-Operations from the article, but it never reconstructs or mutates rule state
-from article prose.
+identifier. The door may open Task, Finance, Mapping, or Operations from the
+article, but it never reconstructs or mutates rule state from article prose.
 
 ## System Common Radio
 

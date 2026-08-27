@@ -114,7 +114,9 @@ const META_CLOCK_RATE_REAL_SECONDS: &str = "clock-rate-real-seconds";
 const META_STORAGE_FORMAT_VERSION: &str = "storage-format-version";
 pub const STORAGE_FORMAT_VERSION: u64 = 2;
 const META_ACCOMMODATION_CAPACITY_VERSION: &str = "accommodation-capacity-version";
+const META_FOCUSED_INBOX_RECONCILIATION_VERSION: &str = "focused-inbox-reconciliation-version";
 const ACCOMMODATION_CAPACITY_VERSION: u64 = 1;
+const FOCUSED_INBOX_RECONCILIATION_VERSION: u64 = 1;
 const SYSTEM_VISITS_BACKFILL_VERSION: u64 = 1;
 const SHIP_RECORD_CODEC_VERSION: u8 = 3;
 const CNS5_COVERAGE_DISTRIBUTION_VERSION: u16 = 1;
@@ -3180,6 +3182,99 @@ fn reconcile_accommodation_capacity_in(
     Ok(())
 }
 
+fn reconcile_focused_inbox_in(
+    meta: Database<Str, Bytes>,
+    simulation: SimulationDatabases,
+    private_message_recipients: Database<Bytes, Bytes>,
+    player_message_state: Database<Bytes, Bytes>,
+    ships: UniverseDatabase,
+    txn: &mut heed::RwTxn<'_>,
+) -> Result<(), StoreError> {
+    if meta.get(txn, META_UNIVERSE_ID)?.is_none() {
+        return Ok(());
+    }
+    let actual = get_meta_u64(meta, txn, META_FOCUSED_INBOX_RECONCILIATION_VERSION)?.unwrap_or(0);
+    if actual == FOCUSED_INBOX_RECONCILIATION_VERSION {
+        return Ok(());
+    }
+    if actual > FOCUSED_INBOX_RECONCILIATION_VERSION {
+        return Err(StoreError::Corrupt(
+            "unsupported focused inbox reconciliation version",
+        ));
+    }
+
+    let addressed_private_message_ids = private_message_recipients
+        .iter(txn)?
+        .map(|entry| {
+            let (key, encoded) = entry?;
+            decode_private_message_recipient(encoded)?;
+            decode_u64(key)
+        })
+        .collect::<Result<std::collections::BTreeSet<_>, StoreError>>()?;
+    let reconciliation = simulation.reconcile_focused_inbox(txn, &addressed_private_message_ids)?;
+    let hidden_message_ids = reconciliation
+        .removed_message_ids
+        .union(&reconciliation.offer_message_ids)
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let filing_keys = player_message_state
+        .iter(txn)?
+        .filter_map(|entry| match entry {
+            Ok((key, encoded)) => match decode_player_message_state(encoded) {
+                Ok(_) => match key
+                    .get(8..16)
+                    .ok_or(StoreError::Corrupt("invalid player message-state key"))
+                {
+                    Ok(id) => match decode_u64(id) {
+                        Ok(id) if hidden_message_ids.contains(&id) => Some(Ok(key.to_vec())),
+                        Ok(_) => None,
+                        Err(error) => Some(Err(error)),
+                    },
+                    Err(error) => Some(Err(error)),
+                },
+                Err(error) => Some(Err(error)),
+            },
+            Err(error) => Some(Err(StoreError::Heed(error))),
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    for key in filing_keys {
+        player_message_state.delete(txn, &key)?;
+    }
+
+    if !reconciliation.changed_mailbag_envelope_counts.is_empty() {
+        let records = ships
+            .iter(txn)?
+            .map(|entry| {
+                let (_, encoded) = entry?;
+                decode_ship_record(encoded)
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        for mut ship in records {
+            let Some(custody) = ship.mail_custody.as_mut() else {
+                continue;
+            };
+            let Some(&count) = reconciliation
+                .changed_mailbag_envelope_counts
+                .get(&custody.mailbag_id)
+            else {
+                continue;
+            };
+            if custody.envelope_count != count {
+                custody.envelope_count = count;
+                ship.revision = ship.revision.saturating_add(1);
+                ships.put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+            }
+        }
+    }
+    put_meta_u64(
+        meta,
+        txn,
+        META_FOCUSED_INBOX_RECONCILIATION_VERSION,
+        FOCUSED_INBOX_RECONCILIATION_VERSION,
+    )?;
+    Ok(())
+}
+
 fn reconcile_radio_identifier_metadata_in(
     meta: Database<Str, Bytes>,
     radio_transmissions: UniverseDatabase,
@@ -3772,6 +3867,14 @@ impl Store {
         reconcile_operational_damage_report_identifier_metadata_in(
             meta,
             operational_damage_reports,
+            &mut txn,
+        )?;
+        reconcile_focused_inbox_in(
+            meta,
+            simulation,
+            private_message_recipients,
+            player_message_state,
+            ships,
             &mut txn,
         )?;
         reconcile_initial_system_publications_in(meta, systems, system_publications, &mut txn)?;
@@ -4906,12 +5009,18 @@ impl Store {
             Command::SetMessageFilter {
                 class,
                 minimum_importance,
-            } => OutcomeKind::MessageManagement(self.set_message_filter_in(
+            } => match self.set_message_filter_in(
                 txn,
                 &queued.identity,
                 class,
                 minimum_importance,
-            )?),
+            )? {
+                RuleResult::Applied(snapshot) => OutcomeKind::MessageManagement(snapshot),
+                RuleResult::Rejected(message) => OutcomeKind::Error {
+                    code: ErrorCode::InvalidCommand,
+                    message,
+                },
+            },
             Command::SetSystemMappingDisclosure { system_id, choice } => {
                 match self.set_system_mapping_disclosure_in(
                     txn,
@@ -17072,26 +17181,6 @@ impl Store {
                         &mut player,
                     )?;
                 }
-                let state_key = player_message_state_key(identity, available.message.message_id);
-                let existing = self
-                    .player_message_state
-                    .get(txn, &state_key)?
-                    .map(decode_player_message_state)
-                    .transpose()?;
-                let classification = existing
-                    .map(|state| state.classification)
-                    .unwrap_or(MessageClassification::Unreviewed);
-                if existing.is_none() {
-                    self.player_message_state.put(
-                        txn,
-                        &state_key,
-                        &encode_player_message_state(&PlayerMessageStateRecord {
-                            first_seen_system_id: ship.system_id,
-                            first_seen_second: arrival.arrival_second,
-                            classification,
-                        }),
-                    )?;
-                }
                 if available.message.class == crate::simulation::MessageClass::Private {
                     if !player
                         .known_system_ids
@@ -17124,6 +17213,33 @@ impl Store {
                         > (current.available_second, current.message_id)
                 }) {
                     cursor = Some(candidate);
+                }
+                // Commercial offers are physical instruments whose delayed
+                // availability belongs to Task Management. They still move
+                // the feed cursor and contribute their public dossier, but do
+                // not create correspondence filing rows or arrival copy.
+                if available.message.class == crate::simulation::MessageClass::ContractOffer {
+                    continue;
+                }
+                let state_key = player_message_state_key(identity, available.message.message_id);
+                let existing = self
+                    .player_message_state
+                    .get(txn, &state_key)?
+                    .map(decode_player_message_state)
+                    .transpose()?;
+                let classification = existing
+                    .map(|state| state.classification)
+                    .unwrap_or(MessageClassification::Unreviewed);
+                if existing.is_none() {
+                    self.player_message_state.put(
+                        txn,
+                        &state_key,
+                        &encode_player_message_state(&PlayerMessageStateRecord {
+                            first_seen_system_id: ship.system_id,
+                            first_seen_second: arrival.arrival_second,
+                            classification,
+                        }),
+                    )?;
                 }
                 let passes_filter = (available.message.importance as u8)
                     >= player.message_filter_minimums[available.message.class as usize];
@@ -17323,6 +17439,12 @@ impl Store {
             let message_id = player_message_state_key_id(key)?;
             let state = decode_player_message_state(value)?;
             let message = self.simulation.message(txn, message_id)?;
+            if message.class == crate::simulation::MessageClass::ContractOffer
+                || (message.importance as u8)
+                    < player.message_filter_minimums[message.class as usize]
+            {
+                continue;
+            }
             items.push(self.message_item_in(
                 txn,
                 identity,
@@ -17338,17 +17460,17 @@ impl Store {
         let classes = [
             crate::wire::MessageClass::AgencyNews,
             crate::wire::MessageClass::PublicService,
-            crate::wire::MessageClass::ContractOffer,
             crate::wire::MessageClass::TrafficNotice,
             crate::wire::MessageClass::Private,
         ];
         let filters = classes
             .into_iter()
-            .zip(player.message_filter_minimums)
-            .map(|(class, value)| {
+            .map(|class| {
                 Ok(crate::wire::MessageFilter {
                     class,
-                    minimum_importance: wire_message_importance(value)?,
+                    minimum_importance: wire_message_importance(
+                        player.message_filter_minimums[wire_message_class_index(class)],
+                    )?,
                 })
             })
             .collect::<Result<Vec<_>, StoreError>>()?;
@@ -17361,7 +17483,12 @@ impl Store {
         identity: &PlayerIdentity,
         class: crate::wire::MessageClass,
         minimum_importance: crate::wire::MessageImportance,
-    ) -> Result<MessageManagement, StoreError> {
+    ) -> Result<RuleResult<MessageManagement>, StoreError> {
+        if class == crate::wire::MessageClass::ContractOffer {
+            return Ok(RuleResult::Rejected(
+                "commercial offers are managed in the task ledger".into(),
+            ));
+        }
         let key = encode_identity(identity);
         let mut player = self
             .players
@@ -17373,7 +17500,9 @@ impl Store {
             wire_message_importance_value(minimum_importance);
         self.players
             .put(txn, &key, &encode_player_record(&player))?;
-        self.message_management_in(txn, identity)
+        Ok(RuleResult::Applied(
+            self.message_management_in(txn, identity)?,
+        ))
     }
 
     fn set_message_classification_in(
@@ -21157,23 +21286,6 @@ impl Store {
                 &encode_stored_task_offer(&stored_offer)?,
             )?;
         }
-        let message_state_key = player_message_state_key(identity, offer_id);
-        let mut message_state = self
-            .player_message_state
-            .get(txn, &message_state_key)?
-            .map(decode_player_message_state)
-            .transpose()?
-            .unwrap_or(PlayerMessageStateRecord {
-                first_seen_system_id: ship.system_id,
-                first_seen_second: current,
-                classification: MessageClassification::Unreviewed,
-            });
-        message_state.classification = MessageClassification::Actioned;
-        self.player_message_state.put(
-            txn,
-            &message_state_key,
-            &encode_player_message_state(&message_state),
-        )?;
         if matches!(ship.location, ShipLocationRecord::Docked { .. })
             && ship.system_id == stored_offer.offer.origin_system_id
         {
@@ -27852,6 +27964,82 @@ impl Store {
             false,
         )?;
         self.retain_two_system_test_fixture(bbs_id)
+    }
+
+    /// File consequential, non-boilerplate notices for the real TLS/OpenDoors
+    /// Message Management presentation fixture.
+    pub fn initialize_interop_arrival_notice_fixture(
+        &self,
+        identity: &PlayerIdentity,
+    ) -> Result<(), StoreError> {
+        let mut txn = self.env.write_txn()?;
+        let (_, ship) = self.player_and_ship_in(&txn, identity)?;
+        let mut arrival = self
+            .player_arrivals
+            .get(&txn, &encode_identity(identity))?
+            .map(decode_player_arrival)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("interop arrival record is missing"))?;
+        arrival.system_id = ship.system_id;
+        arrival.arrival_second = get_meta_u64(self.meta, &txn, META_GAME_SECOND)?.unwrap_or(0);
+        let mut message_ids = Vec::new();
+        for (class, importance, subject, body) in [
+            (
+                crate::simulation::MessageClass::AgencyNews,
+                crate::simulation::MessageImportance::Notable,
+                "Exchange disruption confirmed",
+                "The local exchange confirms that a scheduled cargo auction was delayed.",
+            ),
+            (
+                crate::simulation::MessageClass::PublicService,
+                crate::simulation::MessageImportance::Headline,
+                "Harbor safety closure",
+                "The harbor authority has closed one approach lane pending inspection.",
+            ),
+            (
+                crate::simulation::MessageClass::TrafficNotice,
+                crate::simulation::MessageImportance::Notable,
+                "Priority traffic routing",
+                "Traffic control has assigned commercial arrivals to the outer lane.",
+            ),
+            (
+                crate::simulation::MessageClass::AgencyNews,
+                crate::simulation::MessageImportance::Important,
+                "Bonded warehouse settlement",
+                "The bonded warehouse reports that delayed freight has cleared inspection.",
+            ),
+        ] {
+            let (message_id, _) = self.simulation.dispatch_message(
+                &mut txn,
+                arrival.arrival_second,
+                ship.system_id,
+                class,
+                importance,
+                subject,
+                body,
+                &[],
+            )?;
+            message_ids.push(message_id);
+        }
+        arrival.presented = false;
+        self.player_arrivals.put(
+            &mut txn,
+            &encode_identity(identity),
+            &encode_player_arrival(&arrival),
+        )?;
+        let packet = self.open_arrival_packet_in(&mut txn, identity)?;
+        if !message_ids.iter().all(|message_id| {
+            packet
+                .items
+                .iter()
+                .any(|item| item.message_id == *message_id)
+        }) {
+            return Err(StoreError::Corrupt(
+                "interop arrival notices are not visible in the arrival packet",
+            ));
+        }
+        txn.commit()?;
+        Ok(())
     }
 
     fn retain_two_system_test_fixture(&self, bbs_id: u32) -> Result<[u64; 2], StoreError> {
@@ -54093,6 +54281,37 @@ mod tests {
     }
 
     #[test]
+    fn interop_arrival_notice_fixture_files_meaningful_messages() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        store
+            .initialize_interop_arrival_notice_fixture(&identity())
+            .unwrap();
+        let txn = store.env.read_txn().unwrap();
+        let messages = store.message_management_in(&txn, &identity()).unwrap();
+        for subject in [
+            "Exchange disruption confirmed",
+            "Harbor safety closure",
+            "Priority traffic routing",
+            "Bonded warehouse settlement",
+        ] {
+            assert!(messages.items.iter().any(|item| item.subject == subject));
+        }
+        assert!(
+            store
+                .player_arrivals
+                .get(&txn, &encode_identity(&identity()))
+                .unwrap()
+                .map(decode_player_arrival)
+                .transpose()
+                .unwrap()
+                .unwrap()
+                .presented
+        );
+    }
+
+    #[test]
     fn scheduled_mail_is_carried_delivered_deterministically_and_survives_reopen() {
         fn run(path: &std::path::Path) -> (SimulationReport, Vec<CarrierLeg>) {
             let store = Store::open(path).unwrap();
@@ -57474,6 +57693,197 @@ mod tests {
     }
 
     #[test]
+    fn store_open_purges_exact_filler_and_offer_filings_without_breaking_mail_custody() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut player = store.player_record(&identity()).unwrap().unwrap();
+        let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        let origin = store
+            .simulation_systems()
+            .unwrap()
+            .into_iter()
+            .find(|system| system.system_id == ship.system_id)
+            .unwrap();
+        let destination = *origin.jump_two_neighbors.first().unwrap();
+        player.message_filter_minimums[crate::wire::MessageClass::PublicService as usize] = 0;
+
+        let subject = format!("Public information bulletin from {}", origin.name);
+        let body = format!(
+            "The {} public information office issued bulletin 1 on day 0. Relays are asked to retain this notice until its stated expiry.",
+            origin.name
+        );
+        let mut txn = store.env.write_txn().unwrap();
+        let filler_id = store
+            .simulation
+            .dispatch_message(
+                &mut txn,
+                0,
+                origin.system_id,
+                crate::simulation::MessageClass::PublicService,
+                crate::simulation::MessageImportance::Routine,
+                &subject,
+                &body,
+                &[destination],
+            )
+            .unwrap()
+            .0;
+        let pickup = store
+            .simulation
+            .pickup_player_mail(
+                &mut txn,
+                ship.ship_id,
+                origin.system_id,
+                destination,
+                0,
+                crate::simulation::STANDARD_JUMP_SECONDS,
+            )
+            .unwrap()
+            .unwrap();
+        assert!(pickup.envelope_count > 0);
+        let retained_envelope_count = pickup.envelope_count - 1;
+        ship.mail_custody = Some(PlayerMailCustodyRecord {
+            mailbag_id: pickup.mailbag_id,
+            carrier_leg_id: pickup.carrier_leg_id,
+            envelope_count: pickup.envelope_count,
+            advertised_stipend_credits: pickup.advertised_stipend_credits,
+        });
+
+        let near_match_id = store
+            .simulation
+            .dispatch_message(
+                &mut txn,
+                0,
+                origin.system_id,
+                crate::simulation::MessageClass::PublicService,
+                crate::simulation::MessageImportance::Routine,
+                &subject,
+                &format!("{body} Signed by the port authority."),
+                &[],
+            )
+            .unwrap()
+            .0;
+        let offer_id = store
+            .simulation
+            .dispatch_message(
+                &mut txn,
+                0,
+                origin.system_id,
+                crate::simulation::MessageClass::ContractOffer,
+                crate::simulation::MessageImportance::Notable,
+                "Fixture commercial offer",
+                "A signed fixture instrument.",
+                &[],
+            )
+            .unwrap()
+            .0;
+        for message_id in [filler_id, near_match_id, offer_id] {
+            store
+                .player_message_state
+                .put(
+                    &mut txn,
+                    &player_message_state_key(&identity(), message_id),
+                    &encode_player_message_state(&PlayerMessageStateRecord {
+                        first_seen_system_id: origin.system_id,
+                        first_seen_second: 0,
+                        classification: MessageClassification::ReviewLater,
+                    }),
+                )
+                .unwrap();
+        }
+        store
+            .players
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_player_record(&player),
+            )
+            .unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        store
+            .meta
+            .delete(&mut txn, META_FOCUSED_INBOX_RECONCILIATION_VERSION)
+            .unwrap();
+        txn.commit().unwrap();
+        drop(store);
+
+        let reopened = Store::open(dir.path()).unwrap();
+        let txn = reopened.env.read_txn().unwrap();
+        assert!(reopened.simulation.message(&txn, filler_id).is_err());
+        assert!(reopened.simulation.message(&txn, near_match_id).is_ok());
+        assert!(reopened.simulation.message(&txn, offer_id).is_ok());
+        assert!(
+            reopened
+                .player_message_state
+                .get(&txn, &player_message_state_key(&identity(), filler_id))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            reopened
+                .player_message_state
+                .get(&txn, &player_message_state_key(&identity(), offer_id))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            reopened
+                .player_message_state
+                .get(&txn, &player_message_state_key(&identity(), near_match_id))
+                .unwrap()
+                .is_some()
+        );
+        let reconciled_ship =
+            decode_ship_record(reopened.ships.get(&txn, &ship.ship_id).unwrap().unwrap()).unwrap();
+        let custody = reconciled_ship.mail_custody.clone().unwrap();
+        assert_eq!(custody.envelope_count, retained_envelope_count);
+        assert_eq!(
+            custody.advertised_stipend_credits,
+            pickup.advertised_stipend_credits
+        );
+        assert_eq!(
+            reopened
+                .simulation
+                .mailbag(&txn, pickup.mailbag_id)
+                .unwrap()
+                .envelope_ids
+                .len(),
+            usize::from(retained_envelope_count)
+        );
+        let reconciled_player = decode_player_record(
+            reopened
+                .players
+                .get(&txn, &encode_identity(&identity()))
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            reconciled_player.message_filter_minimums
+                [crate::wire::MessageClass::PublicService as usize],
+            0
+        );
+        let revision = reconciled_ship.revision;
+        drop(txn);
+        assert_eq!(reopened.audit_mail_custody().unwrap(), 1);
+        drop(reopened);
+
+        let repeated = Store::open(dir.path()).unwrap();
+        assert_eq!(
+            repeated
+                .ship_record(ship.ship_id)
+                .unwrap()
+                .unwrap()
+                .revision,
+            revision
+        );
+        assert_eq!(repeated.audit_mail_custody().unwrap(), 1);
+    }
+
+    #[test]
     fn docked_service_orders_are_revisioned_and_replenish_physical_stores() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
@@ -58176,6 +58586,30 @@ mod tests {
         store
             .materialize_contract_offers_in(&mut txn, ship.system_id, now)
             .unwrap();
+        store
+            .player_arrivals
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_player_arrival(&PlayerArrivalRecord {
+                    system_id: ship.system_id,
+                    arrival_second: now,
+                    mailbag_id: None,
+                    mail_delivered: 0,
+                    mail_forwarded: 0,
+                    mail_expired: 0,
+                    stipend_credits: 0,
+                    presented: false,
+                }),
+            )
+            .unwrap();
+        let arrival = store.open_arrival_packet_in(&mut txn, &identity()).unwrap();
+        assert!(
+            arrival
+                .items
+                .iter()
+                .all(|item| item.class != crate::wire::MessageClass::ContractOffer)
+        );
         txn.commit().unwrap();
         store
             .enqueue(&QueuedCommand {
@@ -58229,6 +58663,16 @@ mod tests {
         assert!(item.offer_available);
         assert!(item.body.contains("Payment: Cr"));
         drop(txn);
+        let messages = store
+            .message_management_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        assert_eq!(messages.filters.len(), 4);
+        assert!(
+            messages
+                .items
+                .iter()
+                .all(|item| item.class != crate::wire::MessageClass::ContractOffer)
+        );
         store
             .enqueue(&QueuedCommand {
                 identity: identity(),
@@ -58248,20 +58692,15 @@ mod tests {
         };
         assert_eq!(accepted.tasks.len(), 1);
         assert_eq!(accepted.reserved_cargo_millitons, offer.quantity_millitons);
-        let message_state = store
-            .player_message_state
-            .get(
-                &store.env.read_txn().unwrap(),
-                &player_message_state_key(&identity(), offer.offer_id),
-            )
-            .unwrap()
-            .map(decode_player_message_state)
-            .transpose()
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            message_state.classification,
-            MessageClassification::Actioned
+        assert!(
+            store
+                .player_message_state
+                .get(
+                    &store.env.read_txn().unwrap(),
+                    &player_message_state_key(&identity(), offer.offer_id),
+                )
+                .unwrap()
+                .is_none()
         );
         let competing_identity = PlayerIdentity {
             bbs_id: identity().bbs_id,
@@ -59637,6 +60076,42 @@ mod tests {
                 .iter()
                 .all(|item| item.message_id != routine_id)
         );
+
+        let initially_filtered = store
+            .message_management_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        assert!(
+            initially_filtered
+                .items
+                .iter()
+                .all(|item| item.message_id != routine_id)
+        );
+        assert!(
+            initially_filtered
+                .items
+                .iter()
+                .any(|item| item.message_id == headline_id)
+        );
+        assert_eq!(initially_filtered.filters.len(), 4);
+        assert!(
+            initially_filtered
+                .filters
+                .iter()
+                .all(|filter| filter.class != crate::wire::MessageClass::ContractOffer)
+        );
+        let mut txn = store.env.write_txn().unwrap();
+        assert!(matches!(
+            store
+                .set_message_filter_in(
+                    &mut txn,
+                    &identity(),
+                    crate::wire::MessageClass::ContractOffer,
+                    crate::wire::MessageImportance::Headline,
+                )
+                .unwrap(),
+            RuleResult::Rejected(_)
+        ));
+        txn.abort();
 
         store
             .enqueue(&QueuedCommand {
