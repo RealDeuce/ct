@@ -706,11 +706,26 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
         "Docked Operations -",
     ];
     let (entry, _) = session.wait_for_any(&[
+        "Engineering Casualty Report",
         "Arrival Communications Receipt",
         arrival_screens[0],
         arrival_screens[1],
         arrival_screens[2],
     ]);
+    let entry = if entry == 0 {
+        session.wait_for("Acknowledge report");
+        session.send(b"\r");
+        session
+            .wait_for_any(&[
+                "Arrival Communications Receipt",
+                arrival_screens[0],
+                arrival_screens[1],
+                arrival_screens[2],
+            ])
+            .0
+    } else {
+        entry - 1
+    };
     let arrival_result = if entry == 0 {
         session.wait_for_any(&["(Enter) Continue", "[Enter] Continue"]);
         session.send(b"\r");
@@ -776,10 +791,24 @@ fn exercise_arrival_profile(door: &Path, data: &Path, profile: &str, columns: &s
 
 fn finish_docked_login(session: &mut DoorSession) {
     let (entry, _) = session.wait_for_any(&[
+        "Engineering Casualty Report",
         "Stop review",
         "Arrival Communications Receipt",
         "Docked Operations",
     ]);
+    let entry = if entry == 0 {
+        session.wait_for("Acknowledge report");
+        session.send(b"\r");
+        session
+            .wait_for_any(&[
+                "Stop review",
+                "Arrival Communications Receipt",
+                "Docked Operations",
+            ])
+            .0
+    } else {
+        entry - 1
+    };
     let receipt = match entry {
         0 => {
             session.send(b"q");
@@ -2289,7 +2318,9 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     voyage_door.wait_for("Buy fresh course tape");
     voyage_door.send(b"o");
     voyage_door.wait_for("identifies a bad plot");
-    voyage_door.send_to_menu(b"r", "Flight Plan\r\n===========");
+    voyage_door.send(b"r");
+    voyage_door.wait_for("Standard arrival");
+    voyage_door.send_to_menu(b"\r", "Flight Plan\r\n===========");
     voyage_door.send_to_menu(b"p", "Flight Plan Preview");
     voyage_door.send_through_page_prompt(b"f", "Previous menu", "Departure authorized.");
     voyage_door.send_through_page_prompt(b"\r", "Voyage Status -", "Voyage Status -");
@@ -2537,7 +2568,6 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     let completed_screen = complete_arrival_and_trade(&door, data.path(), &identity, cargo_lot_id);
     for expected in [
         "Arrival Packet -",
-        "Arrival Communications Receipt",
         "Docked Operations",
         "Fuel and Supplies",
         "Cargo Exchange -",
