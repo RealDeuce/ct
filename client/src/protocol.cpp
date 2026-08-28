@@ -1447,31 +1447,33 @@ ArrivalPacket decode_arrival_packet(const rpc::Response::Reader response)
    return result;
 }
 
+OperationalDamageCause decode_operational_damage_cause(
+   const rpc::OperationalDamageCause source)
+{
+   switch(source) {
+   case rpc::OperationalDamageCause::JUMP_TRANSITION:
+      return OperationalDamageCause::JumpTransition;
+   case rpc::OperationalDamageCause::FUEL_PROCESSING:
+      return OperationalDamageCause::FuelProcessing;
+   case rpc::OperationalDamageCause::MAINTENANCE_NEGLECT:
+      return OperationalDamageCause::MaintenanceNeglect;
+   }
+   throw std::runtime_error("unknown operational damage cause");
+}
+
 OperationalDamageReport decode_operational_damage_report(
    const rpc::OperationalDamageReport::Reader source,
    const uint64_t committed_sequence,
    const uint64_t revision,
    const PlayerPhase phase)
 {
-   OperationalDamageCause cause;
-   switch(source.getCause()) {
-   case rpc::OperationalDamageCause::JUMP_TRANSITION:
-      cause = OperationalDamageCause::JumpTransition;
-      break;
-   case rpc::OperationalDamageCause::FUEL_PROCESSING:
-      cause = OperationalDamageCause::FuelProcessing;
-      break;
-   case rpc::OperationalDamageCause::MAINTENANCE_NEGLECT:
-      cause = OperationalDamageCause::MaintenanceNeglect;
-      break;
-   }
    return OperationalDamageReport{
       .present = source.getPresent(),
       .report_id = source.getReportId(),
       .occurred_second = source.getOccurredSecond(),
       .ship_id = source.getShipId(),
       .ship_name = source.getShipName().cStr(),
-      .cause = cause,
+      .cause = decode_operational_damage_cause(source.getCause()),
       .origin_system_id = source.getOriginSystemId(),
       .origin_system_name = source.getOriginSystemName().cStr(),
       .destination_system_id = source.getDestinationSystemId(),
@@ -1856,20 +1858,22 @@ TravelStatus decode_travel_status(const rpc::Response::Reader response)
    };
 }
 
+TrafficMovementKind decode_traffic_movement_kind(
+   const rpc::TrafficMovementKind source)
+{
+   switch(source) {
+   case rpc::TrafficMovementKind::ARRIVAL:
+      return TrafficMovementKind::Arrival;
+   case rpc::TrafficMovementKind::DEPARTURE:
+      return TrafficMovementKind::Departure;
+   case rpc::TrafficMovementKind::PRESENT:
+      return TrafficMovementKind::Present;
+   }
+   throw std::runtime_error("unknown traffic movement kind");
+}
+
 TrafficContact decode_traffic_contact(const rpc::TrafficContact::Reader source)
 {
-   TrafficMovementKind movement;
-   switch(source.getMovement()) {
-   case rpc::TrafficMovementKind::ARRIVAL:
-      movement = TrafficMovementKind::Arrival;
-      break;
-   case rpc::TrafficMovementKind::DEPARTURE:
-      movement = TrafficMovementKind::Departure;
-      break;
-   case rpc::TrafficMovementKind::PRESENT:
-      movement = TrafficMovementKind::Present;
-      break;
-   }
    return TrafficContact{
       .contact_id = source.getContactId(),
       .catalog_id = source.getCatalogId(),
@@ -1881,7 +1885,7 @@ TrafficContact decode_traffic_contact(const rpc::TrafficContact::Reader source)
       .displacement_millitons = source.getDisplacementMillitons(),
       .origin_system_id = source.getOriginSystemId(),
       .destination_system_id = source.getDestinationSystemId(),
-      .movement = movement,
+      .movement = decode_traffic_movement_kind(source.getMovement()),
       .edge_second = source.getEdgeSecond(),
       .resolution = static_cast<TrafficContactResolution>(source.getResolution()),
       .confidence_percent = source.getConfidencePercent(),
