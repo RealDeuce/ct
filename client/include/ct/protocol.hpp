@@ -1248,6 +1248,27 @@ enum class EncounterFallback {
    BreakOff,
 };
 
+enum class EncounterKind {
+   RoutineTraffic,
+   TrafficControl,
+   Inspection,
+   Distress,
+   Derelict,
+   Hazard,
+   Hostile,
+   Military,
+   DepartingContact,
+};
+
+enum class EncounterFightMode { Never, Always, EstimatedAtLeast };
+
+struct EncounterStandingOrder {
+   EncounterKind kind = EncounterKind::Hostile;
+   EncounterPosture ordinary_posture = EncounterPosture::Flee;
+   EncounterFightMode fight_mode = EncounterFightMode::Never;
+   uint8_t minimum_outlook_percent = 70;
+};
+
 struct FlightPlanAction {
    FlightPlanActionKind kind = FlightPlanActionKind::Hold;
    uint64_t destination_system_id = 0;
@@ -1276,11 +1297,19 @@ struct EncounterPolicy {
    bool comply_with_inspection = true;
    bool report_distress = true;
    bool assist_distress = false;
+   std::vector<EncounterStandingOrder> standing_orders;
+};
+
+struct EncounterPolicyDefaultSnapshot {
+   uint64_t ship_id;
+   uint64_t revision;
+   EncounterPolicy policy;
 };
 struct FlightPlanProposal {
    uint64_t expected_plan_revision;
    std::vector<FlightPlanStep> steps;
    EncounterPolicy policy;
+   bool preserve_active_step = false;
 };
 struct FlightPlanWarning {
    std::string code;
@@ -1346,18 +1375,6 @@ struct CheckpointSnapshot {
    bool acknowledged;
    PlayerPhase phase;
 };
-enum class EncounterKind {
-   RoutineTraffic,
-   TrafficControl,
-   Inspection,
-   Distress,
-   Derelict,
-   Hazard,
-   Hostile,
-   Military,
-   DepartingContact,
-};
-
 enum class EncounterState {
    AwaitingPosture,
    Resolving,
@@ -1420,6 +1437,7 @@ struct EncounterSnapshot {
    std::vector<EncounterPosture> available_postures;
    std::vector<EncounterFallback> available_fallbacks;
    uint64_t response_deadline_second;
+   uint8_t estimated_combat_outlook_percent;
    PlayerPhase phase;
 };
 struct EncounterResult {
@@ -2353,6 +2371,11 @@ TravelStatus begin_voyage(TlsConnection& connection,
 
 FlightPlanSnapshot get_flight_plan(TlsConnection&, uint64_t, const std::array<uint8_t, 16>&,
                                    uint64_t);
+EncounterPolicyDefaultSnapshot get_encounter_policy_default(
+   TlsConnection&, uint64_t, const std::array<uint8_t, 16>&, uint64_t);
+EncounterPolicyDefaultSnapshot set_encounter_policy_default(
+   TlsConnection&, uint64_t, uint64_t, const EncounterPolicy&, bool,
+   const std::array<uint8_t, 16>&, uint64_t);
 FlightPlanPreview preview_flight_plan(TlsConnection&, uint64_t, const FlightPlanProposal&,
                                       const std::array<uint8_t, 16>&, uint64_t);
 FlightPlanSnapshot commit_flight_plan(TlsConnection&, uint64_t, const FlightPlanProposal&,

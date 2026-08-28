@@ -997,6 +997,17 @@ int main() {
          {"[Q] Quit", "[B] Beta", "[?] Help", "[2] Two", "[< >] Page", "[A] Alpha"},
          80) ==
       "\n\r[2] Two  [< >] Page  [A] Alpha  [B] Beta  [Q] Quit  [?] Help: ");
+   check(
+      ct::door_option_prompt(
+         {"[1-4] Select",
+          "[I] Dossier",
+          "[< >] Page",
+          "[Enter/Q] Cancel",
+          "[?] Help"},
+         40) ==
+      "\n\r[1-4] Select  [< >] Page\n\r"
+      "[Enter/Q] Cancel  [I] Dossier\n\r"
+      "[?] Help: ");
 
    std::string colored_option_output;
    ct::DoorPresentation colored_options(

@@ -148,6 +148,16 @@ information delay, or ordered transaction processing. “Prefer frontier fuel”
 is a preference among legal alternatives; “always accept mail” means accept
 eligible ordinary mail when capacity and route permit it.
 
+The implemented Task Ledger exposes **Standing orders** for the active ship's
+encounter-policy default. Each encounter type has an ordinary response and a
+Fight rule of Never, Always, or estimated combat outlook at least a chosen
+percentage; hostile contacts also have an ordered emergency-fallback sequence.
+The server revisions and validates this default and requires explicit
+authorization before storing rules that may attack non-hostile traffic. New
+Flight Plans are seeded from it. A filed plan retains its own policy until the
+captain edits that plan, so changing the default does not alter an underway
+ship behind the captain's back.
+
 Tasks derived from a message retain a reference to that message, but task state
 is not merely a message classification. Accepting a contract creates an
 obligation even if its original offer is later archived.
@@ -165,6 +175,14 @@ Management may offer **Plot course for this task** and similar shortcuts, but
 they only pass requirements into Flight Plan. Replanning never rewrites an
 accepted obligation: its cargo, passengers, mail, destination, deadline, and
 consequences remain authoritative even when the captain diverts.
+
+The Flight Plan door groups physical steps into logical route items and can
+edit any unfinished item, including later items while a maneuver, Jump,
+frontier operation, Belt Cycle, or refining batch continues. Future-only edits
+preserve the active operation and schedule. Redirecting in normal space derives
+a new bounded-thrust intercept from actual position and velocity; Jump
+emergence remains immutable. The plan editor can load or save the Task-owned
+ship default while retaining a distinct policy on the filed plan.
 
 Flight Plan may request a bounded all-task route for the active ship. The
 server's deadline-aware beam search keeps pickups before deliveries and returns

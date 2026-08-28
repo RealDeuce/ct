@@ -60,11 +60,12 @@ use crate::wire::{
     CommandRequest, CommitFlightPlanRequest, CommodityLegality, CourseFuelSource, CoursePlan,
     CoursePlot, CourseWaypoint, DockedFuelService, DockedFuelServiceKind, DockedRepairService,
     DockedServiceOrderKind, DockedServiceReceipt, DockedServiceReceiptDetail, DockedServices,
-    DockedSnapshot, EncounterAuthority, EncounterContact, EncounterFallback, EncounterKind,
-    EncounterPolicy, EncounterPosture, EncounterResult, EncounterSnapshot, EncounterState,
-    EncounterThreat, ErrorCode, FlightLocus, FlightPlanAction, FlightPlanPreview,
-    FlightPlanProposal, FlightPlanSnapshot, FlightPlanState, FlightPlanStep, FlightPlanWarning,
-    FuelAccessKind, FuelOperation, FuelOperationTiming, FuelPurchaseReceipt, FuelSourceBodyKind,
+    DockedSnapshot, EncounterAuthority, EncounterContact, EncounterFallback, EncounterFightMode,
+    EncounterKind, EncounterPolicy, EncounterPolicyDefaultSnapshot, EncounterPosture,
+    EncounterResult, EncounterSnapshot, EncounterStandingOrder, EncounterState, EncounterThreat,
+    ErrorCode, FlightLocus, FlightPlanAction, FlightPlanPreview, FlightPlanProposal,
+    FlightPlanSnapshot, FlightPlanState, FlightPlanStep, FlightPlanWarning, FuelAccessKind,
+    FuelOperation, FuelOperationTiming, FuelPurchaseReceipt, FuelSourceBodyKind,
     InstitutionalAffiliation, KnownBelt, KnownDestinations, KnownSystemSummary, MarketOffer,
     MarketSnapshot, MessageClassification, MessageItem, MessageManagement, OperationalDamageCause,
     OperationalDamageReport, OriginDossier, Outcome, OutcomeKind, PlayerCreation, PlayerIdentity,
@@ -233,7 +234,10 @@ fn available_postures_for_encounter(kind: EncounterKind) -> Vec<EncounterPosture
     }
 }
 
-fn posture_for_encounter_policy(kind: EncounterKind, policy: &EncounterPolicy) -> EncounterPosture {
+fn legacy_posture_for_encounter_policy(
+    kind: EncounterKind,
+    policy: &EncounterPolicy,
+) -> EncounterPosture {
     match kind {
         EncounterKind::Hostile => policy.hostile_posture,
         EncounterKind::DepartingContact => EncounterPosture::ContinueCourse,
@@ -253,6 +257,134 @@ fn posture_for_encounter_policy(kind: EncounterKind, policy: &EncounterPolicy) -
         }
         EncounterKind::Derelict => EncounterPosture::ContinueCourse,
         EncounterKind::Hazard | EncounterKind::RoutineTraffic => EncounterPosture::Comply,
+    }
+}
+
+fn encounter_outlook_percent(threat: EncounterThreat) -> Option<u8> {
+    match threat {
+        EncounterThreat::Unknown => None,
+        EncounterThreat::Favorable => Some(70),
+        EncounterThreat::Comparable => Some(50),
+        EncounterThreat::Dangerous => Some(33),
+        EncounterThreat::Overwhelming => Some(12),
+    }
+}
+
+fn posture_for_encounter_policy(
+    kind: EncounterKind,
+    threat: EncounterThreat,
+    policy: &EncounterPolicy,
+) -> EncounterPosture {
+    let Some(order) = policy
+        .standing_orders
+        .iter()
+        .find(|order| order.kind == kind)
+    else {
+        return legacy_posture_for_encounter_policy(kind, policy);
+    };
+    match order.fight_mode {
+        EncounterFightMode::Never => order.ordinary_posture,
+        EncounterFightMode::Always => EncounterPosture::Fight,
+        EncounterFightMode::EstimatedAtLeast => {
+            if encounter_outlook_percent(threat)
+                .is_some_and(|outlook| outlook >= order.minimum_outlook_percent)
+            {
+                EncounterPosture::Fight
+            } else {
+                order.ordinary_posture
+            }
+        }
+    }
+}
+
+fn validate_encounter_policy(policy: &EncounterPolicy) -> Result<(), String> {
+    let mut kinds = std::collections::BTreeSet::new();
+    for order in &policy.standing_orders {
+        if !kinds.insert(order.kind as u8) {
+            return Err("an encounter type has more than one standing order".into());
+        }
+        if order.ordinary_posture == EncounterPosture::Fight
+            || !available_postures_for_encounter(order.kind).contains(&order.ordinary_posture)
+        {
+            return Err("a standing order names an unavailable ordinary response".into());
+        }
+        if order.fight_mode == EncounterFightMode::EstimatedAtLeast
+            && !(1..=100).contains(&order.minimum_outlook_percent)
+        {
+            return Err("an encounter fight threshold must be between 1 and 100 percent".into());
+        }
+    }
+    Ok(())
+}
+
+fn policy_fights_nonhostiles(policy: &EncounterPolicy) -> bool {
+    policy.standing_orders.iter().any(|order| {
+        order.kind != EncounterKind::Hostile && order.fight_mode != EncounterFightMode::Never
+    })
+}
+
+fn same_physical_flight_step(left: &FlightPlanStep, right: &FlightPlanStep) -> bool {
+    if left.locus != right.locus {
+        return false;
+    }
+    match (&left.action, &right.action) {
+        (
+            FlightPlanAction::Jump {
+                destination_system_id: left,
+                ..
+            },
+            FlightPlanAction::Jump {
+                destination_system_id: right,
+                ..
+            },
+        ) => left == right,
+        (
+            FlightPlanAction::JumpCoordinates {
+                destination: left, ..
+            },
+            FlightPlanAction::JumpCoordinates {
+                destination: right, ..
+            },
+        ) => left == right,
+        (left, right) => left == right,
+    }
+}
+
+fn ship_activity_matches_flight_step(activity: &ShipActivityRecord, step: &FlightPlanStep) -> bool {
+    match (&activity.kind, &step.action) {
+        (
+            ShipActivityKind::GasGiantSkim {
+                quantity_millitons,
+                refine_collected,
+                ..
+            },
+            FlightPlanAction::Fuel {
+                operation: FuelOperation::GasGiant,
+                quantity_millitons: planned_quantity,
+                refine_collected: planned_refining,
+            },
+        )
+        | (
+            ShipActivityKind::WildernessWater {
+                quantity_millitons,
+                refine_collected,
+                ..
+            },
+            FlightPlanAction::Fuel {
+                operation: FuelOperation::WildernessWater,
+                quantity_millitons: planned_quantity,
+                refine_collected: planned_refining,
+            },
+        ) => quantity_millitons == planned_quantity && refine_collected == planned_refining,
+        (
+            ShipActivityKind::FuelProcessing {
+                quantity_millitons, ..
+            },
+            FlightPlanAction::RefineFuel {
+                quantity_millitons: planned_quantity,
+            },
+        ) => quantity_millitons == planned_quantity,
+        _ => false,
     }
 }
 
@@ -1051,6 +1183,31 @@ fn outstanding_frontier_service_seconds(leg: FlightLegRecord, current_second: u6
         }
         _ => 0,
     }
+}
+
+fn remaining_belt_cycle_seconds(leg: FlightLegRecord, current_second: u64) -> Option<u64> {
+    let current_stage = leg.due_second.saturating_sub(current_second);
+    let remaining = match leg.purpose {
+        FlightLegPurpose::ReachBelt(context) => current_stage
+            .saturating_add(crate::mining::WATCH_SECONDS * 2)
+            .saturating_add(crate::mining::DAY_SECONDS)
+            .saturating_add(context.transit_seconds),
+        FlightLegPurpose::ProspectBelt(context) => current_stage
+            .saturating_add(crate::mining::WATCH_SECONDS)
+            .saturating_add(crate::mining::DAY_SECONDS)
+            .saturating_add(context.transit_seconds),
+        FlightLegPurpose::SurveyBelt(context) => current_stage
+            .saturating_add(crate::mining::DAY_SECONDS)
+            .saturating_add(context.transit_seconds),
+        FlightLegPurpose::MineBelt(context)
+        | FlightLegPurpose::RefineBelt(context)
+        | FlightLegPurpose::RecoverBelt { context, .. } => {
+            current_stage.saturating_add(context.transit_seconds)
+        }
+        FlightLegPurpose::ReturnFromBelt(_) => current_stage,
+        _ => return None,
+    };
+    Some(remaining)
 }
 
 fn shift_price_tier(base: u64, price: u64, delta: i8, purchase: bool) -> u64 {
@@ -3762,6 +3919,7 @@ pub struct Store {
     system_visits: UniverseDatabase,
     discovery_claims: UniverseDatabase,
     flight_plans: Database<Bytes, Bytes>,
+    encounter_policy_defaults: UniverseDatabase,
     flight_trajectories: UniverseDatabase,
     checkpoints: Database<Bytes, Bytes>,
     encounters: Database<Bytes, Bytes>,
@@ -3807,7 +3965,7 @@ impl Store {
         let env = unsafe {
             EnvOpenOptions::new()
                 .map_size(map_size_bytes)
-                .max_dbs(87)
+                .max_dbs(88)
                 .open(path.as_ref())?
         };
         let mut txn = env.write_txn()?;
@@ -3877,6 +4035,8 @@ impl Store {
         let system_visits = env.create_database(&mut txn, Some("system-visits"))?;
         let discovery_claims = env.create_database(&mut txn, Some("discovery-claims"))?;
         let flight_plans = env.create_database(&mut txn, Some("flight-plans"))?;
+        let encounter_policy_defaults =
+            env.create_database(&mut txn, Some("encounter-policy-defaults"))?;
         let flight_trajectories = env.create_database(&mut txn, Some("flight-trajectories"))?;
         let checkpoints = env.create_database(&mut txn, Some("arrival-checkpoints"))?;
         let encounters = env.create_database(&mut txn, Some("encounters"))?;
@@ -4017,6 +4177,7 @@ impl Store {
             system_visits,
             discovery_claims,
             flight_plans,
+            encounter_policy_defaults,
             flight_trajectories,
             checkpoints,
             encounters,
@@ -5172,6 +5333,18 @@ impl Store {
             Command::GetFlightPlan => {
                 OutcomeKind::FlightPlan(self.flight_plan_in(txn, &queued.identity)?)
             }
+            Command::GetEncounterPolicyDefault => OutcomeKind::EncounterPolicyDefault(
+                self.encounter_policy_default_in(txn, &queued.identity)?,
+            ),
+            Command::SetEncounterPolicyDefault(ref request) => {
+                match self.set_encounter_policy_default_in(txn, &queued.identity, request)? {
+                    RuleResult::Applied(snapshot) => OutcomeKind::EncounterPolicyDefault(snapshot),
+                    RuleResult::Rejected(message) => OutcomeKind::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message,
+                    },
+                }
+            }
             Command::PreviewFlightPlan(ref proposal) => {
                 match self.preview_flight_plan_in(txn, &queued.identity, proposal)? {
                     RuleResult::Applied(preview) => OutcomeKind::FlightPlanPreview(preview),
@@ -6043,6 +6216,62 @@ impl Store {
             }))
     }
 
+    fn encounter_policy_default_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+    ) -> Result<EncounterPolicyDefaultSnapshot, StoreError> {
+        let (_, ship) = self.player_and_ship_in(txn, identity)?;
+        let (revision, policy) = self
+            .encounter_policy_defaults
+            .get(txn, &ship.ship_id)?
+            .map(decode_encounter_policy_default_record)
+            .transpose()?
+            .unwrap_or((0, EncounterPolicy::default()));
+        Ok(EncounterPolicyDefaultSnapshot {
+            ship_id: ship.ship_id,
+            revision,
+            policy,
+        })
+    }
+
+    fn set_encounter_policy_default_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        request: &crate::wire::SetEncounterPolicyDefaultRequest,
+    ) -> Result<RuleResult<EncounterPolicyDefaultSnapshot>, StoreError> {
+        if let Err(message) = validate_encounter_policy(&request.policy) {
+            return Ok(RuleResult::Rejected(message));
+        }
+        if policy_fights_nonhostiles(&request.policy) && !request.acknowledge_nonhostile_fight {
+            return Ok(RuleResult::Rejected(
+                "automatic attacks on non-hostile contacts require explicit authorization".into(),
+            ));
+        }
+        let current = self.encounter_policy_default_in(txn, identity)?;
+        if request.expected_revision != current.revision {
+            return Ok(RuleResult::Rejected(format!(
+                "standing-order revision {} is stale; current revision is {}",
+                request.expected_revision, current.revision
+            )));
+        }
+        let revision = current
+            .revision
+            .checked_add(1)
+            .ok_or(StoreError::Corrupt("standing-order revision overflow"))?;
+        self.encounter_policy_defaults.put(
+            txn,
+            &current.ship_id,
+            &encode_encounter_policy_default_record(revision, &request.policy)?,
+        )?;
+        Ok(RuleResult::Applied(EncounterPolicyDefaultSnapshot {
+            ship_id: current.ship_id,
+            revision,
+            policy: request.policy.clone(),
+        }))
+    }
+
     fn waypoint_authority_at_due_in(
         &self,
         txn: &heed::RoTxn<'_>,
@@ -6127,6 +6356,9 @@ impl Store {
                 proposal.expected_plan_revision, current.revision
             )));
         }
+        if let Err(message) = validate_encounter_policy(&proposal.policy) {
+            return Ok(RuleResult::Rejected(message));
+        }
         if proposal.steps.is_empty() || proposal.steps.len() > 64 {
             return Ok(RuleResult::Rejected(
                 "a flight plan must contain between one and 64 waypoints".into(),
@@ -6155,21 +6387,43 @@ impl Store {
         let mut fuel_timings = Vec::new();
         let mut available_credits =
             self.operating_account_credits_in(txn, &player, ship.ship_id)?;
+        let active_index = usize::from(current.current_step);
+        let retains_completed_prefix = current.state == FlightPlanState::Active
+            && proposal.steps.len() > active_index
+            && current.steps.len() > active_index
+            && current.steps[..active_index] == proposal.steps[..active_index];
+        let active_preserved = proposal.preserve_active_step
+            && retains_completed_prefix
+            && current.steps.get(active_index).is_some_and(|existing| {
+                proposal
+                    .steps
+                    .get(active_index)
+                    .is_some_and(|proposed| same_physical_flight_step(existing, proposed))
+            });
+        let active_activity_preserved = active_preserved
+            && ship.activity.as_ref().is_some_and(|activity| {
+                proposal
+                    .steps
+                    .get(active_index)
+                    .is_some_and(|step| ship_activity_matches_flight_step(activity, step))
+            });
+        if proposal.preserve_active_step && !active_preserved {
+            return Ok(RuleResult::Rejected(
+                "the active flight-plan action no longer matches the maneuver in progress".into(),
+            ));
+        }
         if matches!(
             ship.location,
             ShipLocationRecord::InFlight(FlightLegRecord {
                 purpose: FlightLegPurpose::Jump { .. },
                 ..
             })
-        ) {
+        ) && !active_preserved
+        {
             return Ok(RuleResult::Rejected(
                 "a course cannot be changed while the ship is in Jump space".into(),
             ));
         }
-        let first_actionable = proposal
-            .steps
-            .iter()
-            .position(|step| !matches!(step.action, FlightPlanAction::Hold));
         let underway = matches!(
             ship.location,
             ShipLocationRecord::InFlight(_)
@@ -6179,10 +6433,31 @@ impl Store {
                         | ShipLocusRecord::Body { .. },
                     ..
                 }
-        );
+        ) || active_activity_preserved;
+        let start_index = if retains_completed_prefix && underway {
+            active_index
+        } else {
+            0
+        };
+        let first_actionable = proposal
+            .steps
+            .iter()
+            .enumerate()
+            .skip(start_index)
+            .find_map(|(index, step)| {
+                (!matches!(step.action, FlightPlanAction::Hold)).then_some(index)
+            });
         let mut elapsed_seconds = 0_u64;
         let mut at_primary_port = matches!(ship.location, ShipLocationRecord::Docked { .. });
         let mut warnings = Vec::new();
+        if policy_fights_nonhostiles(&proposal.policy) {
+            warnings.push(FlightPlanWarning {
+                code: "AUTOMATIC_NONHOSTILE_ENGAGEMENT".into(),
+                message: "Standing orders may initiate combat against a contact that has not attacked. This can cause casualties, ship damage, criminal liability, and loss of command."
+                    .into(),
+                step_indices: Vec::new(),
+            });
+        }
         if matches!(ship.location, ShipLocationRecord::Docked { .. }) {
             if let Some(ShipActivityKind::ProperRepair { subsystem_id }) =
                 ship.activity.as_ref().map(|activity| &activity.kind)
@@ -6225,49 +6500,159 @@ impl Store {
         }
         let mut unattended_waypoints = Vec::new();
         let mut docked_arrivals = HashMap::new();
-        let mut step_elapsed_seconds = Vec::with_capacity(proposal.steps.len());
-        for (index, step) in proposal.steps.iter().enumerate() {
+        let mut step_elapsed_seconds = vec![0; start_index];
+        for (index, step) in proposal.steps.iter().enumerate().skip(start_index) {
             if step.locus.system_id() != system_id {
                 return Ok(RuleResult::Rejected(format!(
                     "waypoint {} is not reachable from the preceding action",
                     index + 1
                 )));
             }
-            let diversion_seconds = if underway && first_actionable == Some(index) {
-                let destination = match step.locus {
-                    FlightLocus::Port {
-                        system_id,
-                        world_id,
-                        facility_id,
-                    } => Some(ShipLocusRecord::Port {
-                        system_id,
-                        world_id,
-                        facility_id,
-                    }),
-                    FlightLocus::JumpLocus { system_id } => {
-                        Some(ShipLocusRecord::JumpLocus { system_id })
-                    }
-                    FlightLocus::Body { system_id, body_id } => {
-                        Some(ShipLocusRecord::Body { system_id, body_id })
-                    }
-                    FlightLocus::DeepSpace { .. } => None,
-                };
-                let Some(destination) = destination else {
-                    return Ok(RuleResult::Rejected(
-                        "the first underway waypoint must name an in-system destination".into(),
-                    ));
-                };
-                let Some(trajectory) =
-                    self.diversion_trajectory_in(txn, &ship, destination, game_second)?
-                else {
-                    return Ok(RuleResult::Rejected(
-                        "the navigation computer could not find a bounded-thrust intercept".into(),
-                    ));
-                };
-                Some(trajectory.solution.duration_seconds)
+            let diversion_seconds = if active_activity_preserved && index == active_index {
+                None
+            } else if underway && first_actionable == Some(index) {
+                if active_preserved
+                    && index == active_index
+                    && let ShipLocationRecord::InFlight(leg) = ship.location
+                {
+                    Some(leg.due_second.saturating_sub(game_second))
+                } else {
+                    let destination = match step.locus {
+                        FlightLocus::Port {
+                            system_id,
+                            world_id,
+                            facility_id,
+                        } => Some(ShipLocusRecord::Port {
+                            system_id,
+                            world_id,
+                            facility_id,
+                        }),
+                        FlightLocus::JumpLocus { system_id } => {
+                            Some(ShipLocusRecord::JumpLocus { system_id })
+                        }
+                        FlightLocus::Body { system_id, body_id } => {
+                            Some(ShipLocusRecord::Body { system_id, body_id })
+                        }
+                        FlightLocus::DeepSpace { .. } => None,
+                    };
+                    let Some(destination) = destination else {
+                        return Ok(RuleResult::Rejected(
+                            "the first underway waypoint must name an in-system destination".into(),
+                        ));
+                    };
+                    let Some(trajectory) =
+                        self.diversion_trajectory_in(txn, &ship, destination, game_second)?
+                    else {
+                        return Ok(RuleResult::Rejected(
+                            "the navigation computer could not find a bounded-thrust intercept"
+                                .into(),
+                        ));
+                    };
+                    Some(trajectory.solution.duration_seconds)
+                }
             } else {
                 None
             };
+            if active_preserved
+                && index == active_index
+                && let ShipLocationRecord::InFlight(FlightLegRecord {
+                    due_second,
+                    purpose: FlightLegPurpose::Jump { .. },
+                    ..
+                }) = ship.location
+            {
+                elapsed_seconds =
+                    elapsed_seconds.saturating_add(due_second.saturating_sub(game_second));
+                match step.action {
+                    FlightPlanAction::Jump {
+                        destination_system_id,
+                        ..
+                    } => system_id = destination_system_id,
+                    FlightPlanAction::JumpCoordinates { .. } => system_id = 0,
+                    _ => {
+                        return Err(StoreError::Corrupt(
+                            "Jump leg has no matching flight-plan action",
+                        ));
+                    }
+                }
+                at_primary_port = false;
+                step_elapsed_seconds.push(elapsed_seconds);
+                continue;
+            }
+            if active_activity_preserved && index == active_index {
+                let activity = ship.activity.as_ref().ok_or(StoreError::Corrupt(
+                    "preserved flight-plan activity disappeared",
+                ))?;
+                let remaining_seconds = activity.due_second.saturating_sub(game_second);
+                elapsed_seconds = elapsed_seconds.saturating_add(remaining_seconds);
+                match step.action {
+                    FlightPlanAction::Fuel {
+                        operation: FuelOperation::GasGiant | FuelOperation::WildernessWater,
+                        quantity_millitons,
+                        refine_collected,
+                    } => {
+                        available_fuel_millitons =
+                            available_fuel_millitons.saturating_add(quantity_millitons);
+                        if !refine_collected {
+                            available_unrefined_millitons =
+                                available_unrefined_millitons.saturating_add(quantity_millitons);
+                        }
+                        fuel_timings.push(FuelOperationTiming {
+                            step_index: index as u16,
+                            round_trip_seconds: remaining_seconds,
+                            collection_seconds: 0,
+                            processing_seconds: 0,
+                            failed_processing_seconds: 0,
+                            normal_total_seconds: remaining_seconds,
+                            failed_total_seconds: remaining_seconds,
+                            output_refined: refine_collected,
+                        });
+                        at_primary_port = true;
+                    }
+                    FlightPlanAction::RefineFuel { quantity_millitons } => {
+                        available_unrefined_millitons =
+                            available_unrefined_millitons.saturating_sub(quantity_millitons);
+                    }
+                    _ => {
+                        return Err(StoreError::Corrupt(
+                            "ship activity disagrees with preserved flight-plan action",
+                        ));
+                    }
+                }
+                step_elapsed_seconds.push(elapsed_seconds);
+                continue;
+            }
+            if active_preserved
+                && index == active_index
+                && matches!(step.action, FlightPlanAction::BeltCycle { .. })
+                && let ShipLocationRecord::InFlight(leg) = ship.location
+                && let Some(remaining_seconds) = remaining_belt_cycle_seconds(leg, game_second)
+            {
+                let power_fuel = crate::mining::power_fuel_for_duration(
+                    spec.power_fuel_millitons,
+                    spec.power_plant_endurance_seconds,
+                    remaining_seconds,
+                );
+                if available_fuel_millitons < power_fuel {
+                    return Ok(RuleResult::Rejected(format!(
+                        "waypoint {} lacks the power-plant fuel needed to finish the active Belt Cycle",
+                        index + 1
+                    )));
+                }
+                let (_, unrefined_power_burn) = proportional_fuel_burn(
+                    available_fuel_millitons,
+                    available_unrefined_millitons,
+                    power_fuel,
+                );
+                available_fuel_millitons -= power_fuel;
+                available_unrefined_millitons =
+                    available_unrefined_millitons.saturating_sub(unrefined_power_burn);
+                fuel_millitons = fuel_millitons.saturating_add(power_fuel);
+                elapsed_seconds = elapsed_seconds.saturating_add(remaining_seconds);
+                at_primary_port = true;
+                step_elapsed_seconds.push(elapsed_seconds);
+                continue;
+            }
             match step.action {
                 FlightPlanAction::Jump {
                     destination_system_id,
@@ -7368,7 +7753,10 @@ impl Store {
             )));
         }
         let phase = self.player_phase_in(txn, identity)?;
-        if phase != PlayerPhase::Docked && phase != PlayerPhase::Interplanetary {
+        if phase != PlayerPhase::Docked
+            && phase != PlayerPhase::Interplanetary
+            && !(phase == PlayerPhase::Jump && request.proposal.preserve_active_step)
+        {
             return Ok(RuleResult::Rejected(
                 "the current physical leg is already committed; replan at its next checkpoint"
                     .into(),
@@ -7386,21 +7774,20 @@ impl Store {
         } else {
             false
         };
-        if phase == PlayerPhase::Interplanetary && !holding_in_deep_space {
-            let (_, ship) = self.player_and_ship_in(txn, identity)?;
-            if matches!(
-                ship.location,
-                ShipLocationRecord::InFlight(FlightLegRecord {
-                    purpose: FlightLegPurpose::Jump { .. },
-                    ..
-                })
-            ) {
-                return Ok(RuleResult::Rejected(
-                    "a course cannot be changed while the ship is in Jump space".into(),
-                ));
-            }
-        }
         let current_plan = self.flight_plan_in(txn, identity)?;
+        let current_index = usize::from(current_plan.current_step);
+        let retains_completed_prefix = current_plan.state == FlightPlanState::Active
+            && request.proposal.steps.len() > current_index
+            && current_plan.steps.len() > current_index
+            && current_plan.steps[..current_index] == request.proposal.steps[..current_index];
+        let preserving_physical_operation = request.proposal.preserve_active_step
+            && current_plan.steps.get(current_index).is_some_and(|step| {
+                matches!(watch_ship.location, ShipLocationRecord::InFlight(_))
+                    || watch_ship
+                        .activity
+                        .as_ref()
+                        .is_some_and(|activity| ship_activity_matches_flight_step(activity, step))
+            });
         let plan_id = if current_plan.plan_id == 0 {
             take_next_id(self.meta, txn, META_NEXT_FLIGHT_PLAN_ID)?
         } else {
@@ -7414,12 +7801,22 @@ impl Store {
         let plan = FlightPlanSnapshot {
             plan_id,
             revision,
-            current_step: 0,
+            current_step: if retains_completed_prefix
+                && (preserving_physical_operation
+                    || matches!(phase, PlayerPhase::Interplanetary | PlayerPhase::Jump))
+            {
+                current_plan.current_step
+            } else {
+                0
+            },
             state: FlightPlanState::Active,
             steps: request.proposal.steps.clone(),
             policy: request.proposal.policy.clone(),
             suspension_reason: String::new(),
         };
+        if preserving_physical_operation {
+            return self.preserve_active_flight_plan_in(txn, identity, plan);
+        }
         if phase == PlayerPhase::Interplanetary && !holding_in_deep_space {
             return self.redirect_flight_plan_in(txn, identity, plan);
         }
@@ -7428,6 +7825,73 @@ impl Store {
             .iter()
             .any(|warning| warning.code == "ACTIVE_REPAIR_CANCELLED_ON_DEPARTURE");
         self.activate_flight_plan_from_in(txn, identity, plan, 0, false, cancel_proper_repair)
+    }
+
+    fn preserve_active_flight_plan_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        plan: FlightPlanSnapshot,
+    ) -> Result<RuleResult<FlightPlanSnapshot>, StoreError> {
+        let (player, mut ship) = self.player_and_ship_in(txn, identity)?;
+        let index = usize::from(plan.current_step);
+        let Some(step) = plan.steps.get(index) else {
+            return Ok(RuleResult::Rejected(
+                "the revised plan no longer contains the active action".into(),
+            ));
+        };
+        let old_plan = self.flight_plan_in(txn, identity)?;
+        let Some(old_step) = old_plan.steps.get(usize::from(old_plan.current_step)) else {
+            return Ok(RuleResult::Rejected(
+                "the filed plan no longer identifies its active action".into(),
+            ));
+        };
+        if !same_physical_flight_step(old_step, step) {
+            return Ok(RuleResult::Rejected(
+                "the revised active action would change the physical leg".into(),
+            ));
+        }
+        let matching_activity = ship
+            .activity
+            .as_ref()
+            .is_some_and(|activity| ship_activity_matches_flight_step(activity, step));
+        let preserved_leg = match &mut ship.location {
+            ShipLocationRecord::InFlight(leg) => {
+                leg.plan_id = plan.plan_id;
+                leg.plan_revision = plan.revision;
+                leg.leg_index = plan.current_step;
+                true
+            }
+            _ if matching_activity => false,
+            _ => {
+                return Ok(RuleResult::Rejected(
+                    "the ship has no active physical operation to preserve".into(),
+                ));
+            }
+        };
+        self.ships
+            .put(txn, &player.ship_id, &encode_ship_record(&ship)?)?;
+        if preserved_leg
+            && let Some(mut trajectory) = self
+                .flight_trajectories
+                .get(txn, &player.ship_id)?
+                .map(decode_flight_trajectory)
+                .transpose()?
+        {
+            trajectory.plan_id = plan.plan_id;
+            trajectory.plan_revision = plan.revision;
+            self.flight_trajectories.put(
+                txn,
+                &player.ship_id,
+                &encode_flight_trajectory(trajectory),
+            )?;
+        }
+        self.flight_plans.put(
+            txn,
+            &encode_identity(identity),
+            &encode_flight_plan_snapshot(&plan)?,
+        )?;
+        Ok(RuleResult::Applied(plan))
     }
 
     fn redirect_flight_plan_in(
@@ -7440,6 +7904,7 @@ impl Store {
             .steps
             .iter()
             .enumerate()
+            .skip(usize::from(plan.current_step))
             .find(|(_, step)| !matches!(step.action, FlightPlanAction::Hold))
             .map(|(index, step)| (index, step.clone()))
         else {
@@ -16684,61 +17149,6 @@ impl Store {
             !through_authorized,
             &snapshot.summary,
         )?;
-        if !hostile && !departing && through_authorized {
-            snapshot.state = EncounterState::Resolved;
-            snapshot.summary = match kind {
-                EncounterKind::Inspection => {
-                    "The ship complies with a routine inspection and is released."
-                }
-                EncounterKind::TrafficControl => {
-                    "The assigned traffic crossing completes without delay."
-                }
-                EncounterKind::Distress if policy.assist_distress => {
-                    "Standing orders render assistance before the voyage continues."
-                }
-                EncounterKind::Distress => {
-                    "The distress call is logged and passed to traffic control."
-                }
-                EncounterKind::Derelict => "The drifting contact is logged for local authorities.",
-                EncounterKind::Hazard => "The pilot avoids the reported traffic hazard.",
-                EncounterKind::Military => {
-                    "The naval challenge is answered and the picket releases the ship."
-                }
-                EncounterKind::DepartingContact => unreachable!(),
-                _ => "Identification is exchanged and both vessels continue.",
-            }
-            .into();
-            let result = EncounterResult {
-                encounter_id,
-                resolved: true,
-                terminal: false,
-                outcome: snapshot.summary.clone(),
-                turns: 0,
-                cargo_lost_millitons: 0,
-                fuel_lost_millitons: 0,
-                damage_hits: 0,
-            };
-            self.encounters.put(
-                txn,
-                &key,
-                &encode_encounter_record(&EncounterRecord {
-                    snapshot,
-                    opponent_catalog_id: contact.catalog_id,
-                    posture: Some(posture_for_encounter_policy(kind, &policy)),
-                    fallbacks: Vec::new(),
-                    result: Some(result),
-                    combat: None,
-                    player_order: None,
-                    automation_decision: None,
-                    standing_orders_used: through_authorized,
-                    automated_combat_used: false,
-                    terminal_report: None,
-                    combat_log: Vec::new(),
-                    pending_interventions: Vec::new(),
-                })?,
-            )?;
-            return Ok(None);
-        }
         self.encounters.put(
             txn,
             &key,
@@ -16801,7 +17211,7 @@ impl Store {
             )?;
             return Ok(Some(identity));
         }
-        let posture = posture_for_encounter_policy(kind, &policy);
+        let posture = posture_for_encounter_policy(kind, snapshot.threat, &policy);
         let _ = self.resolve_encounter_in(
             txn,
             &identity,
@@ -28502,6 +28912,7 @@ impl Store {
         self.system_visits.clear(&mut txn)?;
         self.discovery_claims.clear(&mut txn)?;
         self.flight_plans.clear(&mut txn)?;
+        self.encounter_policy_defaults.clear(&mut txn)?;
         self.checkpoints.clear(&mut txn)?;
         self.encounters.clear(&mut txn)?;
         self.encounter_events.clear(&mut txn)?;
@@ -33929,7 +34340,11 @@ impl Store {
                     &crate::wire::ResolveEncounterRequest {
                         encounter_id: encounter.snapshot.encounter_id,
                         expected_revision: encounter.snapshot.revision,
-                        posture: posture_for_encounter_policy(encounter.snapshot.kind, &policy),
+                        posture: posture_for_encounter_policy(
+                            encounter.snapshot.kind,
+                            encounter.snapshot.threat,
+                            &policy,
+                        ),
                         fallbacks: policy.hostile_fallbacks,
                     },
                 )?;
@@ -37213,6 +37628,19 @@ fn encode_encounter_policy_record(
     bytes.push(u8::from(policy.comply_with_inspection));
     bytes.push(u8::from(policy.report_distress));
     bytes.push(u8::from(policy.assist_distress));
+    let order_count = u8::try_from(policy.standing_orders.len())
+        .map_err(|_| StoreError::Corrupt("too many encounter standing orders"))?;
+    bytes.push(order_count);
+    for order in &policy.standing_orders {
+        bytes.push(order.kind as u8);
+        bytes.push(order.ordinary_posture as u8);
+        bytes.push(match order.fight_mode {
+            EncounterFightMode::Never => 0,
+            EncounterFightMode::Always => 1,
+            EncounterFightMode::EstimatedAtLeast => 2,
+        });
+        bytes.push(order.minimum_outlook_percent);
+    }
     Ok(())
 }
 
@@ -37239,6 +37667,7 @@ fn decode_fallback(value: u8) -> Result<EncounterFallback, StoreError> {
 }
 fn decode_encounter_policy_record(
     decoder: &mut Decoder<'_>,
+    include_standing_orders: bool,
 ) -> Result<EncounterPolicy, StoreError> {
     let hostile_posture = decode_posture(decoder.u8()?)?;
     let count = decoder.u8()? as usize;
@@ -37246,13 +37675,74 @@ fn decode_encounter_policy_record(
     for _ in 0..count {
         hostile_fallbacks.push(decode_fallback(decoder.u8()?)?);
     }
+    let comply_with_inspection = decoder.u8()? != 0;
+    let report_distress = decoder.u8()? != 0;
+    let assist_distress = decoder.u8()? != 0;
+    let mut standing_orders = Vec::new();
+    if include_standing_orders {
+        let order_count = decoder.u8()? as usize;
+        standing_orders.reserve(order_count);
+        for _ in 0..order_count {
+            let kind = match decoder.u8()? {
+                0 => EncounterKind::RoutineTraffic,
+                1 => EncounterKind::TrafficControl,
+                2 => EncounterKind::Inspection,
+                3 => EncounterKind::Distress,
+                4 => EncounterKind::Derelict,
+                5 => EncounterKind::Hazard,
+                6 => EncounterKind::Hostile,
+                7 => EncounterKind::Military,
+                8 => EncounterKind::DepartingContact,
+                _ => return Err(StoreError::Corrupt("unknown encounter standing-order kind")),
+            };
+            let ordinary_posture = decode_posture(decoder.u8()?)?;
+            let fight_mode = match decoder.u8()? {
+                0 => EncounterFightMode::Never,
+                1 => EncounterFightMode::Always,
+                2 => EncounterFightMode::EstimatedAtLeast,
+                _ => return Err(StoreError::Corrupt("unknown encounter fight mode")),
+            };
+            standing_orders.push(EncounterStandingOrder {
+                kind,
+                ordinary_posture,
+                fight_mode,
+                minimum_outlook_percent: decoder.u8()?,
+            });
+        }
+    }
     Ok(EncounterPolicy {
         hostile_posture,
         hostile_fallbacks,
-        comply_with_inspection: decoder.u8()? != 0,
-        report_distress: decoder.u8()? != 0,
-        assist_distress: decoder.u8()? != 0,
+        comply_with_inspection,
+        report_distress,
+        assist_distress,
+        standing_orders,
     })
+}
+
+fn encode_encounter_policy_default_record(
+    revision: u64,
+    policy: &EncounterPolicy,
+) -> Result<Vec<u8>, StoreError> {
+    let mut bytes = vec![1];
+    bytes.extend_from_slice(&revision.to_be_bytes());
+    encode_encounter_policy_record(&mut bytes, policy)?;
+    Ok(bytes)
+}
+
+fn decode_encounter_policy_default_record(
+    bytes: &[u8],
+) -> Result<(u64, EncounterPolicy), StoreError> {
+    let mut decoder = Decoder::new(bytes);
+    if decoder.u8()? != 1 {
+        return Err(StoreError::Corrupt(
+            "unsupported encounter-policy default record",
+        ));
+    }
+    let revision = decoder.u64()?;
+    let policy = decode_encounter_policy_record(&mut decoder, true)?;
+    decoder.finish()?;
+    Ok((revision, policy))
 }
 
 fn encode_flight_plan_step_record(bytes: &mut Vec<u8>, step: &FlightPlanStep) {
@@ -37334,8 +37824,8 @@ fn decode_flight_plan_step_record(
         (1, 0) => (WaypointAuthority::Hold, false),
         (1, 1) => (WaypointAuthority::Hold, true),
         (1, 2) => (WaypointAuthority::Through, false),
-        (2..=4, 0) => (WaypointAuthority::Hold, decoder.u8()? != 0),
-        (2..=4, 1) => (WaypointAuthority::Through, decoder.u8()? != 0),
+        (2..=5, 0) => (WaypointAuthority::Hold, decoder.u8()? != 0),
+        (2..=5, 1) => (WaypointAuthority::Through, decoder.u8()? != 0),
         _ => return Err(StoreError::Corrupt("unknown waypoint authority")),
     };
     let action = match decoder.u8()? {
@@ -37408,7 +37898,7 @@ fn encode_flight_plan_proposal_record(
     proposal: &FlightPlanProposal,
 ) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(4);
+    bytes.push(5);
     bytes.extend_from_slice(&proposal.expected_plan_revision.to_be_bytes());
     let count = u16::try_from(proposal.steps.len())
         .map_err(|_| StoreError::Corrupt("too many flight-plan steps"))?;
@@ -37417,13 +37907,14 @@ fn encode_flight_plan_proposal_record(
         encode_flight_plan_step_record(&mut bytes, step);
     }
     encode_encounter_policy_record(&mut bytes, &proposal.policy)?;
+    bytes.push(u8::from(proposal.preserve_active_step));
     Ok(bytes)
 }
 fn decode_flight_plan_proposal_record(
     decoder: &mut Decoder<'_>,
 ) -> Result<FlightPlanProposal, StoreError> {
     let version = decoder.u8()?;
-    if !matches!(version, 1..=4) {
+    if !matches!(version, 1..=5) {
         return Err(StoreError::Corrupt("unsupported flight-plan proposal"));
     }
     let expected_plan_revision = decoder.u64()?;
@@ -37432,11 +37923,12 @@ fn decode_flight_plan_proposal_record(
     for _ in 0..count {
         steps.push(decode_flight_plan_step_record(decoder, version)?);
     }
-    let policy = decode_encounter_policy_record(decoder)?;
+    let policy = decode_encounter_policy_record(decoder, version >= 5)?;
     Ok(FlightPlanProposal {
         expected_plan_revision,
         steps,
         policy,
+        preserve_active_step: version >= 5 && decoder.u8()? != 0,
     })
 }
 
@@ -37464,7 +37956,7 @@ fn flight_plan_preview_hash(
 
 fn encode_flight_plan_snapshot(value: &FlightPlanSnapshot) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(4);
+    bytes.push(5);
     bytes.extend_from_slice(&value.plan_id.to_be_bytes());
     bytes.extend_from_slice(&value.revision.to_be_bytes());
     bytes.extend_from_slice(&value.current_step.to_be_bytes());
@@ -37482,7 +37974,7 @@ fn encode_flight_plan_snapshot(value: &FlightPlanSnapshot) -> Result<Vec<u8>, St
 fn decode_flight_plan_snapshot(bytes: &[u8]) -> Result<FlightPlanSnapshot, StoreError> {
     let mut decoder = Decoder::new(bytes);
     let version = decoder.u8()?;
-    if !matches!(version, 1..=4) {
+    if !matches!(version, 1..=5) {
         return Err(StoreError::Corrupt("unsupported flight-plan record"));
     }
     let plan_id = decoder.u64()?;
@@ -37503,7 +37995,7 @@ fn decode_flight_plan_snapshot(bytes: &[u8]) -> Result<FlightPlanSnapshot, Store
     for _ in 0..count {
         steps.push(decode_flight_plan_step_record(&mut decoder, version)?);
     }
-    let policy = decode_encounter_policy_record(&mut decoder)?;
+    let policy = decode_encounter_policy_record(&mut decoder, version >= 5)?;
     let suspension_reason = decoder.text()?;
     decoder.finish()?;
     Ok(FlightPlanSnapshot {
@@ -39299,6 +39791,16 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
                 }
             }
         }
+        Command::GetEncounterPolicyDefault => bytes.push(87),
+        Command::SetEncounterPolicyDefault(ref request) => {
+            bytes.push(88);
+            bytes.extend_from_slice(&request.expected_revision.to_be_bytes());
+            let mut encoded = Vec::new();
+            encode_encounter_policy_record(&mut encoded, &request.policy)?;
+            bytes.extend_from_slice(&(encoded.len() as u16).to_be_bytes());
+            bytes.extend_from_slice(&encoded);
+            bytes.push(u8::from(request.acknowledge_nonhostile_fight));
+        }
         Command::GetBrowserAlertStatus
         | Command::CreateBrowserAlertEnrollment
         | Command::RevokeAllBrowserAlerts => {
@@ -39429,6 +39931,19 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
         86 => Command::AcknowledgeOperationalDamageReport {
             report_id: decoder.u64()?,
         },
+        87 => Command::GetEncounterPolicyDefault,
+        88 => {
+            let expected_revision = decoder.u64()?;
+            let length = decoder.u16()? as usize;
+            let mut nested = Decoder::new(decoder.take(length)?);
+            let policy = decode_encounter_policy_record(&mut nested, true)?;
+            nested.finish()?;
+            Command::SetEncounterPolicyDefault(crate::wire::SetEncounterPolicyDefaultRequest {
+                expected_revision,
+                policy,
+                acknowledge_nonhostile_fight: decoder.u8()? != 0,
+            })
+        }
         35 => {
             let encounter_id = decoder.u64()?;
             let expected_revision = decoder.u64()?;
@@ -41090,7 +41605,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(24);
+    bytes.push(25);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -41250,6 +41765,13 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
             bytes.extend_from_slice(&(encoded.len() as u32).to_be_bytes());
             bytes.extend_from_slice(&encoded);
         }
+        OutcomeKind::EncounterPolicyDefault(value) => {
+            bytes.push(38);
+            bytes.extend_from_slice(&value.ship_id.to_be_bytes());
+            let encoded = encode_encounter_policy_default_record(value.revision, &value.policy)?;
+            bytes.extend_from_slice(&(encoded.len() as u16).to_be_bytes());
+            bytes.extend_from_slice(&encoded);
+        }
         OutcomeKind::TaskLedger(value) => {
             bytes.push(24);
             encode_task_ledger_into(&mut bytes, value)?;
@@ -41395,6 +41917,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 22
         && version != 23
         && version != 24
+        && version != 25
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -41620,6 +42143,16 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
             OutcomeKind::OperationalDamageReport(decode_operational_damage_report(
                 decoder.take(length)?,
             )?)
+        }
+        38 if version >= 25 => {
+            let ship_id = decoder.u64()?;
+            let length = decoder.u16()? as usize;
+            let (revision, policy) = decode_encounter_policy_default_record(decoder.take(length)?)?;
+            OutcomeKind::EncounterPolicyDefault(EncounterPolicyDefaultSnapshot {
+                ship_id,
+                revision,
+                policy,
+            })
         }
         _ => return Err(StoreError::Corrupt("unknown outcome kind")),
     };
@@ -47669,6 +48202,105 @@ mod tests {
     use crate::bbs_polity::BBS_POLITY_MINIMUM_NEW_SYSTEMS;
 
     #[test]
+    fn encounter_standing_orders_use_sensor_limited_thresholds() {
+        let policy = EncounterPolicy {
+            standing_orders: vec![EncounterStandingOrder {
+                kind: EncounterKind::Inspection,
+                ordinary_posture: EncounterPosture::Comply,
+                fight_mode: EncounterFightMode::EstimatedAtLeast,
+                minimum_outlook_percent: 60,
+            }],
+            ..EncounterPolicy::default()
+        };
+        assert_eq!(
+            posture_for_encounter_policy(
+                EncounterKind::Inspection,
+                EncounterThreat::Favorable,
+                &policy,
+            ),
+            EncounterPosture::Fight
+        );
+        assert_eq!(
+            posture_for_encounter_policy(
+                EncounterKind::Inspection,
+                EncounterThreat::Comparable,
+                &policy,
+            ),
+            EncounterPosture::Comply
+        );
+        assert_eq!(
+            posture_for_encounter_policy(
+                EncounterKind::Inspection,
+                EncounterThreat::Unknown,
+                &policy,
+            ),
+            EncounterPosture::Comply
+        );
+    }
+
+    #[test]
+    fn nonhostile_ship_defaults_require_explicit_authorization_and_persist() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let policy = EncounterPolicy {
+            standing_orders: vec![EncounterStandingOrder {
+                kind: EncounterKind::RoutineTraffic,
+                ordinary_posture: EncounterPosture::Comply,
+                fight_mode: EncounterFightMode::Always,
+                minimum_outlook_percent: 0,
+            }],
+            ..EncounterPolicy::default()
+        };
+        let mut txn = store.env.write_txn().unwrap();
+        let rejected = store
+            .set_encounter_policy_default_in(
+                &mut txn,
+                &identity(),
+                &crate::wire::SetEncounterPolicyDefaultRequest {
+                    expected_revision: 0,
+                    policy: policy.clone(),
+                    acknowledge_nonhostile_fight: false,
+                },
+            )
+            .unwrap();
+        assert!(matches!(rejected, RuleResult::Rejected(_)));
+        let applied = store
+            .set_encounter_policy_default_in(
+                &mut txn,
+                &identity(),
+                &crate::wire::SetEncounterPolicyDefaultRequest {
+                    expected_revision: 0,
+                    policy: policy.clone(),
+                    acknowledge_nonhostile_fight: true,
+                },
+            )
+            .unwrap();
+        let RuleResult::Applied(applied) = applied else {
+            panic!("authorized standing orders should be accepted");
+        };
+        assert_eq!(applied.revision, 1);
+        let outcome = Outcome {
+            command_id: [9; COMMAND_ID_BYTES],
+            committed_sequence: 4,
+            revision: 5,
+            replayed: false,
+            phase: PlayerPhase::Docked,
+            kind: OutcomeKind::EncounterPolicyDefault(applied.clone()),
+        };
+        assert_eq!(
+            decode_outcome(&encode_outcome(&outcome).unwrap()).unwrap(),
+            outcome
+        );
+        txn.commit().unwrap();
+        let txn = store.env.read_txn().unwrap();
+        let restored = store
+            .encounter_policy_default_in(&txn, &identity())
+            .unwrap();
+        assert_eq!(restored.policy, policy);
+    }
+
+    #[test]
     fn mixed_tank_burns_are_proportional_and_trigger_unrefined_jump_dm() {
         assert_eq!(proportional_fuel_burn(10_000, 4_000, 5_000), (3_000, 2_000));
         assert_eq!(proportional_fuel_burn(10_000, 0, 5_000), (5_000, 0));
@@ -47947,6 +48579,7 @@ mod tests {
                 terminal: true,
             }],
             policy: EncounterPolicy::default(),
+            preserve_active_step: false,
         };
         let outcome = Outcome {
             command_id: [9; COMMAND_ID_BYTES],
@@ -51021,6 +51654,7 @@ mod tests {
                 },
             ],
             policy: EncounterPolicy::default(),
+            preserve_active_step: false,
         };
         let mut txn = store.env.write_txn().unwrap();
         let services = store
@@ -51116,6 +51750,7 @@ mod tests {
                 },
             ],
             policy: EncounterPolicy::default(),
+            preserve_active_step: false,
         };
         let task_id = 990_001;
         let mut offer = test_task_offer(
@@ -51226,6 +51861,7 @@ mod tests {
                 },
             ],
             policy: EncounterPolicy::default(),
+            preserve_active_step: false,
         };
         let task_id = 990_002;
         let mut offer = test_task_offer(
@@ -51350,6 +51986,7 @@ mod tests {
                 },
             ],
             policy: EncounterPolicy::default(),
+            preserve_active_step: false,
         };
         assert!(matches!(
             store.preview_flight_plan_in(
@@ -51409,6 +52046,7 @@ mod tests {
                 },
             ],
             policy: EncounterPolicy::default(),
+            preserve_active_step: false,
         };
         let mut txn = store.env.write_txn().unwrap();
         let preview = match store
@@ -51437,6 +52075,44 @@ mod tests {
         let ShipLocationRecord::InFlight(outbound_leg) = outbound_ship.location else {
             panic!("outbound plan did not create a maneuver leg");
         };
+        let mut revised_policy = committed.policy.clone();
+        revised_policy.report_distress = false;
+        let future_only = FlightPlanProposal {
+            expected_plan_revision: committed.revision,
+            steps: committed.steps.clone(),
+            policy: revised_policy,
+            preserve_active_step: true,
+        };
+        let future_preview = match store
+            .preview_flight_plan_in(&txn, &identity(), &future_only)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("future-only preview failed: {message}"),
+        };
+        let committed = match store
+            .commit_flight_plan_in(
+                &mut txn,
+                &identity(),
+                &CommitFlightPlanRequest {
+                    proposal: future_only,
+                    preview_hash: future_preview.preview_hash,
+                    acknowledge_warnings: true,
+                },
+            )
+            .unwrap()
+        {
+            RuleResult::Applied(plan) => plan,
+            RuleResult::Rejected(message) => panic!("future-only commit failed: {message}"),
+        };
+        let (_, preserved_ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        let ShipLocationRecord::InFlight(preserved_leg) = preserved_ship.location else {
+            panic!("future-only revision removed the maneuver leg");
+        };
+        assert_eq!(preserved_leg.started_second, outbound_leg.started_second);
+        assert_eq!(preserved_leg.due_second, outbound_leg.due_second);
+        assert_eq!(preserved_leg.destination, outbound_leg.destination);
+        assert_eq!(preserved_leg.plan_revision, committed.revision);
         let diversion_second = outbound_leg.started_second
             + outbound_leg
                 .due_second
@@ -51459,6 +52135,7 @@ mod tests {
                 terminal: true,
             }],
             policy: EncounterPolicy::default(),
+            preserve_active_step: false,
         };
         let preview = match store
             .preview_flight_plan_in(&txn, &identity(), &return_plan)
@@ -51635,6 +52312,7 @@ mod tests {
                 terminal: true,
             }],
             policy: EncounterPolicy::default(),
+            preserve_active_step: false,
         };
         let preview = match store
             .preview_flight_plan_in(&txn, &identity(), &proposal)
@@ -51720,6 +52398,7 @@ mod tests {
                 terminal: true,
             }],
             policy: EncounterPolicy::default(),
+            preserve_active_step: false,
         };
         assert!(matches!(
             store
@@ -51727,6 +52406,260 @@ mod tests {
                 .unwrap(),
             RuleResult::Rejected(message) if message.contains("Jump space")
         ));
+        txn.abort();
+    }
+
+    #[test]
+    fn physical_jump_preserves_emergence_while_future_plan_and_policy_change() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let known = store
+            .known_destinations_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let destination = known
+            .systems
+            .iter()
+            .find(|system| system.within_jump_rating && system.system_id != known.current_system_id)
+            .unwrap()
+            .system_id;
+        let mut txn = store.env.write_txn().unwrap();
+        let (_, mut ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        let origin = ship.system_id;
+        let due_second = 80_000;
+        let steps = vec![
+            FlightPlanStep {
+                locus: FlightLocus::JumpLocus { system_id: origin },
+                authority: WaypointAuthority::Through,
+                action: FlightPlanAction::Hold,
+                terminal: false,
+            },
+            FlightPlanStep {
+                locus: FlightLocus::JumpLocus { system_id: origin },
+                authority: WaypointAuthority::Through,
+                action: FlightPlanAction::Jump {
+                    destination_system_id: destination,
+                    navigation: crate::wire::JumpNavigationMethod::Onboard,
+                    proceed_on_known_bad_plot: false,
+                },
+                terminal: false,
+            },
+            FlightPlanStep {
+                locus: FlightLocus::Port {
+                    system_id: destination,
+                    world_id: destination,
+                    facility_id: destination,
+                },
+                authority: WaypointAuthority::Hold,
+                action: FlightPlanAction::Dock {
+                    world_id: destination,
+                    facility_id: destination,
+                },
+                terminal: true,
+            },
+        ];
+        ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: 81,
+            plan_revision: 1,
+            leg_index: 1,
+            origin: ShipLocusRecord::JumpLocus { system_id: origin },
+            destination: ShipLocusRecord::JumpLocus {
+                system_id: destination,
+            },
+            started_second: 10,
+            due_second,
+            purpose: FlightLegPurpose::Jump {
+                inaccurate_extra_days: 0,
+                critical_transition: false,
+            },
+        });
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        store
+            .flight_plans
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_flight_plan_snapshot(&FlightPlanSnapshot {
+                    plan_id: 81,
+                    revision: 1,
+                    current_step: 1,
+                    state: FlightPlanState::Active,
+                    steps: steps.clone(),
+                    policy: EncounterPolicy::default(),
+                    suspension_reason: String::new(),
+                })
+                .unwrap(),
+            )
+            .unwrap();
+        store
+            .schedule_player_travel_in(&mut txn, ship.ship_id, due_second)
+            .unwrap();
+        put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, 20_000).unwrap();
+
+        let mut revised_steps = steps;
+        revised_steps[2].authority = WaypointAuthority::Through;
+        let policy = EncounterPolicy {
+            report_distress: false,
+            ..EncounterPolicy::default()
+        };
+        let proposal = FlightPlanProposal {
+            expected_plan_revision: 1,
+            steps: revised_steps,
+            policy: policy.clone(),
+            preserve_active_step: true,
+        };
+        let preview = match store
+            .preview_flight_plan_in(&txn, &identity(), &proposal)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("future-only preview failed: {message}"),
+        };
+        let revised = match store
+            .commit_flight_plan_in(
+                &mut txn,
+                &identity(),
+                &CommitFlightPlanRequest {
+                    proposal,
+                    preview_hash: preview.preview_hash,
+                    acknowledge_warnings: true,
+                },
+            )
+            .unwrap()
+        {
+            RuleResult::Applied(plan) => plan,
+            RuleResult::Rejected(message) => panic!("future-only commit failed: {message}"),
+        };
+        assert_eq!(revised.current_step, 1);
+        assert_eq!(revised.steps[2].authority, WaypointAuthority::Through);
+        assert_eq!(revised.policy, policy);
+        let (_, preserved) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        let ShipLocationRecord::InFlight(leg) = preserved.location else {
+            panic!("Jump leg disappeared during future-only revision");
+        };
+        assert_eq!(leg.started_second, 10);
+        assert_eq!(leg.due_second, due_second);
+        assert_eq!(
+            leg.destination,
+            ShipLocusRecord::JumpLocus {
+                system_id: destination
+            }
+        );
+        assert_eq!(leg.plan_revision, revised.revision);
+        txn.abort();
+    }
+
+    #[test]
+    fn active_fuel_processing_is_preserved_during_policy_revision() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let mut txn = store.env.write_txn().unwrap();
+        let (_, mut ship) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        let system_id = ship.system_id;
+        let quantity_millitons = MILLITONS_PER_TON;
+        ship.unrefined_fuel_millitons = quantity_millitons;
+        let activity = ShipActivityRecord {
+            activity_id: 919,
+            kind: ShipActivityKind::FuelProcessing {
+                quantity_millitons,
+                processing_effect: 0,
+                processing_damages_jump_drive: false,
+            },
+            started_second: 1_000,
+            due_second: 12_000,
+            cost_credits: 0,
+            site: ShipActivitySite::Dockyard {
+                system_id,
+                world_id: system_id,
+                facility_id: system_id,
+            },
+        };
+        ship.activity = Some(activity.clone());
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        let step = FlightPlanStep {
+            locus: FlightLocus::Port {
+                system_id,
+                world_id: system_id,
+                facility_id: system_id,
+            },
+            authority: WaypointAuthority::Through,
+            action: FlightPlanAction::RefineFuel { quantity_millitons },
+            terminal: true,
+        };
+        store
+            .flight_plans
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_flight_plan_snapshot(&FlightPlanSnapshot {
+                    plan_id: 91,
+                    revision: 1,
+                    current_step: 0,
+                    state: FlightPlanState::Active,
+                    steps: vec![step.clone()],
+                    policy: EncounterPolicy::default(),
+                    suspension_reason: String::new(),
+                })
+                .unwrap(),
+            )
+            .unwrap();
+        store
+            .schedule_ship_activity_in(&mut txn, ship.ship_id, activity.due_second)
+            .unwrap();
+        put_meta_u64(store.meta, &mut txn, META_GAME_SECOND, 4_000).unwrap();
+        let policy = EncounterPolicy {
+            assist_distress: true,
+            ..EncounterPolicy::default()
+        };
+        let proposal = FlightPlanProposal {
+            expected_plan_revision: 1,
+            steps: vec![step],
+            policy: policy.clone(),
+            preserve_active_step: true,
+        };
+        let preview = match store
+            .preview_flight_plan_in(&txn, &identity(), &proposal)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("activity preview failed: {message}"),
+        };
+        assert_eq!(preview.elapsed_seconds, 8_000);
+        let revised = match store
+            .commit_flight_plan_in(
+                &mut txn,
+                &identity(),
+                &CommitFlightPlanRequest {
+                    proposal,
+                    preview_hash: preview.preview_hash,
+                    acknowledge_warnings: true,
+                },
+            )
+            .unwrap()
+        {
+            RuleResult::Applied(plan) => plan,
+            RuleResult::Rejected(message) => panic!("activity commit failed: {message}"),
+        };
+        assert_eq!(revised.current_step, 0);
+        assert_eq!(revised.policy, policy);
+        let (_, preserved) = store.player_and_ship_in(&txn, &identity()).unwrap();
+        assert_eq!(preserved.activity, Some(activity));
+        let schedules = store
+            .ship_activity_events
+            .iter(&txn)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter_map(|(key, bytes)| decode_scheduled_object(key, bytes).ok())
+            .filter(|(_, _, scheduled_ship_id)| *scheduled_ship_id == ship.ship_id)
+            .count();
+        assert_eq!(schedules, 1);
         txn.abort();
     }
 
@@ -52125,6 +53058,7 @@ mod tests {
                 },
             ],
             policy: EncounterPolicy::default(),
+            preserve_active_step: false,
         };
         let current_ship = store
             .player_and_ship_in(&store.env.read_txn().unwrap(), &identity())
@@ -52502,6 +53436,7 @@ mod tests {
                 },
             ],
             policy: EncounterPolicy::default(),
+            preserve_active_step: false,
         };
         let preview = match store
             .preview_flight_plan_in(&store.env.read_txn().unwrap(), &identity(), &proposal)
@@ -52717,6 +53652,7 @@ mod tests {
                 },
             ],
             policy: EncounterPolicy::default(),
+            preserve_active_step: false,
         };
         let preview = match store
             .preview_flight_plan_in(&store.env.read_txn().unwrap(), &identity(), &proposal)
@@ -52929,6 +53865,7 @@ mod tests {
                 },
             ],
             policy: EncounterPolicy::default(),
+            preserve_active_step: false,
         };
         let preview = match store
             .preview_flight_plan_in(&store.env.read_txn().unwrap(), &identity(), &proposal)
@@ -56047,6 +56984,7 @@ mod tests {
                     },
                 ],
                 policy: EncounterPolicy::default(),
+                preserve_active_step: false,
             };
             store
                 .enqueue(&QueuedCommand {
@@ -56823,6 +57761,7 @@ mod tests {
                 },
             ],
             policy: EncounterPolicy::default(),
+            preserve_active_step: false,
         };
 
         let mut txn = store.env.write_txn().unwrap();

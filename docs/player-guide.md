@@ -652,6 +652,18 @@ after the selected Hold or Through behavior completes. Generated task and
 ordinary routes initially use Through throughout. Player Preferences can make
 either type generate Hold checkpoints instead without changing a filed plan.
 
+The editor groups related physical steps into logical route items. Select any
+future item to change its authority or settings, delete or reorder it, insert a
+charted leg beside it, or replace its charted destination. Completed items stay
+visible and locked. Task Management's **Standing orders** edits the active
+ship's default encounter policy; a new plan starts with that default, while a
+filed plan keeps its own copy. The Flight Plan can load the ship default, keep
+different orders for that voyage, or save its edited orders as the new default.
+Each encounter type has an ordinary response plus Never, Always, or a minimum
+sensor-estimated combat-outlook percentage for Fight. Unknown outlook never
+passes a percentage threshold, and automatic attack against non-hostile traffic
+requires an explicit risk acknowledgement.
+
 Course knowledge and course execution are separate. A carried or purchased
 plot can still be risky, and warnings about a known bad plot require a
 deliberate choice. Filing a plan commits the route; revising it later does not
@@ -661,7 +673,9 @@ the ship's current motion. You may turn back to the primary port, choose a new
 Jump destination, or replace the route with a belt cycle or lawful frontier
 fuel stop. The displayed estimate includes the time needed to cancel the old
 relative motion and intercept the moving destination. A Jump already in
-progress cannot be redirected before breakout.
+progress cannot be redirected before breakout, but later route items and
+standing orders remain editable. Future-only changes preserve the active leg or
+shipboard operation and its scheduled completion rather than restarting it.
 
 The voyage screen shows the present stage, origin, destination, ship time,
 next scheduled event, and fuel aboard compared with effective total tank

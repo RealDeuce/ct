@@ -1604,6 +1604,21 @@ pub enum EncounterFallback {
     BreakOff,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EncounterFightMode {
+    Never,
+    Always,
+    EstimatedAtLeast,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EncounterStandingOrder {
+    pub kind: EncounterKind,
+    pub ordinary_posture: EncounterPosture,
+    pub fight_mode: EncounterFightMode,
+    pub minimum_outlook_percent: u8,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EncounterPolicy {
     pub hostile_posture: EncounterPosture,
@@ -1611,6 +1626,7 @@ pub struct EncounterPolicy {
     pub comply_with_inspection: bool,
     pub report_distress: bool,
     pub assist_distress: bool,
+    pub standing_orders: Vec<EncounterStandingOrder>,
 }
 
 impl Default for EncounterPolicy {
@@ -1621,8 +1637,23 @@ impl Default for EncounterPolicy {
             comply_with_inspection: true,
             report_distress: true,
             assist_distress: false,
+            standing_orders: Vec::new(),
         }
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EncounterPolicyDefaultSnapshot {
+    pub ship_id: u64,
+    pub revision: u64,
+    pub policy: EncounterPolicy,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SetEncounterPolicyDefaultRequest {
+    pub expected_revision: u64,
+    pub policy: EncounterPolicy,
+    pub acknowledge_nonhostile_fight: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1630,6 +1661,7 @@ pub struct FlightPlanProposal {
     pub expected_plan_revision: u64,
     pub steps: Vec<FlightPlanStep>,
     pub policy: EncounterPolicy,
+    pub preserve_active_step: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2421,6 +2453,8 @@ pub enum Command {
         choice: SystemMappingChoice,
     },
     GetFlightPlan,
+    GetEncounterPolicyDefault,
+    SetEncounterPolicyDefault(SetEncounterPolicyDefaultRequest),
     PreviewFlightPlan(FlightPlanProposal),
     CommitFlightPlan(CommitFlightPlanRequest),
     AcknowledgeCheckpoint {
@@ -2599,6 +2633,7 @@ impl Command {
             | Self::SuggestTaskCourse
             | Self::GetMessageManagement
             | Self::GetFlightPlan
+            | Self::GetEncounterPolicyDefault
             | Self::PreviewFlightPlan(_)
             | Self::GetEncounter
             | Self::GetTerminalReport
@@ -2626,6 +2661,7 @@ impl Command {
             | Self::SetMessageFilter { .. }
             | Self::SetSystemMappingDisclosure { .. }
             | Self::CommitFlightPlan(_)
+            | Self::SetEncounterPolicyDefault(_)
             | Self::AcknowledgeCheckpoint { .. }
             | Self::ResolveEncounter(_) => CommandPersistence::Transaction,
             Self::AcknowledgeTerminalReport { .. }
@@ -2708,6 +2744,7 @@ pub enum OutcomeKind {
     SystemMappingStatus(SystemMappingStatus),
     FlightPlan(FlightPlanSnapshot),
     FlightPlanPreview(FlightPlanPreview),
+    EncounterPolicyDefault(EncounterPolicyDefaultSnapshot),
     Checkpoint(CheckpointSnapshot),
     Encounter(EncounterSnapshot),
     EncounterResult(EncounterResult),
@@ -2822,9 +2859,41 @@ fn decode_encounter_fallback(value: crate::ct_rpc_capnp::EncounterFallback) -> E
     }
 }
 
+fn decode_encounter_kind(value: crate::ct_rpc_capnp::EncounterKind) -> EncounterKind {
+    match value {
+        crate::ct_rpc_capnp::EncounterKind::RoutineTraffic => EncounterKind::RoutineTraffic,
+        crate::ct_rpc_capnp::EncounterKind::TrafficControl => EncounterKind::TrafficControl,
+        crate::ct_rpc_capnp::EncounterKind::Inspection => EncounterKind::Inspection,
+        crate::ct_rpc_capnp::EncounterKind::Distress => EncounterKind::Distress,
+        crate::ct_rpc_capnp::EncounterKind::Derelict => EncounterKind::Derelict,
+        crate::ct_rpc_capnp::EncounterKind::Hazard => EncounterKind::Hazard,
+        crate::ct_rpc_capnp::EncounterKind::Hostile => EncounterKind::Hostile,
+        crate::ct_rpc_capnp::EncounterKind::Military => EncounterKind::Military,
+        crate::ct_rpc_capnp::EncounterKind::DepartingContact => EncounterKind::DepartingContact,
+    }
+}
+
 fn decode_encounter_policy(
     reader: crate::ct_rpc_capnp::encounter_policy::Reader<'_>,
 ) -> Result<EncounterPolicy, WireError> {
+    let standing_orders = reader
+        .get_standing_orders()?
+        .iter()
+        .map(|order| {
+            Ok(EncounterStandingOrder {
+                kind: decode_encounter_kind(order.get_kind()?),
+                ordinary_posture: decode_encounter_posture(order.get_ordinary_posture()?),
+                fight_mode: match order.get_fight_mode()? {
+                    crate::ct_rpc_capnp::EncounterFightMode::Never => EncounterFightMode::Never,
+                    crate::ct_rpc_capnp::EncounterFightMode::Always => EncounterFightMode::Always,
+                    crate::ct_rpc_capnp::EncounterFightMode::EstimatedAtLeast => {
+                        EncounterFightMode::EstimatedAtLeast
+                    }
+                },
+                minimum_outlook_percent: order.get_minimum_outlook_percent(),
+            })
+        })
+        .collect::<Result<Vec<_>, WireError>>()?;
     Ok(EncounterPolicy {
         hostile_posture: decode_encounter_posture(reader.get_hostile_posture()?),
         hostile_fallbacks: reader
@@ -2839,6 +2908,7 @@ fn decode_encounter_policy(
         comply_with_inspection: reader.get_comply_with_inspection(),
         report_distress: reader.get_report_distress(),
         assist_distress: reader.get_assist_distress(),
+        standing_orders,
     })
 }
 
@@ -2946,6 +3016,7 @@ fn decode_flight_plan_proposal(
         expected_plan_revision: reader.get_expected_plan_revision(),
         steps,
         policy: decode_encounter_policy(reader.get_policy()?)?,
+        preserve_active_step: reader.get_preserve_active_step(),
     })
 }
 
@@ -3632,6 +3703,15 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
                 report_id: value?.get_report_id(),
             }
         }
+        request::GetEncounterPolicyDefault(()) => Command::GetEncounterPolicyDefault,
+        request::SetEncounterPolicyDefault(value) => {
+            let value = value?;
+            Command::SetEncounterPolicyDefault(SetEncounterPolicyDefaultRequest {
+                expected_revision: value.get_expected_revision(),
+                policy: decode_encounter_policy(value.get_policy()?)?,
+                acknowledge_nonhostile_fight: value.get_acknowledge_nonhostile_fight(),
+            })
+        }
     };
     Ok(CommandRequest {
         request_id,
@@ -3791,6 +3871,12 @@ pub fn encode_response(
         }
         OutcomeKind::FlightPlanPreview(preview) => {
             set_flight_plan_preview(response.reborrow().init_flight_plan_preview(), preview)?;
+        }
+        OutcomeKind::EncounterPolicyDefault(snapshot) => {
+            let mut target = response.reborrow().init_encounter_policy_default();
+            target.set_ship_id(snapshot.ship_id);
+            target.set_revision(snapshot.revision);
+            set_encounter_policy(target.init_policy(), &snapshot.policy)?;
         }
         OutcomeKind::Checkpoint(checkpoint) => {
             set_checkpoint_snapshot(response.reborrow().init_checkpoint(), checkpoint);
@@ -4238,6 +4324,13 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
             });
         }
         Command::GetFlightPlan => builder.set_get_flight_plan(()),
+        Command::GetEncounterPolicyDefault => builder.set_get_encounter_policy_default(()),
+        Command::SetEncounterPolicyDefault(ref request) => {
+            let mut value = builder.init_set_encounter_policy_default();
+            value.set_expected_revision(request.expected_revision);
+            set_encounter_policy(value.reborrow().init_policy(), &request.policy)?;
+            value.set_acknowledge_nonhostile_fight(request.acknowledge_nonhostile_fight);
+        }
         Command::PreviewFlightPlan(ref proposal) => {
             set_flight_plan_proposal(builder.init_preview_flight_plan(), proposal)?;
         }
@@ -6207,6 +6300,20 @@ fn encode_encounter_fallback(value: EncounterFallback) -> crate::ct_rpc_capnp::E
     }
 }
 
+fn encode_encounter_kind(value: EncounterKind) -> crate::ct_rpc_capnp::EncounterKind {
+    match value {
+        EncounterKind::RoutineTraffic => crate::ct_rpc_capnp::EncounterKind::RoutineTraffic,
+        EncounterKind::TrafficControl => crate::ct_rpc_capnp::EncounterKind::TrafficControl,
+        EncounterKind::Inspection => crate::ct_rpc_capnp::EncounterKind::Inspection,
+        EncounterKind::Distress => crate::ct_rpc_capnp::EncounterKind::Distress,
+        EncounterKind::Derelict => crate::ct_rpc_capnp::EncounterKind::Derelict,
+        EncounterKind::Hazard => crate::ct_rpc_capnp::EncounterKind::Hazard,
+        EncounterKind::Hostile => crate::ct_rpc_capnp::EncounterKind::Hostile,
+        EncounterKind::Military => crate::ct_rpc_capnp::EncounterKind::Military,
+        EncounterKind::DepartingContact => crate::ct_rpc_capnp::EncounterKind::DepartingContact,
+    }
+}
+
 fn set_encounter_policy(
     mut builder: crate::ct_rpc_capnp::encounter_policy::Builder<'_>,
     policy: &EncounterPolicy,
@@ -6221,6 +6328,22 @@ fn set_encounter_policy(
     builder.set_comply_with_inspection(policy.comply_with_inspection);
     builder.set_report_distress(policy.report_distress);
     builder.set_assist_distress(policy.assist_distress);
+    let order_count = u32::try_from(policy.standing_orders.len())
+        .map_err(|_| WireError::Expected("fewer encounter standing orders"))?;
+    let mut orders = builder.reborrow().init_standing_orders(order_count);
+    for (index, order) in policy.standing_orders.iter().enumerate() {
+        let mut target = orders.reborrow().get(index as u32);
+        target.set_kind(encode_encounter_kind(order.kind));
+        target.set_ordinary_posture(encode_encounter_posture(order.ordinary_posture));
+        target.set_fight_mode(match order.fight_mode {
+            EncounterFightMode::Never => crate::ct_rpc_capnp::EncounterFightMode::Never,
+            EncounterFightMode::Always => crate::ct_rpc_capnp::EncounterFightMode::Always,
+            EncounterFightMode::EstimatedAtLeast => {
+                crate::ct_rpc_capnp::EncounterFightMode::EstimatedAtLeast
+            }
+        });
+        target.set_minimum_outlook_percent(order.minimum_outlook_percent);
+    }
     Ok(())
 }
 
@@ -6320,6 +6443,7 @@ fn set_flight_plan_proposal(
     for (index, step) in proposal.steps.iter().enumerate() {
         set_flight_plan_step(steps.reborrow().get(index as u32), step);
     }
+    builder.set_preserve_active_step(proposal.preserve_active_step);
     set_encounter_policy(builder.init_policy(), &proposal.policy)
 }
 
@@ -6499,6 +6623,13 @@ fn set_encounter_snapshot(
         fallbacks.set(index as u32, encode_encounter_fallback(*fallback));
     }
     builder.set_response_deadline_second(value.response_deadline_second);
+    builder.set_estimated_combat_outlook_percent(match value.threat {
+        EncounterThreat::Unknown => 0,
+        EncounterThreat::Favorable => 70,
+        EncounterThreat::Comparable => 50,
+        EncounterThreat::Dangerous => 33,
+        EncounterThreat::Overwhelming => 12,
+    });
 }
 
 fn set_encounter_result(
@@ -8035,7 +8166,14 @@ mod tests {
                 comply_with_inspection: true,
                 report_distress: true,
                 assist_distress: false,
+                standing_orders: vec![EncounterStandingOrder {
+                    kind: EncounterKind::Military,
+                    ordinary_posture: EncounterPosture::Comply,
+                    fight_mode: EncounterFightMode::EstimatedAtLeast,
+                    minimum_outlook_percent: 65,
+                }],
             },
+            preserve_active_step: true,
         };
         for command in [
             Command::PreviewFlightPlan(proposal.clone()),
@@ -8055,6 +8193,12 @@ mod tests {
                 encounter_id: 91,
                 expected_revision: 5,
             },
+            Command::GetEncounterPolicyDefault,
+            Command::SetEncounterPolicyDefault(SetEncounterPolicyDefaultRequest {
+                expected_revision: 6,
+                policy: proposal.policy.clone(),
+                acknowledge_nonhostile_fight: true,
+            }),
         ] {
             let request = CommandRequest {
                 request_id: 8,

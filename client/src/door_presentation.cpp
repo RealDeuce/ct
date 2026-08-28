@@ -552,13 +552,16 @@ std::string door_option_prompt(
       [](const auto left, const auto right) {
          return option_shortcut_sort_key(left) < option_shortcut_sort_key(right);
       });
+   sorted_options.erase(
+      std::remove(sorted_options.begin(), sorted_options.end(), std::string_view{}),
+      sorted_options.end());
    size_t line_width = 0;
-   for(const auto option : sorted_options) {
-      if(option.empty()) {
-         continue;
-      }
+   for(size_t index = 0; index < sorted_options.size(); ++index) {
+      const auto option = sorted_options[index];
+      const auto suffix_width =
+         index + 1 == sorted_options.size() ? size_t{2} : size_t{0};
       if(line_width != 0) {
-         if(line_width + 2 + option.size() > content_columns) {
+         if(line_width + 2 + option.size() + suffix_width > content_columns) {
             prompt += "\n\r";
             line_width = 0;
          } else {

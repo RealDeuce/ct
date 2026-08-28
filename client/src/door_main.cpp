@@ -4990,6 +4990,287 @@ void show_task_detail(const ct::TaskRecord& task,
    }
 }
 
+const char* standing_encounter_name(const ct::EncounterKind kind)
+{
+   switch(kind) {
+   case ct::EncounterKind::RoutineTraffic: return "Routine traffic";
+   case ct::EncounterKind::TrafficControl: return "Traffic control";
+   case ct::EncounterKind::Inspection: return "Inspection";
+   case ct::EncounterKind::Distress: return "Distress call";
+   case ct::EncounterKind::Derelict: return "Derelict";
+   case ct::EncounterKind::Hazard: return "Navigation hazard";
+   case ct::EncounterKind::Hostile: return "Hostile contact";
+   case ct::EncounterKind::Military: return "Military challenge";
+   case ct::EncounterKind::DepartingContact: return "Departing contact";
+   }
+   return "Contact";
+}
+
+const char* standing_posture_name(const ct::EncounterPosture posture)
+{
+   switch(posture) {
+   case ct::EncounterPosture::Fight: return "Fight";
+   case ct::EncounterPosture::Flee: return "Run";
+   case ct::EncounterPosture::Comply: return "Comply";
+   case ct::EncounterPosture::Surrender: return "Surrender";
+   case ct::EncounterPosture::Board: return "Board";
+   case ct::EncounterPosture::Pursue: return "Pursue";
+   case ct::EncounterPosture::ContinueCourse: return "Continue course";
+   }
+   return "Continue course";
+}
+
+std::vector<ct::EncounterPosture> ordinary_postures(const ct::EncounterKind kind)
+{
+   switch(kind) {
+   case ct::EncounterKind::Hostile:
+      return {ct::EncounterPosture::Flee, ct::EncounterPosture::Comply,
+              ct::EncounterPosture::Surrender, ct::EncounterPosture::Board};
+   case ct::EncounterKind::DepartingContact:
+      return {ct::EncounterPosture::ContinueCourse, ct::EncounterPosture::Pursue};
+   case ct::EncounterKind::TrafficControl:
+   case ct::EncounterKind::Inspection:
+   case ct::EncounterKind::Military:
+      return {ct::EncounterPosture::Comply, ct::EncounterPosture::Flee};
+   case ct::EncounterKind::Distress:
+   case ct::EncounterKind::Derelict:
+   case ct::EncounterKind::Hazard:
+      return {ct::EncounterPosture::ContinueCourse, ct::EncounterPosture::Comply};
+   case ct::EncounterKind::RoutineTraffic:
+      return {ct::EncounterPosture::Comply};
+   }
+   return {ct::EncounterPosture::ContinueCourse};
+}
+
+ct::EncounterStandingOrder default_standing_order(const ct::EncounterKind kind,
+                                                   const ct::EncounterPolicy& policy)
+{
+   const bool legacy_fight = kind == ct::EncounterKind::Hostile
+                             && policy.hostile_posture == ct::EncounterPosture::Fight;
+   const auto ordinary = [&] {
+      switch(kind) {
+      case ct::EncounterKind::Hostile:
+         return legacy_fight ? ct::EncounterPosture::Flee : policy.hostile_posture;
+      case ct::EncounterKind::Inspection:
+      case ct::EncounterKind::TrafficControl:
+      case ct::EncounterKind::Military:
+         return policy.comply_with_inspection ? ct::EncounterPosture::Comply
+                                              : ct::EncounterPosture::Flee;
+      case ct::EncounterKind::Distress:
+         return policy.assist_distress ? ct::EncounterPosture::Comply
+                                       : ct::EncounterPosture::ContinueCourse;
+      case ct::EncounterKind::Derelict:
+      case ct::EncounterKind::DepartingContact:
+         return ct::EncounterPosture::ContinueCourse;
+      case ct::EncounterKind::Hazard:
+      case ct::EncounterKind::RoutineTraffic:
+         return ct::EncounterPosture::Comply;
+      }
+      return ct::EncounterPosture::ContinueCourse;
+   }();
+   return ct::EncounterStandingOrder{
+      .kind = kind,
+      .ordinary_posture = ordinary,
+      .fight_mode = legacy_fight ? ct::EncounterFightMode::Always
+                                 : ct::EncounterFightMode::Never,
+      .minimum_outlook_percent = 70,
+   };
+}
+
+bool authorize_nonhostile_fight(const ct::EncounterKind kind)
+{
+   if(kind == ct::EncounterKind::Hostile) {
+      return true;
+   }
+   door_warning(
+      "This order may attack a vessel that has not attacked your ship. It can "
+      "cause casualties, ship damage, warrants, financial liability, and loss "
+      "of command.\n\r");
+   door_option_prompt({"[Y] Authorize automatic attack", "[N/Enter] Reconsider"}, false);
+   const auto key = static_cast<char>(std::toupper(
+      static_cast<unsigned char>(door_get_live_key())));
+   od_printf("\n\r");
+   return key == 'Y';
+}
+
+const char* standing_fallback_name(const ct::EncounterFallback fallback)
+{
+   switch(fallback) {
+   case ct::EncounterFallback::Surrender: return "Surrender";
+   case ct::EncounterFallback::Abandon: return "Abandon ship";
+   case ct::EncounterFallback::JettisonCargo: return "Jettison demanded cargo";
+   case ct::EncounterFallback::BreakOff: return "Break off";
+   }
+   return "Emergency action";
+}
+
+bool edit_hostile_contingencies(std::vector<ct::EncounterFallback>& fallbacks)
+{
+   static constexpr std::array choices{
+      ct::EncounterFallback::Surrender, ct::EncounterFallback::Abandon,
+      ct::EncounterFallback::JettisonCargo, ct::EncounterFallback::BreakOff};
+   bool changed = false;
+   while(true) {
+      od_clr_scr();
+      door_heading("Hostile Contact Contingencies\n\r=============================\n\r\n\r");
+      door_information(
+         "These are emergency permissions the crew may use if the primary order fails.\n\r"
+         "Their listed order is the captain's preferred sequence.\n\r\n\r");
+      if(fallbacks.empty()) {
+         door_information("No emergency response is authorized.\n\r");
+      }
+      for(size_t index = 0; index < fallbacks.size(); ++index) {
+         door_number("%zu", index + 1);
+         door_label(". ");
+         door_value("%s\n\r", standing_fallback_name(fallbacks[index]));
+      }
+      door_option_prompt({"[A] Add response", "[D] Delete last response",
+                          "[C] Clear sequence", "[Q/Enter] Standing orders"});
+      const auto key = static_cast<char>(std::toupper(
+         static_cast<unsigned char>(door_get_live_key())));
+      if(key == '\r' || key == '\n' || key == 'Q') {
+         return changed;
+      }
+      if(key == 'D' && !fallbacks.empty()) {
+         fallbacks.pop_back();
+         changed = true;
+      } else if(key == 'C' && !fallbacks.empty()) {
+         fallbacks.clear();
+         changed = true;
+      } else if(key == 'A') {
+         std::vector<ct::EncounterFallback> available;
+         for(const auto choice : choices) {
+            if(std::find(fallbacks.begin(), fallbacks.end(), choice) == fallbacks.end()) {
+               available.push_back(choice);
+               door_number("%zu", available.size());
+               door_label(". ");
+               door_value("%s\n\r", standing_fallback_name(choice));
+            }
+         }
+         if(available.empty()) {
+            door_information("Every available response is already in the sequence.\n\r");
+            wait_for_enter();
+         } else if(const auto selected = input_number("Response", 1, available.size())) {
+            fallbacks.push_back(available[*selected - 1]);
+            changed = true;
+         }
+      }
+   }
+}
+
+bool edit_encounter_policy(ct::EncounterPolicy& policy, const ct::DoorHelpTopic help_topic)
+{
+   static constexpr std::array kinds{
+      ct::EncounterKind::RoutineTraffic, ct::EncounterKind::TrafficControl,
+      ct::EncounterKind::Inspection, ct::EncounterKind::Distress,
+      ct::EncounterKind::Derelict, ct::EncounterKind::Hazard,
+      ct::EncounterKind::Hostile, ct::EncounterKind::Military,
+      ct::EncounterKind::DepartingContact};
+   bool changed = false;
+   while(true) {
+      od_clr_scr();
+      door_heading("Encounter Standing Orders\n\r=========================\n\r\n\r");
+      for(size_t index = 0; index < kinds.size(); ++index) {
+         const auto found = std::find_if(policy.standing_orders.begin(),
+            policy.standing_orders.end(), [kind = kinds[index]](const auto& order) {
+               return order.kind == kind;
+            });
+         const auto order = found == policy.standing_orders.end()
+                            ? default_standing_order(kinds[index], policy) : *found;
+         door_number("%zu", index + 1);
+         door_label(". ");
+         door_identifier("%s", standing_encounter_name(order.kind));
+         door_label(": otherwise ");
+         door_value("%s", standing_posture_name(order.ordinary_posture));
+         door_label("; fight ");
+         if(order.fight_mode == ct::EncounterFightMode::Never) {
+            door_value("never\n\r");
+         } else if(order.fight_mode == ct::EncounterFightMode::Always) {
+            door_warning("always\n\r");
+         } else {
+            door_value("at %u%% outlook\n\r", order.minimum_outlook_percent);
+         }
+      }
+      door_identifier("\n\rHostile emergency sequence: ");
+      if(policy.hostile_fallbacks.empty()) {
+         door_information("none\n\r");
+      } else {
+         for(size_t index = 0; index < policy.hostile_fallbacks.size(); ++index) {
+            if(index != 0) door_label(" -> ");
+            door_value("%s", standing_fallback_name(policy.hostile_fallbacks[index]));
+         }
+         od_printf("\n\r");
+      }
+      door_option_prompt({"[E] Edit contact rule", "[C] Hostile contingencies",
+                          "[Q/Enter] Previous menu", "[?] Help"});
+      const auto key = static_cast<char>(std::toupper(
+         static_cast<unsigned char>(door_get_live_key())));
+      if(key == '\r' || key == '\n' || key == 'Q') {
+         return changed;
+      }
+      if(key == '?') {
+         const HelpScope help_scope(help_topic);
+         show_context_help();
+         continue;
+      }
+      if(key == 'C') {
+         changed = edit_hostile_contingencies(policy.hostile_fallbacks) || changed;
+         continue;
+      }
+      if(key != 'E') {
+         continue;
+      }
+      const auto selected = input_number("Contact type", 1, kinds.size());
+      if(!selected) {
+         continue;
+      }
+      const auto kind = kinds[*selected - 1];
+      auto found = std::find_if(policy.standing_orders.begin(),
+         policy.standing_orders.end(), [kind](const auto& order) {
+            return order.kind == kind;
+         });
+      if(found == policy.standing_orders.end()) {
+         policy.standing_orders.push_back(default_standing_order(kind, policy));
+         found = std::prev(policy.standing_orders.end());
+      }
+      door_option_prompt({"[R] Ordinary response", "[F] Fight rule", "[Q/Enter] Back"}, false);
+      const auto choice = static_cast<char>(std::toupper(
+         static_cast<unsigned char>(door_get_live_key())));
+      od_printf("\n\r");
+      if(choice == 'R') {
+         const auto responses = ordinary_postures(kind);
+         for(size_t index = 0; index < responses.size(); ++index) {
+            door_number("%zu", index + 1);
+            door_label(". ");
+            door_value("%s\n\r", standing_posture_name(responses[index]));
+         }
+         if(const auto response = input_number("Response", 1, responses.size())) {
+            found->ordinary_posture = responses[*response - 1];
+            changed = true;
+         }
+      } else if(choice == 'F') {
+         door_option_prompt({"[N] Never fight", "[T] Fight at threshold", "[A] Always fight",
+                             "[Q/Enter] Back"}, false);
+         const auto fight = static_cast<char>(std::toupper(
+            static_cast<unsigned char>(door_get_live_key())));
+         od_printf("\n\r");
+         if(fight == 'N') {
+            found->fight_mode = ct::EncounterFightMode::Never;
+            changed = true;
+         } else if((fight == 'T' || fight == 'A') && authorize_nonhostile_fight(kind)) {
+            if(fight == 'A') {
+               found->fight_mode = ct::EncounterFightMode::Always;
+               changed = true;
+            } else if(const auto threshold = input_number("Minimum combat outlook percent", 1, 100)) {
+               found->fight_mode = ct::EncounterFightMode::EstimatedAtLeast;
+               found->minimum_outlook_percent = static_cast<uint8_t>(*threshold);
+               changed = true;
+            }
+         }
+      }
+   }
+}
+
 void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epoch,
                        ct::CommandIdGenerator& random, uint64_t& request_id)
 {
@@ -5146,6 +5427,7 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
             "[A] Accept offer",
             "[V] Available offers",
             "[M] Manage task",
+            "[S] Standing orders",
             "[T] Inspect task",
             "[C] Carriage declaration",
             "[Enter] Refresh",
@@ -5158,6 +5440,7 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
             "[A] Accept offer",
             "[V] Unavailable offers",
             "[M] Manage task",
+            "[S] Standing orders",
             "[T] Inspect task",
             "[C] Carriage declaration",
             "[Enter] Refresh",
@@ -5200,6 +5483,34 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
                door_error("%s\n\r", safe_field(error.what()).c_str());
                wait_for_enter();
             }
+         }
+      } else if(key == 's' || key == 'S') {
+         try {
+            const auto current = ct::get_encounter_policy_default(
+               connection, session_epoch, random_command_id(random), request_id++);
+            auto policy = current.policy;
+            if(edit_encounter_policy(policy, ct::DoorHelpTopic::Tasks)) {
+               door_option_prompt({"[Y] Save as this ship's default", "[N/Enter] Discard changes"}, false);
+               const auto save = static_cast<char>(std::toupper(
+                  static_cast<unsigned char>(door_get_live_key())));
+               od_printf("\n\r");
+               if(save == 'Y') {
+                  const auto nonhostile = std::any_of(
+                     policy.standing_orders.begin(), policy.standing_orders.end(),
+                     [](const auto& order) {
+                        return order.kind != ct::EncounterKind::Hostile
+                           && order.fight_mode != ct::EncounterFightMode::Never;
+                     });
+                  ct::set_encounter_policy_default(
+                     connection, session_epoch, current.revision, policy, nonhostile,
+                     random_command_id(random), request_id++);
+                  door_success("Standing orders saved for this ship.\n\r");
+                  wait_for_enter();
+               }
+            }
+         } catch(const std::exception& error) {
+            door_error("%s\n\r", safe_field(error.what()).c_str());
+            wait_for_enter();
          }
       } else if((key == 't' || key == 'T') && !ledger.tasks.empty()) {
          const auto selected = input_number(
@@ -9270,6 +9581,19 @@ bool confirm_direct_course_replacement(const ct::FlightPlanProposal& proposal)
    return true;
 }
 
+void remove_unfinished_flight_plan(ct::FlightPlanProposal& proposal,
+                                   const ct::FlightPlanSnapshot& filed_plan)
+{
+   if(filed_plan.state == ct::FlightPlanState::Active
+         && filed_plan.current_step <= proposal.steps.size()) {
+      proposal.steps.erase(proposal.steps.begin() + filed_plan.current_step,
+                           proposal.steps.end());
+   } else {
+      proposal.steps.clear();
+   }
+   proposal.preserve_active_step = false;
+}
+
 bool configure_jump_navigation(ct::FlightPlanAction& action)
 {
    door_option_prompt({
@@ -9352,7 +9676,9 @@ bool replace_proposal_with_course(
    const ct::CoursePlan& course,
    const ct::TravelStatus& travel,
    const uint64_t displacement_millitons,
-   const ct::GeneratedPlanAuthority generated_authority)
+   const ct::GeneratedPlanAuthority generated_authority,
+   const size_t first_unfinished_step,
+   const bool retain_completed_prefix)
 {
    if(!course.available || course.waypoints.size() < 2) {
       door_warning("No executable travel is required or available for that course.\n\r");
@@ -9425,8 +9751,356 @@ bool replace_proposal_with_course(
    if(!steps.empty()) {
       steps.back().terminal = true;
    }
-   proposal.steps = std::move(steps);
+   if(retain_completed_prefix && first_unfinished_step <= proposal.steps.size()) {
+      proposal.steps.erase(proposal.steps.begin() + first_unfinished_step,
+                           proposal.steps.end());
+   } else {
+      proposal.steps.clear();
+   }
+   proposal.steps.insert(proposal.steps.end(), steps.begin(), steps.end());
+   proposal.preserve_active_step = false;
    return true;
+}
+
+struct LogicalRouteItem {
+   size_t begin;
+   size_t end;
+};
+
+std::vector<LogicalRouteItem> logical_route_items(const ct::FlightPlanProposal& proposal)
+{
+   std::vector<LogicalRouteItem> result;
+   for(size_t index = 0; index < proposal.steps.size();) {
+      const auto begin = index;
+      if(proposal.steps[index].action.kind == ct::FlightPlanActionKind::Fuel
+            && (proposal.steps[index].action.fuel_operation == ct::FuelOperation::BuyRefined
+                || proposal.steps[index].action.fuel_operation == ct::FuelOperation::BuyUnrefined)
+            && index + 1 < proposal.steps.size()
+            && proposal.steps[index + 1].action.kind == ct::FlightPlanActionKind::Jump) {
+         ++index;
+      }
+      if(proposal.steps[index].action.kind == ct::FlightPlanActionKind::Jump
+            && index + 1 < proposal.steps.size()
+            && proposal.steps[index + 1].action.kind == ct::FlightPlanActionKind::Dock) {
+         index += 2;
+      } else if(proposal.steps[index].action.kind == ct::FlightPlanActionKind::BeltCycle
+                && index + 1 < proposal.steps.size()
+                && proposal.steps[index + 1].action.kind == ct::FlightPlanActionKind::Dock) {
+         index += 2;
+      } else {
+         ++index;
+      }
+      result.push_back(LogicalRouteItem{.begin = begin, .end = index});
+   }
+   return result;
+}
+
+uint64_t logical_item_destination_system(const ct::FlightPlanProposal& proposal,
+                                         const LogicalRouteItem item)
+{
+   for(size_t index = item.begin; index < item.end; ++index) {
+      if(proposal.steps[index].action.kind == ct::FlightPlanActionKind::Jump) {
+         return proposal.steps[index].action.destination_system_id;
+      }
+   }
+   return proposal.steps[item.end - 1].locus.system_id;
+}
+
+std::string logical_route_item_name(const ct::FlightPlanProposal& proposal,
+                                    const LogicalRouteItem item,
+                                    const ct::KnownDestinations& destinations)
+{
+   const auto jump = std::find_if(proposal.steps.begin() + item.begin,
+                                  proposal.steps.begin() + item.end, [](const auto& step) {
+      return step.action.kind == ct::FlightPlanActionKind::Jump;
+   });
+   if(jump == proposal.steps.begin() + item.end) {
+      return flight_plan_action_name(proposal.steps[item.begin].action, destinations);
+   }
+   auto name = flight_plan_action_name(jump->action, destinations);
+   if(jump != proposal.steps.begin() + item.begin) {
+      name += " (fuel first)";
+   }
+   return name;
+}
+
+bool rebase_future_route(ct::FlightPlanProposal& proposal,
+                         const ct::KnownDestinations& destinations,
+                         const ct::TravelStatus& travel,
+                         const size_t active_step,
+                         const bool had_active_plan)
+{
+   const auto items = logical_route_items(proposal);
+   size_t first = 0;
+   uint64_t current_system = destinations.current_system_id;
+   ct::FlightLocus current_locus = travel.origin;
+   if(had_active_plan) {
+      const auto active = std::find_if(items.begin(), items.end(), [active_step](const auto item) {
+         return active_step >= item.begin && active_step < item.end;
+      });
+      if(active == items.end()) {
+         return false;
+      }
+      first = static_cast<size_t>(std::distance(items.begin(), active));
+      if(proposal.preserve_active_step) {
+         current_system = logical_item_destination_system(proposal, *active);
+         current_locus = ct::FlightLocus{
+            .kind = ct::FlightLocusKind::JumpLocus,
+            .system_id = current_system,
+            .world_id = 0,
+            .facility_id = 0,
+            .body_id = 0,
+         };
+         ++first;
+      }
+   }
+   for(size_t item_index = first; item_index < items.size(); ++item_index) {
+      const auto item = items[item_index];
+      auto jump = std::find_if(proposal.steps.begin() + item.begin,
+                               proposal.steps.begin() + item.end, [](const auto& step) {
+         return step.action.kind == ct::FlightPlanActionKind::Jump;
+      });
+      if(jump == proposal.steps.begin() + item.end) {
+         if(std::any_of(proposal.steps.begin() + item.begin,
+                        proposal.steps.begin() + item.end, [current_system](const auto& step) {
+               return step.locus.system_id != current_system;
+            })) {
+            return false;
+         }
+         continue;
+      }
+      for(auto step = proposal.steps.begin() + item.begin; step != jump; ++step) {
+         if(step->action.kind != ct::FlightPlanActionKind::Fuel
+               || (step->action.fuel_operation != ct::FuelOperation::BuyRefined
+                   && step->action.fuel_operation != ct::FuelOperation::BuyUnrefined)) {
+            return false;
+         }
+         step->locus = ct::FlightLocus{
+            .kind = ct::FlightLocusKind::Port,
+            .system_id = current_system,
+            .world_id = current_system,
+            .facility_id = current_system,
+            .body_id = 0,
+         };
+      }
+      jump->locus = current_system == 0 ? current_locus : ct::FlightLocus{
+         .kind = ct::FlightLocusKind::JumpLocus,
+         .system_id = current_system,
+         .world_id = 0,
+         .facility_id = 0,
+         .body_id = 0,
+      };
+      const auto destination_system = jump->action.destination_system_id;
+      for(auto step = std::next(jump); step != proposal.steps.begin() + item.end; ++step) {
+         if(step->action.kind != ct::FlightPlanActionKind::Dock) {
+            return false;
+         }
+         const auto authority = step->authority;
+         const auto terminal = step->terminal;
+         *step = primary_dock_step(destination_system, authority);
+         step->terminal = terminal;
+      }
+      current_system = destination_system;
+      current_locus = ct::FlightLocus{
+         .kind = ct::FlightLocusKind::JumpLocus,
+         .system_id = current_system,
+         .world_id = 0,
+         .facility_id = 0,
+         .body_id = 0,
+      };
+   }
+   return true;
+}
+
+void edit_logical_route_item(ct::FlightPlanProposal& proposal,
+                             const ct::KnownDestinations& destinations,
+                             const ct::TravelStatus& travel,
+                             const size_t active_step)
+{
+   auto items = logical_route_items(proposal);
+   if(items.empty()) {
+      door_information("There are no route items to edit.\n\r");
+      wait_for_enter();
+      return;
+   }
+   for(size_t index = 0; index < items.size(); ++index) {
+      const auto& item = items[index];
+      door_number("%zu", index + 1);
+      door_label(". ");
+      door_identifier("%s", safe_field(logical_route_item_name(
+         proposal, item, destinations)).c_str());
+      if(proposal.preserve_active_step && active_step >= item.begin && active_step < item.end) {
+         door_label(" [active]");
+      } else if(proposal.preserve_active_step && item.end <= active_step) {
+         door_label(" [completed]");
+      }
+      door_label("\n\r");
+   }
+   const auto selected = input_number("Route item", 1, items.size());
+   if(!selected) {
+      return;
+   }
+   auto item_index = static_cast<size_t>(*selected - 1);
+   auto item = items[item_index];
+   const auto original_proposal = proposal;
+   bool route_structure_changed = false;
+   const bool completed = proposal.preserve_active_step && item.end <= active_step;
+   const bool active = proposal.preserve_active_step
+                       && active_step >= item.begin && active_step < item.end;
+   if(completed) {
+      door_warning("Completed route items cannot be changed.\n\r");
+      wait_for_enter();
+      return;
+   }
+   door_option_prompt({"[A] Authority", "[D] Delete", "[I] Insert before",
+                       "[J] Insert after", "[M] Move", "[R] Replace destination",
+                       "[S] Settings", "[Q/Enter] Back"}, false);
+   const auto choice = static_cast<char>(std::toupper(
+      static_cast<unsigned char>(door_get_live_key())));
+   od_printf("\n\r");
+   if(choice == 'A') {
+      auto& authority = proposal.steps[item.end - 1].authority;
+      authority = authority == ct::WaypointAuthority::Hold
+                  ? ct::WaypointAuthority::Through : ct::WaypointAuthority::Hold;
+   } else if(choice == 'D') {
+      if(active) {
+         door_warning(
+            "The physical operation in progress cannot be removed; redirect it where offered or edit later items.\n\r");
+         wait_for_enter();
+         return;
+      }
+      proposal.steps.erase(proposal.steps.begin() + item.begin,
+                           proposal.steps.begin() + item.end);
+      route_structure_changed = true;
+   } else if(choice == 'M') {
+      if(active) {
+         door_warning("The active route item cannot be reordered.\n\r");
+         wait_for_enter();
+         return;
+      }
+      door_option_prompt({"[U] Move earlier", "[D] Move later", "[Q/Enter] Back"}, false);
+      const auto direction = static_cast<char>(std::toupper(
+         static_cast<unsigned char>(door_get_live_key())));
+      od_printf("\n\r");
+      const auto active_item = proposal.preserve_active_step
+                               ? std::find_if(items.begin(), items.end(), [active_step](const auto value) {
+                                    return active_step >= value.begin && active_step < value.end;
+                                 })
+                               : items.end();
+      const auto first_future_item = active_item == items.end()
+                                     ? size_t{0}
+                                     : static_cast<size_t>(std::distance(items.begin(), active_item)) + 1;
+      const auto target = direction == 'U' && item_index > first_future_item ? item_index - 1
+                        : direction == 'D' && item_index + 1 < items.size() ? item_index + 1
+                        : item_index;
+      if(target != item_index) {
+         auto insertion = target < item_index ? items[target].begin : items[target].end;
+         std::vector<ct::FlightPlanStep> moving(
+            proposal.steps.begin() + item.begin, proposal.steps.begin() + item.end);
+         proposal.steps.erase(proposal.steps.begin() + item.begin,
+                              proposal.steps.begin() + item.end);
+         if(insertion > item.end) {
+            insertion -= item.end - item.begin;
+         }
+         proposal.steps.insert(proposal.steps.begin() + insertion,
+                               moving.begin(), moving.end());
+         route_structure_changed = true;
+      }
+   } else if(choice == 'R') {
+      const auto editable_begin = active ? active_step : item.begin;
+      auto jump = std::find_if(proposal.steps.begin() + editable_begin,
+                               proposal.steps.begin() + item.end, [](const auto& step) {
+         return step.action.kind == ct::FlightPlanActionKind::Jump;
+      });
+      if(jump == proposal.steps.begin() + item.end) {
+         door_warning("That operation has no charted destination to replace.\n\r");
+         wait_for_enter();
+         return;
+      }
+      if(active && travel.stage == ct::TravelStage::JumpSpace) {
+         door_warning("The emergence destination is fixed once the ship enters Jump.\n\r");
+         wait_for_enter();
+         return;
+      }
+      const auto selected_destination = select_known_primary(
+         destinations, "Replace Destination", jump->locus.system_id,
+         jump->locus.system_id, true);
+      if(selected_destination) {
+         jump->action.destination_system_id = (*selected_destination)->system_id;
+         const auto dock = std::find_if(std::next(jump), proposal.steps.begin() + item.end,
+            [](const auto& step) { return step.action.kind == ct::FlightPlanActionKind::Dock; });
+         if(dock != proposal.steps.begin() + item.end) {
+            const auto terminal = dock->terminal;
+            const auto authority = dock->authority;
+            *dock = primary_dock_step((*selected_destination)->system_id, authority);
+            dock->terminal = terminal;
+         }
+         if(active) {
+            proposal.preserve_active_step = false;
+         }
+         route_structure_changed = true;
+      }
+   } else if(choice == 'S') {
+      const auto editable_begin = active ? active_step : item.begin;
+      for(size_t index = editable_begin; index < item.end; ++index) {
+         auto& action = proposal.steps[index].action;
+         if(action.kind == ct::FlightPlanActionKind::Jump
+               || action.kind == ct::FlightPlanActionKind::JumpCoordinates) {
+            if(active && travel.stage == ct::TravelStage::JumpSpace) {
+               door_warning("The active Jump's navigation has already been resolved.\n\r");
+               wait_for_enter();
+               return;
+            }
+            configure_jump_navigation(action);
+            return;
+         }
+         if(action.kind == ct::FlightPlanActionKind::Fuel
+               || action.kind == ct::FlightPlanActionKind::RefineFuel) {
+            if(active) {
+               door_warning("The quantity of an operation already in progress is fixed.\n\r");
+               wait_for_enter();
+               return;
+            }
+            const auto maximum = std::max(
+               travel.fuel_capacity_millitons, action.quantity_millitons);
+            if(const auto quantity = input_tonnage("Tonnes", maximum)) {
+               action.quantity_millitons = *quantity;
+            }
+            return;
+         }
+      }
+   } else if(choice == 'I' || choice == 'J') {
+      const auto insert_at = choice == 'I' ? item.begin : item.end;
+      if(proposal.preserve_active_step && insert_at <= active_step) {
+         door_warning("New route items must follow the action already in progress.\n\r");
+         wait_for_enter();
+         return;
+      }
+      const auto origin = choice == 'I' ? proposal.steps[item.begin].locus.system_id
+                                        : logical_item_destination_system(proposal, item);
+      const auto selected_destination = select_known_primary(
+         destinations, "Insert Charted Leg", origin, origin, true);
+      if(selected_destination) {
+         auto jump = jump_step(origin, (*selected_destination)->system_id);
+         if(!configure_jump_navigation(jump.action)) {
+            return;
+         }
+         auto dock = primary_dock_step((*selected_destination)->system_id,
+                                       ct::WaypointAuthority::Through);
+         proposal.steps.insert(proposal.steps.begin() + insert_at, {jump, dock});
+         route_structure_changed = true;
+      }
+   }
+   if(route_structure_changed
+         && !rebase_future_route(proposal, destinations, travel, active_step,
+                                 original_proposal.preserve_active_step)) {
+      proposal = original_proposal;
+      door_warning(
+         "That ordering cannot preserve the local operation or coordinate locus in this route.\n\r");
+      wait_for_enter();
+      return;
+   }
+   mark_final_flight_plan_step(proposal);
 }
 
 FlightPlanEditorResult run_flight_plan_editor(
@@ -9444,12 +10118,17 @@ FlightPlanEditorResult run_flight_plan_editor(
                           connection, session_epoch, random_command_id(random), request_id++);
    const auto ship = ct::get_ship_status(
                         connection, session_epoch, random_command_id(random), request_id++);
+   auto policy_default = ct::get_encounter_policy_default(
+                            connection, session_epoch, random_command_id(random), request_id++);
    ct::FlightPlanProposal proposal{
       .expected_plan_revision = current_plan.revision,
       .steps = current_plan.state == ct::FlightPlanState::Completed
                ? std::vector<ct::FlightPlanStep>{}
                : current_plan.steps,
-      .policy = current_plan.policy,
+      .policy = (current_plan.state == ct::FlightPlanState::Completed
+                 || current_plan.state == ct::FlightPlanState::Inactive)
+                ? policy_default.policy : current_plan.policy,
+      .preserve_active_step = current_plan.state == ct::FlightPlanState::Active,
    };
    bool previewed = false;
    while(true) {
@@ -9462,31 +10141,42 @@ FlightPlanEditorResult run_flight_plan_editor(
       if(proposal.steps.empty()) {
          door_information("No route has been entered.\n\r");
       }
-      for(size_t index = 0; index < proposal.steps.size(); ++index) {
-         const auto& step = proposal.steps[index];
+      const auto route_items = logical_route_items(proposal);
+      for(size_t index = 0; index < route_items.size(); ++index) {
+         const auto& item = route_items[index];
+         const auto& authority_step = proposal.steps[item.end - 1];
          door_number("%zu", index + 1);
          door_label(". ");
-         door_identifier("%s", safe_field(flight_plan_action_name(step.action, destinations)).c_str());
+         door_identifier("%s", safe_field(logical_route_item_name(
+            proposal, item, destinations)).c_str());
          door_label("  [");
-         door_value("%s", waypoint_authority_name(step.authority));
+         door_value("%s", waypoint_authority_name(authority_step.authority));
          door_label("]");
-         if(step.terminal) {
+         if(authority_step.terminal) {
             door_label(" [terminal]");
+         }
+         if(proposal.preserve_active_step
+               && current_plan.current_step >= item.begin
+               && current_plan.current_step < item.end) {
+            door_label(" [active]");
+         } else if(proposal.preserve_active_step
+                   && item.end <= current_plan.current_step) {
+            door_label(" [completed]");
          }
          door_label("\n\r");
       }
       door_option_prompt({
          "[A] Add charted leg",
          "[C] Import plotted course",
+         "[E] Edit route item",
          "[R] Route all assigned tasks",
+         "[S] Standing orders",
          "[J] Add task destination",
          "[G] Add frontier fuel stop",
          "[U] Refine fuel aboard",
          "[B] Add belt cycle",
          "[O] Return to primary port",
          "[X] Explore coordinates",
-         "[D] Delete last leg",
-         "[T] Last authority",
          "[P] Preview and file",
          "[Enter] Refresh",
          "[Q] Keep existing plan",
@@ -9502,6 +10192,57 @@ FlightPlanEditorResult run_flight_plan_editor(
             .previewed = previewed,
             .travel = std::nullopt,
          };
+      }
+      if(key == 'S') {
+         door_option_prompt({"[E] Edit plan orders", "[L] Load ship default",
+                             "[R] Revert plan changes", "[Q/Enter] Flight Plan"}, false);
+         const auto policy_action = static_cast<char>(std::toupper(
+            static_cast<unsigned char>(door_get_live_key())));
+         od_printf("\n\r");
+         if(policy_action == 'L') {
+            proposal.policy = policy_default.policy;
+            continue;
+         }
+         if(policy_action == 'R') {
+            proposal.policy = current_plan.policy;
+            continue;
+         }
+         if(policy_action != 'E') {
+            continue;
+         }
+         if(edit_encounter_policy(proposal.policy, ct::DoorHelpTopic::FlightPlan)) {
+            door_option_prompt({"[K/Enter] Keep for this plan", "[V] Save as ship default",
+                                "[Q] Revert plan changes"}, false);
+            auto choice = static_cast<char>(std::toupper(
+               static_cast<unsigned char>(door_get_live_key())));
+            od_printf("\n\r");
+            if(choice == 'V') {
+               const auto nonhostile = std::any_of(
+                  proposal.policy.standing_orders.begin(), proposal.policy.standing_orders.end(),
+                  [](const auto& order) {
+                     return order.kind != ct::EncounterKind::Hostile
+                        && order.fight_mode != ct::EncounterFightMode::Never;
+                  });
+               try {
+                  policy_default = ct::set_encounter_policy_default(
+                     connection, session_epoch, policy_default.revision, proposal.policy,
+                     nonhostile, random_command_id(random), request_id++);
+                  door_success("Standing orders saved as this ship's default.\n\r");
+                  wait_for_enter();
+               } catch(const std::exception& error) {
+                  door_error("%s\n\r", safe_field(error.what()).c_str());
+                  wait_for_enter();
+               }
+            } else if(choice == 'Q') {
+               proposal.policy = current_plan.policy;
+            }
+         }
+         continue;
+      }
+      if(key == 'E') {
+         edit_logical_route_item(proposal, destinations, travel,
+                                 static_cast<size_t>(current_plan.current_step));
+         continue;
       }
       if(key == 'A') {
          const uint64_t origin_system_id = proposal.steps.empty()
@@ -9559,7 +10300,9 @@ FlightPlanEditorResult run_flight_plan_editor(
             const auto& course = choice == 'F' ? plot.fastest : plot.cheapest;
             replace_proposal_with_course(
                proposal, course, travel,
-               ship.displacement_millitons, ordinary_route_authority);
+               ship.displacement_millitons, ordinary_route_authority,
+               current_plan.current_step,
+               current_plan.state == ct::FlightPlanState::Active);
          } catch(const std::exception& error) {
             door_error("%s\n\r", safe_field(error.what()).c_str());
             wait_for_enter();
@@ -9591,7 +10334,9 @@ FlightPlanEditorResult run_flight_plan_editor(
             if(choice == 'I') {
                replace_proposal_with_course(
                   proposal, course, travel,
-                  ship.displacement_millitons, task_route_authority);
+                  ship.displacement_millitons, task_route_authority,
+                  current_plan.current_step,
+                  current_plan.state == ct::FlightPlanState::Active);
             }
          } catch(const std::exception& error) {
             door_error("%s\n\r", safe_field(error.what()).c_str());
@@ -9697,7 +10442,7 @@ FlightPlanEditorResult run_flight_plan_editor(
             continue;
          }
          const auto& belt = destinations.belts[*selected - 1];
-         proposal.steps.clear();
+         remove_unfinished_flight_plan(proposal, current_plan);
          proposal.steps.push_back(ct::FlightPlanStep{
             .locus = ct::FlightLocus{
                .kind = ct::FlightLocusKind::Body,
@@ -9782,7 +10527,7 @@ FlightPlanEditorResult run_flight_plan_editor(
             } else {
                door_warning("No processor is fitted; this operation produces unrefined fuel.\n\r");
             }
-            proposal.steps.clear();
+            remove_unfinished_flight_plan(proposal, current_plan);
             proposal.steps.push_back(ct::FlightPlanStep{
                .locus = ct::FlightLocus{
                   .kind = ct::FlightLocusKind::Body,
@@ -9822,7 +10567,7 @@ FlightPlanEditorResult run_flight_plan_editor(
          if(!confirm_direct_course_replacement(proposal)) {
             continue;
          }
-         proposal.steps.clear();
+         remove_unfinished_flight_plan(proposal, current_plan);
          proposal.steps.push_back(primary_dock_step(
                                      destinations.current_system_id,
                                      ct::WaypointAuthority::Hold));
@@ -9883,36 +10628,6 @@ FlightPlanEditorResult run_flight_plan_editor(
             continue;
          }
          proposal.steps.push_back(jump);
-      } else if(key == 'D') {
-         if(proposal.steps.size() >= 2 &&
-               proposal.steps.back().action.kind == ct::FlightPlanActionKind::Dock &&
-               proposal.steps[proposal.steps.size() - 2].action.kind == ct::FlightPlanActionKind::Jump) {
-            proposal.steps.pop_back();
-            proposal.steps.pop_back();
-            if(!proposal.steps.empty() &&
-                  proposal.steps.back().action.kind == ct::FlightPlanActionKind::Fuel &&
-                  (proposal.steps.back().action.fuel_operation ==
-                     ct::FuelOperation::BuyRefined ||
-                   proposal.steps.back().action.fuel_operation ==
-                     ct::FuelOperation::BuyUnrefined)) {
-               proposal.steps.pop_back();
-            }
-         } else if(!proposal.steps.empty() &&
-                   proposal.steps.back().action.kind ==
-                   ct::FlightPlanActionKind::JumpCoordinates) {
-            proposal.steps.pop_back();
-         } else if(!proposal.steps.empty()) {
-            proposal.steps.pop_back();
-         }
-         mark_final_flight_plan_step(proposal);
-      } else if(key == 'T') {
-         if(proposal.steps.empty()) {
-            continue;
-         }
-         auto& authority = proposal.steps.back().authority;
-         authority = authority == ct::WaypointAuthority::Hold
-                     ? ct::WaypointAuthority::Through
-                     : ct::WaypointAuthority::Hold;
       } else if(key == 'P') {
          const HelpScope preview_help(ct::DoorHelpTopic::FlightPlanPreview);
          if(proposal.steps.empty()) {
@@ -11320,6 +12035,13 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
    case ct::EncounterThreat::Dangerous: door_warning("dangerous\n\r"); break;
    case ct::EncounterThreat::Overwhelming: door_error("overwhelming\n\r"); break;
    case ct::EncounterThreat::Unknown: door_value("unknown\n\r"); break;
+   }
+   door_label("Combat outlook: ");
+   if(encounter.estimated_combat_outlook_percent == 0) {
+      door_value("unknown\n\r");
+   } else {
+      door_number("%u%%", encounter.estimated_combat_outlook_percent);
+      door_label(" estimated chance to prevail\n\r");
    }
    if(encounter.demand.present) {
       door_heading("\n\rDemand\n\r");

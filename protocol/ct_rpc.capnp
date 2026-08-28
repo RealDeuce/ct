@@ -183,6 +183,8 @@ struct Request {
     revokeAllBrowserAlerts @80 :Void;
     getOperationalDamageReport @81 :Void;
     acknowledgeOperationalDamageReport @82 :AcknowledgeOperationalDamageReportRequest;
+    getEncounterPolicyDefault @83 :Void;
+    setEncounterPolicyDefault @84 :SetEncounterPolicyDefaultRequest;
   }
 }
 
@@ -232,6 +234,7 @@ struct Response {
     browserAlertStatus @40 :BrowserAlertStatus;
     browserAlertEnrollment @41 :BrowserAlertEnrollment;
     operationalDamageReport @42 :OperationalDamageReport;
+    encounterPolicyDefault @43 :EncounterPolicyDefaultSnapshot;
   }
 }
 
@@ -1579,12 +1582,39 @@ struct EncounterPolicy {
   complyWithInspection @2 :Bool;
   reportDistress @3 :Bool;
   assistDistress @4 :Bool;
+  standingOrders @5 :List(EncounterStandingOrder);
+}
+
+enum EncounterFightMode {
+  never @0;
+  always @1;
+  estimatedAtLeast @2;
+}
+
+struct EncounterStandingOrder {
+  kind @0 :EncounterKind;
+  ordinaryPosture @1 :EncounterPosture;
+  fightMode @2 :EncounterFightMode;
+  minimumOutlookPercent @3 :UInt8;
+}
+
+struct EncounterPolicyDefaultSnapshot {
+  shipId @0 :UInt64;
+  revision @1 :UInt64;
+  policy @2 :EncounterPolicy;
+}
+
+struct SetEncounterPolicyDefaultRequest {
+  expectedRevision @0 :UInt64;
+  policy @1 :EncounterPolicy;
+  acknowledgeNonhostileFight @2 :Bool;
 }
 
 struct FlightPlanProposal {
   expectedPlanRevision @0 :UInt64;
   steps @1 :List(FlightPlanStep);
   policy @2 :EncounterPolicy;
+  preserveActiveStep @3 :Bool;
 }
 
 struct CommitFlightPlanRequest {
@@ -1715,6 +1745,7 @@ struct EncounterSnapshot {
   availablePostures @12 :List(EncounterPosture);
   availableFallbacks @13 :List(EncounterFallback);
   responseDeadlineSecond @14 :UInt64;
+  estimatedCombatOutlookPercent @15 :UInt8;
 }
 
 struct ResolveEncounterRequest {

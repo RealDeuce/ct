@@ -1034,6 +1034,24 @@ terminal marker is always attached to the last step and ends the plan after
 that step completes. Filing commits only the reviewed revision. Completed
 steps and accepted custody cannot be undone by editing later steps.
 
+The door presents adjacent implementation steps as logical route items: for
+example, a port fuel purchase, Jump, and destination docking form one charted
+leg. Any future item can have its checkpoint authority or settings changed,
+be deleted, or have a charted leg inserted before or after it. The active
+physical operation cannot simply disappear, but an active normal-space
+destination can be redirected. Future items can be reordered and charted
+destinations replaced; dependent charted loci are
+rebuilt, while an ordering that would detach a body-specific or coordinate
+operation from its actual locus is refused.
+
+Revising a plan does not restart its current physical operation. A change only
+to later items or encounter policy preserves the active maneuver, Jump, Belt
+Cycle, frontier-fuel operation, or onboard refining work and its scheduled
+completion. Changing the active destination in normal space instead computes a
+new bounded-thrust intercept from the ship's actual position and velocity. Once
+Jump begins, its emergence destination is physically fixed, but later items and
+encounter policy remain editable. Completed steps remain visible but locked.
+
 Generated task routes and ordinary routes default to Through at every
 checkpoint, including the terminal step, so they can complete while the
 captain is away. Player Preferences can change either route type to generate
@@ -1050,8 +1068,18 @@ requires acknowledgement that departure will cancel the work; refit and other
 yard operations remain departure blockers. Warnings are numbered once below
 the route and referenced beside every affected step. If a required service,
 source, payment, or course is no longer valid when reached, the plan holds
-instead of silently substituting
-another one.
+instead of silently substituting another one.
+
+Each ship also has default encounter standing orders, edited from Task
+Management. A new plan begins with that default; changing the ship default does
+not silently rewrite a filed plan. The Flight Plan editor can load the default,
+keep different orders for this plan, or save its orders back as the ship
+default. For every encounter type, the order names an ordinary response and a
+separate Fight condition: Never, Always, or only when the estimated combat
+outlook meets a percentage. Hostile orders additionally carry an ordered list
+of permitted emergency fallbacks. Preview separately warns and requires
+acknowledgement whenever filed orders may attack a contact that has not attacked
+the ship.
 
 ### Belt prospecting and mining
 
@@ -1355,8 +1383,16 @@ Filed Flight Plan policy supplies responses at a Through checkpoint. The
 default policy flees hostile contacts with Surrender fallback, complies with
 inspections, reports distress, and does not divert to assist. Complying with an
 Inspection applies the customs rule above. Meeting a hostile demand releases
-the ship; Surrender immediately loses the command. Other hostile postures
-resolve each kilosecond with:
+the ship; Surrender immediately loses the command.
+
+The displayed **Combat outlook** is the percentage used by conditional Fight
+orders. It deliberately remains sensor-limited: Favorable, Comparable,
+Dangerous, and Overwhelming assessments map to coarse estimates rather than an
+omniscient combat simulation, and Unknown has no percentage and never satisfies
+a threshold. It can change when the ship obtains better information and is not
+a promise that combat will produce that result.
+
+Other hostile postures resolve each kilosecond with:
 
 **captain total = 2D6 + highest of Pilot (Spacecraft), Tactics (Naval), or
 Gunner (Turrets) level + posture DM + intervention DM**

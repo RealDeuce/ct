@@ -210,18 +210,25 @@ leg. It owns ordered typed waypoints, bounded actions, hold/through checkpoint
 authority, a separate last-step terminal marker, encounter policy, revision,
 current step, state, and suspension reason. An active redirected in-system leg
 also owns a leg-identity-keyed trajectory record containing its epoch,
-position, velocity, turnover, and bounded acceleration vectors. Replacing the
-course cancels the superseded travel/contact work and writes the new leg,
-trajectory, and plan atomically. Only a Jump-space leg is immutable until its
-next checkpoint. Cargo and sealed mail remain on the ship and generate preview
-warnings; replanning never edits obligations.
-Flight Plan codec version 4 adds the per-collection refine choice and the
-standalone refine action; readers retain versions 1 through 3. Authoritative
+position, velocity, turnover, and bounded acceleration vectors. Redirecting the
+active normal-space destination cancels superseded travel/contact work and
+writes the new leg, trajectory, and plan atomically. Revising only later items
+or policy instead retags and preserves the active physical leg, trajectory, or
+timed ship activity without changing its due time. A Jump-space emergence leg
+is immutable until its checkpoint, but its later plan remains editable. Cargo
+and sealed mail remain on the ship and generate preview warnings; replanning
+never edits obligations.
+Flight Plan codec version 5 adds typed per-encounter standing orders and the
+proposal flag that preserves an unchanged active operation while future items
+are revised. Version 4 added the per-collection refine choice and standalone
+refine action; readers retain versions 1 through 4. Authoritative
 preview includes per-step normal and failed fuel-operation timings. Retained
-outcome codec version 24 preserves those timings, the added quotation and
+outcome codec version 25 preserves those timings, the added quotation and
 activity metadata, terminal reports, BBS/League affiliation, effective fuel
 capacity, engineering-casualty acknowledgement results, and a contact's
 declared class separately from its sensor classification for idempotent replay.
+Version 24 outcomes remain readable but cannot contain the new policy-default
+outcome kind.
 Version 23 outcomes remain readable with an empty declared class. Version 21
 outcomes decode with an unknown
 zero fuel capacity, matching the field's absence before CT-RPC 9.
@@ -236,7 +243,7 @@ engine inputs and use the same ingress sequence as every other mutation.
 
 `FlightPlanStep.terminal`, `FlightPlanWarning.stepIndices`, and the terminal
 report requests and response are additive CT-RPC fields. The flight-plan
-proposal and snapshot record codecs use version 4; versions 1 through 3 remain
+proposal and snapshot record codecs use version 5; versions 1 through 4 remain
 readable, and version-1 Terminal authority decodes
 as Hold plus a terminal marker. Encounter-record codec version 5 stores the
 contact's declared class separately from its sensor classification, in addition
@@ -244,7 +251,7 @@ to version-4 Through/automation use and the optional acknowledged
 terminal-report snapshot, while retaining readers for versions 1 through 4.
 Version-4 and older records decode with an empty declared class. Older terminal
 records derive the same report from retained encounter, combat, ship, and
-personnel state when first reviewed. Outcome codec version 24 preserves
+personnel state when first reviewed. Outcome codec version 25 preserves
 terminal-report and engineering-casualty acknowledgement replay; version 23
 and older outcomes decode absent additive fields as empty or zero. A
 pre-field proposal with no explicit terminal bit is normalized at the wire
@@ -257,6 +264,15 @@ equivalent. It also adds `EncounterContact.declaredClassName`, keeping a
 contact's transmitted registered-class claim distinct from the existing
 sensor-derived `className` and confidence. Older servers leave additive clock
 and declared-class fields at zero or empty.
+
+Current CT-RPC 10 additionally exposes a ship-revisioned encounter-policy
+default, typed per-encounter ordinary/Fight-threshold rules, an explicit
+authorization bit when a default can attack non-hostile traffic, the
+active-operation preservation flag on flight-plan proposals, and the
+sensor-limited combat-outlook percentage on encounter snapshots. Ship defaults
+live in the `encounter-policy-defaults` database as codec version 1; absence
+means revision zero and the conservative legacy defaults. These are additive
+post-v0.7.13 fields, so the player protocol remains 10 until release.
 
 ## Persistence contract
 

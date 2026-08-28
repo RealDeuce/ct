@@ -383,6 +383,16 @@ void encode_policy(rpc::EncounterPolicy::Builder target, const EncounterPolicy& 
    target.setComplyWithInspection(source.comply_with_inspection);
    target.setReportDistress(source.report_distress);
    target.setAssistDistress(source.assist_distress);
+   auto orders = target.initStandingOrders(source.standing_orders.size());
+   for(size_t i = 0; i < source.standing_orders.size(); ++i) {
+      const auto& source_order = source.standing_orders[i];
+      auto order = orders[i];
+      order.setKind(static_cast<rpc::EncounterKind>(source_order.kind));
+      order.setOrdinaryPosture(
+         static_cast<rpc::EncounterPosture>(source_order.ordinary_posture));
+      order.setFightMode(static_cast<rpc::EncounterFightMode>(source_order.fight_mode));
+      order.setMinimumOutlookPercent(source_order.minimum_outlook_percent);
+   }
 }
 
 EncounterPolicy decode_policy(rpc::EncounterPolicy::Reader source)
@@ -396,6 +406,14 @@ EncounterPolicy decode_policy(rpc::EncounterPolicy::Reader source)
    result.comply_with_inspection = source.getComplyWithInspection();
    result.report_distress = source.getReportDistress();
    result.assist_distress = source.getAssistDistress();
+   for(const auto order : source.getStandingOrders()) {
+      result.standing_orders.push_back(EncounterStandingOrder{
+         .kind = static_cast<EncounterKind>(order.getKind()),
+         .ordinary_posture = static_cast<EncounterPosture>(order.getOrdinaryPosture()),
+         .fight_mode = static_cast<EncounterFightMode>(order.getFightMode()),
+         .minimum_outlook_percent = order.getMinimumOutlookPercent(),
+      });
+   }
    return result;
 }
 
@@ -455,6 +473,7 @@ void encode_proposal(rpc::FlightPlanProposal::Builder target, const FlightPlanPr
       }
    }
    encode_policy(target.initPolicy(), source.policy);
+   target.setPreserveActiveStep(source.preserve_active_step);
 }
 
 FlightPlanStep decode_plan_step(rpc::FlightPlanStep::Reader source)
@@ -510,6 +529,7 @@ FlightPlanProposal decode_proposal(rpc::FlightPlanProposal::Reader source)
       .expected_plan_revision = source.getExpectedPlanRevision(),
       .steps = {},
       .policy = decode_policy(source.getPolicy()),
+      .preserve_active_step = source.getPreserveActiveStep(),
    };
 
    for(auto step : source.getSteps()) {
@@ -3211,6 +3231,56 @@ FlightPlanSnapshot get_flight_plan(TlsConnection& connection, const uint64_t epo
    return decode_flight_plan_snapshot(checked_response(reader.getRoot<rpc::Envelope>(), id));
 }
 
+EncounterPolicyDefaultSnapshot decode_encounter_policy_default(
+   const rpc::Response::Reader response)
+{
+   if(!response.isEncounterPolicyDefault()) {
+      throw std::runtime_error("expected EncounterPolicyDefaultSnapshot");
+   }
+   const auto source = response.getEncounterPolicyDefault();
+   return EncounterPolicyDefaultSnapshot{
+      .ship_id = source.getShipId(),
+      .revision = source.getRevision(),
+      .policy = decode_policy(source.getPolicy()),
+   };
+}
+
+EncounterPolicyDefaultSnapshot get_encounter_policy_default(
+   TlsConnection& connection, const uint64_t epoch,
+   const std::array<uint8_t, 16>& id, const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   request.setGetEncounterPolicyDefault();
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_encounter_policy_default(
+      checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+
+EncounterPolicyDefaultSnapshot set_encounter_policy_default(
+   TlsConnection& connection, const uint64_t epoch, const uint64_t expected_revision,
+   const EncounterPolicy& policy, const bool acknowledge_nonhostile_fight,
+   const std::array<uint8_t, 16>& id, const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   auto change = request.initSetEncounterPolicyDefault();
+   change.setExpectedRevision(expected_revision);
+   encode_policy(change.initPolicy(), policy);
+   change.setAcknowledgeNonhostileFight(acknowledge_nonhostile_fight);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_encounter_policy_default(
+      checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+
 FlightPlanPreview preview_flight_plan(
    TlsConnection& connection,
    const uint64_t epoch,
@@ -3373,6 +3443,7 @@ EncounterSnapshot get_encounter(TlsConnection& connection, const uint64_t epoch,
       .available_postures = {},
       .available_fallbacks = {},
       .response_deadline_second = s.getResponseDeadlineSecond(),
+      .estimated_combat_outlook_percent = s.getEstimatedCombatOutlookPercent(),
       .phase = decode_response_phase(response.getPhase()),
    };
    for(const auto posture : s.getAvailablePostures()) {
@@ -4601,6 +4672,7 @@ std::optional<PlayerEvent> poll_event(TlsConnection& connection,
          .available_postures = {},
          .available_fallbacks = {},
          .response_deadline_second = s.getResponseDeadlineSecond(),
+         .estimated_combat_outlook_percent = s.getEstimatedCombatOutlookPercent(),
          .phase = PlayerPhase::Encounter,
       };
       for(const auto posture : s.getAvailablePostures()) {
