@@ -7972,6 +7972,7 @@ impl Store {
             if stored.identity != *identity
                 || stored.task.performing_ship_id != ship.ship_id
                 || stored.task.offer.destination_system_id == 0
+                || stored.settlement_message_id != 0
                 || matches!(
                     stored.task.state,
                     crate::wire::TaskState::Completed
@@ -54089,6 +54090,19 @@ mod tests {
         stored.task.state = crate::wire::TaskState::Loading;
         stored.task.known_result = true;
         stored.task.performing_ship_id = ship.ship_id;
+        let settled_task_id = 990_004;
+        let mut settled_offer = test_task_offer(
+            990_005,
+            destination,
+            ship.system_id,
+            crate::wire::TaskKind::Freight,
+        );
+        settled_offer.delivery_deadline_second = 0;
+        let mut settled = test_task(identity(), settled_task_id, settled_offer, 0);
+        settled.task.state = crate::wire::TaskState::AwaitingSettlement;
+        settled.task.known_result = true;
+        settled.task.performing_ship_id = ship.ship_id;
+        settled.settlement_message_id = 123_456;
         let mut txn = store.env.write_txn().unwrap();
         store
             .tasks
@@ -54096,6 +54110,14 @@ mod tests {
                 &mut txn,
                 &task_id.to_be_bytes(),
                 &encode_stored_task(&stored).unwrap(),
+            )
+            .unwrap();
+        store
+            .tasks
+            .put(
+                &mut txn,
+                &settled_task_id.to_be_bytes(),
+                &encode_stored_task(&settled).unwrap(),
             )
             .unwrap();
         txn.commit().unwrap();
@@ -54114,6 +54136,13 @@ mod tests {
             .expect("late active task should produce a deadline warning");
         assert!(warning.message.contains("Task #990001"));
         assert!(warning.message.contains("after its delivery deadline"));
+        assert!(
+            !preview
+                .warnings
+                .iter()
+                .any(|warning| warning.message.contains("Task #990004")),
+            "a certified delivery awaiting settlement must not retain a delivery warning"
+        );
         let course = match store
             .plot_course_in(
                 &store.env.read_txn().unwrap(),
