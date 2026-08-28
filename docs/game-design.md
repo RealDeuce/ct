@@ -255,12 +255,14 @@ and intentionally deferred scheduling and pacing decisions are recorded in
 persistent progress, weekly calendar accrual, and course completion are
 implemented.
 
-The player-facing command console and the seven phase-independent manager
+The player-facing command console and the eight phase-independent manager
 boundaries are specified in
 [`universal-managers.md`](universal-managers.md): crew, ship, task,
-message, Known Universe, Operations Ledger, and System Common Radio remain
-reachable in every operational phase while their individual mutations stay
-phase-constrained. The Known Universe `K` interface is a paged navigation
+message, Known Universe, Operations Ledger, System Common Radio, and Accounts
+remain reachable in every operational phase while their individual mutations
+stay phase-constrained. The console groups them into Vessel and Crew, Duty and
+Accounts, and Information and Communications areas, with presentation and
+captain-level utilities in a fourth area. The Known Universe `K` interface is a paged navigation
 library: it can limit charts to direct-jump destinations and opens an in-world
 system dossier with range, port, population, tech level, age, and source.
 

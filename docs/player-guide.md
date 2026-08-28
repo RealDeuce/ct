@@ -397,19 +397,21 @@ remaining balances. Keep a reserve instead of committing every credit to cargo.
 
 ## Universal command console
 
-Press `U` from docked operations, or Enter from the voyage screen, to open seven
-managers that remain inspectable throughout normal play:
+Press `U` from docked operations, or Enter from the voyage screen, to open the
+universal command console. Its eight managers are grouped into four areas:
 
-- `C` — **Crew Management**
-- `S` — **Ship Management**
-- `T` — **Task Management**
-- `M` — **Message Management**
-- `K` — **Known Universe**
-- `O` — **Operations Ledger**
-- `R` — **System Common Radio**
+- `1` — **Vessel and Crew:** `C` Crew Management and `S` Ship Management.
+- `2` — **Duty and Accounts:** `T` Task Management, `O` Operations Ledger,
+  and `F` Accounts.
+- `3` — **Information and Communications:** `K` Known Universe, `M` Message
+  Management, and `R` System Common Radio.
+- `4` — **Captain and Interface:** browser alerts, help, preferences, Guided
+  First Watch, license notices, and the isolated abandonment action.
 
-Enter refreshes the command console. `X` returns to the previous operational
-screen. `Q` offers to return to the BBS and requires confirmation.
+The established manager letters also work as direct shortcuts from the console
+root. Enter refreshes the current console screen. `Q` returns from an area to
+the root; at the root it offers to return to the BBS and requires confirmation.
+`X` returns directly to the previous operational screen.
 
 The console identifies the captain's home BBS and polity. A parenthesized name
 after the polity is the BBS's current League affiliation.

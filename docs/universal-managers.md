@@ -372,18 +372,20 @@ Its loss or capture is reported through ordinary causal private mail.
 
 ## Door Navigation
 
-The common command console uses:
+The common command console groups its universal managers by purpose:
 
-- `C` — Crew Management
-- `S` — Ship Management
-- `T` — Task Management
-- `M` — Message Management
-- `R` — System Common Radio
-- `K` — Known Universe
-- `O` — Operations Ledger
-- `L` — license and copyright notices
-- `Q` — return to the BBS
+- `1` — Vessel and Crew: `C` Crew Management and `S` Ship Management.
+- `2` — Duty and Accounts: `T` Task Management, `O` Operations Ledger, and
+  `F` Accounts.
+- `3` — Information and Communications: `K` Known Universe, `M` Message
+  Management, and `R` System Common Radio.
+- `4` — Captain and Interface: browser alerts, help, preferences, Guided First
+  Watch, license notices, and permanent abandonment.
+
+At the root, every established manager letter remains a direct shortcut. `Q`
+returns from an area to the console root; only root `Q` offers to return to the
+BBS. `X` returns directly to the phase-specific operational view.
 
 The shell is shared by the ISO 646, ISO 646 plus ECMA-48 colour, and CP437 plus
 ECMA-48 profiles and remains usable at 40×24. Location- and phase-specific
-menus will add their own commands without replacing these seven managers.
+menus will add their own commands without replacing these eight managers.

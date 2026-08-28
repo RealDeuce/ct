@@ -33,6 +33,7 @@ extern "C" {
 #include <map>
 #include <numeric>
 #include <optional>
+#include <span>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -8457,7 +8458,69 @@ void show_browser_alerts(
    }
 }
 
-void render_command_console(const ct::ServerHello& hello)
+enum class CommandConsoleArea {
+   Root,
+   Vessel,
+   Duty,
+   Information,
+   Captain,
+};
+
+ct::DoorHelpTopic command_console_help_topic(const CommandConsoleArea area)
+{
+   switch(area) {
+   case CommandConsoleArea::Root:
+      return ct::DoorHelpTopic::CommandConsole;
+   case CommandConsoleArea::Vessel:
+      return ct::DoorHelpTopic::CommandConsoleVessel;
+   case CommandConsoleArea::Duty:
+      return ct::DoorHelpTopic::CommandConsoleDuty;
+   case CommandConsoleArea::Information:
+      return ct::DoorHelpTopic::CommandConsoleInformation;
+   case CommandConsoleArea::Captain:
+      return ct::DoorHelpTopic::CommandConsoleCaptain;
+   }
+   return ct::DoorHelpTopic::CommandConsole;
+}
+
+bool command_console_key_available(const CommandConsoleArea area, const char key)
+{
+   if(area == CommandConsoleArea::Root) {
+      return key == 'A' || key == 'B' || key == 'C' || key == 'F' ||
+             key == 'H' || key == 'K' || key == 'L' || key == 'M' ||
+             key == 'O' || key == 'P' || key == 'R' || key == 'S' ||
+             key == 'T' || key == 'W';
+   }
+   if(area == CommandConsoleArea::Vessel) {
+      return key == 'C' || key == 'S';
+   }
+   if(area == CommandConsoleArea::Duty) {
+      return key == 'F' || key == 'O' || key == 'T';
+   }
+   if(area == CommandConsoleArea::Information) {
+      return key == 'K' || key == 'M' || key == 'R';
+   }
+   return key == 'A' || key == 'B' || key == 'H' || key == 'L' ||
+          key == 'P' || key == 'W';
+}
+
+CommandConsoleArea command_console_area_for_key(const char key)
+{
+   switch(key) {
+   case '1':
+      return CommandConsoleArea::Vessel;
+   case '2':
+      return CommandConsoleArea::Duty;
+   case '3':
+      return CommandConsoleArea::Information;
+   case '4':
+      return CommandConsoleArea::Captain;
+   default:
+      return CommandConsoleArea::Root;
+   }
+}
+
+void render_command_console_header(const ct::ServerHello& hello)
 {
    od_clr_scr();
    door_heading("Captain's Command Console\n\r");
@@ -8472,53 +8535,95 @@ void render_command_console(const ct::ServerHello& hello)
          hello.affiliation->polity_name,
          hello.affiliation->league_name).c_str());
    }
-   door_information(
-      "These managers are available throughout every operational "
-      "situation. Available actions depend on the ship's present status.\n\r\n\r");
-   door_number("A");
-   door_label(". ");
-   door_identifier("Abandon Captain and Restart\n\r");
-   door_number("B");
-   door_label(". ");
-   door_identifier("Browser Alerts\n\r");
-   door_number("C");
-   door_label(". ");
-   door_identifier("Crew Management\n\r");
-   door_number("F");
-   door_label(". ");
-   door_identifier("Accounts\n\r");
-   door_number("H");
-   door_label(". ");
-   door_identifier("Help Browser\n\r");
-   door_number("K");
-   door_label(". ");
-   door_identifier("Known Universe\n\r");
-   door_number("M");
-   door_label(". ");
-   door_identifier("Message Management\n\r");
-   door_number("O");
-   door_label(". ");
-   door_identifier("Operations Ledger\n\r");
-   door_number("P");
-   door_label(". ");
-   door_identifier("Player Preferences\n\r");
-   door_number("R");
-   door_label(". ");
-   door_identifier("System Common Radio\n\r");
-   door_number("S");
-   door_label(". ");
-   door_identifier("Ship Management\n\r");
-   door_number("T");
-   door_label(". ");
-   door_identifier("Task Management\n\r");
-   door_number("W");
-   door_label(". ");
-   door_identifier("Guided First Watch\n\r");
+}
+
+void render_command_console(
+   const ct::ServerHello& hello,
+   const CommandConsoleArea area = CommandConsoleArea::Root)
+{
+   render_command_console_header(hello);
+   if(area == CommandConsoleArea::Root) {
+      door_information(
+         "Choose a focused area. These managers remain available throughout "
+         "every operational situation; individual actions still depend on "
+         "the ship's present status.\n\r\n\r");
+      for(const auto& entry : std::array{
+         std::pair{'1', "Vessel and Crew"},
+         std::pair{'2', "Duty and Accounts"},
+         std::pair{'3', "Information and Communications"},
+         std::pair{'4', "Captain and Interface"},
+      }) {
+         door_number("%c", entry.first);
+         door_label(". ");
+         door_identifier("%s\n\r", entry.second);
+      }
+      door_option_prompt({
+         "[1-4] Area",
+         "[Letter] Manager shortcut",
+         "[Enter] Refresh",
+         "[X] View",
+         "[Q] BBS",
+         "[?] Help",
+      });
+      return;
+   }
+
+   const char* area_name = nullptr;
+   std::span<const std::pair<char, const char*>> entries;
+   static constexpr std::array vessel_entries{
+      std::pair{'C', "Crew Management"},
+      std::pair{'S', "Ship Management"},
+   };
+   static constexpr std::array duty_entries{
+      std::pair{'T', "Task Management"},
+      std::pair{'O', "Operations Ledger"},
+      std::pair{'F', "Accounts"},
+   };
+   static constexpr std::array information_entries{
+      std::pair{'K', "Known Universe"},
+      std::pair{'M', "Message Management"},
+      std::pair{'R', "System Common Radio"},
+   };
+   static constexpr std::array captain_entries{
+      std::pair{'B', "Browser Alerts"},
+      std::pair{'H', "Help Browser"},
+      std::pair{'P', "Player Preferences"},
+      std::pair{'W', "Guided First Watch"},
+      std::pair{'L', "License and Copyright"},
+      std::pair{'A', "Abandon Captain and Restart"},
+   };
+   switch(area) {
+   case CommandConsoleArea::Vessel:
+      area_name = "Vessel and Crew";
+      entries = vessel_entries;
+      break;
+   case CommandConsoleArea::Duty:
+      area_name = "Duty and Accounts";
+      entries = duty_entries;
+      break;
+   case CommandConsoleArea::Information:
+      area_name = "Information and Communications";
+      entries = information_entries;
+      break;
+   case CommandConsoleArea::Captain:
+      area_name = "Captain and Interface";
+      entries = captain_entries;
+      break;
+   case CommandConsoleArea::Root:
+      break;
+   }
+   door_label("Area:        ");
+   door_identifier("%s\n\r\n\r", area_name);
+   for(const auto& entry : entries) {
+      door_number("%c", entry.first);
+      door_label(". ");
+      door_identifier("%s\n\r", entry.second);
+   }
    door_option_prompt({
       "[Letter] Manager",
       "[Enter] Refresh",
+      "[Q] Console",
       "[X] View",
-      "[Q] BBS",
       "[?] Help",
    });
 }
@@ -8529,41 +8634,74 @@ bool run_command_console(
    ct::CommandIdGenerator& random,
    uint64_t& request_id)
 {
-   const HelpScope help_scope(ct::DoorHelpTopic::CommandConsole);
-   render_command_console(hello);
+   CommandConsoleArea area = CommandConsoleArea::Root;
+   render_command_console(hello, area);
    while(true) {
       const auto generation = phase_event_generation;
-      const auto key = door_get_live_key();
+      int raw_key = 0;
+      {
+         const HelpScope help_scope(command_console_help_topic(area));
+         raw_key = door_get_live_key();
+      }
       if(phase_event_generation != generation) {
          return false;
       }
-      if(key == 'c' || key == 'C') {
+      const auto key = static_cast<char>(
+         std::toupper(static_cast<unsigned char>(raw_key)));
+      if(area == CommandConsoleArea::Root && key >= '1' && key <= '4') {
+         area = command_console_area_for_key(key);
+         render_command_console(hello, area);
+         continue;
+      }
+      if(area != CommandConsoleArea::Root && key == 'Q') {
+         area = CommandConsoleArea::Root;
+         render_command_console(hello, area);
+         continue;
+      }
+      if(area == CommandConsoleArea::Root && key == 'Q') {
+         if(confirm_return_to_bbs()) {
+            return true;
+         }
+         render_command_console(hello, area);
+         continue;
+      }
+      if(key == 'X') {
+         return false;
+      }
+      if(key == '\r' || key == '\n') {
+         render_command_console(hello, area);
+         continue;
+      }
+      if(!command_console_key_available(area, key)) {
+         continue;
+      }
+      if(key == 'C') {
          show_crew_manager(
             connection,
             hello.assigned_epoch,
             random,
             request_id);
-         render_command_console(hello);
-      } else if(key == 'f' || key == 'F') {
+         render_command_console(hello, area);
+      } else if(key == 'F') {
          show_accounts(connection, hello.assigned_epoch,
                        hello.account_journal_available, random, request_id);
-         render_command_console(hello);
-      } else if(key == 'b' || key == 'B') {
+         render_command_console(hello, area);
+      } else if(key == 'B') {
          show_browser_alerts(
             connection, hello.assigned_epoch, random, request_id);
-         render_command_console(hello);
-      } else if(key == 'h' || key == 'H') {
+         render_command_console(hello, area);
+      } else if(key == 'H') {
          show_help_browser_direct();
-         render_command_console(hello);
-      } else if(key == 'p' || key == 'P') {
+         render_command_console(hello, area);
+      } else if(key == 'P') {
          if(show_player_preferences(hello.phase)) {
             run_first_watch(connection, hello, random, request_id);
             if(hello.phase != ct::PlayerPhase::Docked) {
                return false;
             }
          }
-         render_command_console(hello);
-      } else if(key == 'w' || key == 'W') {
+         render_command_console(hello, area);
+      } else if(key == 'W') {
          if(hello.phase != ct::PlayerPhase::Docked) {
             door_information(
                "First Watch begins in port and will be available when the "
@@ -8581,59 +8719,50 @@ bool run_command_console(
                return false;
             }
          }
-         render_command_console(hello);
-      } else if(key == 'a' || key == 'A') {
+         render_command_console(hello, area);
+      } else if(key == 'A') {
          if(abandon_captain(connection, hello, random, request_id)) {
             return false;
          }
-         render_command_console(hello);
-      } else if(key == 's' || key == 'S') {
+         render_command_console(hello, area);
+      } else if(key == 'S') {
          show_ship_manager(
             connection,
             hello.assigned_epoch,
             random,
             request_id);
-         render_command_console(hello);
-      } else if(key == 't' || key == 'T') {
+         render_command_console(hello, area);
+      } else if(key == 'T') {
          show_task_manager(connection, hello.assigned_epoch, random, request_id);
-         render_command_console(hello);
-      } else if(key == 'm' || key == 'M') {
+         render_command_console(hello, area);
+      } else if(key == 'M') {
          show_message_manager(
             connection,
             hello.assigned_epoch,
             random,
             request_id);
-         render_command_console(hello);
-      } else if(key == 'r' || key == 'R') {
+         render_command_console(hello, area);
+      } else if(key == 'R') {
          show_system_radio(
             connection,
             hello.assigned_epoch,
             random,
             request_id);
-         render_command_console(hello);
-      } else if(key == 'k' || key == 'K') {
+         render_command_console(hello, area);
+      } else if(key == 'K') {
          show_known_universe_manager(
             connection, hello.assigned_epoch, random, request_id);
-         render_command_console(hello);
-      } else if(key == 'o' || key == 'O') {
+         render_command_console(hello, area);
+      } else if(key == 'O') {
          if(const auto phase = show_combat_operations(
                                   connection, hello.assigned_epoch, random, request_id)) {
             hello.phase = *phase;
             return false;
          }
-         render_command_console(hello);
-      } else if(key == 'l' || key == 'L') {
+         render_command_console(hello, area);
+      } else if(key == 'L') {
          show_open_game_license();
-         render_command_console(hello);
-      } else if(key == 'q' || key == 'Q') {
-         if(confirm_return_to_bbs()) {
-            return true;
-         }
-         render_command_console(hello);
-      } else if(key == '\r' || key == '\n') {
-         render_command_console(hello);
-      } else if(key == 'x' || key == 'X') {
-         return false;
+         render_command_console(hello, area);
       }
    }
 }
