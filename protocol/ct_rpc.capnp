@@ -695,6 +695,8 @@ struct DockedFuelService {
   bodyKind @9 :FuelSourceBodyKind;
   accessKind @10 :FuelAccessKind;
   canRefine @11 :Bool;
+  roundTripDistanceMicroAu @12 :UInt64;
+  roundTripSeconds @13 :UInt64;
 }
 
 struct DockedRepairService {

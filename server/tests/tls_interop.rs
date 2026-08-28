@@ -811,7 +811,7 @@ fn complete_arrival_and_trade(
 
     session.send_to_menu(b"f", "Fuel and Supplies");
     let fuel_sources =
-        session.send_through_page_prompt(b"f", "Fuel source (Q to cancel", "tank room");
+        session.send_through_page_prompt(b"f", "Fuel source (Q to cancel", "Tank room");
     let fuel_sources = normalized_display_text(&fuel_sources);
     let unrefined_option = fuel_sources
         .find(". Unrefined bulk fuel")

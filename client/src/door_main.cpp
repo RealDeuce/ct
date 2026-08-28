@@ -814,6 +814,26 @@ const char* fuel_source_body_name(const ct::FuelSourceBodyKind kind)
    return "body";
 }
 
+void render_frontier_fuel_source_details(const ct::DockedFuelService& source)
+{
+   door_label("\n\r   ");
+   door_value("%s", fuel_source_body_name(source.body_kind));
+   door_label(", unoccupied routine access\n\r   ");
+   const auto travel_seconds = source.round_trip_seconds != 0
+      ? source.round_trip_seconds : source.service_seconds;
+   if(source.round_trip_distance_micro_au != 0) {
+      door_number("%.3f AU", source.round_trip_distance_micro_au / 1'000'000.0);
+      door_label(" round trip, ");
+      door_number("%s", course_duration(travel_seconds).c_str());
+      door_label(" travel\n\r");
+   } else {
+      // CT-RPC 10 servers predating source travel quotations still provide
+      // their former quantity-dependent operation duration.
+      door_number("%s", course_duration(travel_seconds).c_str());
+      door_label(" quoted operation time\n\r");
+   }
+}
+
 // Keep the page code readable while routing every byte through the
 // profile-aware sanitizer and wrapper.
 #define od_clr_scr() door_clear_screen()
@@ -9353,6 +9373,10 @@ std::optional<ct::TravelStatus> run_fuel_service(
    if(key == 'F') {
       output().resume_paging();
       std::vector<const ct::DockedFuelService*> available_sources;
+      door_label("\n\rTank room: ");
+      door_number("%s t\n\r", ct::format_tonnage(
+         account.fuel_capacity_millitons > account.fuel_millitons
+            ? account.fuel_capacity_millitons - account.fuel_millitons : 0).c_str());
       for(const auto& item : services.fuel) {
          if(!item.available) {
             continue;
@@ -9363,15 +9387,11 @@ std::optional<ct::TravelStatus> run_fuel_service(
          door_label(". ");
          door_identifier("%s", safe_field(item.label).c_str());
          if(item.price_per_ton_credits) {
-            door_number("  Cr%llu/t", static_cast<unsigned long long>(item.price_per_ton_credits));
+            door_number("  Cr%llu/t\n\r",
+                        static_cast<unsigned long long>(item.price_per_ton_credits));
          } else {
-            door_label("  (");
-            door_value("%s", fuel_source_body_name(item.body_kind));
-            door_label(", unoccupied routine-access source)");
+            render_frontier_fuel_source_details(item);
          }
-         door_label("  tank room ");
-         door_number(
-            "%s t\n\r", ct::format_tonnage(item.maximum_millitons).c_str());
       }
       for(const auto& item : services.fuel) {
          if(!item.available) {
@@ -10864,14 +10884,14 @@ FlightPlanEditorResult run_flight_plan_editor(
                continue;
             }
             output().resume_paging();
+            door_label("\n\rTank room: ");
+            door_number("%s t\n\r", ct::format_tonnage(
+               sources.front()->maximum_millitons).c_str());
             for(size_t index = 0; index < sources.size(); ++index) {
                door_number("%zu", index + 1);
                door_label(". ");
                door_identifier("%s", safe_field(sources[index]->label).c_str());
-               door_label("  (");
-               door_value("%s", fuel_source_body_name(sources[index]->body_kind));
-               door_label(", unoccupied routine access)  tank room ");
-               door_number("%.1f t\n\r", sources[index]->maximum_millitons / 1000.0);
+               render_frontier_fuel_source_details(*sources[index]);
             }
             const auto selected = input_number(
                                      "Fuel source", 1, static_cast<unsigned>(sources.size()));

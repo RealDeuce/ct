@@ -2561,6 +2561,10 @@ Track unresolved choices explicitly rather than allowing accidental defaults:
   line; do not bump the protocol solely for this work. The radio ordinal
   formerly named `surrenderDemand` is semantically `pirateDemand` without
   changing its numeric value.
+- Fuel-source selection treats tank room as one ship-level value. Every
+  frontier source must instead show its own current round-trip distance and
+  travel time anywhere the captain chooses among sources; body type alone is
+  not enough information to compare the operational detours.
 
 ## Instructions for LLM-assisted work
 

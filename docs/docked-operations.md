@@ -106,8 +106,10 @@ The Fuel and Supplies screen can instead schedule a bounded gas-giant or
 wilderness water/ice expedition. The server lists every qualifying named body
 with its type (gas giant, planet, moon, or icy belt) and marks routine sources
 as unoccupied wilderness access. Unavailable sources are explanatory only and
-are not numbered. The displayed maximum is the remaining tank room, not a
-promise that every body can supply an arbitrary amount.
+are not numbered. Remaining tank room is shown once because it is a property of
+the ship. Every frontier source separately shows its current round-trip
+distance in AU and travel time at the ship's catalogued thrust, making the
+detours directly comparable before a quantity is selected.
 
 The server calculates the exact selected-quantity round trip at catalogued
 thrust and separately previews travel, collection, processing, normal total,

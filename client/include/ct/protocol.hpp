@@ -520,6 +520,8 @@ struct DockedFuelService {
    FuelSourceBodyKind body_kind;
    FuelAccessKind access_kind;
    bool can_refine;
+   uint64_t round_trip_distance_micro_au;
+   uint64_t round_trip_seconds;
 };
 struct DockedRepairService {
    uint16_t subsystem_id;

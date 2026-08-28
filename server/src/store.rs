@@ -36,8 +36,8 @@ use crate::navigation::{
     bbs_core_jump_guard_days, body_position_au, bounded_thrust_intercept, gas_giant_fuel_source,
     gas_giant_fuel_sources, maneuver_state_at, nearest_gas_giant_fuel_source,
     nearest_wilderness_water_source, primary_world_arrival_safety, primary_world_jump_safety,
-    primary_world_remote_arrival_safety, rest_to_rest_travel_days, wilderness_water_source,
-    wilderness_water_sources,
+    primary_world_remote_arrival_safety, rest_to_rest_distance_au, rest_to_rest_travel_days,
+    wilderness_water_source, wilderness_water_sources,
 };
 use crate::place_names::{
     FEDERATION_NAMING_PROFILE_ID, PlaceNameError, naming_stream, polity_profile,
@@ -25461,6 +25461,8 @@ impl Store {
             body_kind: FuelSourceBodyKind::NotApplicable,
             access_kind: FuelAccessKind::PortSale,
             can_refine: spec.fuel_processing_millitons_per_day != 0,
+            round_trip_distance_micro_au: 0,
+            round_trip_seconds: 0,
         });
         let unrefined = facility.operational && facility.unrefined_fuel;
         fuel.push(DockedFuelService {
@@ -25481,9 +25483,13 @@ impl Store {
             body_kind: FuelSourceBodyKind::NotApplicable,
             access_kind: FuelAccessKind::PortSale,
             can_refine: spec.fuel_processing_millitons_per_day != 0,
+            round_trip_distance_micro_au: 0,
+            round_trip_seconds: 0,
         });
         let equipped = spec.has_fuel_scoop;
         for source in gas_giant_fuel_sources(&celestial, days, f64::from(spec.thrust_g)) {
+            let round_trip_seconds =
+                (source.round_trip_days * crate::simulation::SECONDS_PER_DAY as f64).ceil() as u64;
             fuel.push(DockedFuelService {
                 kind: DockedFuelServiceKind::GasGiant,
                 label: format!("Skim {}", source.body_name),
@@ -25508,9 +25514,19 @@ impl Store {
                 body_kind: fuel_source_body_kind(source.body_kind),
                 access_kind: FuelAccessKind::RoutineWilderness,
                 can_refine: spec.fuel_processing_millitons_per_day != 0,
+                round_trip_distance_micro_au: (2.0
+                    * rest_to_rest_distance_au(
+                        source.round_trip_days / 2.0,
+                        f64::from(spec.thrust_g),
+                    )
+                    * 1_000_000.0)
+                    .ceil() as u64,
+                round_trip_seconds,
             });
         }
         for source in wilderness_water_sources(&celestial, days, f64::from(spec.thrust_g)) {
+            let round_trip_seconds =
+                (source.round_trip_days * crate::simulation::SECONDS_PER_DAY as f64).ceil() as u64;
             fuel.push(DockedFuelService {
                 kind: DockedFuelServiceKind::WildernessWater,
                 label: format!("Collect water or ice at {}", source.body_name),
@@ -25532,6 +25548,14 @@ impl Store {
                 body_kind: fuel_source_body_kind(source.body_kind),
                 access_kind: FuelAccessKind::RoutineWilderness,
                 can_refine: spec.fuel_processing_millitons_per_day != 0,
+                round_trip_distance_micro_au: (2.0
+                    * rest_to_rest_distance_au(
+                        source.round_trip_days / 2.0,
+                        f64::from(spec.thrust_g),
+                    )
+                    * 1_000_000.0)
+                    .ceil() as u64,
+                round_trip_seconds,
             });
         }
         let required = crate::ship_condition::minimum_refit_starport(spec.displacement_millitons);
@@ -43192,7 +43216,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(27);
+    bytes.push(28);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -43511,6 +43535,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 25
         && version != 26
         && version != 27
+        && version != 28
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -47772,6 +47797,15 @@ fn encode_docked_services_into(
     encode_text(bytes, &value.refit_unavailable_reason)?;
     bytes.extend_from_slice(&value.refit_cost_credits.to_be_bytes());
     bytes.extend_from_slice(&value.refit_service_seconds.to_be_bytes());
+    bytes.extend_from_slice(
+        &u16::try_from(value.fuel.len())
+            .map_err(|_| StoreError::Corrupt("too many fuel-source travel quotations"))?
+            .to_be_bytes(),
+    );
+    for item in &value.fuel {
+        bytes.extend_from_slice(&item.round_trip_distance_micro_au.to_be_bytes());
+        bytes.extend_from_slice(&item.round_trip_seconds.to_be_bytes());
+    }
     Ok(())
 }
 
@@ -47844,6 +47878,8 @@ fn decode_docked_services(
             body_kind,
             access_kind,
             can_refine,
+            round_trip_distance_micro_au: 0,
+            round_trip_seconds: 0,
         });
     }
     let count = decoder.u16()? as usize;
@@ -47873,6 +47909,22 @@ fn decode_docked_services(
             reconditioned: decoder.u8()? != 0,
         });
     }
+    let refit_available = decoder.u8()? != 0;
+    let refit_unavailable_reason = decoder.text()?;
+    let refit_cost_credits = decoder.u64()?;
+    let refit_service_seconds = decoder.u64()?;
+    if outcome_version >= 28 {
+        let quotation_count = decoder.u16()? as usize;
+        if quotation_count != fuel.len() {
+            return Err(StoreError::Corrupt(
+                "fuel-source travel quotation count mismatch",
+            ));
+        }
+        for item in &mut fuel {
+            item.round_trip_distance_micro_au = decoder.u64()?;
+            item.round_trip_seconds = decoder.u64()?;
+        }
+    }
     Ok(DockedServices {
         ship_revision,
         current_game_second,
@@ -47884,10 +47936,10 @@ fn decode_docked_services(
         provisions_available,
         ammunition_available,
         repair,
-        refit_available: decoder.u8()? != 0,
-        refit_unavailable_reason: decoder.text()?,
-        refit_cost_credits: decoder.u64()?,
-        refit_service_seconds: decoder.u64()?,
+        refit_available,
+        refit_unavailable_reason,
+        refit_cost_credits,
+        refit_service_seconds,
     })
 }
 
@@ -60990,14 +61042,58 @@ mod tests {
             .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
             .unwrap();
         txn.commit().unwrap();
-        let quoted_source = store
-            .docked_services_in(&store.env.read_txn().unwrap(), &identity())
-            .unwrap()
+        let quotation_request = request(epoch, 240, Command::GetDockedServices);
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: quotation_request.clone(),
+            })
+            .unwrap();
+        let quoted_services = match store.process_next().unwrap().unwrap().outcome.kind {
+            OutcomeKind::DockedServices(services) => services,
+            other => panic!("expected docked services, got {other:?}"),
+        };
+        let quoted_service = quoted_services
             .fuel
-            .into_iter()
+            .iter()
             .find(|service| service.kind == DockedFuelServiceKind::GasGiant)
-            .and_then(|service| service.source_body_id)
             .expect("generated system must quote a named gas giant");
+        assert_ne!(quoted_service.round_trip_distance_micro_au, 0);
+        assert_ne!(quoted_service.round_trip_seconds, 0);
+        assert!(quoted_service.service_seconds >= quoted_service.round_trip_seconds);
+        let quoted_source = quoted_service.source_body_id.unwrap();
+        let quotation_outcome = Outcome {
+            command_id: [0x28; COMMAND_ID_BYTES],
+            committed_sequence: 240,
+            revision: 240,
+            replayed: false,
+            phase: PlayerPhase::Docked,
+            kind: OutcomeKind::DockedServices(quoted_services.clone()),
+        };
+        assert_eq!(
+            decode_outcome(&encode_outcome(&quotation_outcome).unwrap()).unwrap(),
+            quotation_outcome
+        );
+        let legacy_quotation_bytes = 2 + quoted_services.fuel.len() * 16;
+        let mut version_twenty_seven = encode_outcome(&Outcome {
+            command_id: [0x28; COMMAND_ID_BYTES],
+            committed_sequence: 240,
+            revision: 240,
+            replayed: false,
+            phase: PlayerPhase::Docked,
+            kind: OutcomeKind::DockedServices(quoted_services),
+        })
+        .unwrap();
+        version_twenty_seven[0] = 27;
+        version_twenty_seven.truncate(version_twenty_seven.len() - legacy_quotation_bytes);
+        let OutcomeKind::DockedServices(legacy_services) =
+            decode_outcome(&version_twenty_seven).unwrap().kind
+        else {
+            panic!("expected legacy docked services");
+        };
+        assert!(legacy_services.fuel.iter().all(|service| {
+            service.round_trip_distance_micro_au == 0 && service.round_trip_seconds == 0
+        }));
 
         store
             .enqueue(&QueuedCommand {

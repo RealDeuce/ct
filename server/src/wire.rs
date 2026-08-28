@@ -662,6 +662,8 @@ pub struct DockedFuelService {
     pub body_kind: FuelSourceBodyKind,
     pub access_kind: FuelAccessKind,
     pub can_refine: bool,
+    pub round_trip_distance_micro_au: u64,
+    pub round_trip_seconds: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -5551,6 +5553,8 @@ fn set_docked_services(
         item.set_body_kind(schema_fuel_source_body_kind(offer.body_kind));
         item.set_access_kind(schema_fuel_access_kind(offer.access_kind));
         item.set_can_refine(offer.can_refine);
+        item.set_round_trip_distance_micro_au(offer.round_trip_distance_micro_au);
+        item.set_round_trip_seconds(offer.round_trip_seconds);
     }
     let ammunition_count = u32::try_from(snapshot.ammunition.len())
         .map_err(|_| WireError::Expected("fewer ammunition lots"))?;

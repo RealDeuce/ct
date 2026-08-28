@@ -1056,6 +1056,8 @@ DockedServices decode_docked_services(const rpc::Response::Reader response)
          .body_kind = static_cast<FuelSourceBodyKind>(item.getBodyKind()),
          .access_kind = static_cast<FuelAccessKind>(item.getAccessKind()),
          .can_refine = item.getCanRefine(),
+         .round_trip_distance_micro_au = item.getRoundTripDistanceMicroAu(),
+         .round_trip_seconds = item.getRoundTripSeconds(),
       });
    }
    for(const auto lot : source.getAmmunition()) {

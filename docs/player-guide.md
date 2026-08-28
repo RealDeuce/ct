@@ -362,8 +362,10 @@ will actually travel; changing a route does not rewrite an obligation.
 Refined and unrefined fuel are distinct, and availability depends on the port
 or selected collection method. The source list identifies planets, moons, gas
 giants, and icy belts; ordinary wilderness entries are unoccupied routine-
-access sources, and unavailable entries are not numbered. The displayed
-maximum is remaining tank room.
+access sources, and unavailable entries are not numbered. Remaining tank room
+appears once above the choices. Each frontier source gives its own round-trip
+distance and travel time; those values, rather than the body type alone,
+distinguish the operational cost of the detour.
 
 A ship with scoops may collect without a processor. When a processor is fitted,
 Flight Plan defaults to refining the selected batch, but you may keep it

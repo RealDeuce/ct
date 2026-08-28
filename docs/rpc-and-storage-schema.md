@@ -180,8 +180,12 @@ reinterpret a previously committed purpose.
 
 Docked-service quotations return the ship revision, exact named fuel sources,
 their body type, port-sale or routine-wilderness access class, whether onboard
-refining is possible, tank-room maximum, physical provision and ammunition
+refining is possible, ship tank-room maximum, per-source frontier round-trip
+distance in micro-AU and travel seconds, physical provision and ammunition
 state, repair/replacement choices, facility reasons, prices, and elapsed times.
+The distance/time fields are additive within CT-RPC 10. A newer door connected
+to an earlier CT-RPC 10 server sees zeroes and falls back to the legacy quoted
+operation duration instead of presenting a fictitious zero-distance source.
 One commit presents that revision and a
 closed union selecting exactly one order. Its retained receipt contains the
 resulting ship status and a closed detail union. A port-fuel receipt additionally
@@ -235,10 +239,11 @@ Flight Plan codec version 6 adds the remote-arrival choice and distinct
 departure/arrival locus role. Version 5 added typed per-encounter standing orders and the
 proposal flag that preserves an unchanged active operation while future items
 are revised. Version 4 added the per-collection refine choice and standalone
-refine action; readers retain versions 1 through 5. Authoritative
+refine action; readers retain versions 1 through 6. Authoritative
 preview includes per-step normal and failed fuel-operation timings. Retained
-outcome codec version 27 preserves account-ledger observation replay; version
-26 preserves the new locus and maneuver stage in addition
+outcome codec version 28 adds per-source frontier-fuel round-trip distance and
+travel time to docked-service quotations. Version 27 preserves account-ledger
+observation replay; version 26 preserves the new locus and maneuver stage in addition
 to the version-25 timings, quotation, and
 activity metadata, terminal reports, BBS/League affiliation, effective fuel
 capacity, engineering-casualty acknowledgement results, and a contact's
