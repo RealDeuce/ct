@@ -351,7 +351,13 @@ fn checkpoint_push_alert(
             "facilityId": facility_id,
         }),
         wire::FlightLocus::JumpLocus { system_id } => {
-            serde_json::json!({ "type": "jump locus", "systemId": system_id })
+            serde_json::json!({ "type": "departure locus", "systemId": system_id })
+        }
+        wire::FlightLocus::ArrivalLocus { system_id, remote } => {
+            serde_json::json!({
+                "type": if remote { "remote arrival" } else { "arrival locus" },
+                "systemId": system_id,
+            })
         }
         wire::FlightLocus::Body { system_id, body_id } => serde_json::json!({
             "type": "body",
@@ -464,7 +470,14 @@ fn upcoming_attention_push_alert(transition: &PlayerTravelTransition) -> Option<
             wire::FlightLocus::DeepSpace { .. } => "the plotted deep-space coordinates".into(),
             wire::FlightLocus::Body { body_id, .. } => format!("body {body_id}"),
             wire::FlightLocus::JumpLocus { system_id } => {
-                format!("jump locus in system {system_id}")
+                format!("departure locus in system {system_id}")
+            }
+            wire::FlightLocus::ArrivalLocus { system_id, remote } => {
+                if remote {
+                    format!("a private arrival point in system {system_id}")
+                } else {
+                    format!("arrival locus in system {system_id}")
+                }
             }
             wire::FlightLocus::Port { system_id, .. } => format!("port in system {system_id}"),
         }

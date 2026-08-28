@@ -11,7 +11,6 @@ pub const BBS_CORE_MAXIMUM_JUMP_APPROACH_DAYS: f64 = 3.5;
 
 const MAXIMUM_MANEUVER_SECONDS: u64 = 20 * 365 * 24 * 60 * 60;
 
-const DIRECTION_SAMPLES: usize = 1_024;
 const LOCUS_CLEARANCE_AU: f64 = 1e-10;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -201,20 +200,17 @@ pub fn rest_to_rest_travel_days(distance_au: f64, thrust_g: f64) -> f64 {
     seconds / SECONDS_PER_GAME_DAY
 }
 
-/// Find a safe departure/arrival locus for the primary world at `game_days`.
-///
-/// The point is outside the 100-diameter exclusion spheres of every star and
-/// generated body. It is also outside a thrust-scaled safety sphere whose
-/// radius takes exactly half a game day to traverse at constant thrust with a
-/// midpoint turnover. The direction search is deterministic. Every returned
-/// point is verified safe; seed conditioning may conservatively reject a
-/// system if the sampled search misses a shorter valid route.
-pub fn primary_world_jump_safety(
+fn primary_world_safety_on_ray(
     system: &CelestialSystem,
     game_days: f64,
     thrust_g: f64,
+    direction: [f64; 3],
+    minimum_distance_au: f64,
 ) -> JumpSafetySolution {
     assert!(thrust_g.is_finite() && thrust_g > 0.0);
+    let direction_magnitude = magnitude(direction);
+    assert!(direction_magnitude.is_finite() && direction_magnitude > 0.0);
+    let direction = scale(direction, 1.0 / direction_magnitude);
     let star_positions = star_positions(system, game_days);
     let body_positions = body_positions(system, game_days, &star_positions);
     let primary_index = system
@@ -242,37 +238,8 @@ pub fn primary_world_jump_safety(
         radius_au: rest_to_rest_distance_au(MINIMUM_JUMP_APPROACH_DAYS, thrust_g),
     });
 
-    let mut directions = Vec::with_capacity(DIRECTION_SAMPLES + spheres.len() + 6);
-    push_direction(&mut directions, subtract(origin, star_positions[0]));
-    for axis in 0..3 {
-        let mut positive = [0.0; 3];
-        positive[axis] = 1.0;
-        directions.push(positive);
-        directions.push(positive.map(|value| -value));
-    }
-    for sphere in &spheres {
-        push_direction(&mut directions, subtract(origin, sphere.center_au));
-    }
-    // A Fibonacci sphere provides stable, approximately uniform coverage.
-    let golden_angle = std::f64::consts::PI * (3.0 - 5.0_f64.sqrt());
-    for index in 0..DIRECTION_SAMPLES {
-        let y = 1.0 - 2.0 * (index as f64 + 0.5) / DIRECTION_SAMPLES as f64;
-        let radius = (1.0 - y * y).sqrt();
-        let angle = golden_angle * index as f64;
-        directions.push([radius * angle.cos(), y, radius * angle.sin()]);
-    }
-
-    let (distance_au, direction) = directions
-        .into_iter()
-        .map(|direction| {
-            (
-                first_safe_distance_on_ray(origin, direction, &spheres),
-                direction,
-            )
-        })
-        .min_by(|left, right| left.0.total_cmp(&right.0))
-        .expect("direction set is nonempty");
-    let distance_au = distance_au + LOCUS_CLEARANCE_AU;
+    let distance_au =
+        safe_distance_at_least_on_ray(origin, direction, &spheres, minimum_distance_au.max(0.0));
     let locus_au = add(origin, scale(direction, distance_au));
     assert!(spheres.iter().all(|sphere| {
         magnitude(subtract(locus_au, sphere.center_au)) + 1e-12 >= sphere.radius_au
@@ -283,6 +250,61 @@ pub fn primary_world_jump_safety(
         travel_days: rest_to_rest_travel_days(distance_au, thrust_g)
             .max(MINIMUM_JUMP_APPROACH_DAYS),
     }
+}
+
+/// Find the conventional safe departure locus for the primary world.
+///
+/// The point is outside the 100-diameter exclusion spheres of every star and
+/// generated body. It is also outside a thrust-scaled safety sphere whose
+/// radius takes exactly half a game day to traverse at constant thrust with a
+/// midpoint turnover. By traffic convention departures use the north side of
+/// the system ecliptic.
+pub fn primary_world_jump_safety(
+    system: &CelestialSystem,
+    game_days: f64,
+    thrust_g: f64,
+) -> JumpSafetySolution {
+    primary_world_safety_on_ray(system, game_days, thrust_g, [0.0, 0.0, 1.0], 0.0)
+}
+
+/// Find the conventional arrival locus on the south side of the ecliptic.
+pub fn primary_world_arrival_safety(
+    system: &CelestialSystem,
+    game_days: f64,
+    thrust_g: f64,
+) -> JumpSafetySolution {
+    primary_world_safety_on_ray(system, game_days, thrust_g, [0.0, 0.0, -1.0], 0.0)
+}
+
+/// Find a private, deliberately distant arrival point. The seed selects an
+/// unpredictable direction; the extra standoff makes the port approach longer
+/// than an arrival through the conventional traffic locus.
+pub fn primary_world_remote_arrival_safety(
+    system: &CelestialSystem,
+    game_days: f64,
+    thrust_g: f64,
+    seed: u64,
+) -> JumpSafetySolution {
+    fn mixed(mut value: u64) -> u64 {
+        value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        value ^ (value >> 31)
+    }
+    let component = |salt: u64| {
+        let value = mixed(seed ^ salt) >> 11;
+        value as f64 / ((1_u64 << 53) - 1) as f64 * 2.0 - 1.0
+    };
+    let mut direction = [
+        component(0x434f_5245_5741_5244),
+        component(0x5350_494e_5741_5244),
+        component(0x4e4f_5254_4857_4152),
+    ];
+    if magnitude(direction) < 1.0e-6 {
+        direction = [1.0, 1.0, 0.5];
+    }
+    let minimum_distance = primary_world_arrival_safety(system, game_days, thrust_g).distance_au
+        + rest_to_rest_distance_au(MINIMUM_JUMP_APPROACH_DAYS, thrust_g);
+    primary_world_safety_on_ray(system, game_days, thrust_g, direction, minimum_distance)
 }
 
 /// Find the quickest gas-giant skimming detour from the primary world's safe
@@ -432,10 +454,11 @@ fn jump_exclusion_radius_au(diameter_km: f64) -> f64 {
     diameter_km * 1_000.0 * JUMP_EXCLUSION_DIAMETERS / AU_METERS
 }
 
-fn first_safe_distance_on_ray(
+fn safe_distance_at_least_on_ray(
     origin: [f64; 3],
     direction: [f64; 3],
     spheres: &[ExclusionSphere],
+    minimum_distance_au: f64,
 ) -> f64 {
     let mut intervals = spheres
         .iter()
@@ -455,14 +478,13 @@ fn first_safe_distance_on_ray(
         .collect::<Vec<_>>();
     intervals.sort_by(|left, right| left.0.total_cmp(&right.0));
 
-    let mut first_gap = 0.0;
+    let mut distance = minimum_distance_au;
     for (start, end) in intervals {
-        if start > first_gap + 1e-12 {
-            break;
+        if distance + LOCUS_CLEARANCE_AU >= start && distance <= end + LOCUS_CLEARANCE_AU {
+            distance = end + LOCUS_CLEARANCE_AU;
         }
-        first_gap = first_gap.max(end);
     }
-    first_gap
+    distance
 }
 
 fn star_positions(system: &CelestialSystem, game_days: f64) -> Vec<[f64; 3]> {
@@ -554,13 +576,6 @@ pub fn body_position_au(
         .iter()
         .zip(body_positions(system, game_days, &stars))
         .find_map(|(body, position)| (body.local_id == body_local_id).then_some(position))
-}
-
-fn push_direction(directions: &mut Vec<[f64; 3]>, direction: [f64; 3]) {
-    let length = magnitude(direction);
-    if length > 1e-12 {
-        directions.push(direction.map(|value| value / length));
-    }
 }
 
 fn add(left: [f64; 3], right: [f64; 3]) -> [f64; 3] {
@@ -699,5 +714,21 @@ mod tests {
                 assert!(solution.travel_days < 0.51);
             }
         }
+    }
+
+    #[test]
+    fn conventional_loci_are_opposite_and_remote_arrival_is_farther() {
+        let system = sol();
+        let day = 73.0;
+        let primary_id = system.primary_world_body().local_id;
+        let primary = body_position_au(&system, day, primary_id).unwrap();
+        let departure = primary_world_jump_safety(&system, day, 1.0);
+        let arrival = primary_world_arrival_safety(&system, day, 1.0);
+        let remote = primary_world_remote_arrival_safety(&system, day, 1.0, 0x1234_5678);
+
+        assert!(departure.locus_au[2] > primary[2]);
+        assert!(arrival.locus_au[2] < primary[2]);
+        assert!(remote.travel_days > arrival.travel_days);
+        assert_ne!(remote.locus_au, arrival.locus_au);
     }
 }

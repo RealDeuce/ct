@@ -47,6 +47,7 @@ enum class DoorHelpTopic : size_t {
    Fuel,
    FlightPlan,
    FlightPlanPreview,
+   Accounts,
    Finance,
    Shipyard,
    Personnel,

@@ -27,8 +27,10 @@ extern "C" {
 #include <cstring>
 #include <exception>
 #include <initializer_list>
+#include <iterator>
 #include <memory>
 #include <limits>
+#include <map>
 #include <numeric>
 #include <optional>
 #include <sstream>
@@ -133,6 +135,13 @@ struct FlightPlanEditorResult {
    bool previewed = false;
    std::optional<ct::TravelStatus> travel;
 };
+
+FlightPlanEditorResult run_flight_plan_editor(
+   ct::TlsConnection& connection,
+   uint64_t session_epoch,
+   ct::CommandIdGenerator& random,
+   uint64_t& request_id,
+   bool add_refining_on_entry = false);
 
 enum class HelpPageCommand {
    None,
@@ -757,6 +766,8 @@ const char* travel_stage_name(const ct::TravelStage stage)
       return "Returning from the belt";
    case ct::TravelStage::FuelProcessing:
       return "Fuel processing in progress";
+   case ct::TravelStage::Maneuvering:
+      return "Maneuvering to plotted locus";
    }
    return "Unknown";
 }
@@ -5643,6 +5654,238 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
    }
 }
 
+const char* account_class_name(const ct::AccountTransactionClass value)
+{
+   switch(value) {
+   case ct::AccountTransactionClass::All: return "All";
+   case ct::AccountTransactionClass::Opening: return "Opening";
+   case ct::AccountTransactionClass::Income: return "Income";
+   case ct::AccountTransactionClass::Expense: return "Expense";
+   case ct::AccountTransactionClass::Transfer: return "Transfer";
+   case ct::AccountTransactionClass::Hold: return "Hold";
+   case ct::AccountTransactionClass::Financing: return "Financing";
+   }
+   return "Unknown";
+}
+
+const char* account_kind_name(const ct::AccountKind value)
+{
+   switch(value) {
+   case ct::AccountKind::Liquid: return "Liquid";
+   case ct::AccountKind::RestrictedOperating: return "Restricted operating";
+   case ct::AccountKind::Reserved: return "Reserved";
+   case ct::AccountKind::SecuredPrincipal: return "Secured principal";
+   }
+   return "Unknown";
+}
+
+void show_account_entry(const ct::AccountLedgerEntry& entry)
+{
+   od_clr_scr();
+   door_heading("Account Transaction\n\r===================\n\r\n\r");
+   door_label("Date:    ");
+   door_number("%s\n\r", game_date(entry.occurred_second).c_str());
+   door_label("Class:   ");
+   door_value("%s\n\r", account_class_name(entry.transaction_class));
+   if(entry.subject_ship_id != 0) {
+      door_label("Vessel:  ");
+      door_identifier("%s\n\r", safe_field(entry.subject_ship_name).c_str());
+   }
+   door_label("Entry:   ");
+   door_number("%llu\n\r", static_cast<unsigned long long>(entry.entry_id));
+   door_label("Summary: ");
+   door_value("%s\n\r\n\r", safe_field(entry.summary).c_str());
+   for(const auto& posting : entry.postings) {
+      door_identifier("%s", account_kind_name(posting.account));
+      if(posting.ship_id != 0) {
+         door_label(" / ");
+         door_value("%s", safe_field(posting.ship_name).c_str());
+      }
+      door_label(": ");
+      if(posting.change == ct::AccountChangeKind::BalanceForward) {
+         door_information("balance forward ");
+      } else if(posting.change == ct::AccountChangeKind::Increase) {
+         door_success("+");
+      } else {
+         door_warning("-");
+      }
+      door_number("Cr%llu", static_cast<unsigned long long>(posting.amount_credits));
+      door_label("  balance ");
+      door_number("Cr%llu\n\r",
+                  static_cast<unsigned long long>(posting.balance_after_credits));
+   }
+   wait_for_enter("Transaction journal");
+}
+
+void show_account_ledger(
+   ct::TlsConnection& connection,
+   const uint64_t session_epoch,
+   ct::CommandIdGenerator& random,
+   uint64_t& request_id)
+{
+   const HelpScope help_scope(ct::DoorHelpTopic::Accounts);
+   const std::array classes{
+      ct::AccountTransactionClass::All,
+      ct::AccountTransactionClass::Income,
+      ct::AccountTransactionClass::Expense,
+      ct::AccountTransactionClass::Transfer,
+      ct::AccountTransactionClass::Hold,
+      ct::AccountTransactionClass::Financing,
+      ct::AccountTransactionClass::Opening,
+   };
+   size_t class_index = 0;
+   uint64_t selected_vessel_id = 0;
+   std::vector<uint64_t> history{0};
+   while(true) {
+      const auto before = history.back();
+      auto page = ct::get_account_ledger(
+         connection, session_epoch, before, 8, classes[class_index], selected_vessel_id,
+         random_command_id(random), request_id++);
+      od_clr_scr();
+      door_heading("Transaction Journal\n\r===================\n\r\n\r");
+      door_label("Class: ");
+      door_value("%s", account_class_name(classes[class_index]));
+      door_label("  Vessel: ");
+      if(selected_vessel_id == 0) {
+         door_value("All\n\r\n\r");
+      } else {
+         const auto vessel = std::find_if(
+            page.vessels.begin(), page.vessels.end(),
+            [selected_vessel_id](const auto& item) {
+               return item.ship_id == selected_vessel_id;
+            });
+         door_value("%s\n\r\n\r", vessel == page.vessels.end()
+                    ? "Selected vessel" : safe_field(vessel->ship_name).c_str());
+      }
+      if(page.entries.empty()) {
+         door_information("No matching transactions are recorded.\n\r");
+      }
+      for(size_t i = 0; i < page.entries.size(); ++i) {
+         const auto& entry = page.entries[i];
+         door_number("%zu", i + 1);
+         door_label(". ");
+         door_number("%s", game_date(entry.occurred_second).c_str());
+         door_label("  ");
+         door_identifier("%-9s", account_class_name(entry.transaction_class));
+         door_label(" ");
+         door_value("%s\n\r", safe_field(entry.summary).c_str());
+      }
+      std::vector<std::string_view> options{
+         "[1-8] Detail", "[F] Class filter", "[V] Vessel filter",
+      };
+      if(history.size() > 1) options.emplace_back("[P] Newer");
+      if(page.has_more) options.emplace_back("[N] Older");
+      options.emplace_back("[Enter] Refresh");
+      options.emplace_back("[Q] Accounts");
+      options.emplace_back("[?] Help");
+      door_option_prompt(options);
+      const auto key = od_get_key(TRUE);
+      if(key >= '1' && key <= '8' && static_cast<size_t>(key - '1') < page.entries.size()) {
+         show_account_entry(page.entries[static_cast<size_t>(key - '1')]);
+      } else if(key == 'f' || key == 'F') {
+         class_index = (class_index + 1) % classes.size();
+         history.assign(1, 0);
+      } else if(key == 'v' || key == 'V') {
+         std::vector<uint64_t> vessel_ids{0};
+         for(const auto& vessel : page.vessels) vessel_ids.push_back(vessel.ship_id);
+         const auto current = std::find(
+            vessel_ids.begin(), vessel_ids.end(), selected_vessel_id);
+         if(current == vessel_ids.end() || std::next(current) == vessel_ids.end()) {
+            selected_vessel_id = 0;
+         } else {
+            selected_vessel_id = *std::next(current);
+         }
+         history.assign(1, 0);
+      } else if((key == 'n' || key == 'N') && page.has_more) {
+         history.push_back(page.next_before_entry_id);
+      } else if((key == 'p' || key == 'P') && history.size() > 1) {
+         history.pop_back();
+      } else if(key == 'q' || key == 'Q') {
+         return;
+      }
+   }
+}
+
+void show_accounts(
+   ct::TlsConnection& connection,
+   const uint64_t session_epoch,
+   const bool journal_available,
+   ct::CommandIdGenerator& random,
+   uint64_t& request_id)
+{
+   const HelpScope help_scope(ct::DoorHelpTopic::Accounts);
+   while(true) {
+      const auto finance = ct::get_finance(
+         connection, session_epoch, random_command_id(random), request_id++);
+      od_clr_scr();
+      door_heading("Command Accounts\n\r================\n\r\n\r");
+      door_label("Liquid balance:    ");
+      door_number("Cr%llu\n\r", static_cast<unsigned long long>(finance.liquid_credits));
+      door_label("Available cash:    ");
+      door_number("Cr%llu\n\r", static_cast<unsigned long long>(
+         finance.liquid_credits > finance.reserved_credits
+            ? finance.liquid_credits - finance.reserved_credits : 0));
+      door_label("Reserved funds:    ");
+      door_number("Cr%llu\n\r", static_cast<unsigned long long>(finance.reserved_credits));
+      door_label("Restricted vessel: ");
+      door_number("Cr%llu\n\r", static_cast<unsigned long long>(finance.restricted_credits));
+      door_label("Secured principal: ");
+      door_number("Cr%llu\n\r", static_cast<unsigned long long>(finance.principal_credits));
+      door_heading("\n\rPending income\n\r--------------\n\r");
+      struct PendingGroup { uint64_t payment{}; uint64_t release{}; size_t count{}; };
+      std::map<uint64_t, PendingGroup> groups;
+      PendingGroup unavailable;
+      for(const auto& income : finance.pending_income) {
+         auto& group = income.estimate_kind ==
+            ct::FinanceSnapshot::PendingIncome::EstimateKind::Unavailable
+            ? unavailable
+            : groups[income.estimated_resolution_second /
+                     (24ULL * 60ULL * 60ULL)];
+         group.payment = income.payment_credits >
+               std::numeric_limits<uint64_t>::max() - group.payment
+            ? std::numeric_limits<uint64_t>::max()
+            : group.payment + income.payment_credits;
+         group.release = income.reserved_release_credits >
+               std::numeric_limits<uint64_t>::max() - group.release
+            ? std::numeric_limits<uint64_t>::max()
+            : group.release + income.reserved_release_credits;
+         ++group.count;
+      }
+      if(groups.empty() && unavailable.count == 0) {
+         door_information("No certified income is awaiting settlement.\n\r");
+      }
+      for(const auto& [day, group] : groups) {
+         door_label("Day ");
+         door_number("%llu", static_cast<unsigned long long>(day));
+         door_label(": ");
+         door_success("Cr%llu", static_cast<unsigned long long>(group.payment));
+         if(group.release != 0) {
+            door_label(" + Cr");
+            door_number("%llu", static_cast<unsigned long long>(group.release));
+            door_label(" released");
+         }
+         door_label(" (%zu)\n\r", group.count);
+      }
+      if(unavailable.count != 0) {
+         door_label("Date unavailable: ");
+         door_success("Cr%llu", static_cast<unsigned long long>(unavailable.payment));
+         door_label(" (%zu)\n\r", unavailable.count);
+      }
+      std::vector<std::string_view> options;
+      if(journal_available) options.emplace_back("[T] Transaction journal");
+      options.emplace_back("[Enter] Refresh");
+      options.emplace_back("[Q] Console");
+      options.emplace_back("[?] Help");
+      door_option_prompt(options);
+      const auto key = od_get_key(TRUE);
+      if((key == 't' || key == 'T') && journal_available) {
+         show_account_ledger(connection, session_epoch, random, request_id);
+      } else if(key == 'q' || key == 'Q') {
+         return;
+      }
+   }
+}
+
 std::optional<ct::PlayerPhase> show_finance(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
@@ -5662,8 +5905,8 @@ std::optional<ct::PlayerPhase> show_finance(
             ? std::numeric_limits<uint64_t>::max()
             : principal_due + finance.monthly_insurance_escrow_credits;
       od_clr_scr();
-      door_heading("Banking and Accounts\n\r");
-      door_heading("====================\n\r\n\r");
+      door_heading("Banking Services\n\r");
+      door_heading("================\n\r\n\r");
       door_label("%-22s", "Vessel title:");
       door_value("%s\n\r", ship_title_name(finance.title));
       door_label("%-22s", "Liquid credits:");
@@ -5755,10 +5998,10 @@ std::optional<ct::PlayerPhase> show_finance(
                          connection, session_epoch,
                          random_command_id(random), request_id++);
             door_success("The overdue installment was posted and the order withdrawn.\n\r");
-            wait_for_enter("Banking and Accounts");
+            wait_for_enter("Banking Services");
          } catch(const ct::PlayerRequestRejected& error) {
             door_error("%s\n\r", safe_field(error.what()).c_str());
-            wait_for_enter("Banking and Accounts");
+            wait_for_enter("Banking Services");
          }
          continue;
       }
@@ -5785,7 +6028,7 @@ std::optional<ct::PlayerPhase> show_finance(
                          random_command_id(random), request_id++);
          } catch(const ct::PlayerRequestRejected& error) {
             door_error("\n\r%s\n\r", safe_field(error.what()).c_str());
-            wait_for_enter("Banking and Accounts");
+            wait_for_enter("Banking Services");
          }
          continue;
       }
@@ -5840,7 +6083,7 @@ std::optional<ct::PlayerPhase> show_finance(
                          enable, random_command_id(random), request_id++);
          } catch(const ct::PlayerRequestRejected& error) {
             door_error("\n\r%s\n\r", safe_field(error.what()).c_str());
-            wait_for_enter("Banking and Accounts");
+            wait_for_enter("Banking Services");
          }
       }
    }
@@ -6239,7 +6482,7 @@ void invoke_message_action(
       show_task_manager(connection, session_epoch, random, request_id);
       break;
    case ct::MessageActionKind::ReviewFinance:
-      (void)show_finance(connection, session_epoch, random, request_id);
+      show_accounts(connection, session_epoch, false, random, request_id);
       break;
    case ct::MessageActionKind::ReviewOperations:
       (void)show_combat_operations(
@@ -8221,6 +8464,9 @@ void render_command_console(const ct::ServerHello& hello)
    door_number("C");
    door_label(". ");
    door_identifier("Crew Management\n\r");
+   door_number("F");
+   door_label(". ");
+   door_identifier("Accounts\n\r");
    door_number("H");
    door_label(". ");
    door_identifier("Help Browser\n\r");
@@ -8277,6 +8523,10 @@ bool run_command_console(
             hello.assigned_epoch,
             random,
             request_id);
+         render_command_console(hello);
+      } else if(key == 'f' || key == 'F') {
+         show_accounts(connection, hello.assigned_epoch,
+                       hello.account_journal_available, random, request_id);
          render_command_console(hello);
       } else if(key == 'b' || key == 'B') {
          show_browser_alerts(
@@ -9026,6 +9276,8 @@ std::optional<ct::TravelStatus> run_fuel_service(
    door_label("Tanks: ");
    door_number("%.1f/%.1f t\n\r", account.fuel_millitons / 1000.0,
                account.fuel_capacity_millitons / 1000.0);
+   door_label("Unrefined aboard: ");
+   door_number("%s t\n\r", ct::format_tonnage(account.unrefined_fuel_millitons).c_str());
    door_label("Life-support stores: ");
    door_number("%llu/%llu person-days\n\r",
                static_cast<unsigned long long>(services.provisions.person_days_remaining),
@@ -9077,6 +9329,9 @@ std::optional<ct::TravelStatus> run_fuel_service(
    if(services.ammunition_available) {
       options.emplace_back("[A] Ammunition");
    }
+   if(account.unrefined_fuel_millitons != 0) {
+      options.emplace_back("[R] Refine aboard");
+   }
    options.emplace_back("[Enter] Refresh");
    options.emplace_back("[Q] Docked operations");
    options.emplace_back("[?] Help");
@@ -9088,6 +9343,10 @@ std::optional<ct::TravelStatus> run_fuel_service(
    }
    if(key == 'Q') {
       return std::nullopt;
+   }
+   if(key == 'R' && account.unrefined_fuel_millitons != 0) {
+      return run_flight_plan_editor(
+                connection, session_epoch, random, request_id, true).travel;
    }
    ct::DockedServiceOrder order{};
    order.expected_ship_revision = services.ship_revision;
@@ -9452,15 +9711,15 @@ std::string flight_plan_action_name(
    case ct::FlightPlanActionKind::Fuel:
       switch(action.fuel_operation) {
       case ct::FuelOperation::GasGiant:
-         return "Skim " + std::to_string(action.quantity_millitons / 1000) + " t";
+         return "Skim " + ct::format_tonnage(action.quantity_millitons) + " t";
       case ct::FuelOperation::WildernessWater:
          return "Collect water/ice " +
-                std::to_string(action.quantity_millitons / 1000) + " t";
+                ct::format_tonnage(action.quantity_millitons) + " t";
       case ct::FuelOperation::BuyRefined:
-         return "Buy " + std::to_string(action.quantity_millitons / 1000) +
+         return "Buy " + ct::format_tonnage(action.quantity_millitons) +
                 " t refined fuel";
       case ct::FuelOperation::BuyUnrefined:
-         return "Buy " + std::to_string(action.quantity_millitons / 1000) +
+         return "Buy " + ct::format_tonnage(action.quantity_millitons) +
                 " t unrefined fuel" +
                 (action.refine_collected ? "; refine if equipped" : "");
       }
@@ -9473,7 +9732,7 @@ std::string flight_plan_action_name(
                                   ? std::string("catalogued belt") : found->name);
    }
    case ct::FlightPlanActionKind::RefineFuel:
-      return "Refine " + std::to_string(action.quantity_millitons / 1000) +
+      return "Refine " + ct::format_tonnage(action.quantity_millitons) +
              " t of fuel aboard";
    }
    return "Unknown action";
@@ -9623,6 +9882,29 @@ bool configure_jump_navigation(ct::FlightPlanAction& action)
       return false;
    }
    action.proceed_on_known_bad_plot = risk == 'P';
+   if(action.kind == ct::FlightPlanActionKind::Jump) {
+      door_information(
+         "Standard arrival uses the published inbound locus. The outbound locus "
+         "conflicts with departing traffic. A private arrival avoids routine locus "
+         "contacts but lengthens the port approach; docking inspection still applies.\n\r");
+      door_option_prompt({
+         "[S/Enter] Standard arrival",
+         "[D] Outbound departure locus",
+         "[R] Private remote arrival",
+         "[Q] Cancel",
+      }, false);
+      auto arrival = static_cast<char>(
+                        std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
+      od_printf("\n\r");
+      if(arrival == '\r' || arrival == '\n') {
+         arrival = 'S';
+      }
+      if(arrival == 'Q' || (arrival != 'S' && arrival != 'D' && arrival != 'R')) {
+         return false;
+      }
+      action.remote_arrival = arrival == 'R';
+      action.departure_locus_arrival = arrival == 'D';
+   }
    return true;
 }
 
@@ -9737,6 +10019,9 @@ bool replace_proposal_with_course(
       step.action.jump_navigation = navigation_probe.jump_navigation;
       step.action.proceed_on_known_bad_plot =
          navigation_probe.proceed_on_known_bad_plot;
+      step.action.remote_arrival = navigation_probe.remote_arrival;
+      step.action.departure_locus_arrival =
+         navigation_probe.departure_locus_arrival;
       step.authority = generated_waypoint_authority(generated_authority);
       steps.push_back(step);
       steps.push_back(primary_dock_step(
@@ -9815,6 +10100,13 @@ std::string logical_route_item_name(const ct::FlightPlanProposal& proposal,
       return step.action.kind == ct::FlightPlanActionKind::Jump;
    });
    if(jump == proposal.steps.begin() + item.end) {
+      const auto& step = proposal.steps[item.begin];
+      if(step.action.kind == ct::FlightPlanActionKind::Hold
+            && step.locus.kind == ct::FlightLocusKind::JumpLocus) {
+         return step.locus.jump_role == ct::JumpLocusRole::Arrival
+                ? "Hold at conventional arrival locus"
+                : "Hold at conventional departure locus";
+      }
       return flight_plan_action_name(proposal.steps[item.begin].action, destinations);
    }
    auto name = flight_plan_action_name(jump->action, destinations);
@@ -9883,12 +10175,14 @@ bool rebase_future_route(ct::FlightPlanProposal& proposal,
             .body_id = 0,
          };
       }
+      const auto departure_role = jump->locus.jump_role;
       jump->locus = current_system == 0 ? current_locus : ct::FlightLocus{
          .kind = ct::FlightLocusKind::JumpLocus,
          .system_id = current_system,
          .world_id = 0,
          .facility_id = 0,
          .body_id = 0,
+         .jump_role = departure_role,
       };
       const auto destination_system = jump->action.destination_system_id;
       for(auto step = std::next(jump); step != proposal.steps.begin() + item.end; ++step) {
@@ -9907,6 +10201,10 @@ bool rebase_future_route(ct::FlightPlanProposal& proposal,
          .world_id = 0,
          .facility_id = 0,
          .body_id = 0,
+         .jump_role = jump->action.departure_locus_arrival
+                      ? ct::JumpLocusRole::Departure
+                      : ct::JumpLocusRole::Arrival,
+         .remote_arrival = jump->action.remote_arrival,
       };
    }
    return true;
@@ -10043,7 +10341,8 @@ void edit_logical_route_item(ct::FlightPlanProposal& proposal,
    } else if(choice == 'S') {
       const auto editable_begin = active ? active_step : item.begin;
       for(size_t index = editable_begin; index < item.end; ++index) {
-         auto& action = proposal.steps[index].action;
+         auto& step = proposal.steps[index];
+         auto& action = step.action;
          if(action.kind == ct::FlightPlanActionKind::Jump
                || action.kind == ct::FlightPlanActionKind::JumpCoordinates) {
             if(active && travel.stage == ct::TravelStage::JumpSpace) {
@@ -10051,7 +10350,67 @@ void edit_logical_route_item(ct::FlightPlanProposal& proposal,
                wait_for_enter();
                return;
             }
-            configure_jump_navigation(action);
+            if(!configure_jump_navigation(action)) {
+               return;
+            }
+            if(action.kind == ct::FlightPlanActionKind::Jump
+                  && step.locus.system_id != 0) {
+               door_information(
+                  "Departures normally use the outbound locus. Leaving through the "
+                  "arrival locus is possible, but is bad traffic practice.\n\r");
+               door_option_prompt({
+                  "[D/Enter] Departure locus",
+                  "[A] Arrival locus",
+                  "[Q] Keep current locus",
+               }, false);
+               auto departure = static_cast<char>(std::toupper(
+                  static_cast<unsigned char>(door_get_live_key())));
+               od_printf("\n\r");
+               if(departure == '\r' || departure == '\n') {
+                  departure = 'D';
+               }
+               if(departure == 'D' || departure == 'A') {
+                  step.locus.kind = ct::FlightLocusKind::JumpLocus;
+                  step.locus.jump_role = departure == 'A'
+                     ? ct::JumpLocusRole::Arrival
+                     : ct::JumpLocusRole::Departure;
+                  step.locus.remote_arrival = false;
+               }
+               door_information(
+                  "After emergence the ship may continue to port or hold at the "
+                  "selected arrival point for later orders.\n\r");
+               door_option_prompt({
+                  "[P/Enter] Approach primary port",
+                  "[H] Hold at arrival",
+                  "[Q] Keep current route",
+               }, false);
+               auto arrival_order = static_cast<char>(std::toupper(
+                  static_cast<unsigned char>(door_get_live_key())));
+               od_printf("\n\r");
+               if(arrival_order == '\r' || arrival_order == '\n') {
+                  arrival_order = 'P';
+               }
+               if(arrival_order == 'H') {
+                  proposal.steps.erase(proposal.steps.begin() + index + 1,
+                                       proposal.steps.begin() + item.end);
+                  proposal.steps[index].authority = ct::WaypointAuthority::Hold;
+                  route_structure_changed = true;
+                  break;
+               }
+               if(arrival_order == 'P'
+                     && std::none_of(proposal.steps.begin() + index + 1,
+                                     proposal.steps.begin() + item.end,
+                                     [](const auto& candidate) {
+                        return candidate.action.kind == ct::FlightPlanActionKind::Dock;
+                     })) {
+                  proposal.steps.insert(
+                     proposal.steps.begin() + item.end,
+                     primary_dock_step(action.destination_system_id,
+                                       ct::WaypointAuthority::Hold));
+                  route_structure_changed = true;
+                  break;
+               }
+            }
             return;
          }
          if(action.kind == ct::FlightPlanActionKind::Fuel
@@ -10107,7 +10466,8 @@ FlightPlanEditorResult run_flight_plan_editor(
    ct::TlsConnection& connection,
    const uint64_t session_epoch,
    ct::CommandIdGenerator& random,
-   uint64_t& request_id)
+   uint64_t& request_id,
+   const bool add_refining_on_entry)
 {
    const HelpScope help_scope(ct::DoorHelpTopic::FlightPlan);
    const auto destinations = ct::get_known_destinations(
@@ -10130,6 +10490,22 @@ FlightPlanEditorResult run_flight_plan_editor(
                 ? policy_default.policy : current_plan.policy,
       .preserve_active_step = current_plan.state == ct::FlightPlanState::Active,
    };
+   if(add_refining_on_entry) {
+      const auto quantity = input_tonnage(
+                               "Tonnes to refine", ship.unrefined_fuel_millitons);
+      if(!quantity) {
+         return FlightPlanEditorResult{};
+      }
+      proposal.steps.insert(proposal.steps.begin(), ct::FlightPlanStep{
+         .locus = travel.origin,
+         .authority = ct::WaypointAuthority::Through,
+         .action = ct::FlightPlanAction{
+            .kind = ct::FlightPlanActionKind::RefineFuel,
+            .quantity_millitons = *quantity},
+      });
+      proposal.preserve_active_step = false;
+      mark_final_flight_plan_step(proposal);
+   }
    bool previewed = false;
    while(true) {
       od_clr_scr();
@@ -10174,6 +10550,7 @@ FlightPlanEditorResult run_flight_plan_editor(
          "[J] Add task destination",
          "[G] Add frontier fuel stop",
          "[U] Refine fuel aboard",
+         "[L] Add traffic locus",
          "[B] Add belt cycle",
          "[O] Return to primary port",
          "[X] Explore coordinates",
@@ -10552,6 +10929,44 @@ FlightPlanEditorResult run_flight_plan_editor(
             door_error("%s\n\r", safe_field(error.what()).c_str());
             wait_for_enter();
          }
+      } else if(key == 'L') {
+         if(destinations.current_system_id == 0) {
+            door_warning("Traffic loci exist only in a charted star system.\n\r");
+            wait_for_enter();
+            continue;
+         }
+         const auto system_id = proposal.steps.empty()
+            ? destinations.current_system_id
+            : logical_item_destination_system(
+                 proposal, logical_route_items(proposal).back());
+         door_information(
+            "The published departure and arrival loci are on opposite sides of "
+            "the system ecliptic. Both carry predictable traffic.\n\r");
+         door_option_prompt({
+            "[D] Conventional departure locus",
+            "[A] Conventional arrival locus",
+            "[Q/Enter] Cancel",
+         }, false);
+         const auto locus_choice = static_cast<char>(std::toupper(
+            static_cast<unsigned char>(door_get_live_key())));
+         od_printf("\n\r");
+         if(locus_choice != 'D' && locus_choice != 'A') {
+            continue;
+         }
+         proposal.steps.push_back(ct::FlightPlanStep{
+            .locus = ct::FlightLocus{
+               .kind = ct::FlightLocusKind::JumpLocus,
+               .system_id = system_id,
+               .world_id = 0,
+               .facility_id = 0,
+               .body_id = 0,
+               .jump_role = locus_choice == 'A'
+                  ? ct::JumpLocusRole::Arrival
+                  : ct::JumpLocusRole::Departure},
+            .authority = ct::WaypointAuthority::Hold,
+            .action = ct::FlightPlanAction{.kind = ct::FlightPlanActionKind::Hold},
+         });
+         mark_final_flight_plan_step(proposal);
       } else if(key == 'O') {
          if(destinations.current_system_id == 0) {
             door_warning(
@@ -10573,32 +10988,43 @@ FlightPlanEditorResult run_flight_plan_editor(
                                      ct::WaypointAuthority::Hold));
          mark_final_flight_plan_step(proposal);
       } else if(key == 'U') {
-         if(!proposal.steps.empty()) {
-            door_warning("Standalone refining can currently be filed only as the first step.\n\r");
+         if(travel.stage != ct::TravelStage::Docked
+               && travel.stage != ct::TravelStage::Holding) {
+            door_warning("Fuel can be scheduled only while safely docked or holding.\n\r");
             wait_for_enter();
             continue;
          }
-         const auto maximum_tons = static_cast<unsigned>(
-                                      std::min<uint64_t>(
-                                         ship.unrefined_fuel_millitons / 1000,
-                                         std::numeric_limits<unsigned>::max()));
-         if(maximum_tons == 0) {
-            door_information("There is no whole ton of unrefined fuel aboard.\n\r");
+         if(ship.unrefined_fuel_millitons == 0) {
+            door_information("There is no unrefined fuel aboard.\n\r");
             wait_for_enter();
             continue;
          }
-         const auto tons = input_number("Whole tons to refine", 1, maximum_tons);
-         if(!tons) {
+         const auto quantity = input_tonnage(
+                                  "Tonnes to refine", ship.unrefined_fuel_millitons);
+         if(!quantity) {
             continue;
          }
-         proposal.steps.push_back(ct::FlightPlanStep{
+         if(current_plan.state == ct::FlightPlanState::Held
+               || current_plan.state == ct::FlightPlanState::Checkpoint) {
+            const auto unfinished = std::min<size_t>(
+                                       current_plan.current_step, proposal.steps.size());
+            proposal.steps.erase(proposal.steps.begin(),
+                                 proposal.steps.begin() + unfinished);
+            if(!proposal.steps.empty()
+                  && proposal.steps.front().action.kind == ct::FlightPlanActionKind::Hold
+                  && proposal.steps.front().locus.system_id == travel.origin.system_id) {
+               proposal.steps.erase(proposal.steps.begin());
+            }
+         }
+         proposal.steps.insert(proposal.steps.begin(), ct::FlightPlanStep{
             .locus = travel.origin,
             .authority = ct::WaypointAuthority::Through,
             .action = ct::FlightPlanAction{
                .kind = ct::FlightPlanActionKind::RefineFuel,
-               .quantity_millitons = uint64_t{*tons} * 1000},
-            .terminal = true,
+               .quantity_millitons = *quantity},
          });
+         proposal.preserve_active_step = false;
+         mark_final_flight_plan_step(proposal);
       } else if(key == 'X') {
          if(!proposal.steps.empty() || destinations.current_system_id == 0) {
             door_warning(
@@ -11096,7 +11522,7 @@ void render_docked_menu(const ct::DockedSnapshot& snapshot)
    render_docked_snapshot(snapshot);
    for(const auto& entry : std::array{
       std::pair{'A', "Authorities"},
-      std::pair{'B', "Banking and Accounts"},
+      std::pair{'B', "Banking Services"},
       std::pair{'C', "Cargo Exchange"},
       std::pair{'D', "Depart"},
       std::pair{'F', "Fuel and Supplies"},

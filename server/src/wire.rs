@@ -1346,6 +1346,101 @@ pub struct FinanceSnapshot {
     pub credit_status: String,
     pub destination_assistance_active: bool,
     pub destination_assistance_expires_second: u64,
+    pub current_second: u64,
+    pub pending_income: Vec<PendingIncome>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PendingIncomeStage {
+    FilingToOffice,
+    RemittanceToCaptain,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum IncomeEstimateKind {
+    Projected,
+    Scheduled,
+    Unavailable,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingIncome {
+    pub task_id: u64,
+    pub payment_credits: u64,
+    pub reserved_release_credits: u64,
+    pub stage: PendingIncomeStage,
+    pub estimated_resolution_second: u64,
+    pub estimate_kind: IncomeEstimateKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AccountTransactionClass {
+    All,
+    Opening,
+    Income,
+    Expense,
+    Transfer,
+    Hold,
+    Financing,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AccountKind {
+    Liquid,
+    RestrictedOperating,
+    Reserved,
+    SecuredPrincipal,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AccountChangeKind {
+    Increase,
+    Decrease,
+    BalanceForward,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountPosting {
+    pub account: AccountKind,
+    pub change: AccountChangeKind,
+    pub amount_credits: u64,
+    pub balance_after_credits: u64,
+    pub ship_id: u64,
+    pub ship_name: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountLedgerEntry {
+    pub entry_id: u64,
+    pub occurred_second: u64,
+    pub class: AccountTransactionClass,
+    pub summary: String,
+    pub subject_ship_id: u64,
+    pub subject_ship_name: String,
+    pub postings: Vec<AccountPosting>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountLedgerVessel {
+    pub ship_id: u64,
+    pub ship_name: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountLedgerRequest {
+    pub before_entry_id: u64,
+    pub limit: u16,
+    pub class: AccountTransactionClass,
+    pub ship_id: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountLedgerPage {
+    pub current_second: u64,
+    pub entries: Vec<AccountLedgerEntry>,
+    pub next_before_entry_id: u64,
+    pub has_more: bool,
+    pub vessels: Vec<AccountLedgerVessel>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1486,6 +1581,10 @@ pub enum FlightLocus {
     JumpLocus {
         system_id: u64,
     },
+    ArrivalLocus {
+        system_id: u64,
+        remote: bool,
+    },
     Body {
         system_id: u64,
         body_id: u32,
@@ -1500,6 +1599,7 @@ impl FlightLocus {
         match self {
             Self::Port { system_id, .. }
             | Self::JumpLocus { system_id }
+            | Self::ArrivalLocus { system_id, .. }
             | Self::Body { system_id, .. } => system_id,
             Self::DeepSpace { .. } => 0,
         }
@@ -1525,6 +1625,7 @@ pub enum TravelStage {
     BeltRecovery,
     BeltEgress,
     FuelProcessing,
+    Maneuvering,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1554,6 +1655,8 @@ pub enum FlightPlanAction {
         destination_system_id: u64,
         navigation: JumpNavigationMethod,
         proceed_on_known_bad_plot: bool,
+        remote_arrival: bool,
+        departure_locus_arrival: bool,
     },
     JumpCoordinates {
         destination: Coordinate3,
@@ -2515,6 +2618,7 @@ pub enum Command {
     },
     SetCarriageDeclaration(CarriageDeclaration),
     GetFinance,
+    GetAccountLedger(AccountLedgerRequest),
     CureFinanceDefault,
     GetMarketKnowledge,
     GetShipMarket,
@@ -2642,6 +2746,7 @@ impl Command {
             | Self::GetCombatCareer => CommandPersistence::Observation,
             Self::GetTaskLedger
             | Self::GetFinance
+            | Self::GetAccountLedger(_)
             | Self::GetMarketKnowledge
             | Self::GetShipMarket
             | Self::GetCrewMarket => CommandPersistence::Observation,
@@ -2753,6 +2858,7 @@ pub enum OutcomeKind {
     CombatCareer(CombatCareerSnapshot),
     TaskLedger(TaskLedger),
     Finance(FinanceSnapshot),
+    AccountLedger(AccountLedgerPage),
     MarketKnowledge(MarketKnowledge),
     ShipMarket(ShipMarket),
     CrewMarket(CrewMarket),
@@ -2821,7 +2927,13 @@ fn decode_flight_locus(
                 facility_id: port.get_facility_id(),
             }
         }
-        crate::ct_rpc_capnp::flight_locus::JumpLocus(()) => FlightLocus::JumpLocus { system_id },
+        crate::ct_rpc_capnp::flight_locus::JumpLocus(()) => match reader.get_jump_role()? {
+            crate::ct_rpc_capnp::JumpLocusRole::Departure => FlightLocus::JumpLocus { system_id },
+            crate::ct_rpc_capnp::JumpLocusRole::Arrival => FlightLocus::ArrivalLocus {
+                system_id,
+                remote: reader.get_remote_arrival(),
+            },
+        },
         crate::ct_rpc_capnp::flight_locus::BodyId(body_id) => {
             FlightLocus::Body { system_id, body_id }
         }
@@ -2944,6 +3056,8 @@ fn decode_flight_plan_proposal(
                             }
                         },
                         proceed_on_known_bad_plot: jump.get_proceed_on_known_bad_plot(),
+                        remote_arrival: jump.get_remote_arrival(),
+                        departure_locus_arrival: jump.get_departure_locus_arrival(),
                     }
                 }
                 crate::ct_rpc_capnp::flight_plan_action::Dock(port) => {
@@ -3290,6 +3404,15 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
             })
         }
         request::GetFinance(()) => Command::GetFinance,
+        request::GetAccountLedger(query) => {
+            let query = query?;
+            Command::GetAccountLedger(AccountLedgerRequest {
+                before_entry_id: query.get_before_entry_id(),
+                limit: query.get_limit(),
+                class: decode_account_transaction_class(query.get_class()?),
+                ship_id: query.get_ship_id(),
+            })
+        }
         request::CureFinanceDefault(()) => Command::CureFinanceDefault,
         request::GetMarketKnowledge(()) => Command::GetMarketKnowledge,
         request::GetShipMarket(()) => Command::GetShipMarket,
@@ -3786,6 +3909,7 @@ pub fn encode_server_hello_with_affiliation(
     hello.set_committed_sequence(committed_sequence);
     hello.set_phase(schema_phase(phase));
     hello.set_language_tag(language_tag);
+    hello.set_account_journal_available(true);
     let mut wire_formatting = hello.reborrow().init_formatting();
     wire_formatting.set_decimal_separator(formatting.decimal_separator);
     wire_formatting.set_grouping_separator(formatting.grouping_separator);
@@ -3923,6 +4047,9 @@ pub fn encode_response(
         }
         OutcomeKind::Finance(finance) => {
             set_finance(response.reborrow().init_finance(), finance);
+        }
+        OutcomeKind::AccountLedger(page) => {
+            set_account_ledger(response.reborrow().init_account_ledger(), page)?;
         }
         OutcomeKind::MarketKnowledge(knowledge) => {
             set_market_knowledge(response.reborrow().init_market_knowledge(), knowledge)?;
@@ -4386,6 +4513,13 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
             value.set_accept_electronic_mail(declaration.accept_electronic_mail);
         }
         Command::GetFinance => builder.set_get_finance(()),
+        Command::GetAccountLedger(ref query) => {
+            let mut value = builder.init_get_account_ledger();
+            value.set_before_entry_id(query.before_entry_id);
+            value.set_limit(query.limit);
+            value.set_class(schema_account_transaction_class(query.class));
+            value.set_ship_id(query.ship_id);
+        }
         Command::CureFinanceDefault => builder.set_cure_finance_default(()),
         Command::GetMarketKnowledge => builder.set_get_market_knowledge(()),
         Command::GetShipMarket => builder.set_get_ship_market(()),
@@ -5864,6 +5998,120 @@ fn set_finance(
     builder.set_destination_assistance_active(finance.destination_assistance_active);
     builder
         .set_destination_assistance_expires_second(finance.destination_assistance_expires_second);
+    builder.set_current_second(finance.current_second);
+    let mut pending = builder.reborrow().init_pending_income(
+        u32::try_from(finance.pending_income.len()).expect("fewer pending receivables"),
+    );
+    for (index, source) in finance.pending_income.iter().enumerate() {
+        let mut target = pending.reborrow().get(index as u32);
+        target.set_task_id(source.task_id);
+        target.set_payment_credits(source.payment_credits);
+        target.set_reserved_release_credits(source.reserved_release_credits);
+        target.set_stage(match source.stage {
+            PendingIncomeStage::FilingToOffice => {
+                crate::ct_rpc_capnp::PendingIncomeStage::FilingToOffice
+            }
+            PendingIncomeStage::RemittanceToCaptain => {
+                crate::ct_rpc_capnp::PendingIncomeStage::RemittanceToCaptain
+            }
+        });
+        target.set_estimated_resolution_second(source.estimated_resolution_second);
+        target.set_estimate_kind(match source.estimate_kind {
+            IncomeEstimateKind::Projected => crate::ct_rpc_capnp::IncomeEstimateKind::Projected,
+            IncomeEstimateKind::Scheduled => crate::ct_rpc_capnp::IncomeEstimateKind::Scheduled,
+            IncomeEstimateKind::Unavailable => crate::ct_rpc_capnp::IncomeEstimateKind::Unavailable,
+        });
+    }
+}
+
+fn schema_account_transaction_class(
+    value: AccountTransactionClass,
+) -> crate::ct_rpc_capnp::AccountTransactionClass {
+    match value {
+        AccountTransactionClass::All => crate::ct_rpc_capnp::AccountTransactionClass::All,
+        AccountTransactionClass::Opening => crate::ct_rpc_capnp::AccountTransactionClass::Opening,
+        AccountTransactionClass::Income => crate::ct_rpc_capnp::AccountTransactionClass::Income,
+        AccountTransactionClass::Expense => crate::ct_rpc_capnp::AccountTransactionClass::Expense,
+        AccountTransactionClass::Transfer => crate::ct_rpc_capnp::AccountTransactionClass::Transfer,
+        AccountTransactionClass::Hold => crate::ct_rpc_capnp::AccountTransactionClass::Hold,
+        AccountTransactionClass::Financing => {
+            crate::ct_rpc_capnp::AccountTransactionClass::Financing
+        }
+    }
+}
+
+fn decode_account_transaction_class(
+    value: crate::ct_rpc_capnp::AccountTransactionClass,
+) -> AccountTransactionClass {
+    match value {
+        crate::ct_rpc_capnp::AccountTransactionClass::All => AccountTransactionClass::All,
+        crate::ct_rpc_capnp::AccountTransactionClass::Opening => AccountTransactionClass::Opening,
+        crate::ct_rpc_capnp::AccountTransactionClass::Income => AccountTransactionClass::Income,
+        crate::ct_rpc_capnp::AccountTransactionClass::Expense => AccountTransactionClass::Expense,
+        crate::ct_rpc_capnp::AccountTransactionClass::Transfer => AccountTransactionClass::Transfer,
+        crate::ct_rpc_capnp::AccountTransactionClass::Hold => AccountTransactionClass::Hold,
+        crate::ct_rpc_capnp::AccountTransactionClass::Financing => {
+            AccountTransactionClass::Financing
+        }
+    }
+}
+
+fn set_account_ledger(
+    mut builder: crate::ct_rpc_capnp::account_ledger_page::Builder<'_>,
+    page: &AccountLedgerPage,
+) -> Result<(), WireError> {
+    builder.set_current_second(page.current_second);
+    builder.set_next_before_entry_id(page.next_before_entry_id);
+    builder.set_has_more(page.has_more);
+    let mut entries = builder.reborrow().init_entries(
+        u32::try_from(page.entries.len())
+            .map_err(|_| WireError::Expected("fewer ledger entries"))?,
+    );
+    for (index, source) in page.entries.iter().enumerate() {
+        let mut target = entries.reborrow().get(index as u32);
+        target.set_entry_id(source.entry_id);
+        target.set_occurred_second(source.occurred_second);
+        target.set_class(schema_account_transaction_class(source.class));
+        target.set_summary(&source.summary);
+        target.set_subject_ship_id(source.subject_ship_id);
+        target.set_subject_ship_name(&source.subject_ship_name);
+        let mut postings = target.reborrow().init_postings(
+            u32::try_from(source.postings.len())
+                .map_err(|_| WireError::Expected("fewer account postings"))?,
+        );
+        for (posting_index, source) in source.postings.iter().enumerate() {
+            let mut target = postings.reborrow().get(posting_index as u32);
+            target.set_account(match source.account {
+                AccountKind::Liquid => crate::ct_rpc_capnp::AccountKind::Liquid,
+                AccountKind::RestrictedOperating => {
+                    crate::ct_rpc_capnp::AccountKind::RestrictedOperating
+                }
+                AccountKind::Reserved => crate::ct_rpc_capnp::AccountKind::Reserved,
+                AccountKind::SecuredPrincipal => crate::ct_rpc_capnp::AccountKind::SecuredPrincipal,
+            });
+            target.set_change(match source.change {
+                AccountChangeKind::Increase => crate::ct_rpc_capnp::AccountChangeKind::Increase,
+                AccountChangeKind::Decrease => crate::ct_rpc_capnp::AccountChangeKind::Decrease,
+                AccountChangeKind::BalanceForward => {
+                    crate::ct_rpc_capnp::AccountChangeKind::BalanceForward
+                }
+            });
+            target.set_amount_credits(source.amount_credits);
+            target.set_balance_after_credits(source.balance_after_credits);
+            target.set_ship_id(source.ship_id);
+            target.set_ship_name(&source.ship_name);
+        }
+    }
+    let mut vessels = builder.reborrow().init_vessels(
+        u32::try_from(page.vessels.len())
+            .map_err(|_| WireError::Expected("fewer ledger vessels"))?,
+    );
+    for (index, source) in page.vessels.iter().enumerate() {
+        let mut target = vessels.reborrow().get(index as u32);
+        target.set_ship_id(source.ship_id);
+        target.set_ship_name(&source.ship_name);
+    }
+    Ok(())
 }
 
 fn set_fleet(
@@ -6228,6 +6476,7 @@ fn set_travel_status(
         TravelStage::BeltRecovery => crate::ct_rpc_capnp::TravelStage::BeltRecovery,
         TravelStage::BeltEgress => crate::ct_rpc_capnp::TravelStage::BeltEgress,
         TravelStage::FuelProcessing => crate::ct_rpc_capnp::TravelStage::FuelProcessing,
+        TravelStage::Maneuvering => crate::ct_rpc_capnp::TravelStage::Maneuvering,
     });
     builder.set_current_game_second(snapshot.current_game_second);
     builder.set_due_second(snapshot.due_second);
@@ -6261,6 +6510,13 @@ fn set_flight_locus(
         FlightLocus::JumpLocus { system_id } => {
             builder.set_system_id(system_id);
             builder.set_jump_locus(());
+            builder.set_jump_role(crate::ct_rpc_capnp::JumpLocusRole::Departure);
+        }
+        FlightLocus::ArrivalLocus { system_id, remote } => {
+            builder.set_system_id(system_id);
+            builder.set_jump_locus(());
+            builder.set_jump_role(crate::ct_rpc_capnp::JumpLocusRole::Arrival);
+            builder.set_remote_arrival(remote);
         }
         FlightLocus::Body { system_id, body_id } => {
             builder.set_system_id(system_id);
@@ -6357,6 +6613,8 @@ fn set_flight_plan_action(
             destination_system_id,
             navigation,
             proceed_on_known_bad_plot,
+            remote_arrival,
+            departure_locus_arrival,
         } => {
             let mut jump = builder.init_jump();
             jump.set_destination_system_id(*destination_system_id);
@@ -6367,6 +6625,8 @@ fn set_flight_plan_action(
                 }
             });
             jump.set_proceed_on_known_bad_plot(*proceed_on_known_bad_plot);
+            jump.set_remote_arrival(*remote_arrival);
+            jump.set_departure_locus_arrival(*departure_locus_arrival);
         }
         FlightPlanAction::JumpCoordinates {
             destination,
@@ -8125,6 +8385,17 @@ mod tests {
                 command_id: [0xba; COMMAND_ID_BYTES],
                 command: Command::AcknowledgeOperationalDamageReport { report_id: 91 },
             },
+            CommandRequest {
+                request_id: 39,
+                session_epoch: 23,
+                command_id: [0xbb; COMMAND_ID_BYTES],
+                command: Command::GetAccountLedger(AccountLedgerRequest {
+                    before_entry_id: 771,
+                    limit: 17,
+                    class: AccountTransactionClass::Expense,
+                    ship_id: 44,
+                }),
+            },
         ] {
             let frame = encode_request(&expected).unwrap();
             assert_eq!(decode_request(&frame).unwrap(), expected);
@@ -8137,12 +8408,17 @@ mod tests {
             expected_plan_revision: 7,
             steps: vec![
                 FlightPlanStep {
-                    locus: FlightLocus::JumpLocus { system_id: 11 },
+                    locus: FlightLocus::ArrivalLocus {
+                        system_id: 11,
+                        remote: false,
+                    },
                     authority: WaypointAuthority::Through,
                     action: FlightPlanAction::Jump {
                         destination_system_id: 22,
                         navigation: JumpNavigationMethod::CommercialTape,
                         proceed_on_known_bad_plot: true,
+                        remote_arrival: false,
+                        departure_locus_arrival: true,
                     },
                     terminal: false,
                 },

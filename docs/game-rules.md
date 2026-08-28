@@ -840,6 +840,21 @@ cash and can pay required insurance, but it does not pay secured principal,
 private trade, collateral, private messages, fines, or other personal costs.
 Command, possession, title, and debt are separate facts.
 
+The command account journal distinguishes liquid, restricted operating,
+reserved, and secured-principal postings. Every balance change and its exact
+resulting balance are committed in the same authoritative transaction as the
+purchase, payment, hold, release, income, transfer, or financing event. The
+journal is retained indefinitely and can be filtered by transaction class or
+vessel. An estate created before the journal receives a single carried-forward
+opening entry; the game does not invent a historical reconstruction.
+
+Task income does not enter liquid funds when delivery is merely certified.
+Until the settlement filing reaches the issuing office and its remittance
+reaches the captain, Accounts reports the payment and collateral release as
+pending. The displayed resolution day is an estimate based on the known mail
+route and may move as carrier service changes. Pending income is never included
+in spendable or available cash.
+
 | Recorded vessel title | Meaning |
 | --- | --- |
 | Owned With Lien | Privately registered ownership subject to secured principal |
@@ -1145,8 +1160,8 @@ whole-second two-burn intercept whose acceleration never exceeds the ship's
 effective maneuver thrust and which reaches the destination with the
 destination's orbital velocity. A velocity shared by the whole system cancels
 out of this calculation. The captain may turn back to the primary port,
-redirect to the Jump locus, or redirect to a selected belt or lawful frontier
-fuel source. A ship already in Jump space cannot maneuver or replace that
+redirect to either conventional Jump traffic locus, or redirect to a selected
+belt or lawful frontier fuel source. A ship already in Jump space cannot maneuver or replace that
 physical Jump leg.
 
 ### Jump range and fuel
@@ -1158,8 +1173,11 @@ its Jump number for fuel and tape price. Required fuel is:
 **Jump fuel tons = 0.1 x hull displacement tons x Jump number**
 
 Jump can begin or end only outside the union of the 100-diameter exclusion
-zones of relevant massive bodies. Maneuver flight between a port and the
-legal Jump locus uses the ship's real thrust, position, time, and fuel rules.
+zones of relevant massive bodies. By traffic convention, the published
+departure locus is north of the system ecliptic and the published arrival locus
+is south. Either is physically legal for departure, although using the inbound
+locus is bad traffic practice. Maneuver flight between a port and either legal
+locus uses the ship's real thrust, position, time, and fuel rules.
 Away from a berth, the ship's ordinary power-plant allocation burns
 continuously at the rate implied by its catalogued endurance. Fractional burn
 is retained exactly between scheduled settlements; an older save establishes
@@ -1206,6 +1224,16 @@ not one report per damage hit. Combat damage remains aggregated in the combat,
 encounter-result, and Command Loss Report procedures instead of entering this
 non-combat report queue.
 
+A standard emergence uses the published arrival locus and is exposed to its
+ordinary traffic, enforcement, and piracy risks. A private arrival uses a
+seeded unpredictable safe direction and additional standoff distance. It avoids
+the ordinary arrival-locus contact check but lengthens the port approach. It
+does not bypass port law: docking still performs the port contact/inspection
+procedure, and high-law ports require inspection there. Deliberately emerging
+at the published departure locus is also possible, but conflicts with outbound
+traffic and carries the same increased contact risk as using the wrong lane for
+departure.
+
 ### Staged Jump and frontier fuel
 
 A destination can be empty space. A double-tanked Jump-1 ship can cross two
@@ -1226,8 +1254,8 @@ whether an installed processor refines the collected batch; otherwise it enters
 the tanks as unrefined fuel. Processing is Average (8+) Engineer (Power)/EDU.
 Failure doubles processing time. Effect -6 or worse also causes one sustained
 hit to the Jump drive, falling back to the maneuver drive and then the fuel
-system when necessary. Unrefined fuel already aboard may be processed as a
-stationary Flight Plan step while docked or safely holding. Selected feedstock
+system when necessary. Unrefined fuel already aboard may be processed to
+0.001-ton resolution as a stationary Flight Plan step while docked or safely holding. Selected feedstock
 is protected from power burn, and an off-berth attempt requires enough other
 fuel for the worst-case doubled duration.
 

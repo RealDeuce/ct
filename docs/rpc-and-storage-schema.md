@@ -47,6 +47,12 @@ game timestamps, game durations, and real durations. Clients apply this
 profile only to typed numeric and temporal values. Identifiers and server prose
 are never scanned for numbers or dates.
 
+`ServerHello.accountJournalAvailable` advertises the additive account-journal
+query. A CT-RPC 10 door connected to an earlier CT-RPC 10 server leaves the
+Transaction Journal option hidden and continues to use the older finance
+snapshot. It never guesses support from a shared protocol number or sends the
+new union arm without the capability.
+
 Unsupported versions receive a reason-only close encoded in the obsolete
 protocol's wire format. The reason says that the Cepheus Trader client must be
 upgraded and reports both the rejected and required versions. This
@@ -109,6 +115,12 @@ until the last performance settles or the obligation defaults.
 
 The legacy nominal Jump-fuel allocation remains on the wire for older clients,
 but it is not a live reserve and the current door does not display it.
+
+`FinanceSnapshot` also carries current game time and typed pending-income
+items with stage, payment, collateral release, estimate kind, and estimated
+resolution second. `GetAccountLedger` is a paged observation filtered by
+transaction class and vessel; entries contain typed account postings and
+resulting balances rather than prose that a client must parse.
 
 A docked ship has plan/revision/index zero and identical port loci. A ship may
 also hold at an exact deep-space coordinate after exploration or a misjump.
@@ -187,8 +199,8 @@ The ship record stores either a docked location or a complete active
 `FlightLegRecord`. A leg owns its plan identity and revision, sequence index,
 typed endpoints, start/due seconds, and typed purpose.
 
-Interstellar travel is three distinct legs: port to departure locus, Jump
-locus to Jump locus, and arrival locus to port. Frontier fueling is also
+Interstellar travel is three distinct legs: port to departure locus, departure
+locus through Jump to an arrival locus, and arrival locus to port. Frontier fueling is also
 explicitly three legs: port to source body, work at the body, and return to
 port. Each boundary is independently scheduled, so contact checks can attach
 to the correct locus without inferring direction from a Boolean.
@@ -199,7 +211,8 @@ leg states. Global `resource-lodes` records own composition, grade, extent,
 and depletion; `resource-observations` separately key private captain
 knowledge. No record grants an exclusive claim. Ship records retain exact
 power-fuel settlement time and fractional burn, while mined cargo lots retain
-source body and lode IDs. Ship codec version 3 reads versions 1 and 2 with zero
+source body and lode IDs. Ship codec version 4 adds distinct conventional and
+private arrival loci; it reads versions 1 through 3 with zero
 cargo provenance, a no-retroactive-burn timestamp sentinel, and legacy frontier
 work interpreted as refined with no recorded processing Effect. Version 3
 stores explicit collection output, processing Effect/damage, and standalone
@@ -218,12 +231,15 @@ timed ship activity without changing its due time. A Jump-space emergence leg
 is immutable until its checkpoint, but its later plan remains editable. Cargo
 and sealed mail remain on the ship and generate preview warnings; replanning
 never edits obligations.
-Flight Plan codec version 5 adds typed per-encounter standing orders and the
+Flight Plan codec version 6 adds the remote-arrival choice and distinct
+departure/arrival locus role. Version 5 added typed per-encounter standing orders and the
 proposal flag that preserves an unchanged active operation while future items
 are revised. Version 4 added the per-collection refine choice and standalone
-refine action; readers retain versions 1 through 4. Authoritative
+refine action; readers retain versions 1 through 5. Authoritative
 preview includes per-step normal and failed fuel-operation timings. Retained
-outcome codec version 25 preserves those timings, the added quotation and
+outcome codec version 27 preserves account-ledger observation replay; version
+26 preserves the new locus and maneuver stage in addition
+to the version-25 timings, quotation, and
 activity metadata, terminal reports, BBS/League affiliation, effective fuel
 capacity, engineering-casualty acknowledgement results, and a contact's
 declared class separately from its sensor classification for idempotent replay.
@@ -243,7 +259,7 @@ engine inputs and use the same ingress sequence as every other mutation.
 
 `FlightPlanStep.terminal`, `FlightPlanWarning.stepIndices`, and the terminal
 report requests and response are additive CT-RPC fields. The flight-plan
-proposal and snapshot record codecs use version 5; versions 1 through 4 remain
+proposal and snapshot record codecs use version 6; versions 1 through 5 remain
 readable, and version-1 Terminal authority decodes
 as Hold plus a terminal marker. Encounter-record codec version 5 stores the
 contact's declared class separately from its sensor classification, in addition
@@ -269,7 +285,9 @@ Current CT-RPC 10 additionally exposes a ship-revisioned encounter-policy
 default, typed per-encounter ordinary/Fight-threshold rules, an explicit
 authorization bit when a default can attack non-hostile traffic, the
 active-operation preservation flag on flight-plan proposals, and the
-sensor-limited combat-outlook percentage on encounter snapshots. Ship defaults
+sensor-limited combat-outlook percentage on encounter snapshots, distinct
+departure/arrival locus semantics, remote- and departure-locus-arrival flags, and a typed local
+maneuver stage. Ship defaults
 live in the `encounter-policy-defaults` database as codec version 1; absence
 means revision zero and the conservative legacy defaults. These are additive
 post-v0.7.13 fields, so the player protocol remains 10 until release.
@@ -315,6 +333,16 @@ database does not change storage manifest format 2 and does not require a
 v0.7.13 universe to be reinitialized; opening an existing universe creates the
 empty database and initializes its independent report-ID allocator. These are
 direct current formats with no legacy decoder.
+
+The additive `account-ledger` database stores version-1 entries under a
+captain identity plus reverse entry ID, giving indefinite newest-first paging.
+Opening an existing format-2 universe performs one idempotent reconciliation:
+each existing captain receives a single carried-forward entry for current
+liquid, per-vessel restricted and principal, and per-vessel reserved balances.
+New captains receive their opening entry in the creation transaction. Later
+postings are written in the same LMDB transaction as the balance mutation.
+The reconciliation has its own metadata version and does not change storage
+manifest format 2.
 
 Field-alpha control state includes active/suspended/removed player-access
 tombstones, signed sysop directives, an unspendable polity fiscal ledger,

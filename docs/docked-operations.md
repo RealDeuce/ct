@@ -36,14 +36,14 @@ authoritative `ServerHello` phase is `Docked`:
   maintenance, and facility-permitted refits.
 - `P` — **Personnel:** hiring, dismissal, shore leave, medical treatment, and
   other local crew services.
-- `B` — **Banking and Accounts:** cash, mortgage, local or mail-mediated
-  transfers, escrow, insurance where available, and prize settlements.
+- `B` — **Banking Services:** local insurance, arrears, insolvency, and other
+  actions requiring a recognized correspondent bank.
 - `A` — **Authorities:** customs, warrants, licenses, naval reporting, port
   control, taxes, and locally required clearances.
 - `D` — **Depart:** settle immediate berth obligations and submit a complete
   continuation plan beginning with release from the facility.
 
-Crew, Ship, Task, Message, and Known Universe remain universal managers and
+Crew, Ship, Task, Message, Known Universe, and Accounts remain universal managers and
 are not duplicated as docked submenus. A docked action may link to a filtered
 view of one of those managers, but it remains a server-authoritative
 phase-specific transaction.
@@ -55,7 +55,9 @@ proper repair, refit, and new or reconditioned component replacement. These
 services share one revision-checked quotation/commit RPC rather than exposing
 separate mutation calls for each menu item. Personnel commits hiring,
 discharge, transfer, leave, recall, first aid, surgery, and inpatient care.
-Banking commits insurance and the implemented finance actions. Authorities
+Banking Services commits insurance and the implemented finance actions. The
+read-only Accounts summary, dated pending income, and transaction journal are
+universal managers and do not require a port banking house. Authorities
 opens the local career, warrant, prize, and traffic office. Services absent
 from the facility are omitted from the menu and remain server-rejected if a
 stale or forged command requests them.
@@ -96,8 +98,8 @@ Refined fuel costs the CE Cr500 per ton and is sold only by class A or B
 starports. Unrefined port fuel costs Cr100 per ton at class A through C ports.
 The server accepts vendor quantities at 0.001-ton resolution, rounds the final
 proportional charge up to a whole credit, and validates tank capacity, source,
-and available credits. Frontier collection and onboard processing remain
-whole-ton work orders. The server tracks the unrefined fraction in the tanks
+and available credits. Onboard processing uses the same 0.001-ton resolution;
+frontier collection remains a whole-ton work order. The server tracks the unrefined fraction in the tanks
 rather than treating all fuel as interchangeable bookkeeping.
 
 The Fuel and Supplies screen can instead schedule a bounded gas-giant or
@@ -165,7 +167,7 @@ validation problem occurs, the plan ends there, or the player changes it.
 
 Consequently, a through plan that names a Jump destination may initiate that
 Jump automatically if every checkpoint is uneventful. A plan that only names
-the jump locus holds there and does not need an onward system. The same rule
+either conventional traffic locus holds there and does not need an onward system. The same rule
 allows an uneventful plan to dock, land, skim a declared amount of fuel, or
 perform another explicitly authorized terminal action without an artificial
 extra confirmation. Full semantics are in
@@ -175,7 +177,7 @@ The implemented first continuation is deliberately narrower: the captain
 selects one known system within the ship's jump rating and confirms one
 through voyage. The server atomically validates knowledge, range, current
 location, and one-jump fuel, then schedules departure to the seed-derived safe
-jump locus. Separate durable transactions enter Jump, deduct the catalogued
+jump departure locus. Separate durable transactions enter Jump, deduct the catalogued
 jump-fuel quantity, complete the standard one-week Jump, schedule the
 destination's seed-derived safe-locus approach, and dock at its primary-world
 starport. Cargo survives every transition. Encounter, clearance, astrogation,

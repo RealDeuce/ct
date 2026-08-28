@@ -46,6 +46,7 @@ struct ServerHello {
   languageTag @4 :Text;
   formatting @5 :DisplayFormatting;
   affiliation @6 :InstitutionalAffiliation;
+  accountJournalAvailable @7 :Bool;
 }
 
 struct InstitutionalAffiliation {
@@ -185,6 +186,7 @@ struct Request {
     acknowledgeOperationalDamageReport @82 :AcknowledgeOperationalDamageReportRequest;
     getEncounterPolicyDefault @83 :Void;
     setEncounterPolicyDefault @84 :SetEncounterPolicyDefaultRequest;
+    getAccountLedger @85 :AccountLedgerRequest;
   }
 }
 
@@ -235,6 +237,7 @@ struct Response {
     browserAlertEnrollment @41 :BrowserAlertEnrollment;
     operationalDamageReport @42 :OperationalDamageReport;
     encounterPolicyDefault @43 :EncounterPolicyDefaultSnapshot;
+    accountLedger @44 :AccountLedgerPage;
   }
 }
 
@@ -1339,6 +1342,90 @@ struct FinanceSnapshot {
   creditStatus @13 :Text;
   destinationAssistanceActive @14 :Bool;
   destinationAssistanceExpiresSecond @15 :UInt64;
+  currentSecond @16 :UInt64;
+  pendingIncome @17 :List(PendingIncome);
+}
+
+enum PendingIncomeStage {
+  filingToOffice @0;
+  remittanceToCaptain @1;
+}
+
+enum IncomeEstimateKind {
+  projected @0;
+  scheduled @1;
+  unavailable @2;
+}
+
+struct PendingIncome {
+  taskId @0 :UInt64;
+  paymentCredits @1 :UInt64;
+  reservedReleaseCredits @2 :UInt64;
+  stage @3 :PendingIncomeStage;
+  estimatedResolutionSecond @4 :UInt64;
+  estimateKind @5 :IncomeEstimateKind;
+}
+
+enum AccountTransactionClass {
+  all @0;
+  opening @1;
+  income @2;
+  expense @3;
+  transfer @4;
+  hold @5;
+  financing @6;
+}
+
+enum AccountKind {
+  liquid @0;
+  restrictedOperating @1;
+  reserved @2;
+  securedPrincipal @3;
+}
+
+enum AccountChangeKind {
+  increase @0;
+  decrease @1;
+  balanceForward @2;
+}
+
+struct AccountPosting {
+  account @0 :AccountKind;
+  change @1 :AccountChangeKind;
+  amountCredits @2 :UInt64;
+  balanceAfterCredits @3 :UInt64;
+  shipId @4 :UInt64;
+  shipName @5 :Text;
+}
+
+struct AccountLedgerEntry {
+  entryId @0 :UInt64;
+  occurredSecond @1 :UInt64;
+  class @2 :AccountTransactionClass;
+  summary @3 :Text;
+  subjectShipId @4 :UInt64;
+  subjectShipName @5 :Text;
+  postings @6 :List(AccountPosting);
+}
+
+struct AccountLedgerVessel {
+  shipId @0 :UInt64;
+  shipName @1 :Text;
+}
+
+struct AccountLedgerRequest {
+  beforeEntryId @0 :UInt64;
+  limit @1 :UInt16;
+  class @2 :AccountTransactionClass;
+  shipId @3 :UInt64;
+}
+
+struct AccountLedgerPage {
+  currentSecond @0 :UInt64;
+  entries @1 :List(AccountLedgerEntry);
+  nextBeforeEntryId @2 :UInt64;
+  hasMore @3 :Bool;
+  vessels @4 :List(AccountLedgerVessel);
 }
 
 struct MarketObservation {
@@ -1459,6 +1546,13 @@ struct FlightLocus {
     bodyId @3 :UInt32;
     deepSpace @4 :Vector3Parsecs;
   }
+  jumpRole @5 :JumpLocusRole;
+  remoteArrival @6 :Bool;
+}
+
+enum JumpLocusRole {
+  departure @0;
+  arrival @1;
 }
 
 struct Vector3Parsecs {
@@ -1491,6 +1585,7 @@ enum TravelStage {
   beltRecovery @14;
   beltEgress @15;
   fuelProcessing @16;
+  maneuvering @17;
 }
 
 enum WaypointAuthority {
@@ -1527,6 +1622,8 @@ struct JumpPlanAction {
   destinationSystemId @0 :UInt64;
   navigation @1 :JumpNavigationMethod;
   proceedOnKnownBadPlot @2 :Bool;
+  remoteArrival @3 :Bool;
+  departureLocusArrival @4 :Bool;
 }
 
 struct CoordinateJumpPlanAction {

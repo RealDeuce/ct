@@ -2,7 +2,7 @@
 
 ## Status
 
-The OpenDoors client has a common command-console shell with seven managers.
+The OpenDoors client has a common command-console shell with eight managers.
 Crew Management has an authoritative snapshot plus training, watch, service,
 location, treatment, pay, and morale mutations. Ship Management has an
 authoritative condition and dock-service surface. Message Management reads the
@@ -13,7 +13,8 @@ and mapping-disclosure state. Task Management has an authoritative ledger,
 offer acceptance, physical custody, settlement, default, and dispute actions.
 Operations Ledger exposes the implemented naval, privateer, pirate, prize,
 warrant, and traffic-interception state. System Common Radio carries transient
-in-system broadcasts and structured encounter hails at light speed.
+in-system broadcasts and structured encounter hails at light speed. Accounts
+shows balances, dated pending income, and the durable transaction journal.
 
 ## Availability and Authority
 
@@ -27,6 +28,7 @@ operational phase:
 5. Known Universe
 6. Operations Ledger
 7. System Common Radio
+8. Accounts
 
 “Available everywhere” means that the player may always inspect the manager
 using the knowledge and state available to the current frame of reference. It
@@ -189,6 +191,34 @@ server's deadline-aware beam search keeps pickups before deliveries and returns
 a useful suggestion without factorial permutation enumeration. It can combine
 shared stops or revisit one, but it is not guaranteed globally optimal and does
 not replace Flight Plan preview's authoritative deadline warnings.
+
+## Accounts
+
+Accounts is a universal, read-only command manager. It remains available while
+docked, maneuvering, in Jump, holding, or handling an encounter. The summary
+separates liquid balance, liquid funds still available after reservations,
+reserved collateral or escrow, active-vessel restricted operating credit, and
+secured vessel principal. Actions that require a correspondent bank remain in
+the dock-only **Banking Services** screen.
+
+Certified task income is not treated as cash before it arrives. Each
+awaiting-settlement performance names the expected payment, any reserved funds
+that will be released, whether the settlement filing is travelling to the
+issuing office or the approved remittance is travelling back, and an estimated
+resolution date. The Accounts screen groups these items by estimated game day.
+An estimate is projected from the currently known mail route and may change as
+carrier service changes; when no defensible route exists the date is reported
+as unavailable. The liquid balance changes only when the remittance is
+actually received.
+
+The transaction journal is durable and newest first. Every authoritative
+change to liquid, restricted, reserved, or secured-principal balances is posted
+atomically with the gameplay mutation that caused it. Entries have an in-world
+summary, game timestamp, transaction class, optional vessel subject, and one
+or more postings containing direction, exact amount, and resulting balance.
+The door pages the journal indefinitely and filters it by transaction class or
+vessel. Existing estates receive one carried-forward opening entry when this
+journal is introduced; no fictional transaction history is synthesized.
 
 ## Message Management
 

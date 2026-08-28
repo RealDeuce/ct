@@ -35,8 +35,9 @@ use crate::navigation::{
     BBS_CORE_MAXIMUM_JUMP_APPROACH_DAYS, FrontierFuelBodyKind, KinematicState, ManeuverSolution,
     bbs_core_jump_guard_days, body_position_au, bounded_thrust_intercept, gas_giant_fuel_source,
     gas_giant_fuel_sources, maneuver_state_at, nearest_gas_giant_fuel_source,
-    nearest_wilderness_water_source, primary_world_jump_safety, rest_to_rest_travel_days,
-    wilderness_water_source, wilderness_water_sources,
+    nearest_wilderness_water_source, primary_world_arrival_safety, primary_world_jump_safety,
+    primary_world_remote_arrival_safety, rest_to_rest_travel_days, wilderness_water_source,
+    wilderness_water_sources,
 };
 use crate::place_names::{
     FEDERATION_NAMING_PROFILE_ID, PlaceNameError, naming_stream, polity_profile,
@@ -106,6 +107,7 @@ const META_NEXT_RADIO_TRANSMISSION_ID: &str = "next-radio-transmission-id";
 const META_NEXT_RADIO_RECEPTION_ID: &str = "next-radio-reception-id";
 const META_NEXT_RESOURCE_LODE_ID: &str = "next-resource-lode-id";
 const META_NEXT_OPERATIONAL_DAMAGE_REPORT_ID: &str = "next-operational-damage-report-id";
+const META_NEXT_ACCOUNT_LEDGER_ENTRY_ID: &str = "next-account-ledger-entry-id";
 const META_PENDING_SYSTEM_PUBLICATIONS: &str = "pending-system-publications";
 const META_SYSTEM_VISITS_BACKFILL_VERSION: &str = "system-visits-backfill-version";
 const META_GAME_SECOND: &str = "game-second";
@@ -116,10 +118,12 @@ const META_STORAGE_FORMAT_VERSION: &str = "storage-format-version";
 pub const STORAGE_FORMAT_VERSION: u64 = 2;
 const META_ACCOMMODATION_CAPACITY_VERSION: &str = "accommodation-capacity-version";
 const META_FOCUSED_INBOX_RECONCILIATION_VERSION: &str = "focused-inbox-reconciliation-version";
+const META_ACCOUNT_LEDGER_RECONCILIATION_VERSION: &str = "account-ledger-reconciliation-version";
 const ACCOMMODATION_CAPACITY_VERSION: u64 = 1;
 const FOCUSED_INBOX_RECONCILIATION_VERSION: u64 = 1;
+const ACCOUNT_LEDGER_RECONCILIATION_VERSION: u64 = 1;
 const SYSTEM_VISITS_BACKFILL_VERSION: u64 = 1;
-const SHIP_RECORD_CODEC_VERSION: u8 = 3;
+const SHIP_RECORD_CODEC_VERSION: u8 = 4;
 const CNS5_COVERAGE_DISTRIBUTION_VERSION: u16 = 1;
 const CNS5_COVERAGE_SAMPLER_VERSION: u16 = 1;
 const PERSON_TREATMENT_EVENT_BIT: u64 = 1_u64 << 63;
@@ -1167,6 +1171,7 @@ fn outstanding_maneuver_seconds(
         FlightLegPurpose::DepartForJump { .. }
         | FlightLegPurpose::DepartForCoordinateJump { .. }
         | FlightLegPurpose::ApproachPort
+        | FlightLegPurpose::ReachLocus
         | FlightLegPurpose::ReturnFromFrontierFuel { .. }
         | FlightLegPurpose::ReturnFromBelt(_) => current_leg,
         FlightLegPurpose::Jump { .. } => 0,
@@ -1503,6 +1508,10 @@ pub enum ShipLocusRecord {
     JumpLocus {
         system_id: u64,
     },
+    ArrivalLocus {
+        system_id: u64,
+        remote_seed: u64,
+    },
     Body {
         system_id: u64,
         body_id: u32,
@@ -1517,6 +1526,7 @@ impl ShipLocusRecord {
         match self {
             Self::Port { system_id, .. }
             | Self::JumpLocus { system_id }
+            | Self::ArrivalLocus { system_id, .. }
             | Self::Body { system_id, .. } => system_id,
             Self::DeepSpace { .. } => 0,
         }
@@ -1535,6 +1545,13 @@ fn flight_locus_status(locus: ShipLocusRecord) -> FlightLocus {
             facility_id,
         },
         ShipLocusRecord::JumpLocus { system_id } => FlightLocus::JumpLocus { system_id },
+        ShipLocusRecord::ArrivalLocus {
+            system_id,
+            remote_seed,
+        } => FlightLocus::ArrivalLocus {
+            system_id,
+            remote: remote_seed != 0,
+        },
         ShipLocusRecord::Body { system_id, body_id } => FlightLocus::Body { system_id, body_id },
         ShipLocusRecord::DeepSpace { position } => FlightLocus::DeepSpace { position },
     }
@@ -1553,6 +1570,7 @@ pub enum FlightLegPurpose {
         critical_transition: bool,
     },
     ApproachPort,
+    ReachLocus,
     ReachFrontierFuel {
         activity_id: u64,
         service_due_second: u64,
@@ -1801,6 +1819,111 @@ struct OperatingAccountPayment {
     liquid_credits: u64,
     restricted_balance_credits: u64,
     liquid_balance_credits: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AccountShipBalances {
+    name: String,
+    restricted: u64,
+    reserved: u64,
+    principal: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AccountBalances {
+    liquid: u64,
+    active_ship_id: u64,
+    ships: std::collections::BTreeMap<u64, AccountShipBalances>,
+}
+
+fn push_account_change(
+    postings: &mut Vec<crate::wire::AccountPosting>,
+    account: crate::wire::AccountKind,
+    before: u64,
+    after: u64,
+    ship_id: u64,
+    ship_name: &str,
+) {
+    if before == after {
+        return;
+    }
+    postings.push(crate::wire::AccountPosting {
+        account,
+        change: if after > before {
+            crate::wire::AccountChangeKind::Increase
+        } else {
+            crate::wire::AccountChangeKind::Decrease
+        },
+        amount_credits: before.abs_diff(after),
+        balance_after_credits: after,
+        ship_id,
+        ship_name: ship_name.to_owned(),
+    });
+}
+
+fn classify_account_change(
+    postings: &[crate::wire::AccountPosting],
+) -> crate::wire::AccountTransactionClass {
+    use crate::wire::{AccountChangeKind, AccountKind, AccountTransactionClass};
+    if postings
+        .iter()
+        .any(|posting| posting.account == AccountKind::SecuredPrincipal)
+    {
+        return AccountTransactionClass::Financing;
+    }
+    if postings
+        .iter()
+        .any(|posting| posting.account == AccountKind::Reserved)
+    {
+        return AccountTransactionClass::Hold;
+    }
+    let increases = postings
+        .iter()
+        .filter(|posting| posting.change == AccountChangeKind::Increase)
+        .map(|posting| posting.amount_credits)
+        .fold(0_u64, u64::saturating_add);
+    let decreases = postings
+        .iter()
+        .filter(|posting| posting.change == AccountChangeKind::Decrease)
+        .map(|posting| posting.amount_credits)
+        .fold(0_u64, u64::saturating_add);
+    if increases != 0 && decreases != 0 {
+        AccountTransactionClass::Transfer
+    } else if increases != 0 {
+        AccountTransactionClass::Income
+    } else {
+        AccountTransactionClass::Expense
+    }
+}
+
+fn account_command_summary(command: &Command) -> &'static str {
+    match command {
+        Command::BuyCargo { .. } => "Cargo purchased",
+        Command::SellCargo { .. } => "Cargo sold",
+        Command::AcceptTaskOffer { .. } => "Task collateral reserved",
+        Command::ApplyTaskAction { .. } => "Task account adjusted",
+        Command::SettlePrize { .. } => "Prize settlement",
+        Command::SettleWarrant { .. } => "Warrant settlement",
+        Command::CureFinanceDefault => "Overdue ship installment paid",
+        Command::PurchaseShip { .. } => "Vessel purchase",
+        Command::CommissionShip { .. } => "Vessel commissioned",
+        Command::HireCrew { .. } => "Crew hiring fee",
+        Command::BeginMarketSearch { .. } => "Brokerage search commissioned",
+        Command::CancelWorkAssignment { .. } => "Work assignment cancelled",
+        Command::CommitDockedService(_) => "Dockside service purchased",
+        Command::ReserveMarketLead { .. } => "Market purchase funds reserved",
+        Command::ReleaseMarketReservation { .. } => "Market reservation released",
+        Command::SendPrivateMessage(_) => "Private-message tariff",
+        Command::PurchaseInsurance { .. } => "Insurance account adjusted",
+        Command::MisappropriateRestrictedCredits { .. } => {
+            "Restricted operating credit transferred"
+        }
+        Command::DeclareBankruptcy { .. } => "Command bankruptcy",
+        Command::RecoverCommand { .. } => "Command recovery",
+        Command::ApplyPersonnelAction { .. } => "Personnel account adjusted",
+        Command::CommitFlightPlan(_) | Command::BeginVoyage { .. } => "Departure charges",
+        _ => "Account balance adjusted",
+    }
 }
 
 fn ship_finance_key(ship_id: u64) -> [u8; 8] {
@@ -3491,6 +3614,131 @@ fn reconcile_focused_inbox_in(
     Ok(())
 }
 
+fn reconcile_account_ledger_in(
+    meta: Database<Str, Bytes>,
+    players: Database<Bytes, Bytes>,
+    ships: UniverseDatabase,
+    finances: Database<Bytes, Bytes>,
+    tasks: Database<Bytes, Bytes>,
+    account_ledger: Database<Bytes, Bytes>,
+    txn: &mut heed::RwTxn<'_>,
+) -> Result<(), StoreError> {
+    if get_meta_u64(meta, txn, META_ACCOUNT_LEDGER_RECONCILIATION_VERSION)?.unwrap_or(0)
+        >= ACCOUNT_LEDGER_RECONCILIATION_VERSION
+    {
+        return Ok(());
+    }
+    if get_meta_u64(meta, txn, META_NEXT_ACCOUNT_LEDGER_ENTRY_ID)?.is_none() {
+        put_meta_u64(meta, txn, META_NEXT_ACCOUNT_LEDGER_ENTRY_ID, 1)?;
+    }
+    let current = get_meta_u64(meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+    let player_records = players
+        .iter(txn)?
+        .map(|entry| {
+            let (key, bytes) = entry?;
+            if key.len() != 8 {
+                return Err(StoreError::Corrupt("invalid player identity key"));
+            }
+            let identity = PlayerIdentity {
+                bbs_id: u32::from_be_bytes(key[..4].try_into().unwrap()),
+                player_id: u32::from_be_bytes(key[4..].try_into().unwrap()),
+            };
+            Ok((identity, decode_player_record(bytes)?))
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    let stored_tasks = tasks
+        .iter(txn)?
+        .map(|entry| {
+            let (_, bytes) = entry?;
+            decode_stored_task(bytes)
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    for (identity, player) in player_records {
+        let mut postings = Vec::new();
+        postings.push(crate::wire::AccountPosting {
+            account: crate::wire::AccountKind::Liquid,
+            change: crate::wire::AccountChangeKind::BalanceForward,
+            amount_credits: player.credits,
+            balance_after_credits: player.credits,
+            ship_id: 0,
+            ship_name: String::new(),
+        });
+        for ship_id in &player.managed_ship_ids {
+            let ship = ships
+                .get(txn, ship_id)?
+                .map(decode_ship_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt(
+                    "managed ship is missing during account migration",
+                ))?;
+            let finance = finances
+                .get(txn, &ship_finance_key(*ship_id))?
+                .map(decode_finance_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt(
+                    "ship finance is missing during account migration",
+                ))?;
+            postings.push(crate::wire::AccountPosting {
+                account: crate::wire::AccountKind::RestrictedOperating,
+                change: crate::wire::AccountChangeKind::BalanceForward,
+                amount_credits: finance.restricted_credits,
+                balance_after_credits: finance.restricted_credits,
+                ship_id: *ship_id,
+                ship_name: ship.name.clone(),
+            });
+            let reserved = stored_tasks
+                .iter()
+                .filter(|stored| stored.identity == identity)
+                .filter(|stored| {
+                    stored.task.performing_ship_id == *ship_id
+                        || (stored.task.performing_ship_id == 0 && *ship_id == player.ship_id)
+                })
+                .map(|stored| stored.task.reserved_credits)
+                .fold(0_u64, u64::saturating_add);
+            if reserved != 0 {
+                postings.push(crate::wire::AccountPosting {
+                    account: crate::wire::AccountKind::Reserved,
+                    change: crate::wire::AccountChangeKind::BalanceForward,
+                    amount_credits: reserved,
+                    balance_after_credits: reserved,
+                    ship_id: *ship_id,
+                    ship_name: ship.name.clone(),
+                });
+            }
+            postings.push(crate::wire::AccountPosting {
+                account: crate::wire::AccountKind::SecuredPrincipal,
+                change: crate::wire::AccountChangeKind::BalanceForward,
+                amount_credits: finance.principal_credits,
+                balance_after_credits: finance.principal_credits,
+                ship_id: *ship_id,
+                ship_name: ship.name,
+            });
+        }
+        let entry_id = take_id_range(meta, txn, META_NEXT_ACCOUNT_LEDGER_ENTRY_ID, 1)?;
+        let entry = crate::wire::AccountLedgerEntry {
+            entry_id,
+            occurred_second: current,
+            class: crate::wire::AccountTransactionClass::Opening,
+            summary: "Balances carried forward when the account journal began".into(),
+            subject_ship_id: 0,
+            subject_ship_name: String::new(),
+            postings,
+        };
+        account_ledger.put(
+            txn,
+            &account_ledger_key(&identity, entry_id),
+            &encode_account_ledger_entry(&entry)?,
+        )?;
+    }
+    put_meta_u64(
+        meta,
+        txn,
+        META_ACCOUNT_LEDGER_RECONCILIATION_VERSION,
+        ACCOUNT_LEDGER_RECONCILIATION_VERSION,
+    )?;
+    Ok(())
+}
+
 fn reconcile_radio_identifier_metadata_in(
     meta: Database<Str, Bytes>,
     radio_transmissions: UniverseDatabase,
@@ -3895,6 +4143,7 @@ pub struct Store {
     work_assignment_events: Database<Bytes, Bytes>,
     carriage_declarations: Database<Bytes, Bytes>,
     finances: Database<Bytes, Bytes>,
+    account_ledger: Database<Bytes, Bytes>,
     market_observations: Database<Bytes, Bytes>,
     market_leads: Database<Bytes, Bytes>,
     market_events: Database<Bytes, Bytes>,
@@ -3965,7 +4214,7 @@ impl Store {
         let env = unsafe {
             EnvOpenOptions::new()
                 .map_size(map_size_bytes)
-                .max_dbs(88)
+                .max_dbs(89)
                 .open(path.as_ref())?
         };
         let mut txn = env.write_txn()?;
@@ -4005,6 +4254,7 @@ impl Store {
         let work_assignment_events = env.create_database(&mut txn, Some("merchant-work-events"))?;
         let carriage_declarations = env.create_database(&mut txn, Some("carriage-declarations"))?;
         let finances = env.create_database(&mut txn, Some("finances"))?;
+        let account_ledger = env.create_database(&mut txn, Some("account-ledger"))?;
         let market_observations = env.create_database(&mut txn, Some("market-observations"))?;
         let market_leads = env.create_database(&mut txn, Some("market-leads"))?;
         let market_events = env.create_database(&mut txn, Some("market-events"))?;
@@ -4116,6 +4366,15 @@ impl Store {
             .collect::<Result<std::collections::BTreeSet<_>, StoreError>>()?;
         simulation.reconcile_generated_traffic(&mut txn, &visited_system_ids)?;
         reconcile_accommodation_capacity_in(ships, meta, &mut txn)?;
+        reconcile_account_ledger_in(
+            meta,
+            players,
+            ships,
+            finances,
+            tasks,
+            account_ledger,
+            &mut txn,
+        )?;
         txn.commit()?;
         Ok(Self {
             env,
@@ -4153,6 +4412,7 @@ impl Store {
             work_assignment_events,
             carriage_declarations,
             finances,
+            account_ledger,
             market_observations,
             market_leads,
             market_events,
@@ -4680,6 +4940,75 @@ impl Store {
         Ok(Some(processed))
     }
 
+    fn scheduled_account_identities_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        event: &ScheduledInput,
+    ) -> Result<Vec<PlayerIdentity>, StoreError> {
+        let mut identities = match event {
+            ScheduledInput::Simulation(_) => Vec::new(),
+            ScheduledInput::PlayerTravel { ship_id, .. }
+            | ScheduledInput::ShipCondition { ship_id, .. }
+            | ScheduledInput::ShipActivity { ship_id, .. }
+            | ScheduledInput::ContactCheck { ship_id, .. } => self
+                .ships
+                .get(txn, ship_id)?
+                .map(decode_ship_record)
+                .transpose()?
+                .map_or_else(Vec::new, |ship| vec![ship.command]),
+            ScheduledInput::PersonTraining { person_id, .. } => {
+                let person_id =
+                    *person_id & !PERSON_TREATMENT_EVENT_BIT & !PERSON_PRISONER_RELEASE_EVENT_BIT;
+                self.crew_services
+                    .get(txn, &person_id)?
+                    .map(decode_crew_service)
+                    .transpose()?
+                    .map_or_else(Vec::new, |service| vec![service.command])
+            }
+            ScheduledInput::EncounterTurn { identity, .. } => vec![identity.clone()],
+            ScheduledInput::SharedCombatTurn { combat_id, .. } => self
+                .shared_combats
+                .get(txn, combat_id)?
+                .map(decode_shared_combat_record)
+                .transpose()?
+                .map_or_else(Vec::new, |combat| {
+                    combat
+                        .participants
+                        .into_iter()
+                        .map(|participant| participant.identity)
+                        .collect()
+                }),
+            ScheduledInput::MerchantWork { assignment_id, .. } => {
+                if assignment_id & (1_u64 << 63) != 0 {
+                    self.tasks
+                        .get(txn, &(assignment_id & !(1_u64 << 63)).to_be_bytes())?
+                        .map(decode_stored_task)
+                        .transpose()?
+                        .map_or_else(Vec::new, |task| vec![task.identity])
+                } else {
+                    self.work_assignments
+                        .get(txn, &assignment_id.to_be_bytes())?
+                        .map(decode_stored_work_assignment)
+                        .transpose()?
+                        .map_or_else(Vec::new, |work| vec![work.identity])
+                }
+            }
+        };
+        identities.sort_by_key(|identity| (identity.bbs_id, identity.player_id));
+        identities.dedup();
+        let mut players = Vec::with_capacity(identities.len());
+        for identity in identities {
+            if self
+                .players
+                .get(txn, &encode_identity(&identity))?
+                .is_some()
+            {
+                players.push(identity);
+            }
+        }
+        Ok(players)
+    }
+
     fn process_scheduled_input_in(
         &self,
         mut txn: &mut heed::RwTxn<'_>,
@@ -4694,6 +5023,28 @@ impl Store {
         let mut player_transitions = Vec::new();
         let mut scheduled_event = None;
         let mut category = None;
+        let mut account_summary = match &event {
+            ScheduledInput::Simulation(_) => "Simulation account activity",
+            ScheduledInput::PlayerTravel { .. } => "Arrival and carriage accounts",
+            ScheduledInput::ShipCondition { .. } => "Monthly vessel accounts",
+            ScheduledInput::PersonTraining { .. } => "Scheduled personnel care",
+            ScheduledInput::ShipActivity { .. } => "Scheduled vessel work",
+            ScheduledInput::EncounterTurn { .. } => "Encounter settlement",
+            ScheduledInput::SharedCombatTurn { .. } => "Combat settlement",
+            ScheduledInput::ContactCheck { .. } => "Traffic-contact settlement",
+            ScheduledInput::MerchantWork { assignment_id, .. }
+                if assignment_id & (1_u64 << 63) != 0 =>
+            {
+                "Task deadline assessment"
+            }
+            ScheduledInput::MerchantWork { .. } => "Merchant work account activity",
+        }
+        .to_owned();
+        let account_identities = self.scheduled_account_identities_in(&txn, &event)?;
+        let account_before = account_identities
+            .iter()
+            .map(|identity| Ok((identity.clone(), self.account_balances_in(&txn, identity)?)))
+            .collect::<Result<Vec<_>, StoreError>>()?;
         let journal = match event {
             ScheduledInput::Simulation(event) => {
                 let processed = self
@@ -4794,7 +5145,8 @@ impl Store {
                 encode_player_travel_event_journal(current_second, system_id, stage)
             }
             ScheduledInput::ShipCondition { ship_id, .. } => {
-                self.process_ship_condition_in(&mut txn, current_second, ship_id)?;
+                account_summary =
+                    self.process_ship_condition_in(&mut txn, current_second, ship_id)?;
                 category = Some(ProcessedScheduledCategory::ShipCondition);
                 encode_timed_object_event_journal(0x43, current_second, ship_id)
             }
@@ -4896,6 +5248,17 @@ impl Store {
                 encode_timed_object_event_journal(0x4d, current_second, assignment_id)
             }
         };
+        for (identity, before) in account_before {
+            if self
+                .players
+                .get(&txn, &encode_identity(&identity))?
+                .is_none()
+            {
+                continue;
+            }
+            let after = self.account_balances_in(&txn, &identity)?;
+            self.record_account_change_in(&mut txn, &identity, &account_summary, &before, &after)?;
+        }
         self.journal.put(&mut txn, &sequence, &journal)?;
         self.queue.delete(&mut txn, &sequence)?;
         put_meta_u64(self.meta, &mut txn, META_COMMITTED_SEQUENCE, sequence)?;
@@ -4915,6 +5278,11 @@ impl Store {
     ) -> Result<(OutcomeKind, PlayerPhase), StoreError> {
         let identity_key = encode_identity(&queued.identity);
         let player_exists = self.players.get(txn, &identity_key)?.is_some();
+        let account_before = if player_exists {
+            Some(self.account_balances_in(txn, &queued.identity)?)
+        } else {
+            None
+        };
         if player_exists {
             self.collect_tax_arrears_in(txn, &queued.identity)?;
             let (_, mut active_ship) = self.player_and_ship_in(txn, &queued.identity)?;
@@ -4958,6 +5326,7 @@ impl Store {
                     ));
                 }
                 self.materialize_player_in(txn, &queued.identity, proposal, path)?;
+                self.record_account_opening_in(txn, &queued.identity)?;
                 return Ok((
                     OutcomeKind::PlayerCreated(proposal.clone()),
                     PlayerPhase::Docked,
@@ -5876,6 +6245,9 @@ impl Store {
             Command::GetFinance => {
                 OutcomeKind::Finance(self.finance_snapshot_in(txn, &queued.identity)?)
             }
+            Command::GetAccountLedger(ref query) => OutcomeKind::AccountLedger(
+                self.account_ledger_page_in(txn, &queued.identity, query)?,
+            ),
             Command::CureFinanceDefault => {
                 match self.cure_finance_default_in(txn, &queued.identity)? {
                     RuleResult::Applied(v) => OutcomeKind::Finance(v),
@@ -6091,6 +6463,18 @@ impl Store {
                 unreachable!("browser-alert operations are intercepted by the connection layer")
             }
         };
+        if let Some(before) = account_before {
+            if self.players.get(txn, &identity_key)?.is_some() {
+                let after = self.account_balances_in(txn, &queued.identity)?;
+                self.record_account_change_in(
+                    txn,
+                    &queued.identity,
+                    account_command_summary(&queued.request.command),
+                    &before,
+                    &after,
+                )?;
+            }
+        }
         Ok((kind, self.player_phase_in(txn, &queued.identity)?))
     }
 
@@ -6343,6 +6727,30 @@ impl Store {
         Ok((approach.travel_days * crate::simulation::SECONDS_PER_DAY as f64).ceil() as u64)
     }
 
+    fn projected_primary_arrival_seconds_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        system_id: u64,
+        projected_second: u64,
+        thrust_g: u8,
+        remote: bool,
+    ) -> Result<u64, StoreError> {
+        let system = self
+            .systems
+            .get(txn, &system_id)?
+            .map(decode_stellar_system)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("flight-plan arrival system is missing"))?;
+        let celestial = derive_celestial_system(&system)?;
+        let days = projected_second as f64 / crate::simulation::SECONDS_PER_DAY as f64;
+        let approach = if remote {
+            primary_world_remote_arrival_safety(&celestial, days, f64::from(thrust_g), 1)
+        } else {
+            primary_world_arrival_safety(&celestial, days, f64::from(thrust_g))
+        };
+        Ok((approach.travel_days * crate::simulation::SECONDS_PER_DAY as f64).ceil() as u64)
+    }
+
     fn preview_flight_plan_in(
         &self,
         txn: &heed::RoTxn<'_>,
@@ -6430,6 +6838,7 @@ impl Store {
                 | ShipLocationRecord::Holding {
                     locus: ShipLocusRecord::Port { .. }
                         | ShipLocusRecord::JumpLocus { .. }
+                        | ShipLocusRecord::ArrivalLocus { .. }
                         | ShipLocusRecord::Body { .. },
                     ..
                 }
@@ -6445,10 +6854,18 @@ impl Store {
             .enumerate()
             .skip(start_index)
             .find_map(|(index, step)| {
-                (!matches!(step.action, FlightPlanAction::Hold)).then_some(index)
+                (!matches!(step.action, FlightPlanAction::Hold)
+                    || matches!(
+                        step.locus,
+                        FlightLocus::JumpLocus { .. }
+                            | FlightLocus::ArrivalLocus { remote: false, .. }
+                    ))
+                .then_some(index)
             });
         let mut elapsed_seconds = 0_u64;
         let mut at_primary_port = matches!(ship.location, ShipLocationRecord::Docked { .. });
+        let mut projected_remote_arrival = false;
+        let mut projected_departure_locus_arrival = false;
         let mut warnings = Vec::new();
         if policy_fights_nonhostiles(&proposal.policy) {
             warnings.push(FlightPlanWarning {
@@ -6530,6 +6947,12 @@ impl Store {
                         FlightLocus::JumpLocus { system_id } => {
                             Some(ShipLocusRecord::JumpLocus { system_id })
                         }
+                        FlightLocus::ArrivalLocus { system_id, remote } => {
+                            Some(ShipLocusRecord::ArrivalLocus {
+                                system_id,
+                                remote_seed: u64::from(remote),
+                            })
+                        }
                         FlightLocus::Body { system_id, body_id } => {
                             Some(ShipLocusRecord::Body { system_id, body_id })
                         }
@@ -6540,15 +6963,22 @@ impl Store {
                             "the first underway waypoint must name an in-system destination".into(),
                         ));
                     };
-                    let Some(trajectory) =
-                        self.diversion_trajectory_in(txn, &ship, destination, game_second)?
-                    else {
-                        return Ok(RuleResult::Rejected(
-                            "the navigation computer could not find a bounded-thrust intercept"
-                                .into(),
-                        ));
-                    };
-                    Some(trajectory.solution.duration_seconds)
+                    if matches!(
+                        ship.location,
+                        ShipLocationRecord::Holding { locus, .. } if locus == destination
+                    ) {
+                        Some(0)
+                    } else {
+                        let Some(trajectory) =
+                            self.diversion_trajectory_in(txn, &ship, destination, game_second)?
+                        else {
+                            return Ok(RuleResult::Rejected(
+                                "the navigation computer could not find a bounded-thrust intercept"
+                                    .into(),
+                            ));
+                        };
+                        Some(trajectory.solution.duration_seconds)
+                    }
                 }
             } else {
                 None
@@ -6658,6 +7088,8 @@ impl Store {
                     destination_system_id,
                     navigation,
                     proceed_on_known_bad_plot,
+                    remote_arrival,
+                    departure_locus_arrival,
                 } => {
                     let origin_position = if system_id == 0 {
                         let FlightLocus::DeepSpace { position } = step.locus else {
@@ -6683,9 +7115,15 @@ impl Store {
                         }
                         position.parsecs()
                     } else {
-                        if step.locus != (FlightLocus::JumpLocus { system_id }) {
+                        if step.locus != (FlightLocus::JumpLocus { system_id })
+                            && step.locus
+                                != (FlightLocus::ArrivalLocus {
+                                    system_id,
+                                    remote: false,
+                                })
+                        {
                             return Ok(RuleResult::Rejected(format!(
-                                "waypoint {} must name the current system's Jump locus",
+                                "waypoint {} must name the current system's departure or arrival locus",
                                 index + 1
                             )));
                         }
@@ -6696,11 +7134,47 @@ impl Store {
                             .ok_or(StoreError::Corrupt("flight-plan origin system is missing"))?
                             .position_parsecs
                     };
-                    if system_id != 0 && step.locus != (FlightLocus::JumpLocus { system_id }) {
+                    if system_id != 0
+                        && step.locus != (FlightLocus::JumpLocus { system_id })
+                        && step.locus
+                            != (FlightLocus::ArrivalLocus {
+                                system_id,
+                                remote: false,
+                            })
+                    {
                         return Ok(RuleResult::Rejected(format!(
-                            "waypoint {} must name the current system's Jump locus",
+                            "waypoint {} must name the current system's departure or arrival locus",
                             index + 1
                         )));
+                    }
+                    if matches!(step.locus, FlightLocus::ArrivalLocus { .. }) {
+                        warnings.push(FlightPlanWarning {
+                            code: "NONSTANDARD_JUMP_DEPARTURE".into(),
+                            message: "Departing through the inbound arrival locus is legal but bad traffic practice and increases contact risk."
+                                .into(),
+                            step_indices: vec![index as u16],
+                        });
+                    }
+                    if remote_arrival && departure_locus_arrival {
+                        return Ok(RuleResult::Rejected(format!(
+                            "waypoint {} cannot combine a private arrival with the published departure locus",
+                            index + 1
+                        )));
+                    }
+                    if remote_arrival {
+                        warnings.push(FlightPlanWarning {
+                            code: "REMOTE_ARRIVAL".into(),
+                            message: "A private arrival avoids the published arrival locus and its routine contacts, but lengthens the port approach. Docking inspection rules still apply and may require inspection."
+                                .into(),
+                            step_indices: vec![index as u16],
+                        });
+                    } else if departure_locus_arrival {
+                        warnings.push(FlightPlanWarning {
+                            code: "NONSTANDARD_JUMP_ARRIVAL".into(),
+                            message: "Emerging through the outbound departure locus is legal but conflicts with departing traffic and increases contact risk."
+                                .into(),
+                            step_indices: vec![index as u16],
+                        });
                     }
                     let Some(destination) = self
                         .systems
@@ -6756,14 +7230,26 @@ impl Store {
                     if let Some(seconds) = diversion_seconds {
                         elapsed_seconds = elapsed_seconds.saturating_add(seconds);
                     } else if at_primary_port {
-                        elapsed_seconds = elapsed_seconds.saturating_add(
+                        let maneuver_seconds = if matches!(
+                            step.locus,
+                            FlightLocus::ArrivalLocus { remote: false, .. }
+                        ) {
+                            self.projected_primary_arrival_seconds_in(
+                                txn,
+                                system_id,
+                                game_second.saturating_add(elapsed_seconds),
+                                spec.thrust_g,
+                                false,
+                            )?
+                        } else {
                             self.projected_primary_approach_seconds_in(
                                 txn,
                                 system_id,
                                 game_second.saturating_add(elapsed_seconds),
                                 spec.thrust_g,
-                            )?,
-                        );
+                            )?
+                        };
+                        elapsed_seconds = elapsed_seconds.saturating_add(maneuver_seconds);
                     }
                     let leg_fuel = jump_fuel_for_distance(spec.displacement_millitons, distance);
                     if navigation == crate::wire::JumpNavigationMethod::CommercialTape {
@@ -6813,6 +7299,8 @@ impl Store {
                     elapsed_seconds = elapsed_seconds.saturating_add(STANDARD_JUMP_SECONDS);
                     system_id = destination_system_id;
                     at_primary_port = false;
+                    projected_remote_arrival = remote_arrival;
+                    projected_departure_locus_arrival = departure_locus_arrival;
                 }
                 FlightPlanAction::JumpCoordinates {
                     destination,
@@ -6921,6 +7409,8 @@ impl Store {
                     elapsed_seconds = elapsed_seconds.saturating_add(STANDARD_JUMP_SECONDS);
                     system_id = 0;
                     at_primary_port = false;
+                    projected_remote_arrival = false;
+                    projected_departure_locus_arrival = false;
                 }
                 FlightPlanAction::BeltCycle { body_id } => {
                     if !at_primary_port && diversion_seconds.is_none() {
@@ -7061,15 +7551,6 @@ impl Store {
                     {
                         return Ok(RuleResult::Rejected(format!(
                             "waypoint {} must collect a whole-ton fuel quantity",
-                            index + 1
-                        )));
-                    }
-                    if operation == FuelOperation::BuyUnrefined
-                        && refine_collected
-                        && quantity_millitons % MILLITONS_PER_TON != 0
-                    {
-                        return Ok(RuleResult::Rejected(format!(
-                            "waypoint {} must buy a whole-ton quantity when the fuel is also refined",
                             index + 1
                         )));
                     }
@@ -7276,12 +7757,10 @@ impl Store {
                     available_fuel_millitons += quantity_millitons;
                 }
                 FlightPlanAction::RefineFuel { quantity_millitons } => {
-                    if quantity_millitons == 0
-                        || quantity_millitons % MILLITONS_PER_TON != 0
-                        || quantity_millitons > available_unrefined_millitons
+                    if quantity_millitons == 0 || quantity_millitons > available_unrefined_millitons
                     {
                         return Ok(RuleResult::Rejected(format!(
-                            "waypoint {} must refine an available positive whole-ton quantity",
+                            "waypoint {} must refine an available positive quantity",
                             index + 1
                         )));
                     }
@@ -7297,6 +7776,12 @@ impl Store {
                             step.locus,
                             FlightLocus::JumpLocus { system_id: locus_system }
                                 if locus_system == system_id
+                        ) || matches!(
+                            step.locus,
+                            FlightLocus::ArrivalLocus {
+                                system_id: locus_system,
+                                ..
+                            } if locus_system == system_id
                         ) || matches!(step.locus, FlightLocus::DeepSpace { .. })
                     };
                     if !safe_locus {
@@ -7375,16 +7860,27 @@ impl Store {
                     if let Some(seconds) = diversion_seconds {
                         elapsed_seconds = elapsed_seconds.saturating_add(seconds);
                     } else if !at_primary_port {
-                        elapsed_seconds = elapsed_seconds.saturating_add(
+                        let approach_seconds = if projected_departure_locus_arrival {
                             self.projected_primary_approach_seconds_in(
                                 txn,
                                 system_id,
                                 game_second.saturating_add(elapsed_seconds),
                                 spec.thrust_g,
-                            )?,
-                        );
+                            )?
+                        } else {
+                            self.projected_primary_arrival_seconds_in(
+                                txn,
+                                system_id,
+                                game_second.saturating_add(elapsed_seconds),
+                                spec.thrust_g,
+                                projected_remote_arrival,
+                            )?
+                        };
+                        elapsed_seconds = elapsed_seconds.saturating_add(approach_seconds);
                     }
                     at_primary_port = true;
+                    projected_remote_arrival = false;
+                    projected_departure_locus_arrival = false;
                     docked_arrivals.entry(system_id).or_insert_with(|| {
                         (
                             game_second.saturating_add(elapsed_seconds),
@@ -7393,7 +7889,62 @@ impl Store {
                         )
                     });
                 }
-                FlightPlanAction::Hold => {}
+                FlightPlanAction::Hold => {
+                    if step.locus.system_id() != system_id {
+                        return Ok(RuleResult::Rejected(format!(
+                            "waypoint {} names a holding locus outside the current system",
+                            index + 1
+                        )));
+                    }
+                    let solution = match step.locus {
+                        FlightLocus::JumpLocus { .. } => {
+                            let stellar = self
+                                .systems
+                                .get(txn, &system_id)?
+                                .map(decode_stellar_system)
+                                .transpose()?
+                                .ok_or(StoreError::Corrupt("holding system is missing"))?;
+                            let celestial = derive_celestial_system(&stellar)?;
+                            Some(primary_world_jump_safety(
+                                &celestial,
+                                game_second.saturating_add(elapsed_seconds) as f64
+                                    / crate::simulation::SECONDS_PER_DAY as f64,
+                                f64::from(spec.thrust_g),
+                            ))
+                        }
+                        FlightLocus::ArrivalLocus { remote: false, .. } => {
+                            let stellar = self
+                                .systems
+                                .get(txn, &system_id)?
+                                .map(decode_stellar_system)
+                                .transpose()?
+                                .ok_or(StoreError::Corrupt("holding system is missing"))?;
+                            let celestial = derive_celestial_system(&stellar)?;
+                            Some(primary_world_arrival_safety(
+                                &celestial,
+                                game_second.saturating_add(elapsed_seconds) as f64
+                                    / crate::simulation::SECONDS_PER_DAY as f64,
+                                f64::from(spec.thrust_g),
+                            ))
+                        }
+                        FlightLocus::ArrivalLocus { remote: true, .. } => {
+                            return Ok(RuleResult::Rejected(format!(
+                                "waypoint {} cannot file a public course to a private arrival point",
+                                index + 1
+                            )));
+                        }
+                        _ => None,
+                    };
+                    if let Some(seconds) = diversion_seconds {
+                        elapsed_seconds = elapsed_seconds.saturating_add(seconds);
+                    } else if at_primary_port && let Some(solution) = solution {
+                        elapsed_seconds = elapsed_seconds.saturating_add(
+                            (solution.travel_days * crate::simulation::SECONDS_PER_DAY as f64)
+                                .ceil() as u64,
+                        );
+                    }
+                    at_primary_port = false;
+                }
             }
             step_elapsed_seconds.push(elapsed_seconds);
             if step.authority == WaypointAuthority::Through {
@@ -7905,7 +8456,14 @@ impl Store {
             .iter()
             .enumerate()
             .skip(usize::from(plan.current_step))
-            .find(|(_, step)| !matches!(step.action, FlightPlanAction::Hold))
+            .find(|(_, step)| {
+                !matches!(step.action, FlightPlanAction::Hold)
+                    || matches!(
+                        step.locus,
+                        FlightLocus::JumpLocus { .. }
+                            | FlightLocus::ArrivalLocus { remote: false, .. }
+                    )
+            })
             .map(|(index, step)| (index, step.clone()))
         else {
             return Ok(RuleResult::Rejected(
@@ -7933,19 +8491,58 @@ impl Store {
         settle_power_fuel(&mut ship, &spec, current);
 
         let (destination, purpose, activity, extra_maneuver_seconds) = match step.action {
+            FlightPlanAction::Hold => {
+                let destination = match step.locus {
+                    FlightLocus::JumpLocus { system_id } => {
+                        ShipLocusRecord::JumpLocus { system_id }
+                    }
+                    FlightLocus::ArrivalLocus {
+                        system_id,
+                        remote: false,
+                    } => ShipLocusRecord::ArrivalLocus {
+                        system_id,
+                        remote_seed: 0,
+                    },
+                    _ => {
+                        return Ok(RuleResult::Rejected(
+                            "the holding waypoint does not name a maneuverable traffic locus"
+                                .into(),
+                        ));
+                    }
+                };
+                (destination, FlightLegPurpose::ReachLocus, None, 0)
+            }
             FlightPlanAction::Jump {
                 destination_system_id,
                 ..
-            } => (
-                ShipLocusRecord::JumpLocus {
-                    system_id: ship.system_id,
-                },
-                FlightLegPurpose::DepartForJump {
-                    jump_destination_system_id: destination_system_id,
-                },
-                None,
-                0,
-            ),
+            } => {
+                let departure = match step.locus {
+                    FlightLocus::JumpLocus { system_id } => {
+                        ShipLocusRecord::JumpLocus { system_id }
+                    }
+                    FlightLocus::ArrivalLocus {
+                        system_id,
+                        remote: false,
+                    } => ShipLocusRecord::ArrivalLocus {
+                        system_id,
+                        remote_seed: 0,
+                    },
+                    _ => {
+                        return Ok(RuleResult::Rejected(
+                            "a Jump must depart from a conventional departure or arrival locus"
+                                .into(),
+                        ));
+                    }
+                };
+                (
+                    departure,
+                    FlightLegPurpose::DepartForJump {
+                        jump_destination_system_id: destination_system_id,
+                    },
+                    None,
+                    0,
+                )
+            }
             FlightPlanAction::JumpCoordinates { destination, .. } => (
                 ShipLocusRecord::JumpLocus {
                     system_id: ship.system_id,
@@ -8503,6 +9100,34 @@ impl Store {
         })
     }
 
+    fn jump_plan_arrival_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+        leg: &FlightLegRecord,
+    ) -> Result<(bool, bool), StoreError> {
+        let Some(plan) = self
+            .flight_plans
+            .get(txn, &encode_identity(identity))?
+            .map(decode_flight_plan_snapshot)
+            .transpose()?
+        else {
+            return Ok((false, false));
+        };
+        Ok(match plan.steps.get(usize::from(leg.leg_index)) {
+            Some(FlightPlanStep {
+                action:
+                    FlightPlanAction::Jump {
+                        remote_arrival,
+                        departure_locus_arrival,
+                        ..
+                    },
+                ..
+            }) => (*remote_arrival, *departure_locus_arrival),
+            _ => (false, false),
+        })
+    }
+
     fn resolve_jump_preparation_in(
         &self,
         txn: &heed::RoTxn<'_>,
@@ -8594,11 +9219,81 @@ impl Store {
             plan.suspension_reason.clear();
             match step.action {
                 FlightPlanAction::Hold => {
-                    plan.state = FlightPlanState::Held;
-                    plan.suspension_reason = "flight plan is holding for the captain".into();
-                    self.flight_plans
-                        .put(txn, &key, &encode_flight_plan_snapshot(&plan)?)?;
-                    return Ok(RuleResult::Applied(plan));
+                    let (player, ship) = self.player_and_ship_in(txn, identity)?;
+                    let destination = match step.locus {
+                        FlightLocus::JumpLocus { system_id } => {
+                            ShipLocusRecord::JumpLocus { system_id }
+                        }
+                        FlightLocus::ArrivalLocus {
+                            system_id,
+                            remote: false,
+                        } => ShipLocusRecord::ArrivalLocus {
+                            system_id,
+                            remote_seed: 0,
+                        },
+                        _ => {
+                            plan.state = FlightPlanState::Held;
+                            plan.suspension_reason =
+                                "flight plan is holding for the captain".into();
+                            self.flight_plans.put(
+                                txn,
+                                &key,
+                                &encode_flight_plan_snapshot(&plan)?,
+                            )?;
+                            return Ok(RuleResult::Applied(plan));
+                        }
+                    };
+                    let already_there = matches!(
+                        ship.location,
+                        ShipLocationRecord::Holding { locus, .. } if locus == destination
+                    );
+                    if already_there {
+                        plan.state = FlightPlanState::Held;
+                        plan.suspension_reason = "flight plan is holding for the captain".into();
+                        self.flight_plans
+                            .put(txn, &key, &encode_flight_plan_snapshot(&plan)?)?;
+                        return Ok(RuleResult::Applied(plan));
+                    }
+                    match self.begin_locus_transit_in(
+                        txn,
+                        identity,
+                        destination,
+                        cancel_proper_repair,
+                    )? {
+                        RuleResult::Rejected(message) => {
+                            return self.reject_or_hold_plan_in(
+                                txn,
+                                &key,
+                                plan,
+                                &message,
+                                hold_on_rejection,
+                            );
+                        }
+                        RuleResult::Applied(_) => {
+                            let (_, mut moving_ship) = self.player_and_ship_in(txn, identity)?;
+                            let ShipLocationRecord::InFlight(ref mut leg) = moving_ship.location
+                            else {
+                                return Err(StoreError::Corrupt(
+                                    "accepted locus maneuver did not create a flight leg",
+                                ));
+                            };
+                            leg.plan_id = plan.plan_id;
+                            leg.plan_revision = plan.revision;
+                            leg.leg_index = plan.current_step;
+                            self.ships.put(
+                                txn,
+                                &player.ship_id,
+                                &encode_ship_record(&moving_ship)?,
+                            )?;
+                            plan.state = FlightPlanState::Active;
+                            self.flight_plans.put(
+                                txn,
+                                &key,
+                                &encode_flight_plan_snapshot(&plan)?,
+                            )?;
+                            return Ok(RuleResult::Applied(plan));
+                        }
+                    }
                 }
                 FlightPlanAction::Dock {
                     world_id,
@@ -8644,6 +9339,8 @@ impl Store {
                     destination_system_id,
                     navigation,
                     proceed_on_known_bad_plot,
+                    remote_arrival: _,
+                    departure_locus_arrival: _,
                 } => match if matches!(
                     self.player_and_ship_in(txn, identity)?.1.location,
                     ShipLocationRecord::Holding {
@@ -11527,6 +12224,12 @@ impl Store {
                 FlightLocus::JumpLocus { system_id } => {
                     Some(ShipLocusRecord::JumpLocus { system_id })
                 }
+                FlightLocus::ArrivalLocus { system_id, remote } => {
+                    Some(ShipLocusRecord::ArrivalLocus {
+                        system_id,
+                        remote_seed: u64::from(remote),
+                    })
+                }
                 FlightLocus::Body { system_id, body_id } => {
                     Some(ShipLocusRecord::Body { system_id, body_id })
                 }
@@ -11670,7 +12373,15 @@ impl Store {
             let bucket = allocation % 100;
             match locus {
                 ShipLocusRecord::Port { .. } => bucket < 55,
-                ShipLocusRecord::JumpLocus { .. } => (55..85).contains(&bucket),
+                ShipLocusRecord::JumpLocus { .. } => {
+                    contact.movement == crate::traffic::TrafficMovementKind::Departure
+                        && (55..85).contains(&bucket)
+                }
+                ShipLocusRecord::ArrivalLocus { remote_seed: 0, .. } => {
+                    contact.movement == crate::traffic::TrafficMovementKind::Arrival
+                        && (55..85).contains(&bucket)
+                }
+                ShipLocusRecord::ArrivalLocus { .. } => false,
                 ShipLocusRecord::Body { body_id, .. } => {
                     bucket >= 85
                         && !secondary_bodies.is_empty()
@@ -12089,11 +12800,16 @@ impl Store {
                 locus:
                     locus @ (ShipLocusRecord::Port { .. }
                     | ShipLocusRecord::JumpLocus { .. }
+                    | ShipLocusRecord::ArrivalLocus { remote_seed: 0, .. }
                     | ShipLocusRecord::Body { .. }),
                 ..
             } => Ok(RuleResult::Applied((ship, locus))),
             ShipLocationRecord::Holding {
-                locus: ShipLocusRecord::DeepSpace { .. },
+                locus:
+                    ShipLocusRecord::DeepSpace { .. }
+                    | ShipLocusRecord::ArrivalLocus {
+                        remote_seed: 1.., ..
+                    },
                 ..
             } => Ok(RuleResult::Rejected(
                 "there is no modeled traffic locus at these deep-space coordinates".into(),
@@ -14243,6 +14959,7 @@ impl Store {
             self.player_feed_cursors,
             self.player_system_mappings,
             self.insurance_policies,
+            self.account_ledger,
         ];
         for database in identity_databases {
             let keys = database
@@ -16940,10 +17657,7 @@ impl Store {
             self.schedule_next_interception_watch_in(txn, &watch, due_second)?;
             return Ok(None);
         }
-        let candidates = crate::traffic::snapshot(&system, due_second)?;
-        if candidates.is_empty() {
-            return Ok(None);
-        }
+        let mut candidates = crate::traffic::snapshot(&system, due_second)?;
         let entropy = crate::ship_condition::mix64(ship_id ^ due_second ^ 0x434f_4e54_4143_5400);
         let policy = self
             .system_polity_policies
@@ -16962,19 +17676,94 @@ impl Store {
         let security = (u16::from(order) + u16::from(law.min(10)) * 10) / 2;
         let encounter_locus = match ship.location {
             ShipLocationRecord::InFlight(FlightLegRecord {
-                origin: locus @ ShipLocusRecord::JumpLocus { .. },
+                destination:
+                    locus @ (ShipLocusRecord::JumpLocus { .. }
+                    | ShipLocusRecord::ArrivalLocus { remote_seed: 0, .. }),
+                due_second: maneuver_due,
+                purpose:
+                    FlightLegPurpose::DepartForJump { .. }
+                    | FlightLegPurpose::DepartForCoordinateJump { .. }
+                    | FlightLegPurpose::ReachLocus,
+                ..
+            }) if due_second.saturating_add(70) >= maneuver_due => Some(locus),
+            ShipLocationRecord::InFlight(FlightLegRecord {
+                origin:
+                    locus @ (ShipLocusRecord::JumpLocus { .. }
+                    | ShipLocusRecord::ArrivalLocus { remote_seed: 0, .. }),
                 started_second,
                 purpose: FlightLegPurpose::ApproachPort,
                 ..
             }) if due_second <= started_second.saturating_add(1) => Some(locus),
             _ => self.local_traffic_locus_in(txn, &identity, &ship)?,
         };
+        if let Some(
+            locus @ (ShipLocusRecord::JumpLocus { .. }
+            | ShipLocusRecord::ArrivalLocus { remote_seed: 0, .. }),
+        ) = encounter_locus
+        {
+            candidates.retain(|contact| {
+                let allocation = crate::ship_condition::mix64(
+                    contact.contact_id ^ locus.system_id().rotate_left(23),
+                );
+                let correct_lane = match locus {
+                    ShipLocusRecord::JumpLocus { .. } => {
+                        contact.movement == crate::traffic::TrafficMovementKind::Departure
+                    }
+                    ShipLocusRecord::ArrivalLocus { .. } => {
+                        contact.movement == crate::traffic::TrafficMovementKind::Arrival
+                    }
+                    _ => false,
+                };
+                correct_lane && (55..85).contains(&(allocation % 100))
+            });
+            if candidates.is_empty() {
+                return Ok(None);
+            }
+        }
+        let arrival_lane = matches!(
+            encounter_locus,
+            Some(
+                ShipLocusRecord::JumpLocus { .. }
+                    | ShipLocusRecord::ArrivalLocus { remote_seed: 0, .. }
+            )
+        );
+        let mandatory_port_inspection =
+            matches!(encounter_locus, Some(ShipLocusRecord::Port { .. })) && law >= 7;
+        if mandatory_port_inspection {
+            candidates.clear();
+            candidates.push(crate::traffic::TrafficContact {
+                contact_id: crate::ship_condition::mix64(
+                    ship.ship_id ^ due_second ^ 0x4355_5354_4f4d_5300,
+                ),
+                catalog_id: 41,
+                class_name: "Warden".into(),
+                ship_name: "Port Customs".into(),
+                transponder: format!("CUSTOMS-{:04X}", entropy as u16),
+                operator_name: "Port Customs Authority".into(),
+                role: "customs inspection".into(),
+                displacement_millitons: 100_000,
+                origin_system_id: ship.system_id,
+                destination_system_id: ship.system_id,
+                movement: crate::traffic::TrafficMovementKind::Present,
+                edge_second: due_second,
+                resolution: crate::traffic::TrafficContactResolution::Identified,
+                confidence_percent: 100,
+                player_owned: false,
+                online_controlled: false,
+                attachment: crate::traffic::TrafficAttachment::Spaceborne,
+            });
+        }
+        if candidates.is_empty() {
+            return Ok(None);
+        }
         let candidate_count = u32::try_from(candidates.len()).unwrap_or(u32::MAX);
-        let enforcement_picket = matches!(encounter_locus, Some(ShipLocusRecord::JumpLocus { .. }))
-            && security >= 60
-            && entropy % 100 < u64::from((security - 40).min(55));
+        let enforcement_picket =
+            arrival_lane && security >= 60 && entropy % 100 < u64::from((security - 40).min(55));
         let pirate_locus = match encounter_locus {
-            Some(ShipLocusRecord::JumpLocus { .. }) => security < 45 && candidate_count < 12,
+            Some(
+                ShipLocusRecord::JumpLocus { .. }
+                | ShipLocusRecord::ArrivalLocus { remote_seed: 0, .. },
+            ) => security < 45 && candidate_count < 12,
             Some(ShipLocusRecord::Body { .. }) => {
                 (35..70).contains(&security) || candidate_count >= 12 && security < 70
             }
@@ -16989,13 +17778,17 @@ impl Store {
         let probability =
             1.0 - (5.0_f64 / 6.0).powi(i32::try_from(candidates.len()).unwrap_or(i32::MAX));
         let roll = (entropy >> 11) as f64 / ((1_u64 << 53) as f64);
-        if roll >= probability && !enforcement_picket && !pirate_picket {
+        if roll >= probability
+            && !mandatory_port_inspection
+            && !enforcement_picket
+            && !pirate_picket
+        {
             return Ok(None);
         }
         let Some(contact) = candidates.get(entropy as usize % candidates.len().max(1)) else {
             return Ok(None);
         };
-        let mut kind = if enforcement_picket {
+        let mut kind = if mandatory_port_inspection || enforcement_picket {
             EncounterKind::Inspection
         } else if pirate_picket {
             EncounterKind::Hostile
@@ -17005,7 +17798,10 @@ impl Store {
         let mut pirate_win_share = None;
         if kind == EncounterKind::Hostile {
             let locus_allows_pirates = match encounter_locus {
-                Some(ShipLocusRecord::JumpLocus { .. }) => security < 45,
+                Some(
+                    ShipLocusRecord::JumpLocus { .. }
+                    | ShipLocusRecord::ArrivalLocus { remote_seed: 0, .. },
+                ) => security < 45,
                 Some(ShipLocusRecord::Body { .. }) => (35..70).contains(&security),
                 Some(ShipLocusRecord::Port { .. }) => security < 25,
                 _ => false,
@@ -20708,6 +21504,22 @@ impl Store {
                     .thrust_g;
                 Some(primary_world_jump_safety(&celestial, days, f64::from(thrust)).locus_au)
             }
+            ShipLocusRecord::ArrivalLocus { remote_seed, .. } => {
+                let thrust = creation::ship_status_spec(ship.catalog_id)
+                    .ok_or(StoreError::Corrupt("radio ship catalog is missing"))?
+                    .thrust_g;
+                Some(if remote_seed == 0 {
+                    primary_world_arrival_safety(&celestial, days, f64::from(thrust)).locus_au
+                } else {
+                    primary_world_remote_arrival_safety(
+                        &celestial,
+                        days,
+                        f64::from(thrust),
+                        remote_seed,
+                    )
+                    .locus_au
+                })
+            }
             ShipLocusRecord::DeepSpace { .. } => None,
         })
     }
@@ -22793,6 +23605,57 @@ impl Store {
         }
         let reserved = self.task_ledger_in(txn, identity)?.reserved_credits;
         let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        let mut pending_income = Vec::new();
+        for entry in self.tasks.iter(txn)? {
+            let (_, value) = entry?;
+            let stored = decode_stored_task(value)?;
+            if stored.identity != *identity
+                || stored.task.state != crate::wire::TaskState::AwaitingSettlement
+                || stored.pending_payment_credits == 0
+            {
+                continue;
+            }
+            let stage = if stored.remittance_message_id == 0 {
+                crate::wire::PendingIncomeStage::FilingToOffice
+            } else {
+                crate::wire::PendingIncomeStage::RemittanceToCaptain
+            };
+            let mut route_legs = Vec::new();
+            if stage == crate::wire::PendingIncomeStage::FilingToOffice {
+                let message = self.simulation.message(txn, stored.settlement_message_id)?;
+                route_legs.push((message.origin_system_id, stored.task.offer.origin_system_id));
+            }
+            route_legs.push((stored.task.offer.origin_system_id, ship.system_id));
+            let mut projected = current;
+            let mut available = true;
+            for (origin, destination) in route_legs {
+                let Some(hops) = self.simulation.route_hops(txn, origin, destination)? else {
+                    available = false;
+                    break;
+                };
+                projected = projected
+                    .saturating_add(hops.saturating_mul(8 * crate::simulation::SECONDS_PER_DAY));
+            }
+            pending_income.push(crate::wire::PendingIncome {
+                task_id: stored.task.task_id,
+                payment_credits: stored.pending_payment_credits,
+                reserved_release_credits: stored.task.reserved_credits,
+                stage,
+                estimated_resolution_second: if available { projected } else { 0 },
+                estimate_kind: if available {
+                    crate::wire::IncomeEstimateKind::Projected
+                } else {
+                    crate::wire::IncomeEstimateKind::Unavailable
+                },
+            });
+        }
+        pending_income.sort_by_key(|income| {
+            (
+                income.estimated_resolution_second == 0,
+                income.estimated_resolution_second,
+                income.task_id,
+            )
+        });
         let mut insurance_key = identity_key.to_vec();
         insurance_key.push(1);
         let destination_assistance_expires_second = self
@@ -22842,6 +23705,283 @@ impl Store {
             },
             destination_assistance_active: current < destination_assistance_expires_second,
             destination_assistance_expires_second,
+            current_second: current,
+            pending_income,
+        })
+    }
+
+    fn record_account_entry_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        class: crate::wire::AccountTransactionClass,
+        summary: impl Into<String>,
+        subject_ship: Option<(u64, &str)>,
+        postings: Vec<crate::wire::AccountPosting>,
+    ) -> Result<u64, StoreError> {
+        if postings.is_empty() {
+            return Err(StoreError::Corrupt("account entry has no postings"));
+        }
+        let entry_id = take_id_range(self.meta, txn, META_NEXT_ACCOUNT_LEDGER_ENTRY_ID, 1)?;
+        let occurred_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        let entry = crate::wire::AccountLedgerEntry {
+            entry_id,
+            occurred_second,
+            class,
+            summary: summary.into(),
+            subject_ship_id: subject_ship.map_or(0, |ship| ship.0),
+            subject_ship_name: subject_ship.map_or_else(String::new, |ship| ship.1.to_owned()),
+            postings,
+        };
+        self.account_ledger.put(
+            txn,
+            &account_ledger_key(identity, entry_id),
+            &encode_account_ledger_entry(&entry)?,
+        )?;
+        Ok(entry_id)
+    }
+
+    fn account_balances_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+    ) -> Result<AccountBalances, StoreError> {
+        let player = self
+            .players
+            .get(txn, &encode_identity(identity))?
+            .map(decode_player_record)
+            .transpose()?
+            .ok_or(StoreError::Corrupt("account player is missing"))?;
+        let mut ships = std::collections::BTreeMap::new();
+        for ship_id in &player.managed_ship_ids {
+            let ship = self
+                .ships
+                .get(txn, ship_id)?
+                .map(decode_ship_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("managed account ship is missing"))?;
+            let finance = self
+                .finances
+                .get(txn, &ship_finance_key(*ship_id))?
+                .map(decode_finance_record)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("managed ship finance is missing"))?;
+            ships.insert(
+                *ship_id,
+                AccountShipBalances {
+                    name: ship.name,
+                    restricted: finance.restricted_credits,
+                    reserved: 0,
+                    principal: finance.principal_credits,
+                },
+            );
+        }
+        for entry in self.tasks.iter(txn)? {
+            let (_, value) = entry?;
+            let stored = decode_stored_task(value)?;
+            if stored.identity != *identity || stored.task.reserved_credits == 0 {
+                continue;
+            }
+            let ship_id = if stored.task.performing_ship_id == 0 {
+                player.ship_id
+            } else {
+                stored.task.performing_ship_id
+            };
+            if let Some(ship) = ships.get_mut(&ship_id) {
+                ship.reserved = ship.reserved.saturating_add(stored.task.reserved_credits);
+            }
+        }
+        Ok(AccountBalances {
+            liquid: player.credits,
+            active_ship_id: player.ship_id,
+            ships,
+        })
+    }
+
+    fn record_account_opening_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+    ) -> Result<(), StoreError> {
+        let balances = self.account_balances_in(txn, identity)?;
+        let mut postings = vec![crate::wire::AccountPosting {
+            account: crate::wire::AccountKind::Liquid,
+            change: crate::wire::AccountChangeKind::BalanceForward,
+            amount_credits: balances.liquid,
+            balance_after_credits: balances.liquid,
+            ship_id: 0,
+            ship_name: String::new(),
+        }];
+        for (ship_id, ship) in &balances.ships {
+            for (account, amount) in [
+                (
+                    crate::wire::AccountKind::RestrictedOperating,
+                    ship.restricted,
+                ),
+                (crate::wire::AccountKind::Reserved, ship.reserved),
+                (crate::wire::AccountKind::SecuredPrincipal, ship.principal),
+            ] {
+                if amount != 0 {
+                    postings.push(crate::wire::AccountPosting {
+                        account,
+                        change: crate::wire::AccountChangeKind::BalanceForward,
+                        amount_credits: amount,
+                        balance_after_credits: amount,
+                        ship_id: *ship_id,
+                        ship_name: ship.name.clone(),
+                    });
+                }
+            }
+        }
+        let subject = balances.ships.get(&balances.active_ship_id);
+        self.record_account_entry_in(
+            txn,
+            identity,
+            crate::wire::AccountTransactionClass::Opening,
+            "Opening account balances",
+            subject.map(|ship| (balances.active_ship_id, ship.name.as_str())),
+            postings,
+        )?;
+        Ok(())
+    }
+
+    fn record_account_change_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        summary: &str,
+        before: &AccountBalances,
+        after: &AccountBalances,
+    ) -> Result<(), StoreError> {
+        if before == after {
+            return Ok(());
+        }
+        let mut postings = Vec::new();
+        push_account_change(
+            &mut postings,
+            crate::wire::AccountKind::Liquid,
+            before.liquid,
+            after.liquid,
+            0,
+            "",
+        );
+        let mut ship_ids = before
+            .ships
+            .keys()
+            .chain(after.ships.keys())
+            .copied()
+            .collect::<Vec<_>>();
+        ship_ids.sort_unstable();
+        ship_ids.dedup();
+        for ship_id in ship_ids {
+            let old = before.ships.get(&ship_id);
+            let new = after.ships.get(&ship_id);
+            let name = new.or(old).map_or("", |ship| ship.name.as_str());
+            push_account_change(
+                &mut postings,
+                crate::wire::AccountKind::RestrictedOperating,
+                old.map_or(0, |ship| ship.restricted),
+                new.map_or(0, |ship| ship.restricted),
+                ship_id,
+                name,
+            );
+            push_account_change(
+                &mut postings,
+                crate::wire::AccountKind::Reserved,
+                old.map_or(0, |ship| ship.reserved),
+                new.map_or(0, |ship| ship.reserved),
+                ship_id,
+                name,
+            );
+            push_account_change(
+                &mut postings,
+                crate::wire::AccountKind::SecuredPrincipal,
+                old.map_or(0, |ship| ship.principal),
+                new.map_or(0, |ship| ship.principal),
+                ship_id,
+                name,
+            );
+        }
+        if postings.is_empty() {
+            return Ok(());
+        }
+        let class = classify_account_change(&postings);
+        let subject_ship_id = after.active_ship_id;
+        let subject = after
+            .ships
+            .get(&subject_ship_id)
+            .or_else(|| before.ships.get(&subject_ship_id));
+        self.record_account_entry_in(
+            txn,
+            identity,
+            class,
+            summary,
+            subject.map(|ship| (subject_ship_id, ship.name.as_str())),
+            postings,
+        )?;
+        Ok(())
+    }
+
+    fn account_ledger_page_in(
+        &self,
+        txn: &heed::RoTxn<'_>,
+        identity: &PlayerIdentity,
+        query: &crate::wire::AccountLedgerRequest,
+    ) -> Result<crate::wire::AccountLedgerPage, StoreError> {
+        let limit = usize::from(query.limit.clamp(1, 50));
+        let prefix = encode_identity(identity);
+        let mut entries = Vec::new();
+        let mut vessels = std::collections::BTreeMap::new();
+        let mut has_more = false;
+        for item in self.account_ledger.prefix_iter(txn, &prefix)? {
+            let (key, bytes) = item?;
+            let entry_id = account_ledger_key_entry_id(key)?;
+            if query.before_entry_id != 0 && entry_id >= query.before_entry_id {
+                continue;
+            }
+            let entry = decode_account_ledger_entry(bytes)?;
+            if entry.subject_ship_id != 0 {
+                vessels.insert(entry.subject_ship_id, entry.subject_ship_name.clone());
+            }
+            for posting in &entry.postings {
+                if posting.ship_id != 0 {
+                    vessels.insert(posting.ship_id, posting.ship_name.clone());
+                }
+            }
+            if query.class != crate::wire::AccountTransactionClass::All
+                && entry.class != query.class
+            {
+                continue;
+            }
+            if query.ship_id != 0
+                && entry.subject_ship_id != query.ship_id
+                && !entry
+                    .postings
+                    .iter()
+                    .any(|posting| posting.ship_id == query.ship_id)
+            {
+                continue;
+            }
+            if entries.len() == limit {
+                has_more = true;
+                continue;
+            }
+            entries.push(entry);
+        }
+        let next_before_entry_id = if has_more {
+            entries.last().map_or(0, |entry| entry.entry_id)
+        } else {
+            0
+        };
+        Ok(crate::wire::AccountLedgerPage {
+            current_second: get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0),
+            entries,
+            next_before_entry_id,
+            has_more,
+            vessels: vessels
+                .into_iter()
+                .map(|(ship_id, ship_name)| crate::wire::AccountLedgerVessel { ship_id, ship_name })
+                .collect(),
         })
     }
 
@@ -25441,15 +26581,149 @@ impl Store {
         Ok(RuleResult::Applied(self.travel_status_in(txn, identity)?))
     }
 
+    fn begin_locus_transit_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        destination: ShipLocusRecord,
+        cancel_proper_repair: bool,
+    ) -> Result<RuleResult<TravelStatus>, StoreError> {
+        let (mut player, mut ship) = self.player_and_ship_in(txn, identity)?;
+        if destination.system_id() != ship.system_id
+            || !matches!(
+                destination,
+                ShipLocusRecord::JumpLocus { .. }
+                    | ShipLocusRecord::ArrivalLocus { remote_seed: 0, .. }
+            )
+        {
+            return Ok(RuleResult::Rejected(
+                "a local-locus maneuver must name this system's conventional departure or arrival locus"
+                    .into(),
+            ));
+        }
+        if ship.activity.as_ref().is_some_and(|activity| {
+            !cancel_proper_repair || !matches!(activity.kind, ShipActivityKind::ProperRepair { .. })
+        }) {
+            return Ok(RuleResult::Rejected(
+                "the ship must finish its current operation before maneuvering".into(),
+            ));
+        }
+        if ship.provisions.person_days_remaining == 0 {
+            return Ok(RuleResult::Rejected(
+                "the ship cannot depart without life-support stores".into(),
+            ));
+        }
+        for (kind, name) in [
+            (ShipSubsystemKind::LifeSupport, "life support"),
+            (ShipSubsystemKind::PowerPlant, "power plant"),
+            (ShipSubsystemKind::ManeuverDrive, "maneuver drive"),
+        ] {
+            if ship
+                .subsystems
+                .iter()
+                .filter(|subsystem| subsystem.kind == kind)
+                .any(|subsystem| {
+                    subsystem
+                        .sustained_hits
+                        .saturating_sub(subsystem.battlefield_repair_hits)
+                        >= subsystem.maximum_hits
+                })
+            {
+                return Ok(RuleResult::Rejected(format!(
+                    "the ship cannot depart with its {name} destroyed"
+                )));
+            }
+        }
+        let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+        let origin = match ship.location {
+            ShipLocationRecord::Docked {
+                world_id,
+                facility_id,
+                arrived_second,
+            } => {
+                let berth_fee = crate::ship_condition::berth_fee_credits(arrived_second, current);
+                if !self.charge_operating_account_in(txn, &mut player, ship.ship_id, berth_fee)? {
+                    return Ok(RuleResult::Rejected(format!(
+                        "clearing the berth requires Cr{berth_fee}; the operating account is short"
+                    )));
+                }
+                ShipLocusRecord::Port {
+                    system_id: ship.system_id,
+                    world_id,
+                    facility_id,
+                }
+            }
+            ShipLocationRecord::Holding { locus, .. } => locus,
+            ShipLocationRecord::InFlight(_) => {
+                return Ok(RuleResult::Rejected(
+                    "revise the active maneuver instead of starting a second one".into(),
+                ));
+            }
+        };
+        if origin == destination {
+            ship.location = ShipLocationRecord::Holding {
+                locus: destination,
+                arrived_second: current,
+            };
+            self.ships
+                .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+            return Ok(RuleResult::Applied(self.travel_status_in(txn, identity)?));
+        }
+        let spec = creation::ship_status_spec(ship.catalog_id)
+            .ok_or(StoreError::Corrupt("maneuver ship catalog is missing"))?;
+        settle_power_fuel(&mut ship, &spec, current);
+        let Some(trajectory) = self.diversion_trajectory_in(txn, &ship, destination, current)?
+        else {
+            return Ok(RuleResult::Rejected(
+                "the navigation computer could not find a bounded-thrust intercept".into(),
+            ));
+        };
+        if cancel_proper_repair {
+            self.cancel_proper_repair_for_departure_in(txn, &mut ship)?;
+        }
+        self.trigger_interception_watches_at_locus_in(txn, &mut ship, origin, true)?;
+        let due_second = trajectory.due_second;
+        let duration = trajectory.solution.duration_seconds;
+        ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+            plan_id: crate::ship_condition::mix64(ship.ship_id ^ current ^ destination.system_id()),
+            plan_revision: 1,
+            leg_index: 0,
+            origin,
+            destination,
+            started_second: current,
+            due_second,
+            purpose: FlightLegPurpose::ReachLocus,
+        });
+        for subsystem in &mut ship.subsystems {
+            if matches!(
+                subsystem.kind,
+                ShipSubsystemKind::ManeuverDrive | ShipSubsystemKind::PowerPlant
+            ) {
+                subsystem.operating_seconds = subsystem.operating_seconds.saturating_add(duration);
+            }
+        }
+        self.ships
+            .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
+        self.players.put(
+            txn,
+            &encode_identity(identity),
+            &encode_player_record(&player),
+        )?;
+        self.schedule_player_travel_in(txn, ship.ship_id, due_second)?;
+        self.schedule_contact_check_in(txn, ship.ship_id, current.saturating_add(1))?;
+        self.schedule_contact_check_in(txn, ship.ship_id, due_second.saturating_add(1))?;
+        Ok(RuleResult::Applied(self.travel_status_in(txn, identity)?))
+    }
+
     fn begin_fuel_processing_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
         identity: &PlayerIdentity,
         quantity_millitons: u64,
     ) -> Result<RuleResult<ShipStatusSnapshot>, StoreError> {
-        if quantity_millitons == 0 || quantity_millitons % MILLITONS_PER_TON != 0 {
+        if quantity_millitons == 0 {
             return Ok(RuleResult::Rejected(
-                "fuel processing requires a positive whole-ton quantity".into(),
+                "fuel processing requires a positive quantity".into(),
             ));
         }
         let (_, mut ship) = self.player_and_ship_in(txn, identity)?;
@@ -25800,6 +27074,9 @@ impl Store {
                         leg.destination.system_id(),
                         TravelStage::ApproachingStarport,
                     ),
+                    FlightLegPurpose::ReachLocus => {
+                        (leg.destination.system_id(), TravelStage::Maneuvering)
+                    }
                     FlightLegPurpose::ReachFrontierFuel { .. }
                     | FlightLegPurpose::ProcessFrontierFuel { .. }
                     | FlightLegPurpose::ReturnFromFrontierFuel { .. } => {
@@ -28904,6 +30181,7 @@ impl Store {
         self.person_training_events.clear(&mut txn)?;
         self.ship_activity_events.clear(&mut txn)?;
         self.operational_damage_reports.clear(&mut txn)?;
+        self.account_ledger.clear(&mut txn)?;
         self.player_arrivals.clear(&mut txn)?;
         self.player_message_state.clear(&mut txn)?;
         self.player_feed_cursors.clear(&mut txn)?;
@@ -29032,6 +30310,7 @@ impl Store {
             META_NEXT_OPERATIONAL_DAMAGE_REPORT_ID,
             1,
         )?;
+        put_meta_u64(self.meta, &mut txn, META_NEXT_ACCOUNT_LEDGER_ENTRY_ID, 1)?;
         put_meta_u64(self.meta, &mut txn, META_GAME_SECOND, 0)?;
         put_meta_u64(
             self.meta,
@@ -29770,7 +31049,15 @@ impl Store {
         let bucket = allocation % 100;
         Ok(match locus {
             ShipLocusRecord::Port { .. } => bucket < 55,
-            ShipLocusRecord::JumpLocus { .. } => (55..85).contains(&bucket),
+            ShipLocusRecord::JumpLocus { .. } => {
+                contact.movement == crate::traffic::TrafficMovementKind::Departure
+                    && (55..85).contains(&bucket)
+            }
+            ShipLocusRecord::ArrivalLocus { remote_seed: 0, .. } => {
+                contact.movement == crate::traffic::TrafficMovementKind::Arrival
+                    && (55..85).contains(&bucket)
+            }
+            ShipLocusRecord::ArrivalLocus { .. } => false,
             ShipLocusRecord::Body { system_id, body_id } => {
                 let stellar = self
                     .systems
@@ -31030,7 +32317,7 @@ impl Store {
         txn: &mut heed::RwTxn<'_>,
         due_second: u64,
         ship_id: u64,
-    ) -> Result<(), StoreError> {
+    ) -> Result<String, StoreError> {
         let mut ship = self
             .ships
             .get(txn, &ship_id)?
@@ -31059,6 +32346,9 @@ impl Store {
                 "condition ship finance record is missing",
             ))?;
         let institution_supplied = finance.title == crate::wire::ShipTitleKind::InstitutionOwned;
+        let mut naval_salary_paid = 0_u64;
+        let mut installment_paid = 0_u64;
+        let mut payroll_paid = 0_u64;
 
         // Career accounting is attached to the active command's monthly
         // ship-ledger work item. Other owned hulls have independent condition
@@ -31068,12 +32358,9 @@ impl Store {
             let mut promoted_to = None;
             if career.mode == crate::careers::CombatCareerMode::Navy {
                 while career.next_salary_second <= due_second {
-                    player.credits =
-                        player
-                            .credits
-                            .saturating_add(crate::careers::naval_salary_for_grade(
-                                career.naval_grade_index,
-                            ));
+                    let salary = crate::careers::naval_salary_for_grade(career.naval_grade_index);
+                    player.credits = player.credits.saturating_add(salary);
+                    naval_salary_paid = naval_salary_paid.saturating_add(salary);
                     career.next_salary_second = career
                         .next_salary_second
                         .saturating_add(crate::ship_condition::ACCOUNTING_MONTH_SECONDS);
@@ -31223,6 +32510,7 @@ impl Store {
         } else {
             apply_operating_account_payment(&mut player, &mut finance, charge)
         };
+        let upkeep_paid = if institution_supplied { 0 } else { payment };
         let paid = payment == charge;
         if paid {
             ship.maintenance.paid_through_second = due_second;
@@ -31371,7 +32659,9 @@ impl Store {
         }
 
         if finance.next_payment_due_second <= due_second && !finance.in_default {
+            let (_, _, installment_due) = finance_installment_due(&finance);
             if pay_finance_installment(&mut player, &mut finance) {
+                installment_paid = installment_due;
                 finance.paid_through_second = due_second;
                 finance.next_payment_due_second = finance
                     .next_payment_due_second
@@ -31498,6 +32788,7 @@ impl Store {
                     .put(txn, &service.person_id, &encode_crew_service(service)?)?;
             }
             player.credits -= budget;
+            payroll_paid = budget;
         }
 
         ship.maintenance.next_accounting_second = due_second
@@ -31509,7 +32800,24 @@ impl Store {
         self.finances
             .put(txn, &finance_key, &encode_finance_record(&finance))?;
         self.ships.put(txn, &ship_id, &encode_ship_record(&ship)?)?;
-        Ok(())
+        let mut details = Vec::new();
+        if upkeep_paid != 0 {
+            details.push(format!("upkeep Cr{upkeep_paid}"));
+        }
+        if installment_paid != 0 {
+            details.push(format!("installment Cr{installment_paid}"));
+        }
+        if payroll_paid != 0 {
+            details.push(format!("payroll Cr{payroll_paid}"));
+        }
+        if naval_salary_paid != 0 {
+            details.push(format!("salary +Cr{naval_salary_paid}"));
+        }
+        Ok(if details.is_empty() {
+            format!("Monthly vessel accounts — {}", ship.name)
+        } else {
+            format!("Monthly accounts — {}: {}", ship.name, details.join(", "))
+        })
     }
 
     fn issue_naval_assignment_in(
@@ -31689,6 +32997,7 @@ impl Store {
             .collect::<Result<Vec<_>, StoreError>>()?;
         for (key, mut career) in careers {
             let mut changed = false;
+            let mut reward_total = 0_u64;
             let mut player = self
                 .players
                 .get(txn, &key)?
@@ -31747,6 +33056,7 @@ impl Store {
                 }
                 opportunity.state = crate::careers::OpportunityState::Succeeded;
                 player.credits = player.credits.saturating_add(opportunity.reward_credits);
+                reward_total = reward_total.saturating_add(opportunity.reward_credits);
                 career.service_points = career
                     .service_points
                     .saturating_add(opportunity.service_points);
@@ -31764,6 +33074,29 @@ impl Store {
                 .put(txn, &key, &encode_player_record(&player))?;
             self.careers
                 .put(txn, &key, &encode_career_record(&career)?)?;
+            if reward_total != 0 {
+                let ship = self
+                    .ships
+                    .get(txn, &player.ship_id)?
+                    .map(decode_ship_record)
+                    .transpose()?
+                    .ok_or(StoreError::Corrupt("career award ship is missing"))?;
+                self.record_account_entry_in(
+                    txn,
+                    &ship.command,
+                    crate::wire::AccountTransactionClass::Income,
+                    "Service award remitted",
+                    Some((ship.ship_id, ship.name.as_str())),
+                    vec![crate::wire::AccountPosting {
+                        account: crate::wire::AccountKind::Liquid,
+                        change: crate::wire::AccountChangeKind::Increase,
+                        amount_credits: reward_total,
+                        balance_after_credits: player.credits,
+                        ship_id: 0,
+                        ship_name: String::new(),
+                    }],
+                )?;
+            }
         }
         Ok(())
     }
@@ -31852,6 +33185,27 @@ impl Store {
                     .ok_or(StoreError::Corrupt("discovery award balance overflow"))?;
                 self.finances
                     .put(txn, &finance_key, &encode_finance_record(&finance))?;
+                let award_ship = self
+                    .ships
+                    .get(txn, &claimant.ship_id)?
+                    .map(decode_ship_record)
+                    .transpose()?
+                    .ok_or(StoreError::Corrupt("discovery award ship is missing"))?;
+                self.record_account_entry_in(
+                    txn,
+                    &claim.claimant,
+                    crate::wire::AccountTransactionClass::Income,
+                    "Federation discovery award",
+                    Some((award_ship.ship_id, award_ship.name.as_str())),
+                    vec![crate::wire::AccountPosting {
+                        account: crate::wire::AccountKind::RestrictedOperating,
+                        change: crate::wire::AccountChangeKind::Increase,
+                        amount_credits: FEDERATION_DISCOVERY_AWARD_CREDITS,
+                        balance_after_credits: finance.restricted_credits,
+                        ship_id: award_ship.ship_id,
+                        ship_name: award_ship.name.clone(),
+                    }],
+                )?;
                 let (publication_message_id, _) = self.simulation.dispatch_message(
                     txn,
                     due_second,
@@ -32144,6 +33498,21 @@ impl Store {
                             player.credits -= meal_cost;
                             self.players
                                 .put(txn, &identity_key, &encode_player_record(&player))?;
+                            self.record_account_entry_in(
+                                txn,
+                                &ship.command,
+                                crate::wire::AccountTransactionClass::Expense,
+                                "Captain's shore meal",
+                                Some((ship.ship_id, ship.name.as_str())),
+                                vec![crate::wire::AccountPosting {
+                                    account: crate::wire::AccountKind::Liquid,
+                                    change: crate::wire::AccountChangeKind::Decrease,
+                                    amount_credits: meal_cost,
+                                    balance_after_credits: player.credits,
+                                    ship_id: 0,
+                                    ship_name: String::new(),
+                                }],
+                            )?;
                             true
                         } else {
                             false
@@ -33021,6 +34390,7 @@ impl Store {
                         leg.destination,
                         ShipLocusRecord::Port { .. }
                             | ShipLocusRecord::JumpLocus { .. }
+                            | ShipLocusRecord::ArrivalLocus { .. }
                             | ShipLocusRecord::Body { .. }
                     ) =>
             {
@@ -33051,6 +34421,42 @@ impl Store {
         let (system_id, stage) = match ship.location {
             ShipLocationRecord::InFlight(
                 leg @ FlightLegRecord {
+                    destination:
+                        destination @ (ShipLocusRecord::JumpLocus { .. }
+                        | ShipLocusRecord::ArrivalLocus { remote_seed: 0, .. }),
+                    purpose: FlightLegPurpose::ReachLocus,
+                    ..
+                },
+            ) => {
+                if leg.due_second != due_second || destination.system_id() != ship.system_id {
+                    return Err(StoreError::Corrupt(
+                        "locus maneuver event disagrees with ship location",
+                    ));
+                }
+                ship.location = ShipLocationRecord::Holding {
+                    locus: destination,
+                    arrived_second: due_second,
+                };
+                if let Some(mut plan) = self
+                    .flight_plans
+                    .get(txn, &encode_identity(&ship.command))?
+                    .map(decode_flight_plan_snapshot)
+                    .transpose()?
+                    .filter(|plan| plan.plan_id == leg.plan_id)
+                {
+                    plan.current_step = leg.leg_index;
+                    plan.state = FlightPlanState::Held;
+                    plan.suspension_reason = "holding at the plotted traffic locus".into();
+                    self.flight_plans.put(
+                        txn,
+                        &encode_identity(&ship.command),
+                        &encode_flight_plan_snapshot(&plan)?,
+                    )?;
+                }
+                (ship.system_id, 14)
+            }
+            ShipLocationRecord::InFlight(
+                leg @ FlightLegRecord {
                     purpose:
                         FlightLegPurpose::DepartForJump {
                             jump_destination_system_id,
@@ -33061,10 +34467,14 @@ impl Store {
                 let origin_system_id = leg.origin.system_id();
                 if leg.due_second != due_second
                     || origin_system_id != ship.system_id
-                    || leg.destination
-                        != (ShipLocusRecord::JumpLocus {
-                            system_id: origin_system_id,
-                        })
+                    || !matches!(
+                        leg.destination,
+                        ShipLocusRecord::JumpLocus { system_id }
+                            | ShipLocusRecord::ArrivalLocus {
+                                system_id,
+                                remote_seed: 0,
+                            } if system_id == origin_system_id
+                    )
                 {
                     return Err(StoreError::Corrupt(
                         "departure event disagrees with ship location",
@@ -33175,18 +34585,43 @@ impl Store {
                         subsystem.duty_cycles = subsystem.duty_cycles.saturating_add(1);
                     }
                 }
+                let (remote_arrival, departure_locus_arrival) =
+                    self.jump_plan_arrival_in(txn, &ship.command, &leg)?;
+                let arrival_seed = remote_arrival.then(|| {
+                    crate::ship_condition::mix64(
+                        ship.ship_id
+                            ^ leg.plan_id.rotate_left(17)
+                            ^ due_second.rotate_left(31)
+                            ^ jump_destination_system_id,
+                    )
+                    .max(1)
+                });
                 let (jump_destination, inaccurate_extra_days, critical_transition) =
                     match resolution.quality {
                         crate::jump::JumpQuality::Accurate => (
-                            ShipLocusRecord::JumpLocus {
-                                system_id: jump_destination_system_id,
+                            if departure_locus_arrival {
+                                ShipLocusRecord::JumpLocus {
+                                    system_id: jump_destination_system_id,
+                                }
+                            } else {
+                                ShipLocusRecord::ArrivalLocus {
+                                    system_id: jump_destination_system_id,
+                                    remote_seed: arrival_seed.unwrap_or(0),
+                                }
                             },
                             0,
                             false,
                         ),
                         crate::jump::JumpQuality::Inaccurate { extra_days } => (
-                            ShipLocusRecord::JumpLocus {
-                                system_id: jump_destination_system_id,
+                            if departure_locus_arrival {
+                                ShipLocusRecord::JumpLocus {
+                                    system_id: jump_destination_system_id,
+                                }
+                            } else {
+                                ShipLocusRecord::ArrivalLocus {
+                                    system_id: jump_destination_system_id,
+                                    remote_seed: arrival_seed.unwrap_or(0),
+                                }
                             },
                             extra_days,
                             true,
@@ -33214,9 +34649,7 @@ impl Store {
                     plan_id: leg.plan_id,
                     plan_revision: leg.plan_revision,
                     leg_index: leg.leg_index.saturating_add(1),
-                    origin: ShipLocusRecord::JumpLocus {
-                        system_id: origin_system_id,
-                    },
+                    origin: leg.destination,
                     destination: jump_destination,
                     started_second: due_second,
                     due_second: jump_due,
@@ -33448,9 +34881,14 @@ impl Store {
                     || origin_system_id != ship.system_id
                     || !matches!(
                         leg.origin,
-                        ShipLocusRecord::JumpLocus { .. } | ShipLocusRecord::DeepSpace { .. }
+                        ShipLocusRecord::JumpLocus { .. }
+                            | ShipLocusRecord::ArrivalLocus { .. }
+                            | ShipLocusRecord::DeepSpace { .. }
                     )
-                    || !matches!(leg.destination, ShipLocusRecord::JumpLocus { .. })
+                    || !matches!(
+                        leg.destination,
+                        ShipLocusRecord::JumpLocus { .. } | ShipLocusRecord::ArrivalLocus { .. }
+                    )
                 {
                     return Err(StoreError::Corrupt(
                         "jump event disagrees with ship location",
@@ -33575,47 +35013,105 @@ impl Store {
                 )?;
                 self.simulation
                     .enable_generated_traffic(txn, destination_system_id)?;
-                let celestial = derive_celestial_system(&destination)?;
-                let approach = primary_world_jump_safety(
-                    &celestial,
-                    due_second as f64 / crate::simulation::SECONDS_PER_DAY as f64,
-                    f64::from(spec.thrust_g),
-                );
-                let approach_seconds = (approach.travel_days
-                    * crate::simulation::SECONDS_PER_DAY as f64)
-                    .ceil() as u64
-                    + u64::from(inaccurate_extra_days) * crate::simulation::SECONDS_PER_DAY;
-                let arrival_due = due_second
-                    .checked_add(approach_seconds)
-                    .ok_or(StoreError::Corrupt("arrival due time overflow"))?;
-                for subsystem in &mut ship.subsystems {
-                    if matches!(
-                        subsystem.kind,
-                        ShipSubsystemKind::ManeuverDrive | ShipSubsystemKind::PowerPlant
-                    ) {
-                        subsystem.operating_seconds =
-                            subsystem.operating_seconds.saturating_add(approach_seconds);
+                let (remote_seed, departure_locus_arrival) = match leg.destination {
+                    ShipLocusRecord::ArrivalLocus { remote_seed, .. } => (remote_seed, false),
+                    ShipLocusRecord::JumpLocus { .. } => (0, true),
+                    _ => unreachable!(),
+                };
+                ship.system_id = destination_system_id;
+                let filed_plan = self
+                    .flight_plans
+                    .get(txn, &encode_identity(&ship.command))?
+                    .map(decode_flight_plan_snapshot)
+                    .transpose()?
+                    .filter(|plan| plan.plan_id == leg.plan_id);
+                let continuing_to_port = filed_plan.as_ref().is_none_or(|plan| {
+                    plan.steps
+                        .get(usize::from(leg.leg_index))
+                        .is_some_and(|step| matches!(step.action, FlightPlanAction::Dock { .. }))
+                });
+                if continuing_to_port {
+                    let celestial = derive_celestial_system(&destination)?;
+                    let approach = if departure_locus_arrival {
+                        primary_world_jump_safety(
+                            &celestial,
+                            due_second as f64 / crate::simulation::SECONDS_PER_DAY as f64,
+                            f64::from(spec.thrust_g),
+                        )
+                    } else if remote_seed == 0 {
+                        primary_world_arrival_safety(
+                            &celestial,
+                            due_second as f64 / crate::simulation::SECONDS_PER_DAY as f64,
+                            f64::from(spec.thrust_g),
+                        )
+                    } else {
+                        primary_world_remote_arrival_safety(
+                            &celestial,
+                            due_second as f64 / crate::simulation::SECONDS_PER_DAY as f64,
+                            f64::from(spec.thrust_g),
+                            remote_seed,
+                        )
+                    };
+                    let approach_seconds = (approach.travel_days
+                        * crate::simulation::SECONDS_PER_DAY as f64)
+                        .ceil() as u64
+                        + u64::from(inaccurate_extra_days) * crate::simulation::SECONDS_PER_DAY;
+                    let arrival_due = due_second
+                        .checked_add(approach_seconds)
+                        .ok_or(StoreError::Corrupt("arrival due time overflow"))?;
+                    for subsystem in &mut ship.subsystems {
+                        if matches!(
+                            subsystem.kind,
+                            ShipSubsystemKind::ManeuverDrive | ShipSubsystemKind::PowerPlant
+                        ) {
+                            subsystem.operating_seconds =
+                                subsystem.operating_seconds.saturating_add(approach_seconds);
+                        }
+                    }
+                    ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
+                        plan_id: leg.plan_id,
+                        plan_revision: leg.plan_revision,
+                        leg_index: leg.leg_index,
+                        origin: leg.destination,
+                        destination: ShipLocusRecord::Port {
+                            system_id: destination_system_id,
+                            world_id: destination_system_id,
+                            facility_id: destination_system_id,
+                        },
+                        started_second: due_second,
+                        due_second: arrival_due,
+                        purpose: FlightLegPurpose::ApproachPort,
+                    });
+                    self.schedule_player_travel_in(txn, ship.ship_id, arrival_due)?;
+                } else {
+                    ship.location = ShipLocationRecord::Holding {
+                        locus: leg.destination,
+                        arrived_second: due_second,
+                    };
+                    if let Some(mut plan) = self
+                        .flight_plans
+                        .get(txn, &encode_identity(&ship.command))?
+                        .map(decode_flight_plan_snapshot)
+                        .transpose()?
+                        .filter(|plan| plan.plan_id == leg.plan_id)
+                    {
+                        plan.current_step = leg.leg_index.saturating_sub(1);
+                        plan.state = FlightPlanState::Held;
+                        plan.suspension_reason = "holding at the plotted arrival point".into();
+                        self.flight_plans.put(
+                            txn,
+                            &encode_identity(&ship.command),
+                            &encode_flight_plan_snapshot(&plan)?,
+                        )?;
                     }
                 }
-                ship.system_id = destination_system_id;
-                ship.location = ShipLocationRecord::InFlight(FlightLegRecord {
-                    plan_id: leg.plan_id,
-                    plan_revision: leg.plan_revision,
-                    leg_index: leg.leg_index.saturating_add(1),
-                    origin: ShipLocusRecord::JumpLocus {
-                        system_id: destination_system_id,
-                    },
-                    destination: ShipLocusRecord::Port {
-                        system_id: destination_system_id,
-                        world_id: destination_system_id,
-                        facility_id: destination_system_id,
-                    },
-                    started_second: due_second,
-                    due_second: arrival_due,
-                    purpose: FlightLegPurpose::ApproachPort,
-                });
-                self.schedule_player_travel_in(txn, ship.ship_id, arrival_due)?;
-                self.schedule_contact_check_in(txn, ship.ship_id, due_second.saturating_add(1))?;
+                if remote_seed == 0 {
+                    self.schedule_contact_check_in(
+                        txn,
+                        ship.ship_id,
+                        due_second.saturating_add(1),
+                    )?;
+                }
                 (destination_system_id, 1)
             }
             ShipLocationRecord::InFlight(
@@ -33686,6 +35182,7 @@ impl Store {
                         &encode_flight_plan_snapshot(&plan)?,
                     )?;
                 }
+                self.schedule_contact_check_in(txn, ship.ship_id, due_second.saturating_add(1))?;
                 (system_id, 2)
             }
             ShipLocationRecord::InFlight(
@@ -37212,6 +38709,17 @@ fn operational_damage_report_key(identity: &PlayerIdentity, report_id: u64) -> [
     player_feed_cursor_key(identity, report_id)
 }
 
+fn account_ledger_key(identity: &PlayerIdentity, entry_id: u64) -> [u8; 16] {
+    player_feed_cursor_key(identity, u64::MAX - entry_id)
+}
+
+fn account_ledger_key_entry_id(key: &[u8]) -> Result<u64, StoreError> {
+    if key.len() != 16 {
+        return Err(StoreError::Corrupt("invalid account-ledger key"));
+    }
+    Ok(u64::MAX - decode_u64(&key[8..])?)
+}
+
 fn encode_operational_damage_report(
     report: &OperationalDamageReport,
 ) -> Result<Vec<u8>, StoreError> {
@@ -37571,6 +39079,11 @@ fn encode_wire_locus(bytes: &mut Vec<u8>, locus: FlightLocus) {
             bytes.push(1);
             bytes.extend_from_slice(&system_id.to_be_bytes());
         }
+        FlightLocus::ArrivalLocus { system_id, remote } => {
+            bytes.push(4);
+            bytes.extend_from_slice(&system_id.to_be_bytes());
+            bytes.push(u8::from(remote));
+        }
         FlightLocus::Body { system_id, body_id } => {
             bytes.push(2);
             bytes.extend_from_slice(&system_id.to_be_bytes());
@@ -37609,6 +39122,10 @@ fn decode_wire_locus(decoder: &mut Decoder<'_>) -> Result<FlightLocus, StoreErro
                 spinward_bits: decoder.u64()?,
                 north_bits: decoder.u64()?,
             },
+        }),
+        4 => Ok(FlightLocus::ArrivalLocus {
+            system_id: decoder.u64()?,
+            remote: decoder.u8()? != 0,
         }),
         _ => Err(StoreError::Corrupt("unknown flight-plan locus")),
     }
@@ -37758,6 +39275,8 @@ fn encode_flight_plan_step_record(bytes: &mut Vec<u8>, step: &FlightPlanStep) {
             destination_system_id,
             ref navigation,
             proceed_on_known_bad_plot,
+            remote_arrival,
+            departure_locus_arrival,
         } => {
             bytes.push(1);
             bytes.extend_from_slice(&destination_system_id.to_be_bytes());
@@ -37766,6 +39285,8 @@ fn encode_flight_plan_step_record(bytes: &mut Vec<u8>, step: &FlightPlanStep) {
                 crate::wire::JumpNavigationMethod::CommercialTape => 1,
             });
             bytes.push(u8::from(proceed_on_known_bad_plot));
+            bytes.push(u8::from(remote_arrival));
+            bytes.push(u8::from(departure_locus_arrival));
         }
         FlightPlanAction::Dock {
             world_id,
@@ -37824,8 +39345,8 @@ fn decode_flight_plan_step_record(
         (1, 0) => (WaypointAuthority::Hold, false),
         (1, 1) => (WaypointAuthority::Hold, true),
         (1, 2) => (WaypointAuthority::Through, false),
-        (2..=5, 0) => (WaypointAuthority::Hold, decoder.u8()? != 0),
-        (2..=5, 1) => (WaypointAuthority::Through, decoder.u8()? != 0),
+        (2..=6, 0) => (WaypointAuthority::Hold, decoder.u8()? != 0),
+        (2..=6, 1) => (WaypointAuthority::Through, decoder.u8()? != 0),
         _ => return Err(StoreError::Corrupt("unknown waypoint authority")),
     };
     let action = match decoder.u8()? {
@@ -37838,6 +39359,8 @@ fn decode_flight_plan_step_record(
                 _ => return Err(StoreError::Corrupt("unknown Jump navigation method")),
             },
             proceed_on_known_bad_plot: decoder.u8()? != 0,
+            remote_arrival: version >= 6 && decoder.u8()? != 0,
+            departure_locus_arrival: version >= 6 && decoder.u8()? != 0,
         },
         2 => FlightPlanAction::Dock {
             world_id: decoder.u64()?,
@@ -37898,7 +39421,7 @@ fn encode_flight_plan_proposal_record(
     proposal: &FlightPlanProposal,
 ) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(5);
+    bytes.push(6);
     bytes.extend_from_slice(&proposal.expected_plan_revision.to_be_bytes());
     let count = u16::try_from(proposal.steps.len())
         .map_err(|_| StoreError::Corrupt("too many flight-plan steps"))?;
@@ -37914,7 +39437,7 @@ fn decode_flight_plan_proposal_record(
     decoder: &mut Decoder<'_>,
 ) -> Result<FlightPlanProposal, StoreError> {
     let version = decoder.u8()?;
-    if !matches!(version, 1..=5) {
+    if !matches!(version, 1..=6) {
         return Err(StoreError::Corrupt("unsupported flight-plan proposal"));
     }
     let expected_plan_revision = decoder.u64()?;
@@ -37956,7 +39479,7 @@ fn flight_plan_preview_hash(
 
 fn encode_flight_plan_snapshot(value: &FlightPlanSnapshot) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(5);
+    bytes.push(6);
     bytes.extend_from_slice(&value.plan_id.to_be_bytes());
     bytes.extend_from_slice(&value.revision.to_be_bytes());
     bytes.extend_from_slice(&value.current_step.to_be_bytes());
@@ -37974,7 +39497,7 @@ fn encode_flight_plan_snapshot(value: &FlightPlanSnapshot) -> Result<Vec<u8>, St
 fn decode_flight_plan_snapshot(bytes: &[u8]) -> Result<FlightPlanSnapshot, StoreError> {
     let mut decoder = Decoder::new(bytes);
     let version = decoder.u8()?;
-    if !matches!(version, 1..=5) {
+    if !matches!(version, 1..=6) {
         return Err(StoreError::Corrupt("unsupported flight-plan record"));
     }
     let plan_id = decoder.u64()?;
@@ -39432,6 +40955,13 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
             bytes.push(u8::from(value.accept_electronic_mail));
         }
         Command::GetFinance => bytes.push(39),
+        Command::GetAccountLedger(ref query) => {
+            bytes.push(89);
+            bytes.extend_from_slice(&query.before_entry_id.to_be_bytes());
+            bytes.extend_from_slice(&query.limit.to_be_bytes());
+            bytes.push(encode_account_transaction_class(query.class));
+            bytes.extend_from_slice(&query.ship_id.to_be_bytes());
+        }
         Command::CureFinanceDefault => bytes.push(81),
         Command::GetMarketKnowledge => bytes.push(40),
         Command::GetShipMarket => bytes.push(41),
@@ -39976,6 +41506,12 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
             accept_electronic_mail: decoder.u8()? != 0,
         }),
         39 => Command::GetFinance,
+        89 => Command::GetAccountLedger(crate::wire::AccountLedgerRequest {
+            before_entry_id: decoder.u64()?,
+            limit: decoder.u16()?,
+            class: decode_account_transaction_class(decoder.u8()?)?,
+            ship_id: decoder.u64()?,
+        }),
         40 => Command::GetMarketKnowledge,
         41 => Command::GetShipMarket,
         42 => Command::PurchaseShip {
@@ -40621,9 +42157,33 @@ fn encode_finance_into(
     encode_text(bytes, &f.credit_status)?;
     bytes.push(u8::from(f.destination_assistance_active));
     bytes.extend_from_slice(&f.destination_assistance_expires_second.to_be_bytes());
+    bytes.extend_from_slice(&f.current_second.to_be_bytes());
+    bytes.extend_from_slice(
+        &u16::try_from(f.pending_income.len())
+            .map_err(|_| StoreError::Corrupt("too many pending income items"))?
+            .to_be_bytes(),
+    );
+    for income in &f.pending_income {
+        bytes.extend_from_slice(&income.task_id.to_be_bytes());
+        bytes.extend_from_slice(&income.payment_credits.to_be_bytes());
+        bytes.extend_from_slice(&income.reserved_release_credits.to_be_bytes());
+        bytes.push(match income.stage {
+            crate::wire::PendingIncomeStage::FilingToOffice => 0,
+            crate::wire::PendingIncomeStage::RemittanceToCaptain => 1,
+        });
+        bytes.extend_from_slice(&income.estimated_resolution_second.to_be_bytes());
+        bytes.push(match income.estimate_kind {
+            crate::wire::IncomeEstimateKind::Projected => 0,
+            crate::wire::IncomeEstimateKind::Scheduled => 1,
+            crate::wire::IncomeEstimateKind::Unavailable => 2,
+        });
+    }
     Ok(())
 }
-fn decode_finance(d: &mut Decoder<'_>) -> Result<crate::wire::FinanceSnapshot, StoreError> {
+fn decode_finance(
+    d: &mut Decoder<'_>,
+    outcome_version: u8,
+) -> Result<crate::wire::FinanceSnapshot, StoreError> {
     let title = match d.u8()? {
         0 => crate::wire::ShipTitleKind::OwnedWithLien,
         1 => crate::wire::ShipTitleKind::SponsorOwned,
@@ -40634,7 +42194,7 @@ fn decode_finance(d: &mut Decoder<'_>) -> Result<crate::wire::FinanceSnapshot, S
         6 => crate::wire::ShipTitleKind::CourtImpound,
         _ => return Err(StoreError::Corrupt("unknown ship title")),
     };
-    Ok(crate::wire::FinanceSnapshot {
+    let mut snapshot = crate::wire::FinanceSnapshot {
         title,
         liquid_credits: d.u64()?,
         restricted_credits: d.u64()?,
@@ -40651,7 +42211,34 @@ fn decode_finance(d: &mut Decoder<'_>) -> Result<crate::wire::FinanceSnapshot, S
         credit_status: d.text()?,
         destination_assistance_active: d.u8()? != 0,
         destination_assistance_expires_second: d.u64()?,
-    })
+        current_second: 0,
+        pending_income: Vec::new(),
+    };
+    if outcome_version >= 27 {
+        snapshot.current_second = d.u64()?;
+        let count = d.u16()? as usize;
+        snapshot.pending_income.reserve(count);
+        for _ in 0..count {
+            snapshot.pending_income.push(crate::wire::PendingIncome {
+                task_id: d.u64()?,
+                payment_credits: d.u64()?,
+                reserved_release_credits: d.u64()?,
+                stage: match d.u8()? {
+                    0 => crate::wire::PendingIncomeStage::FilingToOffice,
+                    1 => crate::wire::PendingIncomeStage::RemittanceToCaptain,
+                    _ => return Err(StoreError::Corrupt("unknown pending-income stage")),
+                },
+                estimated_resolution_second: d.u64()?,
+                estimate_kind: match d.u8()? {
+                    0 => crate::wire::IncomeEstimateKind::Projected,
+                    1 => crate::wire::IncomeEstimateKind::Scheduled,
+                    2 => crate::wire::IncomeEstimateKind::Unavailable,
+                    _ => return Err(StoreError::Corrupt("unknown income estimate kind")),
+                },
+            });
+        }
+    }
+    Ok(snapshot)
 }
 
 fn encode_fleet_into(
@@ -41605,7 +43192,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(25);
+    bytes.push(27);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -41780,6 +43367,10 @@ fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
             bytes.push(25);
             encode_finance_into(&mut bytes, value)?;
         }
+        OutcomeKind::AccountLedger(value) => {
+            bytes.push(39);
+            encode_account_ledger_page_into(&mut bytes, value)?;
+        }
         OutcomeKind::MarketKnowledge(value) => {
             bytes.push(26);
             encode_market_knowledge_into(&mut bytes, value)?;
@@ -41918,6 +43509,8 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 23
         && version != 24
         && version != 25
+        && version != 26
+        && version != 27
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -42040,7 +43633,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         }
         23 => OutcomeKind::EncounterResult(decode_encounter_result_record(&mut decoder)?),
         24 => OutcomeKind::TaskLedger(decode_task_ledger(&mut decoder, version)?),
-        25 => OutcomeKind::Finance(decode_finance(&mut decoder)?),
+        25 => OutcomeKind::Finance(decode_finance(&mut decoder, version)?),
         26 => OutcomeKind::MarketKnowledge(decode_market_knowledge(&mut decoder)?),
         27 => OutcomeKind::ShipMarket(decode_ship_market(&mut decoder, version)?),
         28 => OutcomeKind::CrewMarket(decode_crew_market(&mut decoder)?),
@@ -42153,6 +43746,9 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
                 revision,
                 policy,
             })
+        }
+        39 if version >= 27 => {
+            OutcomeKind::AccountLedger(decode_account_ledger_page(&mut decoder)?)
         }
         _ => return Err(StoreError::Corrupt("unknown outcome kind")),
     };
@@ -42593,6 +44189,177 @@ fn decode_finance_record(bytes: &[u8]) -> Result<FinanceRecord, StoreError> {
     };
     d.finish()?;
     Ok(record)
+}
+
+fn encode_account_transaction_class(value: crate::wire::AccountTransactionClass) -> u8 {
+    match value {
+        crate::wire::AccountTransactionClass::All => 0,
+        crate::wire::AccountTransactionClass::Opening => 1,
+        crate::wire::AccountTransactionClass::Income => 2,
+        crate::wire::AccountTransactionClass::Expense => 3,
+        crate::wire::AccountTransactionClass::Transfer => 4,
+        crate::wire::AccountTransactionClass::Hold => 5,
+        crate::wire::AccountTransactionClass::Financing => 6,
+    }
+}
+
+fn decode_account_transaction_class(
+    value: u8,
+) -> Result<crate::wire::AccountTransactionClass, StoreError> {
+    Ok(match value {
+        0 => crate::wire::AccountTransactionClass::All,
+        1 => crate::wire::AccountTransactionClass::Opening,
+        2 => crate::wire::AccountTransactionClass::Income,
+        3 => crate::wire::AccountTransactionClass::Expense,
+        4 => crate::wire::AccountTransactionClass::Transfer,
+        5 => crate::wire::AccountTransactionClass::Hold,
+        6 => crate::wire::AccountTransactionClass::Financing,
+        _ => return Err(StoreError::Corrupt("unknown account transaction class")),
+    })
+}
+
+fn encode_account_ledger_entry(
+    entry: &crate::wire::AccountLedgerEntry,
+) -> Result<Vec<u8>, StoreError> {
+    let mut bytes = vec![1, encode_account_transaction_class(entry.class)];
+    bytes.extend_from_slice(&entry.entry_id.to_be_bytes());
+    bytes.extend_from_slice(&entry.occurred_second.to_be_bytes());
+    bytes.extend_from_slice(&entry.subject_ship_id.to_be_bytes());
+    encode_text(&mut bytes, &entry.summary)?;
+    encode_text(&mut bytes, &entry.subject_ship_name)?;
+    let count = u16::try_from(entry.postings.len())
+        .map_err(|_| StoreError::Corrupt("too many account postings"))?;
+    bytes.extend_from_slice(&count.to_be_bytes());
+    for posting in &entry.postings {
+        bytes.push(match posting.account {
+            crate::wire::AccountKind::Liquid => 0,
+            crate::wire::AccountKind::RestrictedOperating => 1,
+            crate::wire::AccountKind::Reserved => 2,
+            crate::wire::AccountKind::SecuredPrincipal => 3,
+        });
+        bytes.push(match posting.change {
+            crate::wire::AccountChangeKind::Increase => 0,
+            crate::wire::AccountChangeKind::Decrease => 1,
+            crate::wire::AccountChangeKind::BalanceForward => 2,
+        });
+        bytes.extend_from_slice(&posting.amount_credits.to_be_bytes());
+        bytes.extend_from_slice(&posting.balance_after_credits.to_be_bytes());
+        bytes.extend_from_slice(&posting.ship_id.to_be_bytes());
+        encode_text(&mut bytes, &posting.ship_name)?;
+    }
+    Ok(bytes)
+}
+
+fn decode_account_ledger_entry(
+    bytes: &[u8],
+) -> Result<crate::wire::AccountLedgerEntry, StoreError> {
+    let mut decoder = Decoder::new(bytes);
+    if decoder.u8()? != 1 {
+        return Err(StoreError::Corrupt("unsupported account-ledger entry"));
+    }
+    let class = decode_account_transaction_class(decoder.u8()?)?;
+    let entry_id = decoder.u64()?;
+    let occurred_second = decoder.u64()?;
+    let subject_ship_id = decoder.u64()?;
+    let summary = decoder.text()?;
+    let subject_ship_name = decoder.text()?;
+    let count = decoder.u16()? as usize;
+    let mut postings = Vec::with_capacity(count);
+    for _ in 0..count {
+        let account = match decoder.u8()? {
+            0 => crate::wire::AccountKind::Liquid,
+            1 => crate::wire::AccountKind::RestrictedOperating,
+            2 => crate::wire::AccountKind::Reserved,
+            3 => crate::wire::AccountKind::SecuredPrincipal,
+            _ => return Err(StoreError::Corrupt("unknown account kind")),
+        };
+        let change = match decoder.u8()? {
+            0 => crate::wire::AccountChangeKind::Increase,
+            1 => crate::wire::AccountChangeKind::Decrease,
+            2 => crate::wire::AccountChangeKind::BalanceForward,
+            _ => return Err(StoreError::Corrupt("unknown account change kind")),
+        };
+        postings.push(crate::wire::AccountPosting {
+            account,
+            change,
+            amount_credits: decoder.u64()?,
+            balance_after_credits: decoder.u64()?,
+            ship_id: decoder.u64()?,
+            ship_name: decoder.text()?,
+        });
+    }
+    decoder.finish()?;
+    Ok(crate::wire::AccountLedgerEntry {
+        entry_id,
+        occurred_second,
+        class,
+        summary,
+        subject_ship_id,
+        subject_ship_name,
+        postings,
+    })
+}
+
+fn encode_account_ledger_page_into(
+    bytes: &mut Vec<u8>,
+    page: &crate::wire::AccountLedgerPage,
+) -> Result<(), StoreError> {
+    bytes.extend_from_slice(&page.current_second.to_be_bytes());
+    bytes.extend_from_slice(&page.next_before_entry_id.to_be_bytes());
+    bytes.push(u8::from(page.has_more));
+    bytes.extend_from_slice(
+        &u16::try_from(page.entries.len())
+            .map_err(|_| StoreError::Corrupt("too many account-ledger entries"))?
+            .to_be_bytes(),
+    );
+    for entry in &page.entries {
+        let encoded = encode_account_ledger_entry(entry)?;
+        bytes.extend_from_slice(
+            &u32::try_from(encoded.len())
+                .map_err(|_| StoreError::Corrupt("account-ledger entry too large"))?
+                .to_be_bytes(),
+        );
+        bytes.extend_from_slice(&encoded);
+    }
+    bytes.extend_from_slice(
+        &u16::try_from(page.vessels.len())
+            .map_err(|_| StoreError::Corrupt("too many account-ledger vessels"))?
+            .to_be_bytes(),
+    );
+    for vessel in &page.vessels {
+        bytes.extend_from_slice(&vessel.ship_id.to_be_bytes());
+        encode_text(bytes, &vessel.ship_name)?;
+    }
+    Ok(())
+}
+
+fn decode_account_ledger_page(
+    decoder: &mut Decoder<'_>,
+) -> Result<crate::wire::AccountLedgerPage, StoreError> {
+    let current_second = decoder.u64()?;
+    let next_before_entry_id = decoder.u64()?;
+    let has_more = decoder.u8()? != 0;
+    let count = decoder.u16()? as usize;
+    let mut entries = Vec::with_capacity(count);
+    for _ in 0..count {
+        let length = decoder.u32()? as usize;
+        entries.push(decode_account_ledger_entry(decoder.take(length)?)?);
+    }
+    let count = decoder.u16()? as usize;
+    let mut vessels = Vec::with_capacity(count);
+    for _ in 0..count {
+        vessels.push(crate::wire::AccountLedgerVessel {
+            ship_id: decoder.u64()?,
+            ship_name: decoder.text()?,
+        });
+    }
+    Ok(crate::wire::AccountLedgerPage {
+        current_second,
+        entries,
+        next_before_entry_id,
+        has_more,
+        vessels,
+    })
 }
 
 fn encode_unique_cargo(record: &UniqueCargoRecord) -> Result<Vec<u8>, StoreError> {
@@ -43320,6 +45087,14 @@ fn encode_ship_locus(bytes: &mut Vec<u8>, locus: ShipLocusRecord) {
             bytes.push(1);
             bytes.extend_from_slice(&system_id.to_be_bytes());
         }
+        ShipLocusRecord::ArrivalLocus {
+            system_id,
+            remote_seed,
+        } => {
+            bytes.push(4);
+            bytes.extend_from_slice(&system_id.to_be_bytes());
+            bytes.extend_from_slice(&remote_seed.to_be_bytes());
+        }
         ShipLocusRecord::Body { system_id, body_id } => {
             bytes.push(2);
             bytes.extend_from_slice(&system_id.to_be_bytes());
@@ -43359,13 +45134,17 @@ fn decode_ship_locus(decoder: &mut Decoder<'_>) -> Result<ShipLocusRecord, Store
                 north_bits: decoder.u64()?,
             },
         }),
+        4 => Ok(ShipLocusRecord::ArrivalLocus {
+            system_id: decoder.u64()?,
+            remote_seed: decoder.u64()?,
+        }),
         _ => Err(StoreError::Corrupt("unknown ship locus")),
     }
 }
 
 fn encode_interception_watch(watch: &InterceptionWatchRecord) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(2);
+    bytes.push(3);
     bytes.extend_from_slice(&watch.hunter_ship_id.to_be_bytes());
     encode_ship_locus(&mut bytes, watch.locus);
     bytes.extend_from_slice(&watch.started_second.to_be_bytes());
@@ -43392,7 +45171,7 @@ fn encode_interception_watch(watch: &InterceptionWatchRecord) -> Result<Vec<u8>,
 fn decode_interception_watch(bytes: &[u8]) -> Result<InterceptionWatchRecord, StoreError> {
     let mut decoder = Decoder::new(bytes);
     let version = decoder.u8()?;
-    if version != 1 && version != 2 {
+    if !matches!(version, 1..=3) {
         return Err(StoreError::Corrupt("unsupported interception-watch record"));
     }
     let hunter_ship_id = decoder.u64()?;
@@ -43464,6 +45243,7 @@ fn encode_flight_leg_purpose(bytes: &mut Vec<u8>, purpose: FlightLegPurpose) {
             bytes.push(u8::from(critical_transition));
         }
         FlightLegPurpose::ApproachPort => bytes.push(2),
+        FlightLegPurpose::ReachLocus => bytes.push(14),
         FlightLegPurpose::ReachFrontierFuel {
             activity_id,
             service_due_second,
@@ -43561,6 +45341,7 @@ fn decode_flight_leg_purpose(decoder: &mut Decoder<'_>) -> Result<FlightLegPurpo
             successful: decoder.u8()? != 0,
         }),
         13 => Ok(FlightLegPurpose::ReturnFromBelt(context(decoder)?)),
+        14 => Ok(FlightLegPurpose::ReachLocus),
         _ => Err(StoreError::Corrupt("unknown flight-leg purpose")),
     }
 }
@@ -46238,6 +48019,11 @@ fn encode_flight_locus_status(bytes: &mut Vec<u8>, locus: FlightLocus) {
             bytes.push(1);
             bytes.extend_from_slice(&system_id.to_be_bytes());
         }
+        FlightLocus::ArrivalLocus { system_id, remote } => {
+            bytes.push(4);
+            bytes.extend_from_slice(&system_id.to_be_bytes());
+            bytes.push(u8::from(remote));
+        }
         FlightLocus::Body { system_id, body_id } => {
             bytes.push(2);
             bytes.extend_from_slice(&system_id.to_be_bytes());
@@ -46276,6 +48062,10 @@ fn decode_flight_locus_status(decoder: &mut Decoder<'_>) -> Result<FlightLocus, 
                 spinward_bits: decoder.u64()?,
                 north_bits: decoder.u64()?,
             },
+        }),
+        4 => Ok(FlightLocus::ArrivalLocus {
+            system_id: decoder.u64()?,
+            remote: decoder.u8()? != 0,
         }),
         _ => Err(StoreError::Corrupt("unknown cached flight locus")),
     }
@@ -46901,6 +48691,7 @@ fn encode_travel_status_into(
         TravelStage::BeltRecovery => 14,
         TravelStage::BeltEgress => 15,
         TravelStage::FuelProcessing => 16,
+        TravelStage::Maneuvering => 17,
     });
     for value in [
         snapshot.current_game_second,
@@ -46947,6 +48738,7 @@ fn decode_travel_status(
         14 => TravelStage::BeltRecovery,
         15 => TravelStage::BeltEgress,
         16 => TravelStage::FuelProcessing,
+        17 => TravelStage::Maneuvering,
         _ => return Err(StoreError::Corrupt("unknown cached travel stage")),
     };
     let current_game_second = decoder.u64()?;
@@ -48551,6 +50343,57 @@ mod tests {
     }
 
     #[test]
+    fn finance_outcome_preserves_pending_income_and_reads_version_twenty_six() {
+        let outcome = Outcome {
+            command_id: [9; COMMAND_ID_BYTES],
+            committed_sequence: 15,
+            revision: 16,
+            replayed: false,
+            phase: PlayerPhase::Interplanetary,
+            kind: OutcomeKind::Finance(crate::wire::FinanceSnapshot {
+                title: crate::wire::ShipTitleKind::OwnedWithLien,
+                liquid_credits: 900_000,
+                restricted_credits: 100_000,
+                reserved_credits: 25_000,
+                original_hull_price_credits: 2_000_000,
+                principal_credits: 1_000_000,
+                monthly_payment_credits: 10_000,
+                monthly_insurance_escrow_credits: 1_000,
+                next_payment_due_second: 200,
+                grace_expires_second: 300,
+                paid_through_second: 100,
+                in_default: false,
+                impound_order_known_locally: false,
+                credit_status: "Account current".into(),
+                destination_assistance_active: false,
+                destination_assistance_expires_second: 0,
+                current_second: 50,
+                pending_income: vec![crate::wire::PendingIncome {
+                    task_id: 71,
+                    payment_credits: 40_000,
+                    reserved_release_credits: 5_000,
+                    stage: crate::wire::PendingIncomeStage::RemittanceToCaptain,
+                    estimated_resolution_second: 400,
+                    estimate_kind: crate::wire::IncomeEstimateKind::Projected,
+                }],
+            }),
+        };
+
+        let encoded = encode_outcome(&outcome).unwrap();
+        assert_eq!(decode_outcome(&encoded).unwrap(), outcome);
+
+        let mut version_twenty_six = encoded;
+        version_twenty_six[0] = 26;
+        version_twenty_six.truncate(version_twenty_six.len() - 44);
+        let decoded = decode_outcome(&version_twenty_six).unwrap();
+        let OutcomeKind::Finance(legacy) = decoded.kind else {
+            panic!("expected finance snapshot");
+        };
+        assert_eq!(legacy.current_second, 0);
+        assert!(legacy.pending_income.is_empty());
+    }
+
+    #[test]
     fn legacy_terminal_authority_decodes_as_held_terminal_step() {
         let mut bytes = vec![1];
         bytes.extend_from_slice(&7_u64.to_be_bytes());
@@ -48559,6 +50402,7 @@ mod tests {
         bytes.push(1);
         bytes.push(0);
         encode_encounter_policy_record(&mut bytes, &EncounterPolicy::default()).unwrap();
+        bytes.pop(); // Version one predates encounter standing orders.
         let mut decoder = Decoder::new(&bytes);
         let decoded = decode_flight_plan_proposal_record(&mut decoder).unwrap();
         decoder.finish().unwrap();
@@ -48566,6 +50410,52 @@ mod tests {
         assert_eq!(decoded.steps.len(), 1);
         assert_eq!(decoded.steps[0].authority, WaypointAuthority::Hold);
         assert!(decoded.steps[0].terminal);
+    }
+
+    #[test]
+    fn flight_plan_codec_preserves_arrival_locus_and_private_arrival() {
+        let proposal = FlightPlanProposal {
+            expected_plan_revision: 9,
+            steps: vec![
+                FlightPlanStep {
+                    locus: FlightLocus::ArrivalLocus {
+                        system_id: 11,
+                        remote: false,
+                    },
+                    authority: WaypointAuthority::Through,
+                    action: FlightPlanAction::Jump {
+                        destination_system_id: 22,
+                        navigation: crate::wire::JumpNavigationMethod::Onboard,
+                        proceed_on_known_bad_plot: false,
+                        remote_arrival: true,
+                        departure_locus_arrival: false,
+                    },
+                    terminal: false,
+                },
+                FlightPlanStep {
+                    locus: FlightLocus::JumpLocus { system_id: 22 },
+                    authority: WaypointAuthority::Hold,
+                    action: FlightPlanAction::Jump {
+                        destination_system_id: 33,
+                        navigation: crate::wire::JumpNavigationMethod::CommercialTape,
+                        proceed_on_known_bad_plot: false,
+                        remote_arrival: false,
+                        departure_locus_arrival: true,
+                    },
+                    terminal: true,
+                },
+            ],
+            policy: EncounterPolicy::default(),
+            preserve_active_step: false,
+        };
+
+        let encoded = encode_flight_plan_proposal_record(&proposal).unwrap();
+        let mut decoder = Decoder::new(&encoded);
+        assert_eq!(
+            decode_flight_plan_proposal_record(&mut decoder).unwrap(),
+            proposal
+        );
+        decoder.finish().unwrap();
     }
 
     #[test]
@@ -51636,6 +53526,8 @@ mod tests {
                         destination_system_id: destination,
                         navigation: crate::wire::JumpNavigationMethod::Onboard,
                         proceed_on_known_bad_plot: false,
+                        remote_arrival: false,
+                        departure_locus_arrival: false,
                     },
                     terminal: false,
                 },
@@ -51703,6 +53595,385 @@ mod tests {
     }
 
     #[test]
+    fn terminal_hold_can_maneuver_to_the_conventional_arrival_locus() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap()
+            .1;
+        let proposal = FlightPlanProposal {
+            expected_plan_revision: 0,
+            steps: vec![FlightPlanStep {
+                locus: FlightLocus::ArrivalLocus {
+                    system_id: ship.system_id,
+                    remote: false,
+                },
+                authority: WaypointAuthority::Hold,
+                action: FlightPlanAction::Hold,
+                terminal: true,
+            }],
+            policy: EncounterPolicy::default(),
+            preserve_active_step: false,
+        };
+        let mut txn = store.env.write_txn().unwrap();
+        let preview = match store
+            .preview_flight_plan_in(&txn, &identity(), &proposal)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("arrival-locus preview failed: {message}"),
+        };
+        assert!(preview.elapsed_seconds > 0);
+        match store
+            .commit_flight_plan_in(
+                &mut txn,
+                &identity(),
+                &CommitFlightPlanRequest {
+                    proposal,
+                    preview_hash: preview.preview_hash,
+                    acknowledge_warnings: true,
+                },
+            )
+            .unwrap()
+        {
+            RuleResult::Applied(_) => {}
+            RuleResult::Rejected(message) => panic!("arrival-locus commit failed: {message}"),
+        }
+        txn.commit().unwrap();
+
+        let due = match store.ship_record(ship.ship_id).unwrap().unwrap().location {
+            ShipLocationRecord::InFlight(FlightLegRecord {
+                destination: ShipLocusRecord::ArrivalLocus { remote_seed: 0, .. },
+                purpose: FlightLegPurpose::ReachLocus,
+                due_second,
+                ..
+            }) => due_second,
+            other => panic!("expected arrival-locus maneuver, got {other:?}"),
+        };
+        store.advance_simulation_to(due).unwrap();
+        let arrived = store.ship_record(ship.ship_id).unwrap().unwrap();
+        assert!(matches!(
+            arrived.location,
+            ShipLocationRecord::Holding {
+                locus: ShipLocusRecord::ArrivalLocus { remote_seed: 0, .. },
+                ..
+            }
+        ));
+        assert_eq!(
+            store
+                .flight_plan_in(&store.env.read_txn().unwrap(), &identity())
+                .unwrap()
+                .state,
+            FlightPlanState::Held
+        );
+    }
+
+    #[test]
+    fn onboard_processor_accepts_fractional_tonnes() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let player = store.player_record(&identity()).unwrap().unwrap();
+        let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        ship.unrefined_fuel_millitons = 1_001;
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        match store
+            .begin_fuel_processing_in(&mut txn, &identity(), 1_001)
+            .unwrap()
+        {
+            RuleResult::Applied(_) => {}
+            RuleResult::Rejected(message) => panic!("fractional refining failed: {message}"),
+        }
+        let active = store
+            .ships
+            .get(&txn, &ship.ship_id)
+            .unwrap()
+            .map(decode_ship_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            active.activity.map(|activity| activity.kind),
+            Some(ShipActivityKind::FuelProcessing {
+                quantity_millitons: 1_001,
+                ..
+            })
+        ));
+        txn.abort();
+    }
+
+    #[test]
+    fn high_law_port_inspection_uses_a_customs_cutter() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let ship = store
+            .player_and_ship_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap()
+            .1;
+        let mut txn = store.env.write_txn().unwrap();
+        let system = store
+            .systems
+            .get(&txn, &ship.system_id)
+            .unwrap()
+            .map(decode_stellar_system)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert!(store.primary_world_in(&txn, &system).unwrap().law_level >= 7);
+        assert_eq!(
+            store
+                .process_contact_check_in(&mut txn, 1, ship.ship_id)
+                .unwrap(),
+            Some(identity())
+        );
+        let encounter = store
+            .encounters
+            .get(&txn, &encode_identity(&identity()))
+            .unwrap()
+            .map(decode_encounter_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        assert_eq!(encounter.snapshot.kind, EncounterKind::Inspection);
+        assert_eq!(encounter.snapshot.authority, EncounterAuthority::Customs);
+        assert_eq!(encounter.snapshot.contact.declared_class_name, "Warden");
+        assert_eq!(encounter.opponent_catalog_id, 41);
+        txn.abort();
+    }
+
+    #[test]
+    fn terminal_remote_jump_holds_at_a_private_arrival_point() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let known = store
+            .known_destinations_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let destination = known
+            .systems
+            .iter()
+            .find(|system| system.within_jump_rating && system.system_id != known.current_system_id)
+            .unwrap()
+            .system_id;
+        let proposal = FlightPlanProposal {
+            expected_plan_revision: 0,
+            steps: vec![FlightPlanStep {
+                locus: FlightLocus::JumpLocus {
+                    system_id: known.current_system_id,
+                },
+                authority: WaypointAuthority::Hold,
+                action: FlightPlanAction::Jump {
+                    destination_system_id: destination,
+                    navigation: crate::wire::JumpNavigationMethod::CommercialTape,
+                    proceed_on_known_bad_plot: false,
+                    remote_arrival: true,
+                    departure_locus_arrival: false,
+                },
+                terminal: true,
+            }],
+            policy: EncounterPolicy::default(),
+            preserve_active_step: false,
+        };
+        let mut txn = store.env.write_txn().unwrap();
+        let preview = match store
+            .preview_flight_plan_in(&txn, &identity(), &proposal)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("remote-arrival preview failed: {message}"),
+        };
+        assert!(
+            preview
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "REMOTE_ARRIVAL")
+        );
+        match store
+            .commit_flight_plan_in(
+                &mut txn,
+                &identity(),
+                &CommitFlightPlanRequest {
+                    proposal,
+                    preview_hash: preview.preview_hash,
+                    acknowledge_warnings: true,
+                },
+            )
+            .unwrap()
+        {
+            RuleResult::Applied(_) => {}
+            RuleResult::Rejected(message) => panic!("remote-arrival commit failed: {message}"),
+        }
+        txn.commit().unwrap();
+
+        let ship_id = store.player_record(&identity()).unwrap().unwrap().ship_id;
+        let departure_due = match store.ship_record(ship_id).unwrap().unwrap().location {
+            ShipLocationRecord::InFlight(FlightLegRecord { due_second, .. }) => due_second,
+            other => panic!("expected departure maneuver, got {other:?}"),
+        };
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .process_player_travel_in(&mut txn, departure_due, ship_id)
+            .unwrap();
+        txn.commit().unwrap();
+        let jumping = store.ship_record(ship_id).unwrap().unwrap();
+        let jump_due = match jumping.location {
+            ShipLocationRecord::InFlight(FlightLegRecord {
+                purpose: FlightLegPurpose::Jump { .. },
+                due_second,
+                ..
+            }) => due_second,
+            other => panic!("expected Jump-space leg, got {other:?}"),
+        };
+        let maneuver_wear_before_breakout = jumping
+            .subsystems
+            .iter()
+            .filter(|subsystem| {
+                matches!(
+                    subsystem.kind,
+                    ShipSubsystemKind::ManeuverDrive | ShipSubsystemKind::PowerPlant
+                )
+            })
+            .map(|subsystem| (subsystem.subsystem_id, subsystem.operating_seconds))
+            .collect::<Vec<_>>();
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .process_player_travel_in(&mut txn, jump_due, ship_id)
+            .unwrap();
+        txn.commit().unwrap();
+        let arrived = store.ship_record(ship_id).unwrap().unwrap();
+        assert_eq!(arrived.system_id, destination);
+        assert!(matches!(
+            arrived.location,
+            ShipLocationRecord::Holding {
+                locus: ShipLocusRecord::ArrivalLocus {
+                    remote_seed: 1..,
+                    ..
+                },
+                ..
+            }
+        ));
+        assert_eq!(
+            arrived
+                .subsystems
+                .iter()
+                .filter(|subsystem| {
+                    matches!(
+                        subsystem.kind,
+                        ShipSubsystemKind::ManeuverDrive | ShipSubsystemKind::PowerPlant
+                    )
+                })
+                .map(|subsystem| (subsystem.subsystem_id, subsystem.operating_seconds))
+                .collect::<Vec<_>>(),
+            maneuver_wear_before_breakout
+        );
+    }
+
+    #[test]
+    fn jump_can_emerge_at_the_conventional_departure_locus() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let known = store
+            .known_destinations_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let destination = known
+            .systems
+            .iter()
+            .find(|system| system.within_jump_rating && system.system_id != known.current_system_id)
+            .unwrap()
+            .system_id;
+        let proposal = FlightPlanProposal {
+            expected_plan_revision: 0,
+            steps: vec![FlightPlanStep {
+                locus: FlightLocus::JumpLocus {
+                    system_id: known.current_system_id,
+                },
+                authority: WaypointAuthority::Hold,
+                action: FlightPlanAction::Jump {
+                    destination_system_id: destination,
+                    navigation: crate::wire::JumpNavigationMethod::CommercialTape,
+                    proceed_on_known_bad_plot: false,
+                    remote_arrival: false,
+                    departure_locus_arrival: true,
+                },
+                terminal: true,
+            }],
+            policy: EncounterPolicy::default(),
+            preserve_active_step: false,
+        };
+        let mut txn = store.env.write_txn().unwrap();
+        let preview = match store
+            .preview_flight_plan_in(&txn, &identity(), &proposal)
+            .unwrap()
+        {
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => panic!("outbound-arrival preview failed: {message}"),
+        };
+        assert!(
+            preview
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "NONSTANDARD_JUMP_ARRIVAL")
+        );
+        match store
+            .commit_flight_plan_in(
+                &mut txn,
+                &identity(),
+                &CommitFlightPlanRequest {
+                    proposal,
+                    preview_hash: preview.preview_hash,
+                    acknowledge_warnings: true,
+                },
+            )
+            .unwrap()
+        {
+            RuleResult::Applied(_) => {}
+            RuleResult::Rejected(message) => panic!("outbound-arrival commit failed: {message}"),
+        }
+        txn.commit().unwrap();
+
+        let ship_id = store.player_record(&identity()).unwrap().unwrap().ship_id;
+        let departure_due = match store.ship_record(ship_id).unwrap().unwrap().location {
+            ShipLocationRecord::InFlight(FlightLegRecord { due_second, .. }) => due_second,
+            other => panic!("expected departure maneuver, got {other:?}"),
+        };
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .process_player_travel_in(&mut txn, departure_due, ship_id)
+            .unwrap();
+        txn.commit().unwrap();
+        let jump_due = match store.ship_record(ship_id).unwrap().unwrap().location {
+            ShipLocationRecord::InFlight(FlightLegRecord {
+                purpose: FlightLegPurpose::Jump { .. },
+                due_second,
+                ..
+            }) => due_second,
+            other => panic!("expected Jump-space leg, got {other:?}"),
+        };
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .process_player_travel_in(&mut txn, jump_due, ship_id)
+            .unwrap();
+        txn.commit().unwrap();
+        let arrived = store.ship_record(ship_id).unwrap().unwrap();
+        assert_eq!(arrived.system_id, destination);
+        assert!(matches!(
+            arrived.location,
+            ShipLocationRecord::Holding {
+                locus: ShipLocusRecord::JumpLocus { system_id },
+                ..
+            } if system_id == destination
+        ));
+    }
+
+    #[test]
     fn flight_plan_preview_warns_when_an_active_task_will_be_late() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
@@ -51732,6 +54003,8 @@ mod tests {
                         destination_system_id: destination,
                         navigation: crate::wire::JumpNavigationMethod::Onboard,
                         proceed_on_known_bad_plot: false,
+                        remote_arrival: false,
+                        departure_locus_arrival: false,
                     },
                     terminal: false,
                 },
@@ -51843,6 +54116,8 @@ mod tests {
                         destination_system_id: destination,
                         navigation: crate::wire::JumpNavigationMethod::Onboard,
                         proceed_on_known_bad_plot: false,
+                        remote_arrival: false,
+                        departure_locus_arrival: false,
                     },
                     terminal: false,
                 },
@@ -51968,6 +54243,8 @@ mod tests {
                         destination_system_id: destination,
                         navigation: crate::wire::JumpNavigationMethod::Onboard,
                         proceed_on_known_bad_plot: false,
+                        remote_arrival: false,
+                        departure_locus_arrival: false,
                     },
                     terminal: false,
                 },
@@ -52028,6 +54305,8 @@ mod tests {
                         destination_system_id: destination,
                         navigation: crate::wire::JumpNavigationMethod::Onboard,
                         proceed_on_known_bad_plot: false,
+                        remote_arrival: false,
+                        departure_locus_arrival: false,
                     },
                     terminal: false,
                 },
@@ -52441,6 +54720,8 @@ mod tests {
                     destination_system_id: destination,
                     navigation: crate::wire::JumpNavigationMethod::Onboard,
                     proceed_on_known_bad_plot: false,
+                    remote_arrival: false,
+                    departure_locus_arrival: false,
                 },
                 terminal: false,
             },
@@ -53040,6 +55321,8 @@ mod tests {
                         destination_system_id: destination,
                         navigation: crate::wire::JumpNavigationMethod::Onboard,
                         proceed_on_known_bad_plot: false,
+                        remote_arrival: false,
+                        departure_locus_arrival: false,
                     },
                     terminal: false,
                 },
@@ -53463,6 +55746,10 @@ mod tests {
             OutcomeKind::FlightPlan(_) => {}
             other => panic!("expected committed belt plan, got {other:?}"),
         }
+        let mut txn = store.env.write_txn().unwrap();
+        store.contact_events.clear(&mut txn).unwrap();
+        store.interception_watches.clear(&mut txn).unwrap();
+        txn.commit().unwrap();
         let outbound = store.ship_record(ship.ship_id).unwrap().unwrap();
         let (context, outbound_due) = match outbound.location {
             ShipLocationRecord::InFlight(FlightLegRecord {
@@ -53634,6 +55921,8 @@ mod tests {
                         destination_system_id: destination,
                         navigation: crate::wire::JumpNavigationMethod::Onboard,
                         proceed_on_known_bad_plot: false,
+                        remote_arrival: false,
+                        departure_locus_arrival: false,
                     },
                     terminal: false,
                 },
@@ -53671,24 +55960,27 @@ mod tests {
             *operation = FuelOperation::BuyUnrefined;
             *refine_collected = true;
         }
-        assert!(matches!(
-            store
-                .preview_flight_plan_in(
-                    &store.env.read_txn().unwrap(),
-                    &identity(),
-                    &fractional_buy_and_refine,
-                )
-                .unwrap(),
-            RuleResult::Rejected(message) if message.contains("whole-ton quantity")
-        ));
-
-        let mut bought_unrefined_then_refined = fractional_buy_and_refine;
-        if let FlightPlanAction::Fuel {
-            quantity_millitons, ..
-        } = &mut bought_unrefined_then_refined.steps[0].action
+        let fractional_preview = match store
+            .preview_flight_plan_in(
+                &store.env.read_txn().unwrap(),
+                &identity(),
+                &fractional_buy_and_refine,
+            )
+            .unwrap()
         {
-            *quantity_millitons = MILLITONS_PER_TON;
-        }
+            RuleResult::Applied(preview) => preview,
+            RuleResult::Rejected(message) => {
+                panic!("fractional buy-and-refine plan was rejected: {message}")
+            }
+        };
+        assert!(
+            fractional_preview
+                .fuel_timings
+                .iter()
+                .any(|timing| { timing.step_index == 0 && timing.output_refined })
+        );
+
+        let bought_unrefined_then_refined = fractional_buy_and_refine;
         let bought_unrefined_then_refined_preview = match store
             .preview_flight_plan_in(
                 &store.env.read_txn().unwrap(),
@@ -53847,6 +56139,8 @@ mod tests {
                         destination_system_id: destination,
                         navigation: crate::wire::JumpNavigationMethod::Onboard,
                         proceed_on_known_bad_plot: false,
+                        remote_arrival: false,
+                        departure_locus_arrival: false,
                     },
                     terminal: false,
                 },
@@ -53981,6 +56275,7 @@ mod tests {
         // here isolates the flight-plan continuation contract.
         let mut txn = store.env.write_txn().unwrap();
         store.contact_events.clear(&mut txn).unwrap();
+        store.interception_watches.clear(&mut txn).unwrap();
         txn.commit().unwrap();
         store.advance_simulation_to(due).unwrap();
 
@@ -56788,7 +59083,10 @@ mod tests {
         assert_eq!(jump.plan_revision, departing.plan_revision);
         assert_eq!(jump.leg_index, 1);
         assert!(matches!(jump.origin, FlightLocus::JumpLocus { .. }));
-        assert!(matches!(jump.destination, FlightLocus::JumpLocus { .. }));
+        assert!(matches!(
+            jump.destination,
+            FlightLocus::ArrivalLocus { remote: false, .. }
+        ));
         assert!(jump.current_fuel_millitons < fuel_before_jump);
         assert!(fuel_before_jump - jump.current_fuel_millitons <= jump.jump_fuel_millitons);
 
@@ -56809,8 +59107,11 @@ mod tests {
         );
         assert_eq!(inbound.plan_id, departing.plan_id);
         assert_eq!(inbound.plan_revision, departing.plan_revision);
-        assert_eq!(inbound.leg_index, 2);
-        assert!(matches!(inbound.origin, FlightLocus::JumpLocus { .. }));
+        assert_eq!(inbound.leg_index, 1);
+        assert!(matches!(
+            inbound.origin,
+            FlightLocus::ArrivalLocus { remote: false, .. }
+        ));
         assert!(matches!(inbound.destination, FlightLocus::Port { .. }));
         assert!(inbound.due_second >= jump.due_second + 12 * 60 * 60);
 
@@ -56966,6 +59267,8 @@ mod tests {
                             destination_system_id: destination,
                             navigation: crate::wire::JumpNavigationMethod::CommercialTape,
                             proceed_on_known_bad_plot: false,
+                            remote_arrival: false,
+                            departure_locus_arrival: false,
                         },
                         terminal: false,
                     },
@@ -57089,6 +59392,8 @@ mod tests {
             // terminal contact would correctly wait for the captain and is
             // tested by the encounter/flight-plan fixtures instead.
             store.contact_events.clear(&mut txn).unwrap();
+            store.interception_watches.clear(&mut txn).unwrap();
+            store.encounters.clear(&mut txn).unwrap();
             txn.commit().unwrap();
         }
 
@@ -57743,6 +60048,8 @@ mod tests {
                         destination_system_id: destination,
                         navigation: crate::wire::JumpNavigationMethod::Onboard,
                         proceed_on_known_bad_plot: false,
+                        remote_arrival: false,
+                        departure_locus_arrival: false,
                     },
                     terminal: false,
                 },
@@ -58825,6 +61132,215 @@ mod tests {
             ship_after.maintenance.next_accounting_second,
             due + crate::ship_condition::ACCOUNTING_MONTH_SECONDS
         );
+        let ledger = store
+            .account_ledger_page_in(
+                &store.env.read_txn().unwrap(),
+                &identity(),
+                &crate::wire::AccountLedgerRequest {
+                    before_entry_id: 0,
+                    limit: 10,
+                    class: crate::wire::AccountTransactionClass::All,
+                    ship_id: 0,
+                },
+            )
+            .unwrap();
+        let entry = ledger.entries.first().expect("monthly account entry");
+        assert!(entry.summary.starts_with("Monthly accounts — "));
+        assert!(entry.summary.contains(&format!("upkeep Cr{upkeep}")));
+        assert!(entry.summary.contains(&format!("payroll Cr{payroll}")));
+        assert!(entry.summary.contains(&format!(
+            "installment Cr{}",
+            finance_before.monthly_payment_credits
+                + finance_before.monthly_insurance_escrow_credits
+        )));
+        assert!(entry.postings.iter().any(|posting| {
+            posting.account == crate::wire::AccountKind::Liquid
+                && posting.change == crate::wire::AccountChangeKind::Decrease
+                && posting.amount_credits
+                    == upkeep
+                        + payroll
+                        + finance_before.monthly_payment_credits
+                        + finance_before.monthly_insurance_escrow_credits
+                && posting.balance_after_credits == player_after.credits
+        }));
+        assert!(entry.postings.iter().any(|posting| {
+            posting.account == crate::wire::AccountKind::SecuredPrincipal
+                && posting.change == crate::wire::AccountChangeKind::Decrease
+                && posting.amount_credits == finance_before.monthly_payment_credits
+        }));
+    }
+
+    #[test]
+    fn account_journal_pages_newest_first_and_filters_by_class_and_vessel() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        initialize_player_fixture(&store);
+        let player = store.player_record(&identity()).unwrap().unwrap();
+        let ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        let mut txn = store.env.write_txn().unwrap();
+        for (class, summary, amount) in [
+            (
+                crate::wire::AccountTransactionClass::Income,
+                "First income",
+                10,
+            ),
+            (
+                crate::wire::AccountTransactionClass::Expense,
+                "An expense",
+                3,
+            ),
+            (
+                crate::wire::AccountTransactionClass::Income,
+                "Latest income",
+                20,
+            ),
+        ] {
+            store
+                .record_account_entry_in(
+                    &mut txn,
+                    &identity(),
+                    class,
+                    summary,
+                    Some((ship.ship_id, ship.name.as_str())),
+                    vec![crate::wire::AccountPosting {
+                        account: crate::wire::AccountKind::Liquid,
+                        change: if class == crate::wire::AccountTransactionClass::Expense {
+                            crate::wire::AccountChangeKind::Decrease
+                        } else {
+                            crate::wire::AccountChangeKind::Increase
+                        },
+                        amount_credits: amount,
+                        balance_after_credits: player.credits,
+                        ship_id: ship.ship_id,
+                        ship_name: ship.name.clone(),
+                    }],
+                )
+                .unwrap();
+        }
+        txn.commit().unwrap();
+
+        let query = |before_entry_id, limit, class, ship_id| crate::wire::AccountLedgerRequest {
+            before_entry_id,
+            limit,
+            class,
+            ship_id,
+        };
+        let txn = store.env.read_txn().unwrap();
+        let first = store
+            .account_ledger_page_in(
+                &txn,
+                &identity(),
+                &query(0, 1, crate::wire::AccountTransactionClass::All, 0),
+            )
+            .unwrap();
+        assert_eq!(first.entries[0].summary, "Latest income");
+        assert!(first.has_more);
+        let second = store
+            .account_ledger_page_in(
+                &txn,
+                &identity(),
+                &query(
+                    first.next_before_entry_id,
+                    1,
+                    crate::wire::AccountTransactionClass::All,
+                    0,
+                ),
+            )
+            .unwrap();
+        assert_eq!(second.entries[0].summary, "An expense");
+        let income = store
+            .account_ledger_page_in(
+                &txn,
+                &identity(),
+                &query(
+                    0,
+                    10,
+                    crate::wire::AccountTransactionClass::Income,
+                    ship.ship_id,
+                ),
+            )
+            .unwrap();
+        assert_eq!(
+            income
+                .entries
+                .iter()
+                .map(|entry| entry.summary.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Latest income", "First income"]
+        );
+        let outcome = Outcome {
+            command_id: [0x71; COMMAND_ID_BYTES],
+            committed_sequence: 81,
+            revision: 91,
+            replayed: false,
+            phase: PlayerPhase::Docked,
+            kind: OutcomeKind::AccountLedger(income),
+        };
+        assert_eq!(
+            decode_outcome(&encode_outcome(&outcome).unwrap()).unwrap(),
+            outcome
+        );
+    }
+
+    #[test]
+    fn existing_estate_gets_one_idempotent_carried_forward_account_entry() {
+        let dir = TempDir::new().unwrap();
+        {
+            let store = Store::open(dir.path()).unwrap();
+            initialize_player_fixture(&store);
+            let mut txn = store.env.write_txn().unwrap();
+            let prefix = encode_identity(&identity());
+            let keys = store
+                .account_ledger
+                .prefix_iter(&txn, &prefix)
+                .unwrap()
+                .map(|entry| entry.map(|(key, _)| key.to_vec()).unwrap())
+                .collect::<Vec<_>>();
+            for key in keys {
+                store.account_ledger.delete(&mut txn, &key).unwrap();
+            }
+            store
+                .meta
+                .delete(&mut txn, META_ACCOUNT_LEDGER_RECONCILIATION_VERSION)
+                .unwrap();
+            txn.commit().unwrap();
+        }
+        let first_id = {
+            let store = Store::open(dir.path()).unwrap();
+            let page = store
+                .account_ledger_page_in(
+                    &store.env.read_txn().unwrap(),
+                    &identity(),
+                    &crate::wire::AccountLedgerRequest {
+                        before_entry_id: 0,
+                        limit: 10,
+                        class: crate::wire::AccountTransactionClass::All,
+                        ship_id: 0,
+                    },
+                )
+                .unwrap();
+            assert_eq!(page.entries.len(), 1);
+            assert_eq!(
+                page.entries[0].summary,
+                "Balances carried forward when the account journal began"
+            );
+            page.entries[0].entry_id
+        };
+        let store = Store::open(dir.path()).unwrap();
+        let page = store
+            .account_ledger_page_in(
+                &store.env.read_txn().unwrap(),
+                &identity(),
+                &crate::wire::AccountLedgerRequest {
+                    before_entry_id: 0,
+                    limit: 10,
+                    class: crate::wire::AccountTransactionClass::All,
+                    ship_id: 0,
+                },
+            )
+            .unwrap();
+        assert_eq!(page.entries.len(), 1);
+        assert_eq!(page.entries[0].entry_id, first_id);
     }
 
     fn install_monthly_upkeep_test_state(
@@ -61327,6 +63843,28 @@ mod tests {
         assert_eq!(awaiting.remittance_message_id, 0);
         assert_eq!(player.credits, starting_credits);
         assert_eq!(awaiting.task.reserved_credits, 10_000);
+        store
+            .players
+            .put(
+                &mut txn,
+                &encode_identity(&identity()),
+                &encode_player_record(&player),
+            )
+            .unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        let pending = store.finance_snapshot_in(&mut txn, &identity()).unwrap();
+        assert_eq!(pending.pending_income.len(), 1);
+        assert_eq!(pending.pending_income[0].task_id, task_id);
+        assert_eq!(pending.pending_income[0].payment_credits, 25_000);
+        assert_eq!(pending.pending_income[0].reserved_release_credits, 10_000);
+        assert_eq!(
+            pending.pending_income[0].stage,
+            crate::wire::PendingIncomeStage::FilingToOffice
+        );
+        assert!(pending.pending_income[0].estimated_resolution_second > pending.current_second);
 
         store
             .simulation
@@ -61351,6 +63889,12 @@ mod tests {
         assert_ne!(approved.remittance_message_id, 0);
         assert_eq!(player.credits, starting_credits);
         assert_eq!(approved.task.reserved_credits, 10_000);
+        let pending = store.finance_snapshot_in(&mut txn, &identity()).unwrap();
+        assert_eq!(pending.pending_income.len(), 1);
+        assert_eq!(
+            pending.pending_income[0].stage,
+            crate::wire::PendingIncomeStage::RemittanceToCaptain
+        );
 
         store
             .simulation

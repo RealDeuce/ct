@@ -179,6 +179,7 @@ ServerHello exchange_hello(TlsConnection& connection,
                     ? std::nullopt
                     : std::optional<std::string>{wire_affiliation.getLeagueName().cStr()},
               }},
+      .account_journal_available = server_hello.getAccountJournalAvailable(),
    };
    if(result.identity != identity) {
       throw std::runtime_error("server hello returned a different player identity");
@@ -320,6 +321,8 @@ TravelStage decode_travel_stage(const rpc::TravelStage stage)
       return TravelStage::BeltEgress;
    case rpc::TravelStage::FUEL_PROCESSING:
       return TravelStage::FuelProcessing;
+   case rpc::TravelStage::MANEUVERING:
+      return TravelStage::Maneuvering;
    }
    throw std::runtime_error("unknown CT-RPC travel stage");
 }
@@ -335,6 +338,8 @@ FlightLocus decode_flight_locus(const rpc::FlightLocus::Reader locus)
       .coreward_parsecs = 0.0,
       .spinward_parsecs = 0.0,
       .north_parsecs = 0.0,
+      .jump_role = JumpLocusRole::Departure,
+      .remote_arrival = false,
    };
    if(locus.isPort()) {
       const auto port = locus.getPort();
@@ -350,6 +355,9 @@ FlightLocus decode_flight_locus(const rpc::FlightLocus::Reader locus)
       result.coreward_parsecs = position.getCoreward();
       result.spinward_parsecs = position.getSpinward();
       result.north_parsecs = position.getNorth();
+   } else if(locus.getJumpRole() == rpc::JumpLocusRole::ARRIVAL) {
+      result.jump_role = JumpLocusRole::Arrival;
+      result.remote_arrival = locus.getRemoteArrival();
    }
    return result;
 }
@@ -370,6 +378,10 @@ void encode_flight_locus(rpc::FlightLocus::Builder target, const FlightLocus& so
       position.setNorth(source.north_parsecs);
    } else {
       target.setJumpLocus();
+      target.setJumpRole(source.jump_role == JumpLocusRole::Arrival
+                         ? rpc::JumpLocusRole::ARRIVAL
+                         : rpc::JumpLocusRole::DEPARTURE);
+      target.setRemoteArrival(source.remote_arrival);
    }
 }
 
@@ -438,6 +450,8 @@ void encode_proposal(rpc::FlightPlanProposal::Builder target, const FlightPlanPr
          jump.setNavigation(static_cast<rpc::JumpNavigationMethod>(
                                step.action.jump_navigation));
          jump.setProceedOnKnownBadPlot(step.action.proceed_on_known_bad_plot);
+         jump.setRemoteArrival(step.action.remote_arrival);
+         jump.setDepartureLocusArrival(step.action.departure_locus_arrival);
       }
       break;
       case FlightPlanActionKind::JumpCoordinates: {
@@ -495,6 +509,8 @@ FlightPlanStep decode_plan_step(rpc::FlightPlanStep::Reader source)
       result.action.destination_system_id = jump.getDestinationSystemId();
       result.action.jump_navigation = static_cast<JumpNavigationMethod>(jump.getNavigation());
       result.action.proceed_on_known_bad_plot = jump.getProceedOnKnownBadPlot();
+      result.action.remote_arrival = jump.getRemoteArrival();
+      result.action.departure_locus_arrival = jump.getDepartureLocusArrival();
    } else if(action.isJumpCoordinates()) {
       const auto jump = action.getJumpCoordinates();
       const auto position = jump.getDestination();
@@ -2716,7 +2732,7 @@ FinanceSnapshot decode_finance_snapshot(const rpc::Response::Reader response)
       throw std::runtime_error("expected FinanceSnapshot");
    }
    const auto finance = response.getFinance();
-   return {
+   FinanceSnapshot result{
       .title = static_cast<ShipTitleKind>(finance.getTitle()),
       .liquid_credits = finance.getLiquidCredits(),
       .restricted_credits = finance.getRestrictedCredits(),
@@ -2733,8 +2749,67 @@ FinanceSnapshot decode_finance_snapshot(const rpc::Response::Reader response)
       .credit_status = finance.getCreditStatus().cStr(),
       .destination_assistance_active = finance.getDestinationAssistanceActive(),
       .destination_assistance_expires_second = finance.getDestinationAssistanceExpiresSecond(),
+      .current_second = finance.getCurrentSecond(),
+      .pending_income = {},
       .phase = decode_response_phase(response.getPhase()),
    };
+   for(const auto source : finance.getPendingIncome()) {
+      result.pending_income.push_back(FinanceSnapshot::PendingIncome{
+         .task_id = source.getTaskId(),
+         .payment_credits = source.getPaymentCredits(),
+         .reserved_release_credits = source.getReservedReleaseCredits(),
+         .stage = static_cast<FinanceSnapshot::PendingIncome::Stage>(source.getStage()),
+         .estimated_resolution_second = source.getEstimatedResolutionSecond(),
+         .estimate_kind = static_cast<FinanceSnapshot::PendingIncome::EstimateKind>(
+            source.getEstimateKind()),
+      });
+   }
+   return result;
+}
+
+AccountLedgerPage decode_account_ledger_page(const rpc::Response::Reader response)
+{
+   if(!response.isAccountLedger()) {
+      throw std::runtime_error("expected AccountLedgerPage");
+   }
+   const auto source = response.getAccountLedger();
+   AccountLedgerPage result{
+      .current_second = source.getCurrentSecond(),
+      .entries = {},
+      .next_before_entry_id = source.getNextBeforeEntryId(),
+      .has_more = source.getHasMore(),
+      .vessels = {},
+      .phase = decode_response_phase(response.getPhase()),
+   };
+   for(const auto wire_entry : source.getEntries()) {
+      AccountLedgerEntry entry{
+         .entry_id = wire_entry.getEntryId(),
+         .occurred_second = wire_entry.getOccurredSecond(),
+         .transaction_class = static_cast<AccountTransactionClass>(wire_entry.getClass()),
+         .summary = wire_entry.getSummary().cStr(),
+         .subject_ship_id = wire_entry.getSubjectShipId(),
+         .subject_ship_name = wire_entry.getSubjectShipName().cStr(),
+         .postings = {},
+      };
+      for(const auto posting : wire_entry.getPostings()) {
+         entry.postings.push_back(AccountPosting{
+            .account = static_cast<AccountKind>(posting.getAccount()),
+            .change = static_cast<AccountChangeKind>(posting.getChange()),
+            .amount_credits = posting.getAmountCredits(),
+            .balance_after_credits = posting.getBalanceAfterCredits(),
+            .ship_id = posting.getShipId(),
+            .ship_name = posting.getShipName().cStr(),
+         });
+      }
+      result.entries.push_back(std::move(entry));
+   }
+   for(const auto vessel : source.getVessels()) {
+      result.vessels.push_back(AccountLedgerVessel{
+         .ship_id = vessel.getShipId(),
+         .ship_name = vessel.getShipName().cStr(),
+      });
+   }
+   return result;
 }
 
 FinanceSnapshot get_finance(
@@ -2752,6 +2827,32 @@ FinanceSnapshot get_finance(
    const auto words = receive_response(connection, epoch, request_id);
    capnp::FlatArrayMessageReader reader(words);
    return decode_finance_snapshot(
+             checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+
+AccountLedgerPage get_account_ledger(
+   TlsConnection& connection,
+   const uint64_t epoch,
+   const uint64_t before_entry_id,
+   const uint16_t limit,
+   const AccountTransactionClass transaction_class,
+   const uint64_t ship_id,
+   const std::array<uint8_t, 16>& id,
+   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   auto query = request.initGetAccountLedger();
+   query.setBeforeEntryId(before_entry_id);
+   query.setLimit(limit);
+   query.setClass(static_cast<rpc::AccountTransactionClass>(transaction_class));
+   query.setShipId(ship_id);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_account_ledger_page(
              checked_response(reader.getRoot<rpc::Envelope>(), id));
 }
 

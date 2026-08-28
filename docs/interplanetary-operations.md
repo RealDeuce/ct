@@ -69,7 +69,7 @@ A destination and an action at that destination are separate choices. A plan
 may end by holding at a location, or it may authorize the server to perform a
 bounded action immediately after arrival. Examples include:
 
-- approach a jump-departure locus and hold;
+- approach either conventional traffic locus and hold;
 - approach a jump-departure locus, perform final readiness checks, and
   initiate a specified Jump using the selected plot or tape;
 - approach a port and hold for further orders;
@@ -186,7 +186,7 @@ elapsed time, fuel, carriage warnings, and standing encounter authority, then
 commits the unchanged proposal with its preview hash. A revision mismatch
 rejects the whole transaction. The first actionable step may be a Jump or a
 bounded frontier-fuel operation. A Jump begins at the exact departure port and
-runs toward a typed Jump locus using current seed-derived celestial positions,
+runs toward a typed conventional departure locus using current seed-derived celestial positions,
 catalogued thrust, and the half-day safety minimum.
 
 During any in-system maneuver, the captain may atomically replace the active
@@ -194,7 +194,7 @@ destination and all later waypoints. The replacement begins from the ship's
 current relative position and velocity, solves a new bounded-thrust intercept
 to the destination's moving orbital state, and replaces the old scheduled
 movement. This permits returning to the primary port or diverting directly to
-the Jump locus, a selected planetoid belt, or a lawful frontier-fuel source.
+either conventional traffic locus, a selected planetoid belt, or a lawful frontier-fuel source.
 Only a physical Jump-space leg is immutable until breakout. Carried cargo and
 sealed mail remain authoritative ship state and produce diversion/custody
 warnings rather than being altered by the route editor.
@@ -203,9 +203,11 @@ The due-time scheduler then commits three transitions independently:
 
 1. outbound approach completes, one catalogued jump-fuel load is consumed,
    and the ship enters a standard one-week Jump;
-2. Jump completes in the destination system and a fresh safe-locus-to-primary-
-   world approach is scheduled from destination celestial positions at that
-   game time; and
+2. Jump completes at the conventional arrival locus, the conflicting outbound
+   departure locus, or a private remote arrival point; the latter avoids routine
+   locus contacts but has a longer approach;
+   if the plan continues to port, a fresh approach is scheduled from destination
+   celestial positions at that game time; and
 3. the approach completes at a durable arrival checkpoint at the synthesized
    primary-world starport facility.
 
@@ -219,7 +221,7 @@ roll. Routine traffic, control, inspection, distress, derelict, hazard,
 military, and hostile contact types all have closed wire discriminants.
 
 A committed voyage schedules contact-check work at port departure, the
-Jump-departure convergence window, Jump arrival, and frontier-fuel arrival;
+departure-locus convergence window, conventional arrival, port docking, and frontier-fuel arrival;
 the terminal inhabited-world approach creates its own checkpoint. Every check
 is a separately admitted durable engine input. Non-consequential traffic is
 recorded without inventing a pause. A hostile result changes the plan to
@@ -265,7 +267,7 @@ is frozen: restart resumes from the last committed game second and anchors a
 fresh monotonic process clock there.
 
 Gas-giant skimming and lawful wilderness water/ice collection use the same
-typed scheduling machinery. The accepted command fixes a whole-ton quantity
+typed scheduling machinery. The accepted collection command fixes a whole-ton quantity
 and whether the collected batch is to be refined, then creates three explicit
 legs: port to source body, collection/optional processing at the body, and body
 to the original port. Collection and processing overlap where possible; the

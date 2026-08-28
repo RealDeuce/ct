@@ -146,6 +146,7 @@ struct ServerHello {
    std::string language_tag;
    DisplayFormatting formatting;
    std::optional<InstitutionalAffiliation> affiliation;
+   bool account_journal_available;
 };
 
 struct BrowserAlertStatus {
@@ -1049,6 +1050,81 @@ struct FinanceSnapshot {
    std::string credit_status;
    bool destination_assistance_active;
    uint64_t destination_assistance_expires_second;
+   uint64_t current_second;
+   struct PendingIncome {
+      enum class Stage {
+         FilingToOffice,
+         RemittanceToCaptain,
+      };
+      enum class EstimateKind {
+         Projected,
+         Scheduled,
+         Unavailable,
+      };
+      uint64_t task_id;
+      uint64_t payment_credits;
+      uint64_t reserved_release_credits;
+      Stage stage;
+      uint64_t estimated_resolution_second;
+      EstimateKind estimate_kind;
+   };
+   std::vector<PendingIncome> pending_income;
+   PlayerPhase phase;
+};
+
+enum class AccountTransactionClass {
+   All,
+   Opening,
+   Income,
+   Expense,
+   Transfer,
+   Hold,
+   Financing,
+};
+
+enum class AccountKind {
+   Liquid,
+   RestrictedOperating,
+   Reserved,
+   SecuredPrincipal,
+};
+
+enum class AccountChangeKind {
+   Increase,
+   Decrease,
+   BalanceForward,
+};
+
+struct AccountPosting {
+   AccountKind account;
+   AccountChangeKind change;
+   uint64_t amount_credits;
+   uint64_t balance_after_credits;
+   uint64_t ship_id;
+   std::string ship_name;
+};
+
+struct AccountLedgerEntry {
+   uint64_t entry_id;
+   uint64_t occurred_second;
+   AccountTransactionClass transaction_class;
+   std::string summary;
+   uint64_t subject_ship_id;
+   std::string subject_ship_name;
+   std::vector<AccountPosting> postings;
+};
+
+struct AccountLedgerVessel {
+   uint64_t ship_id;
+   std::string ship_name;
+};
+
+struct AccountLedgerPage {
+   uint64_t current_second;
+   std::vector<AccountLedgerEntry> entries;
+   uint64_t next_before_entry_id;
+   bool has_more;
+   std::vector<AccountLedgerVessel> vessels;
    PlayerPhase phase;
 };
 struct MarketObservation {
@@ -1159,6 +1235,7 @@ enum class TravelStage {
    BeltRecovery,
    BeltEgress,
    FuelProcessing,
+   Maneuvering,
 };
 
 enum class FlightLocusKind {
@@ -1166,6 +1243,11 @@ enum class FlightLocusKind {
    JumpLocus,
    Body,
    DeepSpace,
+};
+
+enum class JumpLocusRole {
+   Departure,
+   Arrival,
 };
 
 struct FlightLocus {
@@ -1177,6 +1259,8 @@ struct FlightLocus {
    double coreward_parsecs = 0.0;
    double spinward_parsecs = 0.0;
    double north_parsecs = 0.0;
+   JumpLocusRole jump_role = JumpLocusRole::Departure;
+   bool remote_arrival = false;
 };
 
 struct TravelStatus {
@@ -1279,6 +1363,8 @@ struct FlightPlanAction {
    uint32_t body_id = 0;
    JumpNavigationMethod jump_navigation = JumpNavigationMethod::Onboard;
    bool proceed_on_known_bad_plot = false;
+   bool remote_arrival = false;
+   bool departure_locus_arrival = false;
    bool refine_collected = true;
    double coreward_parsecs = 0.0;
    double spinward_parsecs = 0.0;
@@ -2340,6 +2426,9 @@ FinanceSnapshot cure_finance_default(
    const std::array<uint8_t, 16>& command_id,
    uint64_t request_id);
 FinanceSnapshot get_finance(TlsConnection&, uint64_t, const std::array<uint8_t, 16>&, uint64_t);
+AccountLedgerPage get_account_ledger(TlsConnection&, uint64_t, uint64_t, uint16_t,
+                                     AccountTransactionClass, uint64_t,
+                                     const std::array<uint8_t, 16>&, uint64_t);
 MarketKnowledge get_market_knowledge(TlsConnection&, uint64_t, const std::array<uint8_t, 16>&,
                                      uint64_t);
 ShipMarket get_ship_market(TlsConnection&, uint64_t, const std::array<uint8_t, 16>&, uint64_t);

@@ -149,8 +149,9 @@ the route depends on the command's career and authority.
 
 1. Open `U`, then inspect **Crew Management** and **Ship Management**. Note
    duty coverage, fuel, provisions, damage, endurance, and maintenance.
-2. Inspect **Banking and Accounts**. Distinguish personal cash from restricted
-   operating credit or institutional funds, and review title and obligations.
+2. Inspect universal **Accounts**. Distinguish liquid cash, available cash,
+   reserved funds, restricted operating credit, and principal; review any
+   pending income by its estimated settlement date.
 3. Follow the command's duty path:
    - Traders inspect **Jobs and Passage** and, when useful, the **Cargo
      Exchange**. Do not accept an obligation whose route or terms you do not
@@ -216,9 +217,8 @@ world below TL9 can have a working port but no locally eligible ships for sale.
   Fleet until its real construction time ends.
 - `P` — **Personnel:** hire available crew and open roster actions such as
   assignment, leave, recall, treatment, or discharge.
-- `B` — **Banking and Accounts:** inspect debt, insurance, assistance, and
-  other available financial actions. The screen also identifies the vessel's
-  title and lets a captain post an overdue installment.
+- `B` — **Banking Services:** inspect the active vessel's finance terms and
+  perform locally available insurance, arrears, or insolvency actions.
 - `A` — **Authorities:** handle local career, warrant, prize, traffic, and
   official business.
 - `D` — **Depart:** construct, preview, and file a flight plan.
@@ -227,6 +227,27 @@ world below TL9 can have a working port but no locally eligible ships for sale.
 Banking, personnel, authorities, refined fuel, repairs, and other services are
 not guaranteed at every facility. A missing menu entry is useful information,
 not a display error.
+
+### Accounts and pending settlement
+
+`F` on the universal Command Console opens **Accounts** in every operational
+phase. Liquid balance is the money currently posted to the captain's account;
+available cash subtracts reservations already committed to tasks or escrow.
+Restricted vessel credit pays authorized operating expenses, and secured
+principal is debt rather than spending capacity.
+
+Certified task income appears under Pending income until the issuing office's
+remittance physically reaches the captain. It is grouped by estimated game
+day; an amount marked as released is existing collateral expected to become
+available again, not additional revenue. A missing estimate means the current
+mail network offers no defensible delivery date. Do not budget pending income
+as cash.
+
+`T` opens the durable Transaction Journal. `F` cycles income, expense,
+transfer, hold, financing, and opening entries; `V` filters by vessel; `N` and
+`P` page through older and newer entries. Select a numbered entry to see each
+affected account, exact increase or decrease, and resulting balance. An estate
+that predates the journal begins with one carried-forward opening entry.
 
 ### Naval service accounts
 
@@ -237,7 +258,7 @@ medical treatment, repairs, replacement work, and refits. It cannot ordinarily
 pay for cargo trading, collateral, private messages, personal insurance, fines,
 or other private obligations.
 
-The Banking and Accounts screen permits a naval captain to file a false
+Banking Services permits a naval captain to file a false
 ship-expense receipt and move service credit into the personal balance. The
 confirmation is deliberate: the receipt is retained for the next accounts
 audit. Detection is not certain; its probability rises with the total amount
@@ -255,10 +276,11 @@ principal. The sponsor can still require monthly insurance. Restricted
 operating credit pays that insurance before the captain's liquid balance, but
 it cannot pay secured principal or private expenses.
 
-If an installment defaults, Banking shows the amount past due. `P` posts that
-installment and withdraws its impound order. An impound message links back to
-Banking, so the payment can be posted while the ship is in Jump as well as at
-port.
+If an installment defaults, Accounts shows the changed balance and the
+financial notice remains available in Messages. At a port with Banking
+Services, `P` posts the displayed overdue installment and withdraws its
+impound order. The universal Accounts manager remains readable in Jump, but
+the correspondent-bank action does not travel with the ship.
 
 ### Cargo and local markets
 

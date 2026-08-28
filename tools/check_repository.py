@@ -136,7 +136,7 @@ def main() -> int:
         ("server/src/sysop_wire.rs", r"pub const PROTOCOL_VERSION: u16 = 2;", "sysop protocol version 2"),
         ("server/src/league_wire.rs", r"pub const PROTOCOL_VERSION: u16 = 1;", "league protocol version 1"),
         ("server/src/store.rs", r"pub const STORAGE_FORMAT_VERSION: u64 = 2;", "storage format version 2"),
-        ("server/src/store.rs", r"const SHIP_RECORD_CODEC_VERSION: u8 = 3;", "ship record codec version 3"),
+        ("server/src/store.rs", r"const SHIP_RECORD_CODEC_VERSION: u8 = 4;", "ship record codec version 4"),
         ("server/src/store.rs", r"const CNS5_COVERAGE_DISTRIBUTION_VERSION: u16 = 1;", "CNS5 coverage distribution version 1"),
         ("server/src/store.rs", r"const CNS5_COVERAGE_SAMPLER_VERSION: u16 = 1;", "CNS5 coverage sampler version 1"),
         ("server/src/store.rs", r"const SETTLEMENT_CAPACITY_SAMPLER_VERSION: u16 = 1;", "settlement capacity sampler version 1"),
