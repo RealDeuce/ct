@@ -64,8 +64,7 @@ Established connections never interpret legacy envelopes.
 During one release-development cycle, incompatible schema work shares the next
 protocol number. The number advances again only after that contract has shipped
 in a release; intermediate feature commits do not consume additional protocol
-versions. CT-RPC 9 shipped in v0.7.13; current post-release development
-therefore uses CT-RPC 10.
+versions. CT-RPC 9 shipped in v0.7.13, and CT-RPC 10 ships in v0.7.14.
 
 Both builds generate bindings from `protocol/ct_rpc.capnp`.
 `InitialCrewDraft` contains only the authoritative slot ID, name, and
@@ -294,8 +293,8 @@ sensor-limited combat-outlook percentage on encounter snapshots, distinct
 departure/arrival locus semantics, remote- and departure-locus-arrival flags, and a typed local
 maneuver stage. Ship defaults
 live in the `encounter-policy-defaults` database as codec version 1; absence
-means revision zero and the conservative legacy defaults. These are additive
-post-v0.7.13 fields, so the player protocol remains 10 until release.
+means revision zero and the conservative legacy defaults. These additive
+post-v0.7.13 fields ship in CT-RPC 10 with v0.7.14.
 
 ## Persistence contract
 
