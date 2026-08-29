@@ -442,6 +442,24 @@ std::string format_door_text(const char* format, va_list arguments)
    return std::string(buffer.data(), static_cast<size_t>(written));
 }
 
+std::string format_prompt_text(const char* format, va_list arguments)
+{
+   auto text = format_door_text(format, arguments);
+   const auto has_prompt_text =
+      text.find_first_not_of("\r\n") != std::string::npos;
+   bool removed_line_ending = false;
+   if(has_prompt_text) {
+      while(!text.empty() && (text.back() == '\r' || text.back() == '\n')) {
+         text.pop_back();
+         removed_line_ending = true;
+      }
+      if(removed_line_ending && !text.empty() && text.back() != ' ') {
+         text.push_back(' ');
+      }
+   }
+   return text;
+}
+
 void door_printf_role(const ct::DoorTextRole role,
                       const char* format,
                       va_list arguments)
@@ -461,24 +479,25 @@ void door_prompt(const char* format, ...)
 {
    va_list arguments;
    va_start(arguments, format);
-   auto text = format_door_text(format, arguments);
+   const auto text = format_prompt_text(format, arguments);
    va_end(arguments);
-   const auto has_prompt_text =
-      text.find_first_not_of("\r\n") != std::string::npos;
-   bool removed_line_ending = false;
-   if(has_prompt_text) {
-      while(!text.empty() && (text.back() == '\r' || text.back() == '\n')) {
-         text.pop_back();
-         removed_line_ending = true;
-      }
-      if(removed_line_ending && !text.empty() && text.back() != ' ') {
-         text.push_back(' ');
-      }
-   }
    active_prompt += text;
    active_prompt_on_current_line = false;
    active_prompt_is_option = false;
    output().write(text, ct::DoorTextRole::Prompt);
+   output().suspend_paging();
+}
+
+void door_choice_prompt(const char* format, ...)
+{
+   va_list arguments;
+   va_start(arguments, format);
+   const auto text = format_prompt_text(format, arguments);
+   va_end(arguments);
+   active_prompt += text;
+   active_prompt_on_current_line = false;
+   active_prompt_is_option = true;
+   output().write_option_prompt(text);
    output().suspend_paging();
 }
 
@@ -508,11 +527,12 @@ void show_voyage_live_prompt()
    constexpr const char* narrow_prompt =
       "[F] Plan  [R] Refresh  [?] Help\n\r[Enter] Console";
    door_write("\n\r", ct::DoorTextRole::Normal);
-   if(output().content_columns() >= std::strlen(wide_prompt)) {
-      door_live_prompt("%s", wide_prompt);
-   } else {
-      door_prompt("%s", narrow_prompt);
-   }
+   const auto wide = output().content_columns() >= std::strlen(wide_prompt);
+   active_prompt = wide ? wide_prompt : narrow_prompt;
+   active_prompt_on_current_line = wide;
+   active_prompt_is_option = true;
+   output().write_option_prompt(active_prompt);
+   output().suspend_paging();
 }
 
 void door_option_prompt(
@@ -2966,7 +2986,7 @@ bool run_player_creation(ct::TlsConnection& connection,
             door_label(")\n\rCrew:    ");
             door_number("%u", static_cast<unsigned>(creation.crew.size()));
             door_label(" named officers and senior specialists\n\r");
-            door_prompt(
+            door_choice_prompt(
                "\n\rRegister this captain and starting estate? [Y/N]\n\r");
             const auto registration_answer = od_get_answer("YN");
             output().reset_paging();
@@ -5656,7 +5676,7 @@ void show_task_manager(ct::TlsConnection& connection, const uint64_t session_epo
                continue;
             }
             declaration.low_berths = static_cast<uint16_t>(*low);
-            door_prompt("Carry ordinary electronic mail? [Y/n/Q]: ");
+            door_choice_prompt("Carry ordinary electronic mail? [Y/n/Q]: ");
             const auto mail = od_get_key(TRUE);
             od_printf("\n\r");
             if(mail == 'q' || mail == 'Q') {
@@ -6006,7 +6026,7 @@ std::optional<ct::PlayerPhase> show_finance(
          return std::nullopt;
       }
       if((key == 'p' || key == 'P') && finance.in_default) {
-         door_prompt(
+         door_choice_prompt(
             "\n\rPost Cr%llu now and withdraw the active impound order? [y/N]: ",
             static_cast<unsigned long long>(overdue_payment));
          const auto confirmation = od_get_key(TRUE);
@@ -6037,8 +6057,8 @@ std::optional<ct::PlayerPhase> show_finance(
          if(!amount) {
             continue;
          }
-         door_prompt("Forge a receipt for Cr%llu? [y/N]: ",
-                     static_cast<unsigned long long>(*amount));
+         door_choice_prompt("Forge a receipt for Cr%llu? [y/N]: ",
+                            static_cast<unsigned long long>(*amount));
          const auto confirmation = od_get_key(TRUE);
          if(confirmation != 'y' && confirmation != 'Y') {
             continue;
@@ -6060,7 +6080,7 @@ std::optional<ct::PlayerPhase> show_finance(
             "in this estate. Career standing and legal records survive. The old captain "
             "retires from play. After the Command Loss Report is acknowledged, a named "
             "successor begins with the original starting class under a new secured loan.\n\r");
-         door_prompt("File this irrevocable petition? [y/N]: ");
+         door_choice_prompt("File this irrevocable petition? [y/N]: ");
          const auto confirmation = od_get_key(TRUE);
          od_printf("\n\r");
          if(confirmation != 'y' && confirmation != 'Y') {
@@ -6086,11 +6106,11 @@ std::optional<ct::PlayerPhase> show_finance(
       if((enable && !finance.destination_assistance_active)
             || (disable && finance.destination_assistance_active)) {
          if(enable) {
-            door_prompt(
+            door_choice_prompt(
                "\n\rPurchase one year of destination assistance for Cr%s? [y/N]: ",
                destination_assistance_premium.c_str());
          } else {
-            door_prompt(
+            door_choice_prompt(
                "\n\rCancel destination assistance without a premium refund? [y/N]: ");
          }
          const auto confirmation = od_get_key(TRUE);
@@ -6232,7 +6252,7 @@ void run_shipyard_market(ct::TlsConnection& connection, const uint64_t epoch,
                continue;
             }
             const auto& design = market.commissionable_designs[first + *selected - 1];
-            door_prompt(
+            door_choice_prompt(
                "\n\rCommission %s for Cr%llu deposit and %llu weeks? [y/N]: ",
                safe_field(design.class_name).c_str(),
                static_cast<unsigned long long>(design.deposit_credits),
@@ -8769,7 +8789,7 @@ bool run_command_console(
 
 void wait_for_enter(const char* destination)
 {
-   door_prompt("\n\r[Enter] %s\n\r", destination);
+   door_choice_prompt("\n\r[Enter] %s\n\r", destination);
    while(true) {
       const auto key = od_get_key(TRUE);
       if(key == '\r' || key == '\n') {
@@ -12406,8 +12426,8 @@ ct::PlayerPhase run_combat(ct::TlsConnection& connection, const ct::ServerHello&
    if(option_lines.ends_with(": ")) {
       option_lines.resize(option_lines.size() - 2);
    }
-   door_write(option_lines, ct::DoorTextRole::Prompt);
-   door_write("\n\r", ct::DoorTextRole::Prompt);
+   output().write_option_prompt(option_lines);
+   output().write("\n\r", ct::DoorTextRole::Prompt);
    const auto timing = ct::get_ship_status(
       connection, hello.assigned_epoch, random_command_id(random), request_id++);
    const auto key_value = door_get_combat_countdown_key(

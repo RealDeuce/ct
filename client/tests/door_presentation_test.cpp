@@ -1027,6 +1027,19 @@ int main() {
             "\x1b[1;32m[?]\x1b[0m"
             "\x1b[37m Help\x1b[0m"
             "\x1b[1;32m: \x1b[0m") != std::string::npos);
+   std::string colored_choice_output;
+   ct::DoorPresentation colored_choice(
+      ct::DoorProfile::Cp437Color,
+      80,
+      24,
+      [&colored_choice_output](const std::string_view bytes) {
+         colored_choice_output.append(bytes);
+      });
+   colored_choice.write_option_prompt("Commission this ship? [y/N]: ");
+   check(colored_choice_output ==
+         "\x1b[37mCommission this ship? \x1b[0m"
+         "\x1b[1;32m[y/N]\x1b[0m"
+         "\x1b[1;32m: \x1b[0m");
 
    std::string plain_option_output;
    std::string legacy_plain_option_output;
