@@ -41,6 +41,7 @@ enum class DoorTextRole {
    PriceMarkerFavorable,
    PriceMarkerMiddling,
    PriceMarkerUnfavorable,
+   PromptDelimiter,
 };
 
 enum class PricePlotBand {

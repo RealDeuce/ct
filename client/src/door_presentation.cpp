@@ -378,6 +378,8 @@ std::string_view role_sequence(const DoorTextRole role) {
          return "\x1b[1;33m";
       case DoorTextRole::Prompt:
          return "\x1b[1;32m";
+      case DoorTextRole::PromptDelimiter:
+         return "\x1b[32m";
       case DoorTextRole::PagerPrompt:
          return "\x1b[0;30;46m";
       case DoorTextRole::Error:
@@ -1076,9 +1078,11 @@ bool DoorPresentation::write_option_prompt(const std::string_view text) {
       if(text[offset] == '[') {
          const auto close = text.find(']', offset + 1);
          if(close != std::string_view::npos) {
+            write_fragment("[", DoorTextRole::PromptDelimiter);
             write_fragment(
-               text.substr(offset, close - offset + 1),
+               text.substr(offset + 1, close - offset - 1),
                DoorTextRole::Prompt);
+            write_fragment("]", DoorTextRole::PromptDelimiter);
             offset = close + 1;
             continue;
          }

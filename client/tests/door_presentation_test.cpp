@@ -489,6 +489,7 @@ int main() {
 
    const std::array semantic_roles{
       std::pair{ct::DoorTextRole::Label, std::string_view{"\x1b[36m"}},
+      std::pair{ct::DoorTextRole::PromptDelimiter, std::string_view{"\x1b[32m"}},
       std::pair{ct::DoorTextRole::PagerPrompt, std::string_view{"\x1b[0;30;46m"}},
       std::pair{ct::DoorTextRole::Value, std::string_view{"\x1b[1;37m"}},
       std::pair{ct::DoorTextRole::Number, std::string_view{"\x1b[1;33m"}},
@@ -1020,11 +1021,17 @@ int main() {
    colored_options.write_option_prompt(
       "\n\r[A] Add charted leg  [Q] Keep existing plan  [?] Help: ");
    check(colored_option_output.find(
-            "\x1b[1;32m[A]\x1b[0m"
+            "\x1b[32m[\x1b[0m"
+            "\x1b[1;32mA\x1b[0m"
+            "\x1b[32m]\x1b[0m"
             "\x1b[37m Add charted leg  \x1b[0m"
-            "\x1b[1;32m[Q]\x1b[0m") != std::string::npos);
+            "\x1b[32m[\x1b[0m"
+            "\x1b[1;32mQ\x1b[0m"
+            "\x1b[32m]\x1b[0m") != std::string::npos);
    check(colored_option_output.find(
-            "\x1b[1;32m[?]\x1b[0m"
+            "\x1b[32m[\x1b[0m"
+            "\x1b[1;32m?\x1b[0m"
+            "\x1b[32m]\x1b[0m"
             "\x1b[37m Help\x1b[0m"
             "\x1b[1;32m: \x1b[0m") != std::string::npos);
    std::string colored_choice_output;
@@ -1038,7 +1045,9 @@ int main() {
    colored_choice.write_option_prompt("Commission this ship? [y/N]: ");
    check(colored_choice_output ==
          "\x1b[37mCommission this ship? \x1b[0m"
-         "\x1b[1;32m[y/N]\x1b[0m"
+         "\x1b[32m[\x1b[0m"
+         "\x1b[1;32my/N\x1b[0m"
+         "\x1b[32m]\x1b[0m"
          "\x1b[1;32m: \x1b[0m");
 
    std::string plain_option_output;
