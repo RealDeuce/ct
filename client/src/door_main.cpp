@@ -8846,6 +8846,26 @@ void render_market_offer_summary(const ct::MarketOffer& offer,
    door_number("%llu/t\n\r", static_cast<unsigned long long>(offer.base_price_per_ton));
 }
 
+void render_market_lead_choice(const ct::MarketLead& lead,
+                               const size_t index) {
+   door_number("%zu", index + 1);
+   door_label(". ");
+   door_value("%s", safe_field(lead.commodity_name).c_str());
+   door_label(lead.side == ct::MarketLeadSide::Supplier
+      ? " supplier  " : " buyer  ");
+   print_millitons(lead.quantity_millitons);
+   if(lead.state == ct::MarketLeadState::Quoted) {
+      door_label(" at Cr");
+      door_number("%llu/t", static_cast<unsigned long long>(lead.price_per_ton));
+      if(lead.loader_fee_credits != 0) {
+         door_label(" + Cr");
+         door_number("%llu", static_cast<unsigned long long>(lead.loader_fee_credits));
+         door_label(" loaders");
+      }
+   }
+   od_printf("\n\r");
+}
+
 void render_market_catalogue(const ct::MarketSnapshot& market) {
    od_clr_scr();
    door_heading("Commodity Catalogue - ");
@@ -9205,6 +9225,11 @@ void run_cargo_exchange(
             wait_for_enter();
             continue;
          }
+         output().resume_paging();
+         door_identifier("\n\rCounterparties awaiting negotiation\n\r");
+         for(size_t index = 0; index < available.size(); ++index) {
+            render_market_lead_choice(*available[index], index);
+         }
          const auto selected = input_number(
             "Counterparty", 1, static_cast<unsigned>(available.size()));
          if(!selected) {
@@ -9250,6 +9275,11 @@ void run_cargo_exchange(
             wait_for_enter();
             continue;
          }
+         output().resume_paging();
+         door_identifier("\n\rQuotes awaiting acceptance\n\r");
+         for(size_t index = 0; index < quoted.size(); ++index) {
+            render_market_lead_choice(*quoted[index], index);
+         }
          const auto selected = input_number(
             "Quote", 1, static_cast<unsigned>(quoted.size()));
          if(!selected) {
@@ -9274,6 +9304,11 @@ void run_cargo_exchange(
             door_information("No negotiated quote is awaiting rejection.\n\r");
             wait_for_enter();
             continue;
+         }
+         output().resume_paging();
+         door_identifier("\n\rQuotes awaiting rejection\n\r");
+         for(size_t index = 0; index < quoted.size(); ++index) {
+            render_market_lead_choice(*quoted[index], index);
          }
          const auto selected = input_number(
             "Quote", 1, static_cast<unsigned>(quoted.size()));
@@ -9300,6 +9335,16 @@ void run_cargo_exchange(
             door_information("No active market search can be cancelled.\n\r");
             wait_for_enter();
             continue;
+         }
+         output().resume_paging();
+         door_identifier("\n\rActive market work\n\r");
+         for(size_t index = 0; index < active.size(); ++index) {
+            const auto& work = *active[index];
+            door_number("%zu", index + 1);
+            door_label(". Assignment #");
+            door_identifier("%llu", static_cast<unsigned long long>(work.assignment_id));
+            door_label("  Due: ");
+            door_number("%s\n\r", game_date(work.due_second).c_str());
          }
          const auto selected = input_number("Assignment", 1, static_cast<unsigned>(active.size()));
          if(!selected) {

@@ -2361,10 +2361,14 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     negotiation_door.send(b"\r");
     finish_docked_login(&mut negotiation_door);
     negotiation_door.send_to_menu(b"c", "Cargo Exchange -");
-    negotiation_door.send_through_page_prompt(
+    let negotiation_prompt = negotiation_door.send_through_page_prompt(
         b"n",
         "Counterparty (Q to cancel",
-        "Counterparty (Q to cancel",
+        "Counterparties awaiting negotiation",
+    );
+    assert!(
+        normalized_display_text(&negotiation_prompt)
+            .contains("Counterparties awaiting negotiation")
     );
     negotiation_door.send(b"1\r");
     negotiation_door.wait_for("Negotiator (Q to cancel");
@@ -2395,7 +2399,12 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     voyage_door.send(b"\r");
     finish_docked_login(&mut voyage_door);
     voyage_door.send_to_menu(b"c", "Cargo Exchange -");
-    voyage_door.send_through_page_prompt(b"a", "Quote (Q to cancel", "Quote (Q to cancel");
+    let acceptance_prompt = voyage_door.send_through_page_prompt(
+        b"a",
+        "Quote (Q to cancel",
+        "Quotes awaiting acceptance",
+    );
+    assert!(normalized_display_text(&acceptance_prompt).contains("Quotes awaiting acceptance"));
     voyage_door.send_to_menu(b"1\r", "Cargo Exchange -");
     voyage_door.send_to_menu(b"q", "Docked Operations");
     voyage_door.send_to_menu(b"d", "Flight Plan\r\n===========");
