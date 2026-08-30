@@ -99,6 +99,13 @@ trades, reservations, or free quote rerolls. Timed supplier/buyer work is
 described in
 [`merchant-economy-and-tasks.md`](merchant-economy-and-tasks.md).
 
+Once negotiation finishes, its offer shows the universal catalog-based
+five-number price range (minimum, Q1, median, Q3, maximum) and marks the actual
+quote. The range is the same regardless of which crewmember negotiated it:
+purchases span 80%-120% of catalog, while sales span 80%-156% after accounting
+for every possible original purchase basis and buyer markup. No range or quote
+is disclosed before negotiation.
+
 Refined fuel costs the CE Cr500 per ton and is sold only by class A or B
 starports. Unrefined port fuel costs Cr100 per ton at class A through C ports.
 The server accepts vendor quantities at 0.001-ton resolution, rounds the final

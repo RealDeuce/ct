@@ -1082,6 +1082,7 @@ pub struct MarketLead {
     pub penalty_until_second: u64,
     pub illegal: bool,
     pub loader_fee_credits: u64,
+    pub price_distribution: PriceDistribution,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -6587,6 +6588,10 @@ fn set_market(
         item.set_penalty_until_second(lead.penalty_until_second);
         item.set_illegal(lead.illegal);
         item.set_loader_fee_credits(lead.loader_fee_credits);
+        set_price_distribution(
+            item.reborrow().init_price_distribution(),
+            lead.price_distribution,
+        );
     }
     let event_count = u32::try_from(snapshot.events.len())
         .map_err(|_| WireError::Expected("fewer market events"))?;

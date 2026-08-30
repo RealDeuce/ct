@@ -1822,6 +1822,13 @@ MarketSnapshot decode_market(const rpc::Response::Reader response)
          .penalty_until_second = lead.getPenaltyUntilSecond(),
          .illegal = lead.getIllegal(),
          .loader_fee_credits = lead.getLoaderFeeCredits(),
+         .price_distribution = {
+            .minimum = lead.getPriceDistribution().getMinimum(),
+            .lower_quartile = lead.getPriceDistribution().getLowerQuartile(),
+            .median = lead.getPriceDistribution().getMedian(),
+            .upper_quartile = lead.getPriceDistribution().getUpperQuartile(),
+            .maximum = lead.getPriceDistribution().getMaximum(),
+         },
       });
    }
    for(const auto event : source.getEvents()) {

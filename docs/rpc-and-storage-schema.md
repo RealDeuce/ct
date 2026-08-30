@@ -316,8 +316,11 @@ market state are cleared.
 
 CT-RPC 12 adds the server-calculated outstanding export tariff to
 `DockedSnapshot`, allowing Docked Operations to present every charge due when
-the ship clears its berth. Retained outcomes use codec 31; codec 30 snapshots
-decode the new field as zero. No stored ship, market, or account format changes.
+the ship clears its berth. It also adds the universal five-number price
+distribution to negotiated `MarketLead` values. Retained outcomes use codec
+32; codec 31 market snapshots decode the distribution as zero, while codec 30
+docked snapshots decode the tariff as zero. No stored ship, market, or account
+format changes.
 
 ## Persistence contract
 

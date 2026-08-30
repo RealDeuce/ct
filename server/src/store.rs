@@ -20280,6 +20280,18 @@ impl Store {
                 {
                     stored.lead.state = crate::wire::MarketLeadState::Expired;
                 }
+                if stored.lead.state == crate::wire::MarketLeadState::Quoted {
+                    let item = commodity(stored.lead.commodity_id)
+                        .ok_or(StoreError::Corrupt("market lead commodity is missing"))?;
+                    stored.lead.price_distribution = match stored.lead.side {
+                        crate::wire::MarketLeadSide::Supplier => {
+                            universal_purchase_price_distribution(item.base_price_per_ton)
+                        }
+                        crate::wire::MarketLeadSide::Buyer => {
+                            universal_sale_price_distribution(item.base_price_per_ton)
+                        }
+                    };
+                }
                 leads.push(stored.lead);
             }
         }
@@ -32735,6 +32747,7 @@ impl Store {
                                 illegal: commodity_legality(lot.commodity, &world)
                                     == Legality::Prohibited,
                                 loader_fee_credits: 0,
+                                price_distribution: PriceDistribution::flat(0),
                             },
                         };
                         self.market_leads.put(
@@ -32787,6 +32800,7 @@ impl Store {
                                 penalty_until_second: 0,
                                 illegal: commodity_legality(item, &world) == Legality::Prohibited,
                                 loader_fee_credits: 0,
+                                price_distribution: PriceDistribution::flat(0),
                             },
                         };
                         self.market_leads.put(
@@ -39129,6 +39143,37 @@ fn market_tariff_basis_points(world: &crate::universe::World) -> u16 {
         .min(1_500)
 }
 
+fn universal_purchase_price_distribution(base_price: u64) -> PriceDistribution {
+    quartile_price_span(
+        base_price.saturating_mul(80) / 100,
+        base_price.saturating_mul(120) / 100,
+    )
+}
+
+fn universal_sale_price_distribution(base_price: u64) -> PriceDistribution {
+    // A purchased lot can itself have cost 80%-120% of catalog before a
+    // buyer offers 100%-130% of that basis. Extracted/captured appraisal
+    // outcomes lie inside the same universe-wide absolute span.
+    quartile_price_span(
+        base_price.saturating_mul(80) / 100,
+        base_price.saturating_mul(156) / 100,
+    )
+}
+
+fn quartile_price_span(minimum: u64, maximum: u64) -> PriceDistribution {
+    let span = u128::from(maximum.saturating_sub(minimum));
+    let quartile = |numerator: u128| {
+        minimum.saturating_add(u64::try_from(span * numerator / 4).unwrap_or(u64::MAX))
+    };
+    PriceDistribution {
+        minimum,
+        lower_quartile: quartile(1),
+        median: quartile(2),
+        upper_quartile: quartile(3),
+        maximum,
+    }
+}
+
 #[derive(Debug, Eq, PartialEq)]
 struct CustomsDisposition {
     confiscated_millitons: u64,
@@ -44244,7 +44289,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(31);
+    bytes.push(32);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -44567,6 +44612,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 29
         && version != 30
         && version != 31
+        && version != 32
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -45667,6 +45713,7 @@ fn decode_market_lead(bytes: &[u8]) -> Result<StoredMarketLead, StoreError> {
         penalty_until_second: if version >= 2 { d.u64()? } else { 0 },
         illegal: version >= 2 && d.u8()? != 0,
         loader_fee_credits: if version >= 2 { d.u64()? } else { 0 },
+        price_distribution: PriceDistribution::flat(0),
     };
     d.finish()?;
     Ok(StoredMarketLead { identity, lead })
@@ -49691,6 +49738,7 @@ fn encode_market_snapshot_into(
         bytes.extend_from_slice(&lead.penalty_until_second.to_be_bytes());
         bytes.push(u8::from(lead.illegal));
         bytes.extend_from_slice(&lead.loader_fee_credits.to_be_bytes());
+        encode_price_distribution_into(bytes, lead.price_distribution);
     }
     bytes.extend_from_slice(&(snapshot.events.len() as u16).to_be_bytes());
     for event in &snapshot.events {
@@ -49881,6 +49929,11 @@ fn decode_market_snapshot(
                 decoder.u64()?
             } else {
                 0
+            },
+            price_distribution: if outcome_version >= 32 {
+                decode_price_distribution(decoder)?
+            } else {
+                PriceDistribution::flat(0)
             },
         });
     }
@@ -66337,6 +66390,30 @@ mod tests {
     }
 
     #[test]
+    fn universal_market_price_ranges_are_catalog_landmarks() {
+        assert_eq!(
+            universal_purchase_price_distribution(10_000),
+            PriceDistribution {
+                minimum: 8_000,
+                lower_quartile: 9_000,
+                median: 10_000,
+                upper_quartile: 11_000,
+                maximum: 12_000,
+            }
+        );
+        assert_eq!(
+            universal_sale_price_distribution(10_000),
+            PriceDistribution {
+                minimum: 8_000,
+                lower_quartile: 9_900,
+                median: 11_800,
+                upper_quartile: 13_700,
+                maximum: 15_600,
+            }
+        );
+    }
+
+    #[test]
     fn market_search_negotiation_and_acceptance_are_separate_timed_steps() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
@@ -66393,6 +66470,7 @@ mod tests {
         assert_eq!(lead.side, crate::wire::MarketLeadSide::Supplier);
         assert_eq!(lead.state, crate::wire::MarketLeadState::Available);
         assert_eq!(lead.price_per_ton, 0);
+        assert_eq!(lead.price_distribution, PriceDistribution::flat(0));
         store
             .enqueue(&QueuedCommand {
                 identity: identity(),
@@ -66437,6 +66515,53 @@ mod tests {
         assert_eq!(lead.state, crate::wire::MarketLeadState::Quoted);
         assert!(lead.price_per_ton > 0);
         assert!(lead.loader_fee_credits > 0);
+        let base_price = commodity(lead.commodity_id).unwrap().base_price_per_ton;
+        assert_eq!(
+            lead.price_distribution,
+            universal_purchase_price_distribution(base_price)
+        );
+        assert_eq!(
+            lead.price_distribution,
+            PriceDistribution {
+                minimum: base_price * 80 / 100,
+                lower_quartile: base_price * 90 / 100,
+                median: base_price,
+                upper_quartile: base_price * 110 / 100,
+                maximum: base_price * 120 / 100,
+            }
+        );
+        assert!(
+            (lead.price_distribution.minimum..=lead.price_distribution.maximum)
+                .contains(&lead.price_per_ton)
+        );
+
+        let mut retained = quoted.clone();
+        retained.leads = vec![lead.clone()];
+        assert!(retained.events.is_empty());
+        assert!(retained.cargo_sale_quotes.is_empty());
+        let outcome = Outcome {
+            command_id: [0x32; COMMAND_ID_BYTES],
+            committed_sequence: 32,
+            revision: 32,
+            replayed: false,
+            phase: PlayerPhase::Docked,
+            kind: OutcomeKind::Market(retained),
+        };
+        let encoded = encode_outcome(&outcome).unwrap();
+        assert_eq!(decode_outcome(&encoded).unwrap(), outcome);
+        let mut version_thirty_one = encoded;
+        version_thirty_one[0] = 31;
+        let distribution_start = version_thirty_one.len() - 44;
+        version_thirty_one.drain(distribution_start..distribution_start + 40);
+        let decoded = decode_outcome(&version_thirty_one).unwrap();
+        let OutcomeKind::Market(legacy) = decoded.kind else {
+            panic!("expected market snapshot");
+        };
+        assert_eq!(
+            legacy.leads[0].price_distribution,
+            PriceDistribution::flat(0)
+        );
+
         let credits_before = quoted.credits;
         let cost = purchase_cost_credits(lead.price_per_ton, lead.quantity_millitons).unwrap()
             + lead.loader_fee_credits;
@@ -66823,6 +66948,15 @@ mod tests {
             .find(|candidate| candidate.lead_id == lead.lead_id)
             .unwrap();
         assert_eq!(quote.state, crate::wire::MarketLeadState::Quoted);
+        let base_price = commodity(quote.commodity_id).unwrap().base_price_per_ton;
+        assert_eq!(
+            quote.price_distribution,
+            universal_sale_price_distribution(base_price)
+        );
+        assert!(
+            (quote.price_distribution.minimum..=quote.price_distribution.maximum)
+                .contains(&quote.price_per_ton)
+        );
         let proceeds =
             sale_proceeds_credits(quote.price_per_ton, quote.quantity_millitons).unwrap();
         let credits_before_sale = quoted.credits;
@@ -66966,6 +67100,7 @@ mod tests {
                 penalty_until_second: 0,
                 illegal: false,
                 loader_fee_credits: 0,
+                price_distribution: PriceDistribution::flat(0),
             },
         };
         let mut txn = store.env.write_txn().unwrap();

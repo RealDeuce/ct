@@ -990,6 +990,7 @@ struct MarketLead {
    uint64_t penalty_until_second;
    bool illegal;
    uint64_t loader_fee_credits;
+   PriceDistribution price_distribution;
 };
 
 enum class MarketEventKind {

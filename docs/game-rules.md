@@ -623,6 +623,13 @@ Effect and use:
 | -5 through -1 | 100% of catalog | +2% |
 | -6 or less | 120% of catalog | +0% |
 
+A completed negotiation displays the actual quote against a universal
+catalog-based five-number range. The purchase range is 80%-120% of catalog.
+The sale range is 80%-156%, combining every possible 80%-120% purchase basis
+with every 100%-130% buyer outcome. Q1, median, and Q3 divide each absolute
+credit span evenly. Those landmarks do not depend on the negotiator and are
+not probabilities. No price chart is supplied before negotiation.
+
 Sale basis is the lot's actual purchase price, or catalog appraisal for
 extracted/captured cargo. Purchases automatically add a ten-percent loader
 fee. The buyer pays destination import tariff. Origin export tariff is not in

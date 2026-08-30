@@ -1079,6 +1079,7 @@ struct MarketLead {
   penaltyUntilSecond @17 :UInt64;
   illegal @18 :Bool;
   loaderFeeCredits @19 :UInt64;
+  priceDistribution @20 :PriceDistribution;
 }
 
 enum MarketEventKind { shortage @0; surplus @1; disruption @2; recovery @3; }

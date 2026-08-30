@@ -28,6 +28,17 @@ level harder for a week. Rejecting a buyer closes that buyer. A discovered
 counterparty lasts through the later of the current 30-day market month or
 seven days after discovery.
 
+After negotiation, the quoted counterparty displays an absolute five-number
+price chart derived from the commodity's universal catalog range. Purchases
+span 80%-120% of catalog value. Sales span 80%-156%, combining every possible
+80%-120% original purchase basis with the 100%-130% buyer outcomes. Q1,
+median, and Q3 divide that credit span into four equal intervals. These are
+market-value landmarks, not probabilities and not a distribution tailored to
+the chosen negotiator.
+The actual earned quote is marked on the chart and may reflect crew skill,
+trade-code modifiers, or a cargo lot's sale basis. Unpriced and in-progress
+counterparties reveal neither a chart nor a quote.
+
 Purchased speculative cargo cannot be offered to a buyer in its acquisition
 port. This retains the door's local-port arbitrage protection without
 inventing a public bid/ask exchange. The destination import tariff belongs to

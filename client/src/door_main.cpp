@@ -8849,6 +8849,87 @@ void render_market_offer_summary(const ct::MarketOffer& offer,
    door_number("%llu/t\n\r", static_cast<unsigned long long>(offer.base_price_per_ton));
 }
 
+ct::DoorTextRole market_price_plot_role(const ct::PricePlotSpan& span) {
+   switch(span.band) {
+      case ct::PricePlotBand::None:
+         return ct::DoorTextRole::Value;
+      case ct::PricePlotBand::Favorable:
+         return span.current_marker
+            ? ct::DoorTextRole::PriceMarkerFavorable
+            : ct::DoorTextRole::PriceFavorable;
+      case ct::PricePlotBand::Middling:
+         return span.current_marker
+            ? ct::DoorTextRole::PriceMarkerMiddling
+            : ct::DoorTextRole::PriceMiddling;
+      case ct::PricePlotBand::Unfavorable:
+         return span.current_marker
+            ? ct::DoorTextRole::PriceMarkerUnfavorable
+            : ct::DoorTextRole::PriceUnfavorable;
+   }
+   return ct::DoorTextRole::Value;
+}
+
+void render_market_price_plot(const ct::PriceDistribution& distribution,
+                              const uint64_t current,
+                              const bool buying) {
+   for(const auto& span : ct::styled_price_box_plot(
+          distribution.minimum,
+          distribution.lower_quartile,
+          distribution.median,
+          distribution.upper_quartile,
+          distribution.maximum,
+          current,
+          buying)) {
+      door_write(span.text, market_price_plot_role(span));
+   }
+}
+
+const char* market_price_judgment(const ct::PriceDistribution& distribution,
+                                  const uint64_t current,
+                                  const bool buying) {
+   if(buying) {
+      if(current < distribution.lower_quartile) {
+         return "low-price buy";
+      }
+      if(current < distribution.median) {
+         return "mid-price buy";
+      }
+      return "high-price buy";
+   }
+   if(current > distribution.upper_quartile) {
+      return "high-price sale";
+   }
+   if(current > distribution.median) {
+      return "mid-price sale";
+   }
+   return "low-price sale";
+}
+
+void render_market_price_chart(const ct::MarketLead& lead) {
+   const auto& distribution = lead.price_distribution;
+   if(lead.state != ct::MarketLeadState::Quoted || distribution.maximum == 0) {
+      return;
+   }
+   const bool buying = lead.side == ct::MarketLeadSide::Supplier;
+   door_label("   Universal range ");
+   render_market_price_plot(distribution, lead.price_per_ton, buying);
+   door_label("  * negotiated; ");
+   door_value("%s\n\r",
+              market_price_judgment(distribution, lead.price_per_ton, buying));
+   door_label("   Min Cr");
+   door_number("%llu", static_cast<unsigned long long>(distribution.minimum));
+   door_label("  Q1 Cr");
+   door_number("%llu\n\r",
+               static_cast<unsigned long long>(distribution.lower_quartile));
+   door_label("   Median Cr");
+   door_number("%llu", static_cast<unsigned long long>(distribution.median));
+   door_label("  Q3 Cr");
+   door_number("%llu\n\r",
+               static_cast<unsigned long long>(distribution.upper_quartile));
+   door_label("   Max Cr");
+   door_number("%llu/t\n\r", static_cast<unsigned long long>(distribution.maximum));
+}
+
 void render_market_lead_choice(const ct::MarketLead& lead,
                                const size_t index) {
    door_number("%zu", index + 1);
@@ -8867,6 +8948,7 @@ void render_market_lead_choice(const ct::MarketLead& lead,
       }
    }
    od_printf("\n\r");
+   render_market_price_chart(lead);
 }
 
 void render_market_catalogue(const ct::MarketSnapshot& market) {
@@ -9016,6 +9098,7 @@ void render_market(const ct::MarketSnapshot& market)
          door_identifier("  CANCELLED");
       }
       od_printf("\n\r");
+      render_market_price_chart(lead);
    }
 }
 
