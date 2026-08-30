@@ -4132,6 +4132,14 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("Freight, contract cargo, and unique objects", page)
         self.assertIn("cannot cover more matching cargo", page)
 
+    def test_game_rules_prevent_daily_quote_fishing_and_route_contraband_privately(self) -> None:
+        page = SITE_BUILD.rules_page()
+        self.assertIn("remain the captain's terms at that market for seven game days", page)
+        self.assertIn("waiting at the berth cannot turn an ordinary local resale", page)
+        self.assertIn("private-introduction supplier or buyer search using Streetwise", page)
+        self.assertIn("It can be performed immediately while available", page)
+        self.assertIn("Each previous supplier or buyer search", page)
+
     def test_game_rules_define_the_world_profile_terms_they_use(self) -> None:
         page = SITE_BUILD.rules_page()
         for section_id in (

@@ -9004,8 +9004,20 @@ void render_market(const ct::MarketSnapshot& market)
    door_information("Universal range; * marks your current negotiated quote.\n\r");
    door_information("Chart: green good, yellow marginal, red bad; X is an overlap.\n\r\n\r");
    door_identifier("Local offers\n\r");
+   size_t displayed_offers = 0;
+   size_t private_only_goods = 0;
    for(size_t index = 0; index < market.offers.size(); ++index) {
-      render_market_offer_summary(market.offers[index], index);
+      if(market.offers[index].legality == 2) {
+         ++private_only_goods;
+         continue;
+      }
+      render_market_offer_summary(market.offers[index], displayed_offers++);
+   }
+   if(displayed_offers == 0) {
+      door_information("  None\n\r");
+   }
+   if(private_only_goods != 0) {
+      door_warning("  Prohibited goods have no open quote; use Find market and Private introduction.\n\r");
    }
    door_identifier("\n\rCargo aboard\n\r");
    if(market.cargo.empty()) {
@@ -9082,6 +9094,8 @@ void render_market(const ct::MarketSnapshot& market)
          door_label(" (Cr");
          door_number("%llu", static_cast<unsigned long long>(lead.escrow_credits));
          door_label(" escrow)");
+      } else if(lead.state == ct::MarketLeadState::Available) {
+         door_identifier("  AVAILABLE");
       }
       od_printf("\n\r");
    }
@@ -9100,11 +9114,11 @@ void run_cargo_exchange(
       render_market(market);
       door_option_prompt({
          "[B] Buy",
-         "[S] Sell",
          "[F] Find market",
          "[I] Inspect offer",
-         "[R] Reserve lead",
          "[P] Perform lead",
+         "[R] Reserve lead",
+         "[S] Sell",
          "[U] Release reservation",
          "[X] Cancel search",
          "[Enter] Refresh",
@@ -9121,26 +9135,38 @@ void run_cargo_exchange(
          return;
       }
       if(key == 'i' || key == 'I') {
-         if(market.offers.empty()) {
+         std::vector<const ct::MarketOffer*> open_offers;
+         for(const auto& offer : market.offers) {
+            if(offer.legality != 2) {
+               open_offers.push_back(&offer);
+            }
+         }
+         if(open_offers.empty()) {
             continue;
          }
          const auto choice = input_number(
-            "Offer", 1, static_cast<unsigned>(market.offers.size()));
+            "Offer", 1, static_cast<unsigned>(open_offers.size()));
          if(!choice) {
             continue;
          }
          render_market_offer_detail(
-            market.offers[*choice - 1], *choice - 1);
+            *open_offers[*choice - 1], *choice - 1);
       } else if(key == 'b' || key == 'B') {
-         if(market.offers.empty()) {
+         std::vector<const ct::MarketOffer*> open_offers;
+         for(const auto& offer : market.offers) {
+            if(offer.legality != 2) {
+               open_offers.push_back(&offer);
+            }
+         }
+         if(open_offers.empty()) {
             continue;
          }
          const auto choice = input_number(
-                                "Offer", 1, static_cast<unsigned>(market.offers.size()));
+                                "Offer", 1, static_cast<unsigned>(open_offers.size()));
          if(!choice) {
             continue;
          }
-         const auto& offer = market.offers[*choice - 1];
+         const auto& offer = *open_offers[*choice - 1];
          const auto hold_free = market.cargo_capacity_millitons -
                                 market.cargo_used_millitons;
          const auto physical_maximum =
@@ -9339,28 +9365,50 @@ void run_cargo_exchange(
                      connection, session_epoch, lead->lead_id, lead->revision,
                      random_command_id(random), request_id++);
       } else if(key == 'p' || key == 'P') {
-         std::vector<const ct::MarketLead*> reserved;
+         std::vector<const ct::MarketLead*> actionable;
          for(const auto& lead : market.leads) {
-            if(lead.state == ct::MarketLeadState::Reserved) {
-               reserved.push_back(&lead);
+            if(lead.state == ct::MarketLeadState::Available ||
+               lead.state == ct::MarketLeadState::Reserved) {
+               actionable.push_back(&lead);
             }
          }
-         if(reserved.empty()) {
+         if(actionable.empty()) {
+            door_information("No available or reserved lead can be performed.\n\r");
+            wait_for_enter();
             continue;
          }
-         const auto selected = input_number("Reservation", 1, static_cast<unsigned>(reserved.size()));
+         const auto selected = input_number("Lead", 1, static_cast<unsigned>(actionable.size()));
          if(!selected) {
             continue;
          }
-         const auto* lead = reserved[*selected - 1];
+         const auto* lead = actionable[*selected - 1];
          if(lead->side == ct::MarketLeadSide::Supplier) {
+            const auto hold_free = market.cargo_capacity_millitons -
+                                   market.cargo_used_millitons;
+            const auto effective_credits = lead->escrow_credits >
+                                           std::numeric_limits<uint64_t>::max() - market.credits
+                                           ? std::numeric_limits<uint64_t>::max()
+                                           : market.credits + lead->escrow_credits;
+            const auto maximum = ct::maximum_affordable_cargo(
+                                    effective_credits,
+                                    lead->price_per_ton,
+                                    std::min(lead->quantity_millitons, hold_free));
+            if(maximum == 0) {
+               door_warning("That lead cannot presently be loaded and paid for.\n\r");
+               wait_for_enter();
+               continue;
+            }
+            const auto quantity = input_tonnage("Tonnes", maximum);
+            if(!quantity) {
+               continue;
+            }
             market = ct::buy_cargo(
                         connection, session_epoch, market.market_revision, lead->lead_id,
-                        lead->quantity_millitons, random_command_id(random), request_id++);
+                        *quantity, random_command_id(random), request_id++);
          } else {
             std::vector<const ct::CargoLot*> matching;
             for(const auto& lot : market.cargo) {
-               if(lot.commodity_id == lead->commodity_id) {
+               if(lot.commodity_id == lead->commodity_id && lot.title == 0) {
                   matching.push_back(&lot);
                }
             }
@@ -9374,10 +9422,15 @@ void run_cargo_exchange(
                continue;
             }
             const auto* lot = matching[*lot_choice - 1];
-            const auto quantity = std::min(lot->quantity_millitons, lead->quantity_millitons);
+            const auto quantity = input_tonnage(
+                                     "Tonnes",
+                                     std::min(lot->quantity_millitons, lead->quantity_millitons));
+            if(!quantity) {
+               continue;
+            }
             market = ct::sell_cargo_to_lead(
                         connection, session_epoch, market.market_revision, lot->cargo_lot_id,
-                        quantity, lead->lead_id, random_command_id(random), request_id++);
+                        *quantity, lead->lead_id, random_command_id(random), request_id++);
          }
       } else if(key == 's' || key == 'S') {
          if(market.cargo.empty()) {

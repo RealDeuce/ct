@@ -20,8 +20,9 @@ use crate::bbs_polity::{
 };
 use crate::celestial::{BodyKind, CelestialSystem, derive_celestial_system, derive_primary_world};
 use crate::commerce::{
-    MILLITONS_PER_TON, REFINED_FUEL_PRICE_PER_TON, commodity, negotiated_sale_price,
-    purchase_cost_credits, quote_market_goods, sale_proceeds_credits,
+    Legality, MILLITONS_PER_TON, REFINED_FUEL_PRICE_PER_TON, commodity, commodity_legality,
+    negotiated_market_prices, negotiated_sale_price, negotiation_window, purchase_cost_credits,
+    quote_market_goods, sale_proceeds_credits,
 };
 use crate::coverage::{
     COVERAGE_BITMAP_BYTES, COVERAGE_CELLS_PER_CHUNK, CellBitmap, CoverageChunk,
@@ -20172,11 +20173,11 @@ impl Store {
         identity: &PlayerIdentity,
     ) -> Result<MarketSnapshot, StoreError> {
         let (player, ship) = self.player_and_ship_in(txn, identity)?;
-        if !matches!(ship.location, ShipLocationRecord::Docked { .. }) {
+        let ShipLocationRecord::Docked { arrived_second, .. } = ship.location else {
             return Err(StoreError::Corrupt(
                 "market requested while ship is not docked",
             ));
-        }
+        };
         let system = self
             .systems
             .get(txn, &ship.system_id)?
@@ -20186,6 +20187,7 @@ impl Store {
         let world = self.primary_world_in(txn, &system)?;
         let game_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
         let game_day = game_second / crate::simulation::SECONDS_PER_DAY;
+        let ordinary_negotiation = negotiation_window(arrived_second, game_second);
         let market_state = self
             .markets
             .get(txn, &market_key(system.id, game_day))?
@@ -20211,6 +20213,7 @@ impl Store {
             system.generation_seed,
             system.id,
             game_day,
+            ordinary_negotiation,
             identity,
             broker_level,
             captain.person.characteristics.charisma,
@@ -20317,9 +20320,14 @@ impl Store {
                 CargoTitle::PlayerOwned => {
                     let item = commodity(lot.commodity_id)
                         .ok_or(StoreError::Corrupt("cargo commodity is unknown"))?;
+                    if commodity_legality(item, &world) == Legality::Prohibited {
+                        continue;
+                    }
+                    let sale_negotiation =
+                        negotiation_window(arrived_second.max(lot.acquired_second), game_second);
                     let raw_price = negotiated_sale_price(
                         system.generation_seed,
-                        game_day,
+                        sale_negotiation,
                         identity,
                         lot.cargo_lot_id,
                         broker_level,
@@ -20345,6 +20353,11 @@ impl Store {
                         .map_or(bid, |offer| {
                             non_crossing_market_bid(bid, offer.purchase_price_per_ton)
                         });
+                    let current_bid = if lot.origin_system_id == system.id {
+                        non_crossing_market_bid(current_bid, lot.purchase_price_per_ton)
+                    } else {
+                        current_bid
+                    };
                     let distribution = absolute_sale_price_distribution(item.base_price_per_ton);
                     (current_bid, distribution)
                 }
@@ -20367,8 +20380,10 @@ impl Store {
             let (_, value) = entry?;
             let mut stored = decode_market_lead(value)?;
             if stored.identity == *identity && stored.lead.system_id == system.id {
-                if stored.lead.state == crate::wire::MarketLeadState::Reserved
-                    && stored.lead.reservation_expires_second <= game_second
+                if (stored.lead.state == crate::wire::MarketLeadState::Available
+                    && stored.lead.expires_second <= game_second)
+                    || (stored.lead.state == crate::wire::MarketLeadState::Reserved
+                        && stored.lead.reservation_expires_second <= game_second)
                 {
                     stored.lead.state = crate::wire::MarketLeadState::Expired;
                 }
@@ -25313,6 +25328,23 @@ impl Store {
         if commodity_id != 0 && crate::commerce::commodity(commodity_id).is_none() {
             return Ok(RuleResult::Rejected("unknown commodity".into()));
         }
+        if let Some(definition) = crate::commerce::commodity(commodity_id) {
+            let system = self
+                .systems
+                .get(txn, &ship.system_id)?
+                .map(decode_stellar_system)
+                .transpose()?
+                .ok_or(StoreError::Corrupt("market-search system is missing"))?;
+            let world = self.primary_world_in(txn, &system)?;
+            if commodity_legality(definition, &world) == Legality::Prohibited
+                && method != crate::wire::MarketSearchMethod::BlackMarket
+            {
+                return Ok(RuleResult::Rejected(
+                    "prohibited goods require a private-introduction supplier or buyer search"
+                        .into(),
+                ));
+            }
+        }
         if kind == crate::wire::MarketSearchKind::Buyer
             && !ship.cargo.iter().any(|lot| {
                 lot.commodity_id == commodity_id
@@ -25341,15 +25373,15 @@ impl Store {
         }
         let current = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
         let id = take_id_range(self.meta, txn, META_NEXT_WORK_ASSIGNMENT_ID, 1)?;
-        let hours = match method {
-            crate::wire::MarketSearchMethod::Physical | crate::wire::MarketSearchMethod::Online => {
-                1 + crate::ship_condition::mix64(id ^ current) % 6
+        let duration_seconds = match method {
+            crate::wire::MarketSearchMethod::Online => {
+                (1 + crate::ship_condition::mix64(id ^ current) % 6) * 60 * 60
             }
-            crate::wire::MarketSearchMethod::BlackMarket => {
-                6 + crate::ship_condition::mix64(id ^ current) % 19
-            }
-            crate::wire::MarketSearchMethod::HiredBroker => {
-                1 + crate::ship_condition::mix64(id ^ current) % 3
+            crate::wire::MarketSearchMethod::Physical
+            | crate::wire::MarketSearchMethod::BlackMarket
+            | crate::wire::MarketSearchMethod::HiredBroker => {
+                (1 + crate::ship_condition::mix64(id ^ current) % 6)
+                    * crate::simulation::SECONDS_PER_DAY
             }
         };
         let assignment = crate::wire::WorkAssignment {
@@ -25360,7 +25392,7 @@ impl Store {
             commodity_id,
             destination_system_id,
             started_second: current,
-            due_second: current + hours * 60,
+            due_second: current.saturating_add(duration_seconds),
             state: crate::wire::WorkState::Scheduled,
             result_text: "Search in progress".into(),
         };
@@ -25448,7 +25480,7 @@ impl Store {
             .iter()
             .find(|offer| offer.offer_id == offer_id)
             .cloned();
-        let mut reserved_lead = None;
+        let mut private_lead = None;
         let offer = if let Some(offer) = normal_offer {
             offer
         } else {
@@ -25463,13 +25495,20 @@ impl Store {
                 ));
             };
             let now = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
+            let actionable = match stored.lead.state {
+                crate::wire::MarketLeadState::Available => stored.lead.expires_second > now,
+                crate::wire::MarketLeadState::Reserved => {
+                    stored.lead.reservation_expires_second > now
+                }
+                _ => false,
+            };
             if stored.identity != *identity
                 || stored.lead.side != crate::wire::MarketLeadSide::Supplier
-                || stored.lead.state != crate::wire::MarketLeadState::Reserved
-                || stored.lead.reservation_expires_second <= now
+                || stored.lead.system_id != snapshot.system_id
+                || !actionable
             {
                 return Ok(RuleResult::Rejected(
-                    "supplier lead is not reserved and current".into(),
+                    "supplier lead is not available or reserved and current".into(),
                 ));
             }
             let definition = crate::commerce::commodity(stored.lead.commodity_id)
@@ -25485,7 +25524,7 @@ impl Store {
                 legality: CommodityLegality::Legal,
                 price_distribution: PriceDistribution::flat(stored.lead.price_per_ton),
             };
-            reserved_lead = Some(stored);
+            private_lead = Some(stored);
             offer
         };
         if quantity_millitons > offer.available_millitons {
@@ -25516,7 +25555,7 @@ impl Store {
             .ok_or(StoreError::Corrupt("cargo purchase price overflow"))?;
         let (mut player, mut ship) = self.player_and_ship_in(txn, identity)?;
         let amount_due = cost.saturating_sub(
-            reserved_lead
+            private_lead
                 .as_ref()
                 .map_or(0, |lead| lead.lead.escrow_credits),
         );
@@ -25553,7 +25592,7 @@ impl Store {
             state.consumed_millitons.push((offer.commodity_id, 0));
             &mut state.consumed_millitons.last_mut().expect("just pushed").1
         };
-        if offer.offer_id != UNIQUE_APPLE_PIE_OFFER_ID && reserved_lead.is_none() {
+        if offer.offer_id != UNIQUE_APPLE_PIE_OFFER_ID && private_lead.is_none() {
             *consumed = consumed
                 .checked_add(quantity_millitons)
                 .ok_or(StoreError::Corrupt("market consumption overflow"))?;
@@ -25603,7 +25642,7 @@ impl Store {
         )?;
         self.ships
             .put(txn, &ship.ship_id, &encode_ship_record(&ship)?)?;
-        if let Some(mut lead) = reserved_lead {
+        if let Some(mut lead) = private_lead {
             lead.lead.state = crate::wire::MarketLeadState::Performed;
             lead.lead.revision = lead.lead.revision.saturating_add(1);
             self.market_leads
@@ -25722,19 +25761,24 @@ impl Store {
                 .map(decode_market_lead)
                 .transpose()?
             else {
-                return Ok(RuleResult::Rejected(
-                    "reserved buyer lead is missing".into(),
-                ));
+                return Ok(RuleResult::Rejected("buyer lead is missing".into()));
+            };
+            let actionable = match stored.lead.state {
+                crate::wire::MarketLeadState::Available => stored.lead.expires_second > game_second,
+                crate::wire::MarketLeadState::Reserved => {
+                    stored.lead.reservation_expires_second > game_second
+                }
+                _ => false,
             };
             if stored.identity != *identity
                 || stored.lead.side != crate::wire::MarketLeadSide::Buyer
-                || stored.lead.state != crate::wire::MarketLeadState::Reserved
+                || stored.lead.system_id != snapshot.system_id
                 || stored.lead.commodity_id != lot.commodity_id
                 || quantity_millitons > stored.lead.quantity_millitons
-                || stored.lead.reservation_expires_second <= game_second
+                || !actionable
             {
                 return Ok(RuleResult::Rejected(
-                    "buyer reservation does not cover this sale".into(),
+                    "buyer lead does not cover this sale".into(),
                 ));
             }
             Some(stored)
@@ -31804,9 +31848,9 @@ impl Store {
         system_id: u64,
         due_second: u64,
     ) -> Result<(), StoreError> {
-        // Reservation expiry is authoritative queued work. Escrow was already
-        // transferred when the reservation was made and is deliberately not
-        // refunded on expiry.
+        // Lead and reservation expiry are authoritative queued work. Escrow
+        // was already transferred when a reservation was made and is
+        // deliberately not refunded on expiry.
         let lead_keys = self
             .market_leads
             .iter(txn)?
@@ -31818,8 +31862,10 @@ impl Store {
         for (key, value) in lead_keys {
             let mut stored = decode_market_lead(&value)?;
             if stored.lead.system_id == system_id
-                && stored.lead.state == crate::wire::MarketLeadState::Reserved
-                && stored.lead.reservation_expires_second <= due_second
+                && ((stored.lead.state == crate::wire::MarketLeadState::Available
+                    && stored.lead.expires_second <= due_second)
+                    || (stored.lead.state == crate::wire::MarketLeadState::Reserved
+                        && stored.lead.reservation_expires_second <= due_second))
             {
                 stored.lead.state = crate::wire::MarketLeadState::Expired;
                 stored.lead.revision = stored.lead.revision.saturating_add(1);
@@ -32324,7 +32370,9 @@ impl Store {
         let day = due_second / crate::simulation::SECONDS_PER_DAY;
         let skill = match stored.assignment.method {
             crate::wire::MarketSearchMethod::Online => crate::wire::SkillId::Computer,
-            _ => crate::wire::SkillId::Broker,
+            crate::wire::MarketSearchMethod::BlackMarket => crate::wire::SkillId::Streetwise,
+            crate::wire::MarketSearchMethod::Physical
+            | crate::wire::MarketSearchMethod::HiredBroker => crate::wire::SkillId::Broker,
         };
         let person = self
             .persons
@@ -32359,6 +32407,26 @@ impl Store {
                     crate::personnel::discretionary_morale_dm(service.morale)
                 })
         };
+        let previous_attempts = self
+            .work_assignments
+            .iter(txn)?
+            .filter_map(|entry| {
+                let (_, value) = entry.ok()?;
+                let previous = decode_stored_work_assignment(value).ok()?;
+                let same_month = previous.assignment.started_second
+                    / (30 * crate::simulation::SECONDS_PER_DAY)
+                    == stored.assignment.started_second / (30 * crate::simulation::SECONDS_PER_DAY);
+                (previous.identity == stored.identity
+                    && previous.system_id == stored.system_id
+                    && previous.assignment.kind == stored.assignment.kind
+                    && previous.assignment.assignment_id < assignment_id
+                    && same_month)
+                    .then_some(())
+            })
+            .count();
+        let previous_attempt_dm = i8::try_from(previous_attempts)
+            .unwrap_or(i8::MAX)
+            .saturating_neg();
         let condition_dm =
             if stored.assignment.method == crate::wire::MarketSearchMethod::HiredBroker {
                 0
@@ -32366,13 +32434,7 @@ impl Store {
                 person_condition_dm(&person)
             }
             .saturating_add(service_dm)
-            .saturating_add(
-                if stored.assignment.method == crate::wire::MarketSearchMethod::BlackMarket {
-                    -1
-                } else {
-                    0
-                },
-            );
+            .saturating_add(previous_attempt_dm);
         let task = crate::task_resolution::resolve(
             &operator,
             crate::task_resolution::TaskRequest {
@@ -32385,8 +32447,12 @@ impl Store {
                 entropy: crate::ship_condition::mix64(assignment_id ^ due_second),
             },
         );
-        let level = task.skill_dm;
         let effect = task.effect;
+        let negotiation_level = operator
+            .skills
+            .iter()
+            .find(|rating| rating.skill == crate::wire::SkillId::Broker)
+            .map_or(-3, |rating| rating.level);
         if effect < -5 {
             stored.assignment.state = crate::wire::WorkState::Failed;
             stored.assignment.result_text = "The search produced no reliable lead".into();
@@ -32419,22 +32485,43 @@ impl Store {
             ) && stored.assignment.commodity_id != 0
             {
                 if let Some(good) = crate::commerce::commodity(stored.assignment.commodity_id) {
+                    let negotiation = negotiation_window(due_second, due_second);
                     let quotes = quote_market_goods(
                         system.generation_seed,
                         system.id,
                         day,
+                        negotiation,
                         &stored.identity,
-                        level,
+                        negotiation_level,
                         person.person.characteristics.charisma,
                         &world,
                     )?;
-                    if let Some(q) = quotes.into_iter().find(|q| q.commodity.id == good.id) {
+                    let quoted_quantity = quotes
+                        .into_iter()
+                        .find(|q| q.commodity.id == good.id)
+                        .map(|q| q.available_millitons);
+                    let available_quantity =
+                        if stored.assignment.kind == crate::wire::MarketSearchKind::Buyer {
+                            Some(buyer_cargo_quantity)
+                        } else {
+                            quoted_quantity
+                        };
+                    if let Some(available_quantity) = available_quantity {
+                        let (purchase_price, sale_price) = negotiated_market_prices(
+                            system.generation_seed,
+                            negotiation,
+                            &stored.identity,
+                            negotiation_level,
+                            person.person.characteristics.charisma,
+                            good,
+                            &world,
+                        )?;
                         let spread = (25_i16 - effect.clamp(-5, 10)).max(5) as u64;
                         let price =
                             if stored.assignment.kind == crate::wire::MarketSearchKind::Supplier {
-                                q.purchase_price_per_ton
+                                purchase_price
                             } else {
-                                q.indicative_sale_price_per_ton
+                                sale_price
                             };
                         let observation = crate::wire::MarketObservation {
                             system_id: system.id,
@@ -32455,12 +32542,10 @@ impl Store {
                             confidence_percent: (70_i16 + effect * 3).clamp(40, 100) as u8,
                             minimum_price_per_ton: price.saturating_mul(100 - spread) / 100,
                             maximum_price_per_ton: price.saturating_mul(100 + spread) / 100,
-                            minimum_available_millitons: q
-                                .available_millitons
+                            minimum_available_millitons: available_quantity
                                 .saturating_mul(100 - spread)
                                 / 100,
-                            maximum_available_millitons: q
-                                .available_millitons
+                            maximum_available_millitons: available_quantity
                                 .saturating_mul(100 + spread)
                                 / 100,
                         };
@@ -32479,8 +32564,7 @@ impl Store {
                             } else {
                                 crate::wire::MarketLeadSide::Buyer
                             };
-                        let market_quantity = q
-                            .available_millitons
+                        let market_quantity = available_quantity
                             .saturating_mul((100_i16 + effect.clamp(-5, 10) * 3).max(25) as u64)
                             / 100;
                         let quantity = market_quantity.min(buyer_cargo_quantity);
@@ -32511,9 +32595,13 @@ impl Store {
                             &encode_market_lead(&lead)?,
                         )?;
                         stored.assignment.result_text = format!(
-                            "A dated market report and finite reservable lead for {} have been entered",
+                            "A dated market report and finite executable lead for {} have been entered",
                             good.name
                         );
+                    } else {
+                        stored.assignment.state = crate::wire::WorkState::Failed;
+                        stored.assignment.result_text =
+                            "The search found no available supplier for that commodity".into();
                     }
                 }
             } else {
@@ -59776,13 +59864,44 @@ mod tests {
             OutcomeKind::Market(snapshot) => snapshot,
             other => panic!("expected loaded market, got {other:?}"),
         };
-        let lot = &loaded.cargo[0];
+        let lot = loaded.cargo[0].clone();
         let quote = loaded
             .cargo_sale_quotes
             .iter()
             .find(|quote| quote.cargo_lot_id == lot.cargo_lot_id)
             .expect("player-owned cargo has an ordinary local bid");
         assert!(quote.price_per_ton < offer.purchase_price_per_ton);
+
+        let mut latest = loaded.clone();
+        for week in 1..=8 {
+            let mut txn = store.env.write_txn().unwrap();
+            put_meta_u64(
+                store.meta,
+                &mut txn,
+                META_GAME_SECOND,
+                week * 7 * crate::simulation::SECONDS_PER_DAY,
+            )
+            .unwrap();
+            txn.commit().unwrap();
+            latest = store
+                .market_snapshot_in(&store.env.read_txn().unwrap(), &identity())
+                .unwrap();
+            let later_quote = latest
+                .cargo_sale_quotes
+                .iter()
+                .find(|candidate| candidate.cargo_lot_id == lot.cargo_lot_id)
+                .unwrap();
+            assert!(
+                later_quote.price_per_ton < lot.purchase_price_per_ton,
+                "waiting at the origin market must never turn an ordinary resale profitable"
+            );
+        }
+        let quote_price = latest
+            .cargo_sale_quotes
+            .iter()
+            .find(|candidate| candidate.cargo_lot_id == lot.cargo_lot_id)
+            .unwrap()
+            .price_per_ton;
 
         store
             .enqueue(&QueuedCommand {
@@ -59791,7 +59910,7 @@ mod tests {
                     epoch,
                     192,
                     Command::SellCargo {
-                        market_revision: loaded.market_revision,
+                        market_revision: latest.market_revision,
                         cargo_lot_id: lot.cargo_lot_id,
                         quantity_millitons: QUANTITY,
                         buyer_lead_id: 0,
@@ -59804,7 +59923,7 @@ mod tests {
             other => panic!("expected market after sale, got {other:?}"),
         };
         let purchase_cost = purchase_cost_credits(offer.purchase_price_per_ton, QUANTITY).unwrap();
-        let sale_proceeds = sale_proceeds_credits(quote.price_per_ton, QUANTITY).unwrap();
+        let sale_proceeds = sale_proceeds_credits(quote_price, QUANTITY).unwrap();
         assert!(sold.cargo.is_empty());
         assert_eq!(sold.credits, market.credits - purchase_cost + sale_proceeds);
         assert!(sold.credits < market.credits);
@@ -65735,9 +65854,17 @@ mod tests {
         let lead = market.leads[0].clone();
         assert_eq!(lead.side, crate::wire::MarketLeadSide::Supplier);
         assert_eq!(lead.state, crate::wire::MarketLeadState::Available);
-        let quantity = lead.quantity_millitons / MILLITONS_PER_TON * MILLITONS_PER_TON;
-        assert!(quantity > 0);
         let credits_before = market.credits;
+        let quantity = (lead.quantity_millitons / MILLITONS_PER_TON * MILLITONS_PER_TON)
+            .min(credits_before / lead.price_per_ton * MILLITONS_PER_TON)
+            .min(
+                market
+                    .cargo_capacity_millitons
+                    .saturating_sub(market.cargo_used_millitons)
+                    / MILLITONS_PER_TON
+                    * MILLITONS_PER_TON,
+            );
+        assert!(quantity > 0);
         let escrow = lead
             .price_per_ton
             .checked_mul(quantity)
@@ -65817,6 +65944,92 @@ mod tests {
             credits_before - escrow,
             "expired reservation escrow is forfeited rather than refunded"
         );
+    }
+
+    #[test]
+    fn available_supplier_lead_can_be_performed_without_reservation() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let epoch = initialize_two_system_player_fixture(&store);
+        let player = store.player_record(&identity()).unwrap().unwrap();
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(
+                    epoch,
+                    212,
+                    Command::BeginMarketSearch {
+                        kind: crate::wire::MarketSearchKind::Supplier,
+                        method: crate::wire::MarketSearchMethod::Physical,
+                        person_id: player.captain_person_id,
+                        commodity_id: 1,
+                        destination_system_id: 0,
+                    },
+                ),
+            })
+            .unwrap();
+        let searching = match store.process_next().unwrap().unwrap().outcome.kind {
+            OutcomeKind::Market(value) => value,
+            other => panic!("expected supplier search, got {other:?}"),
+        };
+        store
+            .advance_simulation_to(searching.work_assignments[0].due_second)
+            .unwrap();
+        let market = store
+            .market_snapshot_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let lead = market
+            .leads
+            .iter()
+            .find(|lead| lead.side == crate::wire::MarketLeadSide::Supplier)
+            .cloned()
+            .expect("supplier search must produce an available lead");
+        let credits_before = market.credits;
+        let quantity = (lead.quantity_millitons / MILLITONS_PER_TON * MILLITONS_PER_TON)
+            .min(credits_before / lead.price_per_ton * MILLITONS_PER_TON)
+            .min(
+                market
+                    .cargo_capacity_millitons
+                    .saturating_sub(market.cargo_used_millitons)
+                    / MILLITONS_PER_TON
+                    * MILLITONS_PER_TON,
+            );
+        assert!(quantity > 0);
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(
+                    epoch,
+                    213,
+                    Command::BuyCargo {
+                        market_revision: market.market_revision,
+                        offer_id: lead.lead_id,
+                        quantity_millitons: quantity,
+                    },
+                ),
+            })
+            .unwrap();
+        let performed = match store.process_next().unwrap().unwrap().outcome.kind {
+            OutcomeKind::Market(value) => value,
+            other => panic!("expected direct supplier-lead purchase, got {other:?}"),
+        };
+        assert_eq!(
+            performed
+                .leads
+                .iter()
+                .find(|candidate| candidate.lead_id == lead.lead_id)
+                .unwrap()
+                .state,
+            crate::wire::MarketLeadState::Performed
+        );
+        assert_eq!(
+            performed.credits,
+            credits_before - purchase_cost_credits(lead.price_per_ton, quantity).unwrap(),
+            "performing an available supplier lead charges no reservation escrow"
+        );
+        assert!(performed.cargo.iter().any(|lot| {
+            lot.commodity_id == lead.commodity_id && lot.quantity_millitons == quantity
+        }));
     }
 
     #[test]
@@ -65901,6 +66114,13 @@ mod tests {
             system.generation_seed,
             system.id,
             day,
+            negotiation_window(
+                match ship.location {
+                    ShipLocationRecord::Docked { arrived_second, .. } => arrived_second,
+                    _ => 0,
+                },
+                due_second,
+            ),
             &identity(),
             broker_level,
             captain.person.characteristics.charisma,
@@ -66094,6 +66314,211 @@ mod tests {
         assert_eq!(market.leads[0].side, crate::wire::MarketLeadSide::Buyer);
         assert!(market.leads[0].quantity_millitons > 0);
         assert!(market.leads[0].quantity_millitons <= MILLITONS_PER_TON);
+        let lead = market.leads[0].clone();
+        let quantity = lead.quantity_millitons.min(MILLITONS_PER_TON);
+        let credits_before_sale = market.credits;
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(
+                    epoch,
+                    208,
+                    Command::SellCargo {
+                        market_revision: market.market_revision,
+                        cargo_lot_id: 94,
+                        quantity_millitons: quantity,
+                        buyer_lead_id: lead.lead_id,
+                    },
+                ),
+            })
+            .unwrap();
+        let performed = match store.process_next().unwrap().unwrap().outcome.kind {
+            OutcomeKind::Market(value) => value,
+            other => panic!("expected direct buyer-lead sale, got {other:?}"),
+        };
+        assert_eq!(
+            performed
+                .leads
+                .iter()
+                .find(|candidate| candidate.lead_id == lead.lead_id)
+                .unwrap()
+                .state,
+            crate::wire::MarketLeadState::Performed
+        );
+        assert_eq!(
+            performed.credits,
+            credits_before_sale
+                + sale_proceeds_credits(
+                    price_after_export_tariff(lead.price_per_ton, market.tariff_basis_points),
+                    quantity,
+                )
+                .unwrap(),
+            "an available lead executes without first charging reservation escrow"
+        );
+    }
+
+    #[test]
+    fn prohibited_cargo_uses_a_streetwise_private_buyer_without_an_open_quote() {
+        let dir = TempDir::new().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let epoch = initialize_player_fixture(&store);
+        let player = store.player_record(&identity()).unwrap().unwrap();
+        let mut ship = store.ship_record(player.ship_id).unwrap().unwrap();
+        let system = store
+            .systems
+            .get(&store.env.read_txn().unwrap(), &ship.system_id)
+            .unwrap()
+            .map(decode_stellar_system)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        let world = store
+            .primary_world_in(&store.env.read_txn().unwrap(), &system)
+            .unwrap();
+        let prohibited = (0..crate::commerce::COMMODITY_COUNT)
+            .filter_map(crate::commerce::commodity_by_index)
+            .find(|item| commodity_legality(*item, &world) == Legality::Prohibited)
+            .expect("the fixture world must prohibit at least one catalogued commodity");
+        let cargo_lot_id = 700;
+        ship.cargo.push(CargoLot {
+            cargo_lot_id,
+            commodity_id: prohibited.id,
+            commodity_name: prohibited.name.into(),
+            quantity_millitons: MILLITONS_PER_TON,
+            purchase_price_per_ton: prohibited.base_price_per_ton,
+            origin_system_id: ship.system_id,
+            acquired_second: 0,
+            title: CargoTitle::PlayerOwned,
+            task_id: 0,
+            unique_object_id: 0,
+            condition_percent: 100,
+            destination_system_id: 0,
+            source_body_id: 0,
+            source_lode_id: 0,
+        });
+        let mut captain = store
+            .persons
+            .get(&store.env.read_txn().unwrap(), &player.captain_person_id)
+            .unwrap()
+            .map(decode_person_record)
+            .transpose()
+            .unwrap()
+            .unwrap();
+        captain.person.skills.retain(|rating| {
+            !matches!(
+                rating.skill,
+                crate::wire::SkillId::Streetwise | crate::wire::SkillId::Broker
+            )
+        });
+        captain.person.skills.extend([
+            crate::wire::SkillRating {
+                skill: crate::wire::SkillId::Streetwise,
+                level: 4,
+            },
+            crate::wire::SkillRating {
+                skill: crate::wire::SkillId::Broker,
+                level: 2,
+            },
+        ]);
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .ships
+            .put(&mut txn, &ship.ship_id, &encode_ship_record(&ship).unwrap())
+            .unwrap();
+        store
+            .persons
+            .put(
+                &mut txn,
+                &player.captain_person_id,
+                &encode_person_record(&captain).unwrap(),
+            )
+            .unwrap();
+        txn.commit().unwrap();
+
+        let market = store
+            .market_snapshot_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        assert!(
+            market
+                .cargo_sale_quotes
+                .iter()
+                .all(|quote| quote.cargo_lot_id != cargo_lot_id),
+            "the open exchange must not quote prohibited cargo"
+        );
+
+        let search = |request_id, method| QueuedCommand {
+            identity: identity(),
+            request: request(
+                epoch,
+                request_id,
+                Command::BeginMarketSearch {
+                    kind: crate::wire::MarketSearchKind::Buyer,
+                    method,
+                    person_id: player.captain_person_id,
+                    commodity_id: prohibited.id,
+                    destination_system_id: 0,
+                },
+            ),
+        };
+        store
+            .enqueue(&search(209, crate::wire::MarketSearchMethod::Physical))
+            .unwrap();
+        assert!(matches!(
+            store.process_next().unwrap().unwrap().outcome.kind,
+            OutcomeKind::Error { message, .. }
+                if message == "prohibited goods require a private-introduction supplier or buyer search"
+        ));
+
+        store
+            .enqueue(&search(210, crate::wire::MarketSearchMethod::BlackMarket))
+            .unwrap();
+        let searching = match store.process_next().unwrap().unwrap().outcome.kind {
+            OutcomeKind::Market(value) => value,
+            other => panic!("expected private buyer search, got {other:?}"),
+        };
+        let assignment = searching
+            .work_assignments
+            .iter()
+            .find(|work| work.state == crate::wire::WorkState::Scheduled)
+            .unwrap();
+        store.advance_simulation_to(assignment.due_second).unwrap();
+        let market = store
+            .market_snapshot_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let lead = market
+            .leads
+            .iter()
+            .find(|lead| lead.commodity_id == prohibited.id)
+            .cloned()
+            .expect("Streetwise private search must produce a contraband buyer lead");
+        assert_eq!(lead.state, crate::wire::MarketLeadState::Available);
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(
+                    epoch,
+                    211,
+                    Command::SellCargo {
+                        market_revision: market.market_revision,
+                        cargo_lot_id,
+                        quantity_millitons: lead.quantity_millitons.min(MILLITONS_PER_TON),
+                        buyer_lead_id: lead.lead_id,
+                    },
+                ),
+            })
+            .unwrap();
+        let sold = match store.process_next().unwrap().unwrap().outcome.kind {
+            OutcomeKind::Market(value) => value,
+            other => panic!("expected contraband buyer-lead sale, got {other:?}"),
+        };
+        assert_eq!(
+            sold.leads
+                .iter()
+                .find(|candidate| candidate.lead_id == lead.lead_id)
+                .unwrap()
+                .state,
+            crate::wire::MarketLeadState::Performed
+        );
     }
 
     #[test]
@@ -66128,9 +66553,12 @@ mod tests {
             market.work_assignments[0].method,
             crate::wire::MarketSearchMethod::HiredBroker
         );
-        assert!((60..=180).contains(
-            &(market.work_assignments[0].due_second - market.work_assignments[0].started_second)
-        ));
+        assert!(
+            (crate::simulation::SECONDS_PER_DAY..=6 * crate::simulation::SECONDS_PER_DAY).contains(
+                &(market.work_assignments[0].due_second
+                    - market.work_assignments[0].started_second)
+            )
+        );
     }
 
     #[test]

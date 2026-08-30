@@ -84,13 +84,19 @@ Cargo Exchange implements the six CE Common Goods and 35 generic revised
 *Bounded Fortune* trade goods. System/day stock is seed-derived and finite;
 consumption and market revision are persistent and shared. Captain-specific
 quotes apply Broker, Charisma, world trade codes, legality, and the displayed
-local tariff. A read never rerolls or consumes stock. Purchases create titled,
+local tariff. Daily stock changes independently, but ordinary negotiated terms
+hold for seven game days after docking or, for a newly acquired lot's sale
+terms, after acquisition. Refreshing never rerolls or consumes stock. The
+ordinary bid at a lot's origin always remains below its actual purchase price.
+Prohibited goods have no open quote: Streetwise private-introduction research
+finds the counterparty and Broker negotiates the executable lead. Purchases create titled,
 identifiable cargo lots, spend account credits, consume hold capacity, and are
 exactly-once under command replay. Sales in a system other than a speculative
 lot's origin remove a selected quantity and credit the locally negotiated
 price. Quantities retain milliton (0.001-tonne) resolution. Purchase totals
 round upward and sale proceeds downward at the final credit, so splitting a
-transaction cannot create money. Timed supplier/buyer research and its dated
+transaction cannot create money. A completed supplier or buyer lead can be
+performed while available; paying ten percent to reserve it is optional. Timed supplier/buyer research and its dated
 Known Universe observations are described in
 [`merchant-economy-and-tasks.md`](merchant-economy-and-tasks.md).
 

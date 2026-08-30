@@ -19,6 +19,28 @@ pub const HIGH_PASSAGE_RATE_PER_PARSEC: u64 = 25_000;
 pub const MIDDLE_PASSAGE_RATE_PER_PARSEC: u64 = 10_000;
 pub const STEERAGE_PASSAGE_RATE_PER_PARSEC: u64 = 5_000;
 pub const LOW_PASSAGE_RATE: u64 = 2_000;
+pub const ORDINARY_NEGOTIATION_WAIT_SECONDS: u64 = 7 * 24 * 60 * 60;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct NegotiationWindow {
+    pub anchor_second: u64,
+    pub sequence: u64,
+    pub expires_second: u64,
+}
+
+pub fn negotiation_window(anchor_second: u64, current_second: u64) -> NegotiationWindow {
+    let elapsed = current_second.saturating_sub(anchor_second);
+    let sequence = elapsed / ORDINARY_NEGOTIATION_WAIT_SECONDS;
+    NegotiationWindow {
+        anchor_second,
+        sequence,
+        expires_second: anchor_second.saturating_add(
+            sequence
+                .saturating_add(1)
+                .saturating_mul(ORDINARY_NEGOTIATION_WAIT_SECONDS),
+        ),
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum TradeCode {
@@ -689,6 +711,7 @@ pub fn quote_market_goods(
     system_seed: [u8; 32],
     system_id: u64,
     game_day: u64,
+    negotiation: NegotiationWindow,
     identity: &PlayerIdentity,
     broker_level: i8,
     charisma: u8,
@@ -698,13 +721,6 @@ pub fn quote_market_goods(
     stock_label.extend_from_slice(b"commerce/market-stock/v1");
     stock_label.extend_from_slice(&game_day.to_be_bytes());
     let mut stock_random = SeedStream::new(derive_seed(system_seed, &stock_label)?);
-    let mut price_label = Vec::with_capacity(64);
-    price_label.extend_from_slice(b"commerce/market-price/v1");
-    price_label.extend_from_slice(&game_day.to_be_bytes());
-    price_label.extend_from_slice(&identity.bbs_id.to_be_bytes());
-    price_label.extend_from_slice(&identity.player_id.to_be_bytes());
-    let mut price_random = SeedStream::new(derive_seed(system_seed, &price_label)?);
-    let codes = world_trade_codes(world);
     let mut stock: BTreeMap<u16, u64> = BTreeMap::new();
 
     let (common_lot_dice, common_size_dice, trade_lot_dice) = match world.starport {
@@ -727,22 +743,19 @@ pub fn quote_market_goods(
         *stock.entry(item.id).or_default() += size * MILLITONS_PER_TON;
     }
 
-    let skill_dm = i16::from(broker_level) + i16::from(characteristic_dm(charisma));
     stock
         .into_iter()
         .map(|(commodity_id, available_millitons)| {
             let item = commodity(commodity_id).expect("generated commodity exists");
-            let purchase_dm = strongest_modifier(&item.purchase_modifiers, &codes);
-            let sale_dm = strongest_modifier(&item.sale_modifiers, &codes);
-            let purchase_effect =
-                task_effect(&mut price_random, skill_dm + i16::from(purchase_dm), -2)?;
-            let sale_effect = task_effect(&mut price_random, skill_dm + i16::from(sale_dm), -2)?;
-            let purchase_price =
-                percentage(item.base_price_per_ton, purchase_percent(purchase_effect));
-            let indicative_sale = percentage(
-                item.base_price_per_ton,
-                100 + sale_markup_percent(sale_effect),
-            );
+            let (purchase_price, indicative_sale) = negotiated_market_prices(
+                system_seed,
+                negotiation,
+                identity,
+                broker_level,
+                charisma,
+                item,
+                world,
+            )?;
             Ok(MarketQuote {
                 offer_id: market_offer_id(system_id, game_day, item.id),
                 commodity: item,
@@ -755,9 +768,41 @@ pub fn quote_market_goods(
         .collect()
 }
 
+pub fn negotiated_market_prices(
+    system_seed: [u8; 32],
+    negotiation: NegotiationWindow,
+    identity: &PlayerIdentity,
+    broker_level: i8,
+    charisma: u8,
+    item: CommodityDefinition,
+    world: &World,
+) -> Result<(u64, u64), CryptoError> {
+    let mut price_label = Vec::with_capacity(80);
+    price_label.extend_from_slice(b"commerce/market-price/v2");
+    price_label.extend_from_slice(&negotiation.anchor_second.to_be_bytes());
+    price_label.extend_from_slice(&negotiation.sequence.to_be_bytes());
+    price_label.extend_from_slice(&identity.bbs_id.to_be_bytes());
+    price_label.extend_from_slice(&identity.player_id.to_be_bytes());
+    price_label.extend_from_slice(&item.id.to_be_bytes());
+    let mut price_random = SeedStream::new(derive_seed(system_seed, &price_label)?);
+    let codes = world_trade_codes(world);
+    let skill_dm = i16::from(broker_level) + i16::from(characteristic_dm(charisma));
+    let purchase_dm = strongest_modifier(&item.purchase_modifiers, &codes);
+    let sale_dm = strongest_modifier(&item.sale_modifiers, &codes);
+    let purchase_effect = task_effect(&mut price_random, skill_dm + i16::from(purchase_dm), -2)?;
+    let sale_effect = task_effect(&mut price_random, skill_dm + i16::from(sale_dm), -2)?;
+    Ok((
+        percentage(item.base_price_per_ton, purchase_percent(purchase_effect)),
+        percentage(
+            item.base_price_per_ton,
+            100 + sale_markup_percent(sale_effect),
+        ),
+    ))
+}
+
 pub fn negotiated_sale_price(
     system_seed: [u8; 32],
-    game_day: u64,
+    negotiation: NegotiationWindow,
     identity: &PlayerIdentity,
     cargo_lot_id: u64,
     broker_level: i8,
@@ -766,8 +811,9 @@ pub fn negotiated_sale_price(
     world: &World,
 ) -> Result<u64, CryptoError> {
     let mut label = Vec::new();
-    label.extend_from_slice(b"commerce/sale-negotiation/v1");
-    label.extend_from_slice(&game_day.to_be_bytes());
+    label.extend_from_slice(b"commerce/sale-negotiation/v2");
+    label.extend_from_slice(&negotiation.anchor_second.to_be_bytes());
+    label.extend_from_slice(&negotiation.sequence.to_be_bytes());
     label.extend_from_slice(&identity.bbs_id.to_be_bytes());
     label.extend_from_slice(&identity.player_id.to_be_bytes());
     label.extend_from_slice(&cargo_lot_id.to_be_bytes());
@@ -898,8 +944,11 @@ mod tests {
             bbs_id: 7,
             player_id: 9,
         };
-        let first = quote_market_goods([0x42; 32], 31, 4, &identity, 2, 9, &world()).unwrap();
-        let second = quote_market_goods([0x42; 32], 31, 4, &identity, 2, 9, &world()).unwrap();
+        let negotiation = negotiation_window(0, 4 * 24 * 60 * 60);
+        let first =
+            quote_market_goods([0x42; 32], 31, 4, negotiation, &identity, 2, 9, &world()).unwrap();
+        let second =
+            quote_market_goods([0x42; 32], 31, 4, negotiation, &identity, 2, 9, &world()).unwrap();
         assert_eq!(first, second);
         assert!(!first.is_empty());
         assert!(first.iter().all(|line| {
@@ -910,6 +959,62 @@ mod tests {
                 )
                 && line.available_millitons % MILLITONS_PER_TON == 0
         }));
+    }
+
+    #[test]
+    fn ordinary_sale_negotiation_holds_for_a_week_before_a_new_offer() {
+        let identity = PlayerIdentity {
+            bbs_id: 7,
+            player_id: 9,
+        };
+        let item = commodity(1).unwrap();
+        let anchor = 123_456;
+        let first_window = negotiation_window(anchor, anchor);
+        let first = negotiated_sale_price(
+            [0x42; 32],
+            first_window,
+            &identity,
+            88,
+            2,
+            9,
+            item,
+            &world(),
+        )
+        .unwrap();
+        let just_before = negotiated_sale_price(
+            [0x42; 32],
+            negotiation_window(anchor, first_window.expires_second - 1),
+            &identity,
+            88,
+            2,
+            9,
+            item,
+            &world(),
+        )
+        .unwrap();
+        assert_eq!(just_before, first);
+
+        let changed = (1..=64).any(|sequence| {
+            negotiated_sale_price(
+                [0x42; 32],
+                negotiation_window(
+                    anchor,
+                    anchor + sequence * ORDINARY_NEGOTIATION_WAIT_SECONDS,
+                ),
+                &identity,
+                88,
+                2,
+                9,
+                item,
+                &world(),
+            )
+            .unwrap()
+                != first
+        });
+        assert!(
+            changed,
+            "later weekly negotiations must be able to change the offer"
+        );
     }
 
     #[test]

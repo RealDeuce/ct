@@ -605,6 +605,15 @@ D66 and rerolling 66. Stock is finite, shared, and persistent for a system and
 day. Looking at the exchange does not reroll or reserve stock; buying consumes
 it.
 
+Ordinary negotiated terms are not daily prices. The first open-exchange terms
+after docking remain the captain's terms at that market for seven game days.
+For cargo acquired during that stay, its ordinary sale terms remain fixed for
+seven game days from acquisition. Refreshing the exchange or crossing a market
+day changes neither roll. After the full week the captain may negotiate again;
+travelling to another system reaches a different market immediately. A named
+market event may still move the applicable price tier while ordinary terms are
+held.
+
 The captain's ordinary purchase and sale negotiations each roll:
 
 **2D6 + Broker + CHA DM + strongest applicable trade-code DM - 2**
@@ -623,9 +632,11 @@ price, with fractions rounded against the trader: purchases round up and
 sales round down. A shortage moves both price outcomes one tier higher; a
 surplus moves both one tier lower; a shipping disruption moves only purchases
 one tier higher; and a market recovery changes stock without shifting a price
-tier. When the exchange both stocks and buys an item, its ordinary bid is
-capped at least Cr1 below its ask, so immediate unloading cannot manufacture
-profit. A separately reserved private buyer can cross that public spread.
+tier. The ordinary bid is capped at least Cr1 below the applicable ask. At the
+cargo's origin market it is also capped below that lot's actual purchase
+price, so waiting at the berth cannot turn an ordinary local resale into
+speculative profit. A separately found private buyer can cross that public
+spread.
 
 | Event | Stock | Purchase tier | Sale tier | Duration |
 | --- | ---: | ---: | ---: | ---: |
@@ -643,15 +654,17 @@ the odds of receiving a particular quote. Low purchase prices and high sale
 prices are favorable. Market reports record their place, date, source, and
 confidence; they do not update themselves while travelling.
 
-Prohibited goods cannot be bought through the open exchange. Every cargo lot
-has an owner, commodity, quantity, physical ship or facility, and provenance.
+Prohibited goods receive no open-exchange purchase or sale quote. They require
+a private-introduction supplier or buyer search using Streetwise; Broker still
+governs the resulting price negotiation. Every cargo lot has an owner,
+commodity, quantity, physical ship or facility, and provenance.
 Speculative cargo belongs to the captain's estate; freight belongs to its
 principal. Splitting a transaction cannot duplicate credits or cargo.
 
 Quantities are retained to 0.001 ton. A purchase's final total rounds up to a
 whole credit; a sale's final proceeds round down. Speculative cargo can be sold
-in its origin system, but the bid/ask rule normally makes that an immediate
-loss.
+in its origin system, but an ordinary origin sale always returns less per ton
+than that lot cost. A finite private buyer may offer more.
 
 ### Commodity reference
 
@@ -708,12 +721,14 @@ DM.
 
 ### Research and reservations
 
-Physical canvassing and online research take one to six game minutes. A black-
-market search takes six to 24 minutes and applies -1 to the task. A hired local
-Broker costs Cr500, supplies Broker-2, and reports in one to three minutes; the
-named crewmember remains liaison. Physical, black-market, and hired searches
-use CHA; online research uses INT and Computer. All other searches use Broker.
-The assigned crewmember must be fit and on watch.
+Physical canvassing, private introductions, and hired local searches take 1D6
+game days. Online research takes 1D6 game hours. A hired local Broker costs
+Cr500 and supplies Broker-2; the named crewmember remains liaison. Physical
+and hired searches use Broker and CHA, private introductions use Streetwise
+and CHA, and online research uses Computer and INT. Price negotiation then
+uses Broker and CHA. Each previous supplier or buyer search in the same system
+during the same 30-day market month applies DM-1. The assigned crewmember must
+be fit and on watch.
 
 A commodity-specific buyer search requires matching player-owned speculative
 cargo aboard the commanded ship. Freight, contract cargo, and unique objects
@@ -730,8 +745,10 @@ quantity multiplied by **100% + three times Effect**, with Effect limited to
 -5 through +10.
 
 A completed lead records a finite quantity, price range, source, observation
-date, confidence, expiry, and revision. Reserving it places 10% of estimated
-value in escrow. Release or expiry does not refund that opportunity payment.
+date, confidence, expiry, and revision. It can be performed immediately while
+available. Reserving it is optional and places 10% of estimated value in
+escrow to hold the opportunity. Release or expiry does not refund that
+opportunity payment.
 An unreserved lead expires after seven game days. A reservation's displayed
 expiry is three game days after it is made. Reservations are for a positive
 whole-ton quantity no greater than the lead's finite quantity. The reservation

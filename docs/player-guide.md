@@ -288,9 +288,12 @@ Market inventory is shared, finite, and persistent. Local offers show the
 price to load stock from the exchange. Cargo aboard shows the current local
 bid for each player-owned lot; that is the price an ordinary sale will use.
 Buying consumes credits and hold capacity, while selling removes the selected
-quantity from the ship. The ordinary bid remains below the local ask, but a
-reserved private buyer may offer more. Splitting or repeating a request does
-not create duplicate cargo or money.
+quantity from the ship. Daily stock can change, but ordinary negotiated terms
+remain fixed for seven game days after docking or after acquiring a new lot.
+Refreshing does not reroll them. The ordinary bid remains below the local ask,
+and an origin-market bid always remains below what that lot cost; a separately
+found private buyer may offer more. Splitting or repeating a request does not
+create duplicate cargo or money.
 
 Each listed price has a compact range plot. Its minimum, Q1, median, Q3, and
 maximum are universe-wide market-value landmarks for that commodity, not a
@@ -301,8 +304,11 @@ favorable; high sale prices are favorable. The green/yellow/red judgment is
 also written as `low-price`, `mid-price`, or `high-price` so it remains clear
 without color.
 
-Speculative cargo may be sold in its origin system, normally at an immediate
-loss. Market reports are observations made at a particular place and time,
+Speculative cargo may be sold in its origin system, always at an ordinary
+per-ton loss. Prohibited goods have no open quote: use a Private introduction,
+which finds the counterparty with Streetwise before Broker negotiates the
+price. A completed lead can be performed immediately; reservation is an
+optional paid hold. Market reports are observations made at a particular place and time,
 not a promise that stock or prices will be unchanged when you arrive.
 
 ### Jobs, custody, and deadlines

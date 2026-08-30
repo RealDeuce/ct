@@ -12,14 +12,19 @@ dense integer range.
 
 Each system/day derives finite stock from the system seed, starport, primary
 world, and trade codes. Player purchases persist shared consumption; reads do
-not reroll or reserve stock. Quotes also depend on the captain's Broker skill
-and Charisma. Purchase outcomes use 80%, 90%, 100%, or 120% of base price;
+not reroll or reserve stock. Ordinary quotes are a separate negotiation:
+arrival at a market begins a seven-game-day price window, while sale terms for
+a lot acquired during that stay begin at acquisition. Daily stock changes do
+not reroll those terms. A full week permits another negotiation, a different
+system supplies a different market immediately, and named events may still
+shift the applicable price tier. Quotes also depend on the captain's Broker
+skill and Charisma. Purchase outcomes use 80%, 90%, 100%, or 120% of base price;
 sale outcomes use 30%, 15%, 2%, or 0% markup over base price. Generated local
 tariffs are shown in basis points and included in both sides of the quote. The
-ordinary local bid is capped below the local ask whenever the exchange also
-has that commodity in stock, so loading and immediately unloading cargo cannot
-create money. A named reserved buyer is a separate negotiated transaction and
-may cross the public spread.
+ordinary local bid is capped below the local ask. At the lot's origin it is
+also capped below the actual purchase price, so waiting in the same berth can
+never turn an ordinary resale profitable. A named private buyer is a separate
+negotiated transaction and may cross the public spread.
 
 Cargo Exchange price plots compare the captain's current quote against an
 absolute, universe-wide market-value span for the commodity, not against a
@@ -40,17 +45,19 @@ also prints `low-price`, `mid-price`, or `high-price` buy/sale wording so color
 is never the only signal. The plot uses minimum, Q1, median, Q3, maximum, and a
 current-price marker; it intentionally omits a mean.
 
-Prohibited goods cannot be bought through the open exchange; restricted goods
+Prohibited goods have no open-exchange buy or sale quote. A private-introduction
+search uses Streetwise and Charisma to find a prohibited-goods supplier or
+buyer; Broker and Charisma determine the resulting price. Restricted goods
 remain identifiable for deeper permit enforcement.
 
-Supplier and buyer research is concrete work lasting one to six hours. It
-names the assigned person, method, commodity, start, and due time. A hired
-local broker charges Cr500 when engaged, supplies Broker-2 for the search, and
-normally reports in one to three hours; the named crewmember remains the
-ship's liaison. Completion is admitted as `MerchantWork` to the single
-engine-input queue and records a dated, sourced confidence range in Known
-Universe. Cancelling work changes the assignment state; a later
-already-indexed completion safely becomes a no-op.
+Supplier and buyer research is concrete work. Physical canvassing, a private
+introduction, or a hired local search takes 1D6 game days; an online search
+takes 1D6 game hours. Each previous attempt in the same system and 30-day
+market month applies DM-1. A hired local broker charges Cr500 when engaged and
+supplies Broker-2; the named crewmember remains the ship's liaison. Completion
+is admitted as `MerchantWork` to the single engine-input queue and records a
+dated, sourced confidence range in Known Universe. Cancelling work changes the
+assignment state; a later already-indexed completion safely becomes a no-op.
 
 A buyer search requires a positive quantity of matching player-owned
 speculative cargo aboard the commanded ship. Freight, contract cargo, and
@@ -61,11 +68,13 @@ none remains.
 
 Completed research produces a finite lead rather than an endlessly reusable
 hint. The lead records its observed and acquired dates, confidence, quantity,
-price range, source, expiry, and revision. Reserving it places ten percent of
-its estimated value in escrow. The reservation expires through scheduled
-system work, and expired or voluntarily released reservations do not refund
-that opportunity payment. The port can therefore expose a real scarce source
-or buyer without pretending that old market intelligence is current stock.
+price range, source, expiry, and revision. An available lead can be performed
+immediately. Reservation is optional: it places ten percent of estimated value
+in escrow to hold the scarce opportunity. The reservation expires through
+scheduled system work, and expired or voluntarily released reservations do
+not refund that opportunity payment. The port can therefore expose a real
+scarce source or buyer without pretending that old market intelligence is
+current stock.
 
 Named market events have exact persisted effects on stock and price tiers and
 originate matching agency news in the same system-day transaction. Ordinary
