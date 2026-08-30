@@ -8846,15 +8846,27 @@ void render_market_offer_summary(const ct::MarketOffer& offer,
    door_number("%llu/t\n\r", static_cast<unsigned long long>(offer.base_price_per_ton));
 }
 
-void render_market_offer_detail(const ct::MarketOffer& offer,
-                                const size_t index) {
+void render_market_catalogue(const ct::MarketSnapshot& market) {
    od_clr_scr();
-   door_heading("Commodity Reference %zu - ", index + 1);
-   door_value("%s\n\r", safe_field(offer.commodity_name).c_str());
+   door_heading("Commodity Catalogue - ");
+   door_value("%s\n\r", safe_field(market.world_name).c_str());
    door_heading("===========\n\r");
-   door_label("Catalog value: Cr");
-   door_number("%llu/t\n\r", static_cast<unsigned long long>(offer.base_price_per_ton));
-   door_information("No supplier, quantity, or price is implied by this reference.\n\r");
+   door_information("Reference values only; no supplier, quantity, or executable price is implied.\n\r\n\r");
+   size_t displayed_offers = 0;
+   size_t private_only_goods = 0;
+   for(const auto& offer : market.offers) {
+      if(offer.legality == 2) {
+         ++private_only_goods;
+         continue;
+      }
+      render_market_offer_summary(offer, displayed_offers++);
+   }
+   if(displayed_offers == 0) {
+      door_information("  No public catalogue entries\n\r");
+   }
+   if(private_only_goods != 0) {
+      door_warning("\n\rProhibited goods are not publicly listed; use Find market and Private introduction.\n\r");
+   }
    wait_for_enter();
 }
 
@@ -8876,23 +8888,21 @@ void render_market(const ct::MarketSnapshot& market)
    door_label(" (buyer)  export ");
    door_number("%.2f%%", market.export_tariff_basis_points / 100.0);
    door_information(" (paid on departure)\n\r");
-   door_information("Catalog values are references, not executable quotes. Search for a counterparty,\n\r");
-   door_information("then negotiate a price before accepting the complete lot.\n\r\n\r");
-   door_identifier("Commodity reference\n\r");
-   size_t displayed_offers = 0;
+   door_information("Search for a counterparty, then negotiate before accepting the complete lot.\n\r");
+   size_t public_goods = 0;
    size_t private_only_goods = 0;
-   for(size_t index = 0; index < market.offers.size(); ++index) {
-      if(market.offers[index].legality == 2) {
+   for(const auto& offer : market.offers) {
+      if(offer.legality == 2) {
          ++private_only_goods;
-         continue;
+      } else {
+         ++public_goods;
       }
-      render_market_offer_summary(market.offers[index], displayed_offers++);
    }
-   if(displayed_offers == 0) {
-      door_information("  None\n\r");
-   }
+   door_identifier("Commodity catalogue: ");
+   door_number("%zu", public_goods);
+   door_information(" public reference classes; press C to view.\n\r");
    if(private_only_goods != 0) {
-      door_warning("  Prohibited goods are not publicly listed; use Find market and Private introduction.\n\r");
+      door_warning("Prohibited goods require a private introduction and are omitted from the catalogue.\n\r");
    }
    door_identifier("\n\rCargo aboard\n\r");
    if(market.cargo.empty()) {
@@ -9002,7 +9012,7 @@ void run_cargo_exchange(
          "[N] Negotiate",
          "[A] Accept quote",
          "[J] Reject quote",
-         "[I] Inspect reference",
+         "[C] Commodity catalogue",
          "[X] Cancel work",
          "[Enter] Refresh",
          "[Q] Docked operations",
@@ -9017,23 +9027,8 @@ void run_cargo_exchange(
       if(key == 'q' || key == 'Q') {
          return;
       }
-      if(key == 'i' || key == 'I') {
-         std::vector<const ct::MarketOffer*> open_offers;
-         for(const auto& offer : market.offers) {
-            if(offer.legality != 2) {
-               open_offers.push_back(&offer);
-            }
-         }
-         if(open_offers.empty()) {
-            continue;
-         }
-         const auto choice = input_number(
-            "Offer", 1, static_cast<unsigned>(open_offers.size()));
-         if(!choice) {
-            continue;
-         }
-         render_market_offer_detail(
-            *open_offers[*choice - 1], *choice - 1);
+      if(key == 'c' || key == 'C') {
+         render_market_catalogue(market);
       } else if(key == 'f' || key == 'F') {
          struct SearchGood {
             uint16_t id;
@@ -12715,15 +12710,64 @@ ct::PlayerPhase run_encounter(ct::TlsConnection& connection, const ct::ServerHel
          // Non-combat encounter responses still use the same resolving state
          // while their authoritative turn is queued.
       }
+      const auto timing = ct::get_travel_status(
+         connection,
+         hello.assigned_epoch,
+         random_command_id(random),
+         request_id++);
+      if(timing.phase != ct::PlayerPhase::Encounter) {
+         latest_phase_status = timing;
+         latest_encounter.reset();
+         return timing.phase;
+      }
       door_information("\n\rThe crew is carrying out the selected response.\n\r");
+      door_label("Ship time: ");
+      door_number("%s\n\r", game_date(timing.current_game_second).c_str());
       if(encounter.next_turn_second != 0) {
+         const auto remaining_seconds =
+            encounter.next_turn_second > timing.current_game_second
+            ? encounter.next_turn_second - timing.current_game_second
+            : uint64_t{0};
          door_label("Action completes: ");
          door_number("%s\n\r", game_date(encounter.next_turn_second).c_str());
+         door_label("Time remaining: ");
+         door_number("%s", course_duration(remaining_seconds).c_str());
+         door_label(" (wall time ");
+         door_number(
+            "%s",
+            wall_duration(
+               remaining_seconds,
+               timing.clock_rate_game_seconds,
+               timing.clock_rate_real_seconds).c_str());
+         door_label(")\n\r");
       }
       door_information("This is elapsed action time, not approval from the other vessel.\n\r");
-      wait_for_enter();
-      latest_encounter.reset();
-      return ct::PlayerPhase::Encounter;
+      door_information("This screen will continue when the response completes.\n\r");
+      door_option_prompt({"[Enter] Refresh", "[?] Help"});
+      const auto generation = phase_event_generation;
+      while(true) {
+         collect_player_events();
+         if(latest_operational_damage_report && !operational_damage_report_active) {
+            throw OperationalDamageReadyInterrupt{};
+         }
+         if(phase_event_generation != generation && latest_phase_status.has_value()) {
+            latest_encounter.reset();
+            return latest_phase_status->phase;
+         }
+         flush_player_events();
+         const auto key = od_get_key(FALSE);
+         if(key == '?') {
+            echo_prompt_key(key, true);
+            show_context_help();
+            latest_encounter.reset();
+            return ct::PlayerPhase::Encounter;
+         }
+         if(key == '\r' || key == '\n') {
+            latest_encounter.reset();
+            return ct::PlayerPhase::Encounter;
+         }
+         od_sleep(10);
+      }
    }
    const auto posture_available = [&](const ct::EncounterPosture posture) {
       return std::find(encounter.available_postures.begin(), encounter.available_postures.end(),

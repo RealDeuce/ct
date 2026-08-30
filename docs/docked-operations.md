@@ -81,11 +81,12 @@ traffic status are persistent state. Individual berth assignment and service
 queues remain later depth.
 
 Cargo Exchange implements the six CE Common Goods and 35 generic revised
-*Bounded Fortune* trade goods. The displayed catalogue is reference data, not
-stock or a quote. A 1D6-hour ordinary supplier/buyer search materializes a
-finite source-sized counterparty; prohibited physical introductions take 1D6
-days. Each counterparty then needs a 1D6-minute Broker+Charisma negotiation and
-explicit acceptance. Purchases add the automatic ten-percent loader fee and
+*Bounded Fortune* trade goods. `C` opens the separate commodity catalogue;
+its values are reference data, not stock or a quote. A 1D6-hour ordinary
+supplier/buyer search materializes a finite source-sized counterparty;
+prohibited physical introductions take 1D6 days. Each counterparty then needs
+a 1D6-minute Broker+Charisma negotiation and explicit acceptance. Purchases
+add the automatic ten-percent loader fee and
 create titled, provenance-bearing cargo. The buyer bears import tariff; the
 merchant's excluded export tariff is collected when the ship clears the
 berth. Buyer markup uses actual purchase/appraisal basis, and purchased cargo
