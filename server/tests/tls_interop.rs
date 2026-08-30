@@ -671,6 +671,35 @@ fn advance_player_simulation_to(
     );
 }
 
+fn newest_scheduled_market_work_due(
+    data: &Path,
+    identity: &PlayerIdentity,
+    request_id: &mut u64,
+) -> u64 {
+    let engine = Engine::open(data, BbsRegistry::default()).unwrap();
+    let (epoch, _, _) = engine.issue_session(identity).unwrap();
+    let batch = engine
+        .submit(
+            identity.clone(),
+            engine_request(epoch, *request_id, WireCommand::GetMarket),
+        )
+        .unwrap();
+    *request_id += 1;
+    batch
+        .deliveries
+        .iter()
+        .find_map(|delivery| match &delivery.outcome.kind {
+            cepheus_trader_server::wire::OutcomeKind::Market(snapshot) => snapshot
+                .work_assignments
+                .iter()
+                .filter(|work| work.state == cepheus_trader_server::wire::WorkState::Scheduled)
+                .max_by_key(|work| work.assignment_id)
+                .map(|work| work.due_second),
+            _ => None,
+        })
+        .expect("the door must have scheduled market work")
+}
+
 fn advance_until_flight_leg(
     data: &Path,
     identity: &PlayerIdentity,
@@ -828,7 +857,7 @@ fn finish_docked_login(session: &mut DoorSession) {
     session.wait_for("Action");
 }
 
-fn complete_arrival_and_trade(
+fn complete_arrival_and_inspect_cargo(
     door: &Path,
     data: &Path,
     identity: &PlayerIdentity,
@@ -910,30 +939,15 @@ fn complete_arrival_and_trade(
         .and_then(|(_, cargo)| cargo.split_once("Port research"))
         .map(|(cargo, _)| cargo)
         .expect("cargo exchange omitted its cargo section");
-    // Page prompts are erased with bare carriage returns, so a captured row
-    // can share a logical line with the erased prompt.  Parse the normalized
-    // display stream and take the numbered item immediately before the name.
+    // A destination market supplies no anonymous bid. The purchased lot is
+    // still visible with its actual basis and requires a buyer search.
     let normalized_cargo = normalized_page_content(cargo_section);
-    assert!(normalized_cargo.contains("Range"));
-    assert!(normalized_cargo.contains("Min Cr"));
-    assert!(normalized_cargo.contains("Q1 Cr"));
-    assert!(normalized_cargo.contains("Median Cr"));
-    assert!(normalized_cargo.contains("Q3 Cr"));
-    assert!(normalized_cargo.contains("Max Cr"));
     assert!(
-        normalized_cargo.contains("-price sale"),
-        "cargo sale band was interrupted or omitted: {normalized_cargo:?}; raw section: {cargo_section:?}"
+        normalized_cargo.contains(&cargo_name),
+        "cargo exchange omitted {cargo_name:?}: {cargo_section:?}"
     );
-    let cargo_selection = normalized_cargo
-        .split_once(&cargo_name)
-        .and_then(|(before_name, _)| before_name.split_whitespace().next_back())
-        .and_then(|number| number.strip_suffix('.'))
-        .and_then(|number| number.parse::<usize>().ok())
-        .unwrap_or_else(|| panic!("cargo menu omitted {cargo_name:?}: {cargo_section:?}"));
-    session.send_through_page_prompt(b"s", "Cargo lot (Q to cancel", "Cargo lot (Q to cancel");
-    session.send(format!("{cargo_selection}\r").as_bytes());
-    session.wait_for("Tonnes (maximum");
-    session.send_to_menu(b"1\r", "Cargo Exchange -");
+    assert!(normalized_cargo.contains("paid Cr"));
+    assert!(normalized_cargo.contains("buyer search required"));
     session.send_to_menu(b"q", "Docked Operations");
 
     let flight_plan = session.send_to_menu(b"d", "Flight Plan\r\n===========");
@@ -2293,11 +2307,15 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         data.path(),
     );
 
-    // Exercise the merchant side through the real door: buy one whole ton of
-    // speculative cargo and file a direct flight plan. The starting tanks are
-    // full, so destination fuel service is exercised after the Jump has
-    // consumed fuel. Low-capability ports may legitimately sell neither
-    // refined nor bulk unrefined fuel; Milestone 3 owns frontier alternatives.
+    // Exercise the sourced merchant procedure through the real door: search,
+    // advance the authoritative clock, negotiate, advance again, accept the
+    // complete lot, and file a direct flight plan.
+    let identity = PlayerIdentity {
+        bbs_id: 1,
+        player_id: 1,
+    };
+    let mut settlement_request_id = 90_000_u64;
+    let mut voyage_screen = String::new();
     let mut voyage_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
     voyage_door.send(b"\r");
     voyage_door.wait_for("Action");
@@ -2307,19 +2325,89 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     voyage_door.send_to_menu(b"q", "Captain's Command Console");
     voyage_door.send_to_menu(b"x", "Docked Operations");
     voyage_door.send_to_menu(b"c", "Cargo Exchange -");
-    voyage_door.send_through_page_prompt(b"b", "Offer (Q to cancel", "Offer (Q to cancel");
+    voyage_door.send_through_page_prompt(b"f", "Search (Q to cancel", "Search (Q to cancel");
     voyage_door.send(b"1\r");
-    voyage_door.wait_for("Tonnes (maximum");
+    voyage_door.wait_for("Method");
+    voyage_door.send(b"p");
+    voyage_door.wait_for("Market (Q to cancel");
+    voyage_door.send(b"1\r");
+    voyage_door.wait_for("Maximum tonnes");
+    voyage_door.send(b"20\r");
+    voyage_door.wait_for("Searcher (Q to cancel");
+    voyage_door.send_to_menu(b"1\r", "Cargo Exchange -");
+    voyage_door.send_to_menu(b"q", "Docked Operations");
+    voyage_door.return_to_bbs();
+    voyage_screen.push_str(&voyage_door.finish());
+
+    server.stop();
+    let search_due =
+        newest_scheduled_market_work_due(data.path(), &identity, &mut settlement_request_id);
+    advance_player_simulation_to(
+        data.path(),
+        &identity,
+        search_due,
+        &mut settlement_request_id,
+    );
+    server = spawn_server(
+        &server_executable,
+        &game_address_text,
+        &admin_address_text,
+        &sysop_address_text,
+        &league_address_text,
+        data.path(),
+    );
+
+    let mut negotiation_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
+    negotiation_door.send(b"\r");
+    finish_docked_login(&mut negotiation_door);
+    negotiation_door.send_to_menu(b"c", "Cargo Exchange -");
+    negotiation_door.send_through_page_prompt(
+        b"n",
+        "Counterparty (Q to cancel",
+        "Counterparty (Q to cancel",
+    );
+    negotiation_door.send(b"1\r");
+    negotiation_door.wait_for("Negotiator (Q to cancel");
+    negotiation_door.send_to_menu(b"1\r", "Cargo Exchange -");
+    negotiation_door.send_to_menu(b"q", "Docked Operations");
+    negotiation_door.return_to_bbs();
+    voyage_screen.push_str(&negotiation_door.finish());
+
+    server.stop();
+    let negotiation_due =
+        newest_scheduled_market_work_due(data.path(), &identity, &mut settlement_request_id);
+    advance_player_simulation_to(
+        data.path(),
+        &identity,
+        negotiation_due,
+        &mut settlement_request_id,
+    );
+    server = spawn_server(
+        &server_executable,
+        &game_address_text,
+        &admin_address_text,
+        &sysop_address_text,
+        &league_address_text,
+        data.path(),
+    );
+
+    let mut voyage_door = DoorSession::spawn(&door, data.path(), "iso646", "40");
+    voyage_door.send(b"\r");
+    finish_docked_login(&mut voyage_door);
+    voyage_door.send_to_menu(b"c", "Cargo Exchange -");
+    voyage_door.send_through_page_prompt(b"a", "Quote (Q to cancel", "Quote (Q to cancel");
     voyage_door.send_to_menu(b"1\r", "Cargo Exchange -");
     voyage_door.send_to_menu(b"q", "Docked Operations");
     voyage_door.send_to_menu(b"d", "Flight Plan\r\n===========");
     voyage_door.send_to_menu(b"a", "Add Charted Leg");
     voyage_door.send(b"1");
+    voyage_door.wait_for("First destination (Q to cancel");
+    voyage_door.send(b"1\r");
     voyage_door.wait_for("Buy fresh course tape");
     voyage_door.send(b"o");
     voyage_door.wait_for("identifies a bad plot");
     voyage_door.send(b"r");
-    voyage_door.wait_for("Standard arrival");
+    voyage_door.wait_for("Standard emergence");
     voyage_door.send_to_menu(b"\r", "Flight Plan\r\n===========");
     voyage_door.send_to_menu(b"p", "Flight Plan Preview");
     voyage_door.send_through_page_prompt(b"f", "Previous menu", "Departure authorized.");
@@ -2331,10 +2419,13 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     voyage_door.wait_for("First Watch:  Complete");
     voyage_door.send_to_menu(b"q", "Captain's Command Console");
     voyage_door.return_to_bbs();
-    let voyage_screen = voyage_door.finish();
+    voyage_screen.push_str(&voyage_door.finish());
     for expected in [
         "Cargo Exchange -",
         "Cargo aboard",
+        "Search completed",
+        "NEGOTIATING",
+        "QUOTED",
         "Enter/Sp",
         "Departure authorized.",
         "The flight plan has been filed.",
@@ -2356,12 +2447,6 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     // LMDB has one authoritative writer at a time. Stop the network server
     // before inspecting and accelerating the scheduled-work queue.
     server.stop();
-
-    let identity = PlayerIdentity {
-        bbs_id: 1,
-        player_id: 1,
-    };
-    let mut settlement_request_id = 90_000_u64;
     let (ship_id, cargo_lot_id, credits_before_mail, departure_due) = {
         let store = Store::open(data.path()).unwrap();
         let player = store.player_record(&identity).unwrap().unwrap();
@@ -2565,7 +2650,8 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         &league_address_text,
         data.path(),
     );
-    let completed_screen = complete_arrival_and_trade(&door, data.path(), &identity, cargo_lot_id);
+    let completed_screen =
+        complete_arrival_and_inspect_cargo(&door, data.path(), &identity, cargo_lot_id);
     for expected in [
         "Arrival Packet -",
         "Docked Operations",
@@ -2582,7 +2668,7 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
         assert!(
             ship.cargo
                 .iter()
-                .all(|lot| lot.cargo_lot_id != cargo_lot_id)
+                .any(|lot| lot.cargo_lot_id == cargo_lot_id)
         );
         assert!(ship.mail_custody.is_none());
         if completed_screen.contains("Unavailable: Unrefined bulk fuel") {
@@ -2620,7 +2706,13 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
             // when the ship was already close to its stores capacity.
             assert!(ship.provisions.person_days_remaining >= arrival_provisions);
         }
-        assert_ne!(player.credits, arrival_credits);
+        if !completed_screen.contains("Unavailable: Unrefined bulk fuel")
+            || !completed_screen.contains("No bonded chandlery")
+        {
+            assert_ne!(player.credits, arrival_credits);
+        } else {
+            assert_eq!(player.credits, arrival_credits);
+        }
     }
     server = spawn_server(
         &server_executable,

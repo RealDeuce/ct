@@ -593,11 +593,11 @@ tariff, retention, encryption, and delayed-revocation semantics are in
 
 The daily system checkpoint is not the last player arrival. Merely entering,
 passing through, viewing navigation data, or refuelling away from a market
-does not consume cargo or move mail. Reading a market board may expose
-already-created offers, but it does not reserve or consume them. Cargo changes
-only through an authoritative player action or scheduled background event
-such as production, reservation, loading, release, theft, destruction,
-delivery, consumption, or expiry. Player-carried mail changes only when
+does not consume cargo or move mail. Reading a market board exposes catalog
+references only. Counterparties are created by completed timed searches and
+their complete lots change cargo only on explicit quote acceptance. Other
+cargo changes only through authoritative actions or scheduled events such as
+loading, theft, destruction, delivery, consumption, or expiry. Player-carried mail changes only when
 accepted, handed off, lost, diverted, or delivered.
 
 Persist player-created changes, structural changes, and facts already exposed

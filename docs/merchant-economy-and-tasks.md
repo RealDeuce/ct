@@ -10,54 +10,46 @@ named examples and other upstream Product Identity are not data. Commodity
 identifiers preserve their source-table meaning and are not assumed to form a
 dense integer range.
 
-Each system/day derives finite stock from the system seed, starport, primary
-world, and trade codes. Player purchases persist shared consumption; reads do
-not reroll or reserve stock. Ordinary quotes are a separate negotiation:
-arrival at a market begins a seven-game-day price window, while sale terms for
-a lot acquired during that stay begin at acquisition. Daily stock changes do
-not reroll those terms. A full week permits another negotiation, a different
-system supplies a different market immediately, and named events may still
-shift the applicable price tier. Quotes also depend on the captain's Broker
-skill and Charisma. Purchase outcomes use 80%, 90%, 100%, or 120% of base price;
-sale outcomes use 30%, 15%, 2%, or 0% markup over base price. Generated local
-tariffs are shown in basis points and included in both sides of the quote. The
-ordinary local bid is capped below the local ask. At the lot's origin it is
-also capped below the actual purchase price, so waiting in the same berth can
-never turn an ordinary resale profitable. A named private buyer is a separate
-negotiated transaction and may cross the public spread.
+The Cargo Exchange exposes the catalogue and base values as reference data,
+not as stock or free quotes. A captain first performs a timed supplier or
+buyer search. Successful supplier work materializes each source-sized lot as
+a finite counterparty; buyer work is tied to one physical cargo lot. The
+player supplies a whole-ton maximum and the broker keeps searching during the
+same action until a result fits. Supplier results follow the source starport
+tables, including common and trade lot counts and spectacular-result effects.
 
-Cargo Exchange price plots compare the captain's current quote against an
-absolute, universe-wide market-value span for the commodity, not against a
-distribution tailored to that captain. Purchase spans include the rules'
-80%-to-120% negotiation outcomes and the generated universe's 5%-to-12.5%
-import-tariff bounds. Sale spans include the 100%-to-130% outcomes, export
-tariffs, and the ordinary bid/ask spread cap. The lower quartile, median, and
-upper quartile divide that absolute credit span into four equal intervals;
-they are market-value landmarks, not probabilities for the current captain.
-The current quote still reflects Broker skill, Charisma, local trade codes,
-events, tariffs, and (for ordinary sales) the local ask.
+Each counterparty then requires a separate 1D6-minute Broker+Charisma price
+negotiation. Purchase outcomes are 80%, 90%, 100%, or 120% of the adjusted
+catalog value. Sale outcomes add 30%, 15%, 2%, or 0% to the cargo lot's actual
+purchase basis; extracted and captured lots use their catalog appraisal as
+the basis. The ten-percent loader charge is automatic on purchases. Rejecting
+a seller makes another negotiation with that counterparty one difficulty
+level harder for a week. Rejecting a buyer closes that buyer. A discovered
+counterparty lasts through the later of the current 30-day market month or
+seven days after discovery.
 
-For purchases, a quote below Q1 is favorable/green, Q1 through below the
-median is middling/yellow, and the median or higher is unfavorable/red. Sales
-reverse that judgment: above Q3 is favorable/green, above the median through
-Q3 is middling/yellow, and the median or lower is unfavorable/red. Every row
-also prints `low-price`, `mid-price`, or `high-price` buy/sale wording so color
-is never the only signal. The plot uses minimum, Q1, median, Q3, maximum, and a
-current-price marker; it intentionally omits a mean.
+Purchased speculative cargo cannot be offered to a buyer in its acquisition
+port. This retains the door's local-port arbitrage protection without
+inventing a public bid/ask exchange. The destination import tariff belongs to
+the buyer and is excluded from sale proceeds. The origin export tariff is
+excluded from the supplier quote, recorded on the purchased lot, and charged
+to the merchant when the ship actually clears the berth.
 
-Prohibited goods have no open-exchange buy or sale quote. A private-introduction
-search uses Streetwise and Charisma to find a prohibited-goods supplier or
-buyer; Broker and Charisma determine the resulting price. Restricted goods
-remain identifiable for deeper permit enforcement.
+Prohibited goods have no open supplier or buyer. A physical private
+introduction uses Streetwise+Charisma and 1D6 game days; an online buyer search
+uses Computers+Education and 1D6 game hours. Broker+Charisma still determines
+the resulting price. Spectacular failure of the physical search exposes the
+contact as law enforcement. Restricted goods remain identifiable for deeper
+permit enforcement.
 
-Supplier and buyer research is concrete work. Physical canvassing, a private
-introduction, or a hired local search takes 1D6 game days; an online search
-takes 1D6 game hours. Each previous attempt in the same system and 30-day
-market month applies DM-1. A hired local broker charges Cr500 when engaged and
-supplies Broker-2; the named crewmember remains the ship's liaison. Completion
-is admitted as `MerchantWork` to the single engine-input queue and records a
-dated, sourced confidence range in Known Universe. Cancelling work changes the
-assignment state; a later already-indexed completion safely becomes a no-op.
+Supplier and buyer research is concrete work. Ordinary physical Broker+EDU
+and online Computers+EDU searches take 1D6 game hours. Each previous attempt
+in the same system and 30-day market month applies DM-1. All captains
+temporarily receive the ordinary association benefit (Average rather than
+Difficult) until the setting-neutral association is implemented. Completion
+is admitted as `MerchantWork` to the single engine-input queue. Cancelling
+work changes the assignment state; a later already-indexed completion safely
+becomes a no-op.
 
 A buyer search requires a positive quantity of matching player-owned
 speculative cargo aboard the commanded ship. Freight, contract cargo, and
@@ -66,21 +58,12 @@ before charging a hired broker's commission. When the work finishes, its lead
 cannot cover more matching cargo than remains aboard; no lead is produced if
 none remains.
 
-Completed research produces a finite lead rather than an endlessly reusable
-hint. The lead records its observed and acquired dates, confidence, quantity,
-price range, source, expiry, and revision. An available lead can be performed
-immediately. Reservation is optional: it places ten percent of estimated value
-in escrow to hold the scarce opportunity. The reservation expires through
-scheduled system work, and expired or voluntarily released reservations do
-not refund that opportunity payment. The port can therefore expose a real
-scarce source or buyer without pretending that old market intelligence is
-current stock.
-
-Named market events have exact persisted effects on stock and price tiers and
-originate matching agency news in the same system-day transaction. Ordinary
-daily consumption and player purchases change the shared market independently
-of observations, so a dated report remains evidence rather than omniscient
-state.
+Completed research produces a finite unpriced counterparty. Negotiation makes
+the price executable, and only explicit acceptance transfers the complete lot
+and credits. There is no reservation, collateral, escrow, anonymous direct
+buy/sell command, daily quote reroll, or named event modifier in this rules
+path. Upgrading an old store refunds legacy lead escrow and clears obsolete
+market searches, leads, observations, events, and daily market state once.
 
 A ship that complies with a customs inspection has its manifest tested
 against the destination world's law level. Prohibited ordinary cargo is
@@ -221,9 +204,10 @@ slate.
 ## Unique Ordinary Cargo
 
 The universe contains exactly one one-kilogram cargo object named `apple pie
-(made from scratch)`, priced at Cr1. It is bought, sold, carried, lost in
-wreckage, and moved by background ships through ordinary cargo mechanisms.
-It receives no exceptional price, traffic behavior, notice, or protection.
+(made from scratch)`, valued at Cr1. It remains an individually recorded
+unusual object rather than anonymous exchange stock. Its custody and actual
+loss location persist, and destruction alone reaches the existing reset
+boundary. It receives no exceptional value, notice, or protection.
 
 Its destruction—not sale, theft, jettison, loss, or change of custody—sets a
 durable reset condition. The engine responds through the normal full-universe

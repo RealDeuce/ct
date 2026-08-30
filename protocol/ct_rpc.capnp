@@ -178,6 +178,9 @@ struct Request {
     cureFinanceDefault @74 :Void;
     commissionShip @75 :CommissionShipRequest;
     getTerminalReport @76 :Void;
+    beginMarketNegotiation @86 :BeginMarketNegotiationRequest;
+    acceptMarketQuote @87 :MarketQuoteActionRequest;
+    rejectMarketQuote @88 :MarketQuoteActionRequest;
     acknowledgeTerminalReport @77 :AcknowledgeTerminalReportRequest;
     getBrowserAlertStatus @78 :Void;
     createBrowserAlertEnrollment @79 :Void;
@@ -1002,6 +1005,18 @@ struct CargoLot {
   destinationSystemId @11 :UInt64;
   sourceBodyId @12 :UInt32;
   sourceLodeId @13 :UInt64;
+  acquisitionKind @14 :CargoAcquisitionKind;
+  acquisitionMarketId @15 :UInt64;
+  exportTariffPaid @16 :Bool;
+  valuationBasisPerTon @17 :UInt64;
+}
+
+enum CargoAcquisitionKind {
+  purchased @0;
+  extracted @1;
+  captured @2;
+  entrusted @3;
+  unique @4;
 }
 
 struct CargoSaleQuote {
@@ -1027,10 +1042,21 @@ struct MarketSnapshot {
   leads @13 :List(MarketLead);
   events @14 :List(MarketEvent);
   cargoSaleQuotes @15 :List(CargoSaleQuote);
+  importTariffBasisPoints @16 :UInt16;
+  exportTariffBasisPoints @17 :UInt16;
 }
 
 enum MarketLeadSide { supplier @0; buyer @1; }
-enum MarketLeadState { available @0; reserved @1; performed @2; expired @3; cancelled @4; }
+enum MarketLeadState {
+  available @0;
+  reserved @1;
+  performed @2;
+  expired @3;
+  cancelled @4;
+  negotiating @5;
+  quoted @6;
+  rejected @7;
+}
 struct MarketLead {
   leadId @0 :UInt64;
   revision @1 :UInt64;
@@ -1047,6 +1073,11 @@ struct MarketLead {
   escrowCredits @12 :UInt64;
   source @13 :Text;
   confidencePercent @14 :UInt8;
+  counterpartyId @15 :UInt64;
+  cargoLotId @16 :UInt64;
+  penaltyUntilSecond @17 :UInt64;
+  illegal @18 :Bool;
+  loaderFeeCredits @19 :UInt64;
 }
 
 enum MarketEventKind { shortage @0; surplus @1; disruption @2; recovery @3; }
@@ -1109,6 +1140,19 @@ struct BeginMarketSearchRequest {
   personId @2 :UInt64;
   commodityId @3 :UInt16;
   destinationSystemId @4 :UInt64;
+  maximumQuantityMillitons @5 :UInt64;
+  cargoLotId @6 :UInt64;
+}
+
+struct BeginMarketNegotiationRequest {
+  leadId @0 :UInt64;
+  expectedRevision @1 :UInt64;
+  personId @2 :UInt64;
+}
+
+struct MarketQuoteActionRequest {
+  leadId @0 :UInt64;
+  expectedRevision @1 :UInt64;
 }
 
 struct CancelWorkAssignmentRequest {
@@ -1126,6 +1170,9 @@ struct WorkAssignment {
   dueSecond @7 :UInt64;
   state @8 :WorkState;
   resultText @9 :Text;
+  leadId @10 :UInt64;
+  maximumQuantityMillitons @11 :UInt64;
+  cargoLotId @12 :UInt64;
 }
 
 enum TaskKind {

@@ -21,7 +21,7 @@ namespace ct
 namespace
 {
 
-constexpr uint16_t PROTOCOL_VERSION = 10;
+constexpr uint16_t PROTOCOL_VERSION = 11;
 constexpr size_t MAX_FRAME_BYTES = 1024 * 1024;
 
 void send_frame(TlsConnection& connection, const kj::ArrayPtr<const kj::byte> message)
@@ -1705,6 +1705,9 @@ WorkAssignment decode_work_assignment(const rpc::WorkAssignment::Reader source)
       .due_second = source.getDueSecond(),
       .state = static_cast<WorkState>(source.getState()),
       .result_text = source.getResultText().cStr(),
+      .lead_id = source.getLeadId(),
+      .maximum_quantity_millitons = source.getMaximumQuantityMillitons(),
+      .cargo_lot_id = source.getCargoLotId(),
    };
 }
 
@@ -1726,6 +1729,8 @@ MarketSnapshot decode_market(const rpc::Response::Reader response)
       .cargo = {},
       .trade_codes = {},
       .tariff_basis_points = source.getTariffBasisPoints(),
+      .import_tariff_basis_points = source.getImportTariffBasisPoints(),
+      .export_tariff_basis_points = source.getExportTariffBasisPoints(),
       .local_task_offers = {},
       .work_assignments = {},
       .leads = {},
@@ -1771,6 +1776,10 @@ MarketSnapshot decode_market(const rpc::Response::Reader response)
          .destination_system_id = lot.getDestinationSystemId(),
          .source_body_id = lot.getSourceBodyId(),
          .source_lode_id = lot.getSourceLodeId(),
+         .acquisition_kind = static_cast<CargoAcquisitionKind>(lot.getAcquisitionKind()),
+         .acquisition_market_id = lot.getAcquisitionMarketId(),
+         .export_tariff_paid = lot.getExportTariffPaid(),
+         .valuation_basis_per_ton = lot.getValuationBasisPerTon(),
       });
    }
    for(const auto quote : source.getCargoSaleQuotes()) {
@@ -1807,6 +1816,11 @@ MarketSnapshot decode_market(const rpc::Response::Reader response)
          .escrow_credits = lead.getEscrowCredits(),
          .source = lead.getSource().cStr(),
          .confidence_percent = lead.getConfidencePercent(),
+         .counterparty_id = lead.getCounterpartyId(),
+         .cargo_lot_id = lead.getCargoLotId(),
+         .penalty_until_second = lead.getPenaltyUntilSecond(),
+         .illegal = lead.getIllegal(),
+         .loader_fee_credits = lead.getLoaderFeeCredits(),
       });
    }
    for(const auto event : source.getEvents()) {
@@ -2634,6 +2648,8 @@ MarketSnapshot begin_market_search(
    const uint64_t person_id,
    const uint16_t commodity_id,
    const uint64_t destination_system_id,
+   const uint64_t maximum_quantity_millitons,
+   const uint64_t cargo_lot_id,
    const std::array<uint8_t, 16>& id,
    const uint64_t request_id)
 {
@@ -2647,6 +2663,73 @@ MarketSnapshot begin_market_search(
    search.setPersonId(person_id);
    search.setCommodityId(commodity_id);
    search.setDestinationSystemId(destination_system_id);
+   search.setMaximumQuantityMillitons(maximum_quantity_millitons);
+   search.setCargoLotId(cargo_lot_id);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_market(checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+
+MarketSnapshot begin_market_negotiation(
+   TlsConnection& connection,
+   const uint64_t epoch,
+   const uint64_t lead_id,
+   const uint64_t expected_revision,
+   const uint64_t person_id,
+   const std::array<uint8_t, 16>& id,
+   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   auto value = request.initBeginMarketNegotiation();
+   value.setLeadId(lead_id);
+   value.setExpectedRevision(expected_revision);
+   value.setPersonId(person_id);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_market(checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+
+MarketSnapshot accept_market_quote(
+   TlsConnection& connection,
+   const uint64_t epoch,
+   const uint64_t lead_id,
+   const uint64_t expected_revision,
+   const std::array<uint8_t, 16>& id,
+   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   auto value = request.initAcceptMarketQuote();
+   value.setLeadId(lead_id);
+   value.setExpectedRevision(expected_revision);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_market(checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+
+MarketSnapshot reject_market_quote(
+   TlsConnection& connection,
+   const uint64_t epoch,
+   const uint64_t lead_id,
+   const uint64_t expected_revision,
+   const std::array<uint8_t, 16>& id,
+   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   auto value = request.initRejectMarketQuote();
+   value.setLeadId(lead_id);
+   value.setExpectedRevision(expected_revision);
    send_frame(connection, capnp::messageToFlatArray(message).asBytes());
    const auto words = receive_response(connection, epoch, request_id);
    capnp::FlatArrayMessageReader reader(words);
@@ -3166,6 +3249,10 @@ FleetSnapshot decode_fleet(const rpc::Response::Reader response)
             .destination_system_id = lot.getDestinationSystemId(),
             .source_body_id = lot.getSourceBodyId(),
             .source_lode_id = lot.getSourceLodeId(),
+            .acquisition_kind = static_cast<CargoAcquisitionKind>(lot.getAcquisitionKind()),
+            .acquisition_market_id = lot.getAcquisitionMarketId(),
+            .export_tariff_paid = lot.getExportTariffPaid(),
+            .valuation_basis_per_ton = lot.getValuationBasisPerTon(),
          });
       }
       for(const auto lot : wire_ship.getAmmunition()) {

@@ -12,7 +12,7 @@ use crate::ct_rpc_capnp::{
 };
 use crate::i18n::DisplayFormatting;
 
-pub const PROTOCOL_VERSION: u16 = 10;
+pub const PROTOCOL_VERSION: u16 = 11;
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 pub const COMMAND_ID_BYTES: usize = 16;
 pub const MAX_NAME_BYTES: usize = 128;
@@ -979,6 +979,15 @@ pub enum CargoTitle {
     UniqueObject,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CargoAcquisitionKind {
+    Purchased,
+    Extracted,
+    Captured,
+    Entrusted,
+    Unique,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CargoLot {
     pub cargo_lot_id: u64,
@@ -997,6 +1006,10 @@ pub struct CargoLot {
     pub source_body_id: u32,
     /// Nonzero only for material traced to a persistent resource lode.
     pub source_lode_id: u64,
+    pub acquisition_kind: CargoAcquisitionKind,
+    pub acquisition_market_id: u64,
+    pub export_tariff_paid: bool,
+    pub valuation_basis_per_ton: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1019,6 +1032,8 @@ pub struct MarketSnapshot {
     pub cargo: Vec<CargoLot>,
     pub trade_codes: Vec<String>,
     pub tariff_basis_points: u16,
+    pub import_tariff_basis_points: u16,
+    pub export_tariff_basis_points: u16,
     pub local_task_offers: Vec<TaskOffer>,
     pub work_assignments: Vec<WorkAssignment>,
     pub leads: Vec<MarketLead>,
@@ -1039,6 +1054,9 @@ pub enum MarketLeadState {
     Performed,
     Expired,
     Cancelled,
+    Negotiating,
+    Quoted,
+    Rejected,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1058,6 +1076,11 @@ pub struct MarketLead {
     pub escrow_credits: u64,
     pub source: String,
     pub confidence_percent: u8,
+    pub counterparty_id: u64,
+    pub cargo_lot_id: u64,
+    pub penalty_until_second: u64,
+    pub illegal: bool,
+    pub loader_fee_credits: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1121,6 +1144,9 @@ pub struct WorkAssignment {
     pub due_second: u64,
     pub state: WorkState,
     pub result_text: String,
+    pub lead_id: u64,
+    pub maximum_quantity_millitons: u64,
+    pub cargo_lot_id: u64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2658,6 +2684,21 @@ pub enum Command {
         person_id: u64,
         commodity_id: u16,
         destination_system_id: u64,
+        maximum_quantity_millitons: u64,
+        cargo_lot_id: u64,
+    },
+    BeginMarketNegotiation {
+        lead_id: u64,
+        expected_revision: u64,
+        person_id: u64,
+    },
+    AcceptMarketQuote {
+        lead_id: u64,
+        expected_revision: u64,
+    },
+    RejectMarketQuote {
+        lead_id: u64,
+        expected_revision: u64,
     },
     CancelWorkAssignment {
         assignment_id: u64,
@@ -2809,6 +2850,9 @@ impl Command {
             | Self::CommissionShip { .. }
             | Self::HireCrew { .. }
             | Self::BeginMarketSearch { .. }
+            | Self::BeginMarketNegotiation { .. }
+            | Self::AcceptMarketQuote { .. }
+            | Self::RejectMarketQuote { .. }
             | Self::CancelWorkAssignment { .. } => CommandPersistence::Transaction,
             Self::CommitDockedService(_) => CommandPersistence::Transaction,
             Self::ReserveMarketLead { .. }
@@ -3457,6 +3501,30 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
                 person_id: search.get_person_id(),
                 commodity_id: search.get_commodity_id(),
                 destination_system_id: search.get_destination_system_id(),
+                maximum_quantity_millitons: search.get_maximum_quantity_millitons(),
+                cargo_lot_id: search.get_cargo_lot_id(),
+            }
+        }
+        request::BeginMarketNegotiation(value) => {
+            let value = value?;
+            Command::BeginMarketNegotiation {
+                lead_id: value.get_lead_id(),
+                expected_revision: value.get_expected_revision(),
+                person_id: value.get_person_id(),
+            }
+        }
+        request::AcceptMarketQuote(value) => {
+            let value = value?;
+            Command::AcceptMarketQuote {
+                lead_id: value.get_lead_id(),
+                expected_revision: value.get_expected_revision(),
+            }
+        }
+        request::RejectMarketQuote(value) => {
+            let value = value?;
+            Command::RejectMarketQuote {
+                lead_id: value.get_lead_id(),
+                expected_revision: value.get_expected_revision(),
             }
         }
         request::CancelWorkAssignment(cancel) => Command::CancelWorkAssignment {
@@ -4563,6 +4631,8 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
             person_id,
             commodity_id,
             destination_system_id,
+            maximum_quantity_millitons,
+            cargo_lot_id,
         } => {
             let mut search = builder.init_begin_market_search();
             search.set_kind(match kind {
@@ -4584,6 +4654,34 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
             search.set_person_id(person_id);
             search.set_commodity_id(commodity_id);
             search.set_destination_system_id(destination_system_id);
+            search.set_maximum_quantity_millitons(maximum_quantity_millitons);
+            search.set_cargo_lot_id(cargo_lot_id);
+        }
+        Command::BeginMarketNegotiation {
+            lead_id,
+            expected_revision,
+            person_id,
+        } => {
+            let mut value = builder.init_begin_market_negotiation();
+            value.set_lead_id(lead_id);
+            value.set_expected_revision(expected_revision);
+            value.set_person_id(person_id);
+        }
+        Command::AcceptMarketQuote {
+            lead_id,
+            expected_revision,
+        } => {
+            let mut value = builder.init_accept_market_quote();
+            value.set_lead_id(lead_id);
+            value.set_expected_revision(expected_revision);
+        }
+        Command::RejectMarketQuote {
+            lead_id,
+            expected_revision,
+        } => {
+            let mut value = builder.init_reject_market_quote();
+            value.set_lead_id(lead_id);
+            value.set_expected_revision(expected_revision);
         }
         Command::CancelWorkAssignment { assignment_id } => builder
             .init_cancel_work_assignment()
@@ -6008,6 +6106,9 @@ fn set_work_assignment(
         WorkState::Failed => crate::ct_rpc_capnp::WorkState::Failed,
     });
     builder.set_result_text(&assignment.result_text);
+    builder.set_lead_id(assignment.lead_id);
+    builder.set_maximum_quantity_millitons(assignment.maximum_quantity_millitons);
+    builder.set_cargo_lot_id(assignment.cargo_lot_id);
 }
 
 fn set_finance(
@@ -6226,6 +6327,24 @@ fn set_fleet(
             item.set_destination_system_id(lot.destination_system_id);
             item.set_source_body_id(lot.source_body_id);
             item.set_source_lode_id(lot.source_lode_id);
+            item.set_acquisition_kind(match lot.acquisition_kind {
+                CargoAcquisitionKind::Purchased => {
+                    crate::ct_rpc_capnp::CargoAcquisitionKind::Purchased
+                }
+                CargoAcquisitionKind::Extracted => {
+                    crate::ct_rpc_capnp::CargoAcquisitionKind::Extracted
+                }
+                CargoAcquisitionKind::Captured => {
+                    crate::ct_rpc_capnp::CargoAcquisitionKind::Captured
+                }
+                CargoAcquisitionKind::Entrusted => {
+                    crate::ct_rpc_capnp::CargoAcquisitionKind::Entrusted
+                }
+                CargoAcquisitionKind::Unique => crate::ct_rpc_capnp::CargoAcquisitionKind::Unique,
+            });
+            item.set_acquisition_market_id(lot.acquisition_market_id);
+            item.set_export_tariff_paid(lot.export_tariff_paid);
+            item.set_valuation_basis_per_ton(lot.valuation_basis_per_ton);
         }
         let ammunition_count = u32::try_from(source.ammunition.len())
             .map_err(|_| WireError::Expected("fewer managed-vessel ammunition lots"))?;
@@ -6385,6 +6504,16 @@ fn set_market(
         item.set_destination_system_id(lot.destination_system_id);
         item.set_source_body_id(lot.source_body_id);
         item.set_source_lode_id(lot.source_lode_id);
+        item.set_acquisition_kind(match lot.acquisition_kind {
+            CargoAcquisitionKind::Purchased => crate::ct_rpc_capnp::CargoAcquisitionKind::Purchased,
+            CargoAcquisitionKind::Extracted => crate::ct_rpc_capnp::CargoAcquisitionKind::Extracted,
+            CargoAcquisitionKind::Captured => crate::ct_rpc_capnp::CargoAcquisitionKind::Captured,
+            CargoAcquisitionKind::Entrusted => crate::ct_rpc_capnp::CargoAcquisitionKind::Entrusted,
+            CargoAcquisitionKind::Unique => crate::ct_rpc_capnp::CargoAcquisitionKind::Unique,
+        });
+        item.set_acquisition_market_id(lot.acquisition_market_id);
+        item.set_export_tariff_paid(lot.export_tariff_paid);
+        item.set_valuation_basis_per_ton(lot.valuation_basis_per_ton);
     }
     let quote_count = u32::try_from(snapshot.cargo_sale_quotes.len())
         .map_err(|_| WireError::Expected("fewer cargo sale quotes"))?;
@@ -6405,6 +6534,8 @@ fn set_market(
         codes.set(index as u32, code);
     }
     builder.set_tariff_basis_points(snapshot.tariff_basis_points);
+    builder.set_import_tariff_basis_points(snapshot.import_tariff_basis_points);
+    builder.set_export_tariff_basis_points(snapshot.export_tariff_basis_points);
     let task_count = u32::try_from(snapshot.local_task_offers.len())
         .map_err(|_| WireError::Expected("fewer task offers"))?;
     let mut tasks = builder.reborrow().init_local_task_offers(task_count);
@@ -6434,6 +6565,9 @@ fn set_market(
             MarketLeadState::Performed => crate::ct_rpc_capnp::MarketLeadState::Performed,
             MarketLeadState::Expired => crate::ct_rpc_capnp::MarketLeadState::Expired,
             MarketLeadState::Cancelled => crate::ct_rpc_capnp::MarketLeadState::Cancelled,
+            MarketLeadState::Negotiating => crate::ct_rpc_capnp::MarketLeadState::Negotiating,
+            MarketLeadState::Quoted => crate::ct_rpc_capnp::MarketLeadState::Quoted,
+            MarketLeadState::Rejected => crate::ct_rpc_capnp::MarketLeadState::Rejected,
         });
         item.set_system_id(lead.system_id);
         item.set_commodity_id(lead.commodity_id);
@@ -6446,6 +6580,11 @@ fn set_market(
         item.set_escrow_credits(lead.escrow_credits);
         item.set_source(&lead.source);
         item.set_confidence_percent(lead.confidence_percent);
+        item.set_counterparty_id(lead.counterparty_id);
+        item.set_cargo_lot_id(lead.cargo_lot_id);
+        item.set_penalty_until_second(lead.penalty_until_second);
+        item.set_illegal(lead.illegal);
+        item.set_loader_fee_credits(lead.loader_fee_credits);
     }
     let event_count = u32::try_from(snapshot.events.len())
         .map_err(|_| WireError::Expected("fewer market events"))?;

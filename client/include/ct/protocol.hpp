@@ -745,6 +745,14 @@ struct MarketOffer {
    PriceDistribution price_distribution;
 };
 
+enum class CargoAcquisitionKind {
+   Purchased,
+   Extracted,
+   Captured,
+   Entrusted,
+   Unique,
+};
+
 struct CargoLot {
    uint64_t cargo_lot_id;
    uint16_t commodity_id;
@@ -760,6 +768,10 @@ struct CargoLot {
    uint64_t destination_system_id;
    uint32_t source_body_id;
    uint64_t source_lode_id;
+   CargoAcquisitionKind acquisition_kind;
+   uint64_t acquisition_market_id;
+   bool export_tariff_paid;
+   uint64_t valuation_basis_per_ton;
 };
 
 struct CargoSaleQuote {
@@ -936,6 +948,9 @@ struct WorkAssignment {
    uint64_t due_second;
    WorkState state;
    std::string result_text;
+   uint64_t lead_id;
+   uint64_t maximum_quantity_millitons;
+   uint64_t cargo_lot_id;
 };
 enum class MarketLeadSide {
    Supplier,
@@ -948,6 +963,9 @@ enum class MarketLeadState {
    Performed,
    Expired,
    Cancelled,
+   Negotiating,
+   Quoted,
+   Rejected,
 };
 
 struct MarketLead {
@@ -966,6 +984,11 @@ struct MarketLead {
    uint64_t escrow_credits;
    std::string source;
    uint8_t confidence_percent;
+   uint64_t counterparty_id;
+   uint64_t cargo_lot_id;
+   uint64_t penalty_until_second;
+   bool illegal;
+   uint64_t loader_fee_credits;
 };
 
 enum class MarketEventKind {
@@ -1222,6 +1245,8 @@ struct MarketSnapshot {
    std::vector<CargoLot> cargo;
    std::vector<std::string> trade_codes;
    uint16_t tariff_basis_points;
+   uint16_t import_tariff_basis_points;
+   uint16_t export_tariff_basis_points;
    std::vector<TaskOffer> local_task_offers;
    std::vector<WorkAssignment> work_assignments;
    std::vector<MarketLead> leads;
@@ -2373,6 +2398,27 @@ MarketSnapshot begin_market_search(TlsConnection&,
                                    MarketSearchMethod,
                                    uint64_t,
                                    uint16_t,
+                                   uint64_t,
+                                   uint64_t,
+                                   uint64_t,
+                                   const std::array<uint8_t, 16>&,
+                                   uint64_t);
+MarketSnapshot begin_market_negotiation(TlsConnection&,
+                                        uint64_t,
+                                        uint64_t,
+                                        uint64_t,
+                                        uint64_t,
+                                        const std::array<uint8_t, 16>&,
+                                        uint64_t);
+MarketSnapshot accept_market_quote(TlsConnection&,
+                                   uint64_t,
+                                   uint64_t,
+                                   uint64_t,
+                                   const std::array<uint8_t, 16>&,
+                                   uint64_t);
+MarketSnapshot reject_market_quote(TlsConnection&,
+                                   uint64_t,
+                                   uint64_t,
                                    uint64_t,
                                    const std::array<uint8_t, 16>&,
                                    uint64_t);

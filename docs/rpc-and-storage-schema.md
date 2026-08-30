@@ -64,7 +64,7 @@ Established connections never interpret legacy envelopes.
 During one release-development cycle, incompatible schema work shares the next
 protocol number. The number advances again only after that contract has shipped
 in a release; intermediate feature commits do not consume additional protocol
-versions. CT-RPC 9 shipped in v0.7.13, and CT-RPC 10 ships in v0.7.14.
+versions. CT-RPC 10 shipped in v0.7.14, and CT-RPC 11 ships in v0.7.15.
 
 Both builds generate bindings from `protocol/ct_rpc.capnp`.
 `InitialCrewDraft` contains only the authoritative slot ID, name, and
@@ -129,8 +129,9 @@ coordinate Jumps, onboard versus commercial-tape navigation, explicit
 known-bad-plot authority, arrival checkpoints, typed encounters, Task ledgers,
 carriage declarations, finance, dated market knowledge, finite ship and crew
 markets, combat and career operations, and docked-service quotation/commit.
-It also carries finite market leads and reservation state, named market
-events, ordinary-carriage manifest previews, typed Task actions and dispute
+It also carries finite market counterparties, timed search/negotiation work,
+explicit quote actions, cargo acquisition/appraisal provenance, and separate
+import/export tariff display, plus ordinary-carriage manifest previews, typed Task actions and dispute
 mail linkage, private-message composition, insurance state, and versioned
 starting title/refit terms. It also exposes a revisioned multi-vessel fleet,
 physical store transfers, career transitions and legal instruments, named
@@ -291,7 +292,7 @@ contact's transmitted registered-class claim distinct from the existing
 sensor-derived `className` and confidence. Older servers leave additive clock
 and declared-class fields at zero or empty.
 
-Current CT-RPC 10 additionally exposes a ship-revisioned encounter-policy
+CT-RPC 10 additionally exposed a ship-revisioned encounter-policy
 default, typed per-encounter ordinary/Fight-threshold rules, an explicit
 authorization bit when a default can attack non-hostile traffic, the
 active-operation preservation flag on flight-plan proposals, and the
@@ -301,6 +302,16 @@ maneuver stage. Ship defaults
 live in the `encounter-policy-defaults` database as codec version 1; absence
 means revision zero and the conservative legacy defaults. These additive
 post-v0.7.13 fields ship in CT-RPC 10 with v0.7.14.
+
+CT-RPC 11 adds `BeginMarketNegotiation`, `AcceptMarketQuote`, and
+`RejectMarketQuote`; search maximum/cargo-lot fields; negotiation work linkage;
+counterparty, quote, rejection, penalty, illegality, and loader-fee state; and
+cargo acquisition kind, acquisition market, export-payment flag, and valuation
+basis. v0.7.15 retained outcomes use codec 30, ship records use codec 6, work
+records use codec 2, market leads use codec 2, and queued commands use codec 4.
+Store open performs one explicit market-counterparty migration: legacy escrow
+is refunded and obsolete searches, leads, observations, events, and daily
+market state are cleared.
 
 ## Persistence contract
 

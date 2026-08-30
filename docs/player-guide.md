@@ -232,7 +232,7 @@ not a display error.
 
 `F` on the universal Command Console opens **Accounts** in every operational
 phase. Liquid balance is the money currently posted to the captain's account;
-available cash subtracts reservations already committed to tasks or escrow.
+available cash subtracts funds already committed to tasks or pending claims.
 Restricted vessel credit pays authorized operating expenses, and secured
 principal is debt rather than spending capacity.
 
@@ -284,32 +284,35 @@ the correspondent-bank action does not travel with the ship.
 
 ### Cargo and local markets
 
-Market inventory is shared, finite, and persistent. Local offers show the
-price to load stock from the exchange. Cargo aboard shows the current local
-bid for each player-owned lot; that is the price an ordinary sale will use.
-Buying consumes credits and hold capacity, while selling removes the selected
-quantity from the ship. Daily stock can change, but ordinary negotiated terms
-remain fixed for seven game days after docking or after acquiring a new lot.
-Refreshing does not reroll them. The ordinary bid remains below the local ask,
-and an origin-market bid always remains below what that lot cost; a separately
-found private buyer may offer more. Splitting or repeating a request does not
-create duplicate cargo or money.
+The commodity list is public reference data, not local inventory and not a
+free quote. `F` starts a timed search for a supplier or for a buyer of one
+selected cargo lot. Ordinary port canvassing uses Broker and Education; the
+local data exchange uses Computers and Education. Each takes 1D6 game hours.
+A private introduction for prohibited goods uses Streetwise and Charisma and
+takes 1D6 game days. Repeated searches in the same 30-day market month receive
+a cumulative penalty.
 
-Each listed price has a compact range plot. Its minimum, Q1, median, Q3, and
-maximum are universe-wide market-value landmarks for that commodity, not a
-forecast tailored to your captain. The current-price marker is your actual
-negotiated quote, which can change with the captain's Broker skill and Charisma
-as well as local trade codes, events, and tariffs. Low purchase prices are
-favorable; high sale prices are favorable. The green/yellow/red judgment is
-also written as `low-price`, `mid-price`, or `high-price` so it remains clear
-without color.
+An ordinary supplier search canvasses the whole legal market and can return
+several source-sized lots. The maximum tonnage lets the search continue until
+a published lot fits that ceiling; it does not trim a supplier's lot. A buyer
+search is tied to a cargo lot already aboard and cannot be used at that lot's
+acquisition port. Discovered counterparties remain until the later of month
+end or seven days after discovery.
 
-Speculative cargo may be sold in its origin system, always at an ordinary
-per-ton loss. Prohibited goods have no open quote: use a Private introduction,
-which finds the counterparty with Streetwise before Broker negotiates the
-price. A completed lead can be performed immediately; reservation is an
-optional paid hold. Market reports are observations made at a particular place and time,
-not a promise that stock or prices will be unchanged when you arrive.
+`N` assigns a crewmember to a 1D6-minute Broker-and-Charisma price negotiation.
+`A` accepts the complete quoted lot; `J` rejects it. Supplier acceptance pays
+the cargo price plus the automatic ten-percent loader charge. Rejecting a
+seller makes another negotiation with that seller harder for one week.
+Buyer prices use what the selected lot actually cost, or its catalog appraisal
+when it was extracted or captured. The buyer pays import tariff. Export tariff
+is not hidden in the quote: it is charged from the ship's operating account
+when the ship clears the berth. There are no market reservations or escrow,
+and refreshing or waiting at the dock cannot manufacture new prices.
+
+Locally prohibited goods use the same accept/reject flow after a private
+counterparty is found; only the search skill and elapsed time differ. The
+same-port resale restriction is intentionally retained to prevent local-port
+arbitrage.
 
 ### Jobs, custody, and deadlines
 

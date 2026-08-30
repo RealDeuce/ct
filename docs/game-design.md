@@ -41,7 +41,7 @@ protocol; the UI is a client of the engine rather than a second implementation
 of game rules. CT-RPC uses Cap'n Proto serialization with a small
 project-specific, bidirectional RPC envelope over TLS-PSK. The Rust server
 uses GnuTLS 3.8.11 or newer; the OpenDoors-capable C++20 client uses Botan 3.
-The common product version is **0.7.14**. The client is
+The common product version is **0.7.15**. The client is
 C++ for practical BBS, IPC, and serial-port support.
 
 The repository contains separate projects:
@@ -60,7 +60,8 @@ The initial-universe reset, BBS enrollment, BBS-authenticated sysop
 configuration, OpenDoors local mode, and the first complete player-creation
 path are implemented.
 The merchant implementation includes all generic CE/Bounded Fortune trade
-goods, persistent finite daily stock, legality and tariffs, titled cargo lots,
+goods, source-sized counterparty lots, timed search and negotiation, legality
+and tariffs, titled cargo lots,
 ordinary freight/passenger/mail declarations, task records, scheduled
 supplier/buyer research, dated market knowledge, secured finance, and finite
 ship and crew exchanges. The 2026-08-02 playability audit has been closed

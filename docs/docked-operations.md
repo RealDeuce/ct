@@ -81,23 +81,19 @@ traffic status are persistent state. Individual berth assignment and service
 queues remain later depth.
 
 Cargo Exchange implements the six CE Common Goods and 35 generic revised
-*Bounded Fortune* trade goods. System/day stock is seed-derived and finite;
-consumption and market revision are persistent and shared. Captain-specific
-quotes apply Broker, Charisma, world trade codes, legality, and the displayed
-local tariff. Daily stock changes independently, but ordinary negotiated terms
-hold for seven game days after docking or, for a newly acquired lot's sale
-terms, after acquisition. Refreshing never rerolls or consumes stock. The
-ordinary bid at a lot's origin always remains below its actual purchase price.
-Prohibited goods have no open quote: Streetwise private-introduction research
-finds the counterparty and Broker negotiates the executable lead. Purchases create titled,
-identifiable cargo lots, spend account credits, consume hold capacity, and are
-exactly-once under command replay. Sales in a system other than a speculative
-lot's origin remove a selected quantity and credit the locally negotiated
-price. Quantities retain milliton (0.001-tonne) resolution. Purchase totals
-round upward and sale proceeds downward at the final credit, so splitting a
-transaction cannot create money. A completed supplier or buyer lead can be
-performed while available; paying ten percent to reserve it is optional. Timed supplier/buyer research and its dated
-Known Universe observations are described in
+*Bounded Fortune* trade goods. The displayed catalogue is reference data, not
+stock or a quote. A 1D6-hour ordinary supplier/buyer search materializes a
+finite source-sized counterparty; prohibited physical introductions take 1D6
+days. Each counterparty then needs a 1D6-minute Broker+Charisma negotiation and
+explicit acceptance. Purchases add the automatic ten-percent loader fee and
+create titled, provenance-bearing cargo. The buyer bears import tariff; the
+merchant's excluded export tariff is collected when the ship clears the
+berth. Buyer markup uses actual purchase/appraisal basis, and purchased cargo
+cannot be resold at its acquisition port. Quantities retain milliton
+(0.001-tonne) resolution. Purchase totals round upward and sale proceeds
+downward, so splitting cannot create money. There are no anonymous direct
+trades, reservations, or free quote rerolls. Timed supplier/buyer work is
+described in
 [`merchant-economy-and-tasks.md`](merchant-economy-and-tasks.md).
 
 Refined fuel costs the CE Cr500 per ton and is sold only by class A or B

@@ -290,9 +290,9 @@ diagnostic datum, not a projection.
 
 ## Remaining Complete-Tour Work
 
-- Extend the implemented Common Goods daily stock, persistent cargo lots, and
-  exactly-once loading/sale boundary to Trade Goods, reservations, delivery,
-  and background consumption without statistical duplication.
+- Demonstrate the implemented Bounded Fortune supplier search, source-sized
+  lots, negotiation, acceptance, cargo provenance, and departure tariff in the
+  non-interactive tour without adding query-driven stock or price generation.
 - Add passengers and their abandonment/expiry behavior.
 - Print the implemented player ship, cargo, fuel, safe-locus approach, Jump,
   arrival, and docking itinerary in the tour; add player mail custody.

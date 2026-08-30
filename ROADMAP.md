@@ -35,8 +35,8 @@ elapsed time from a saved wall timestamp.
 
 The 2026-08-02 end-to-end audit reopened player-facing completion claims that
 were not mechanically true. Milestones 2 through 5 have since passed their
-redux boundaries. The merchant closure includes finite reservable leads,
-dated intelligence, causal market events, atomic ordinary carriage, physical
+redux boundaries. The merchant closure includes source-sized counterparties,
+timed search and negotiation, atomic ordinary carriage, physical
 remote-claim races, typed task termination/dispute actions, addressed private
 mail, versioned starting finance/refits, and a real 40-column TLS door
 playthrough. Milestone 6 now has the same real-door acceptance for entering a
@@ -366,8 +366,8 @@ resolution while unattended.
 Required implementation:
 
 - CE Trade Goods beyond the six Common Goods;
-- supplier search, reservations, delivery, background consumption, legality,
-  customs, brokers, commissions, and market events;
+- supplier and buyer search, complete-lot negotiation and acceptance, legality,
+  customs, brokers, commissions, loaders, and tariffs;
 - ordinary freight, bulk passengers, and ordinary mail capacity declarations;
 - charters, couriers, purchases, sales, bounties, and other accepted offers as
   authoritative Tasks;
@@ -396,15 +396,20 @@ banking, finite ship brokerage, and finite crew hiring. Default enforcement is
 physically propagated private mail. Combat proof and combat-side settlement
 are supplied by the existing Milestone 6 machinery.
 
-The redux boundary adds finite reservable market leads with forfeitable
-escrow; exact named market-event effects and causal news; previewed atomic
+The redux boundary uses source-sized supplier/buyer counterparties discovered
+by timed search, separate timed price negotiation, explicit acceptance,
+automatic loader fees, provenance-based sale basis, and departure-settled
+export tariffs. It removes anonymous free quotes, direct spot trading,
+reservations/escrow, and named market-event price modifiers while retaining
+same-port arbitrage prevention. It also adds previewed atomic
 loading of ordinary freight, passage, and mail; remote claims whose sealed
 filings and replies physically race through the mail graph; explicit cancel,
 withdraw, return-custody, default, and sealed-dispute transactions; capped
 non-delivery liabilities; priced fixed-system and mobile-recipient private
 mail; destination assistance; and 27 nonzero, role-correct versioned starting
-term/refit packages. Persistence tests cover restart, expiry, reservation,
-settlement, default, and message custody. The real 40-column C++ door/TLS
+term/refit packages. Persistence tests cover restart, expiry, negotiation,
+settlement, default, and message custody. CT-RPC 11 carries the counterparty,
+quote, work, and cargo-provenance state. The real 40-column C++ door/TLS
 playthrough covers banking, addressed correspondence, speculative cargo, a
 filed voyage, mail custody, arrival, and store reopen.
 

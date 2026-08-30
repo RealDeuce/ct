@@ -5,11 +5,8 @@
 //! tables are intentionally absent.  Negotiation uses the Clement task
 //! outcomes instead of the core CE extreme-percentage table.
 
-use std::collections::BTreeMap;
-
 use crate::crypto::{CryptoError, SeedStream, derive_seed};
 use crate::universe::{Starport, World};
-use crate::wire::PlayerIdentity;
 
 pub const REFINED_FUEL_PRICE_PER_TON: u64 = 500;
 pub const MILLITONS_PER_TON: u64 = 1_000;
@@ -19,28 +16,6 @@ pub const HIGH_PASSAGE_RATE_PER_PARSEC: u64 = 25_000;
 pub const MIDDLE_PASSAGE_RATE_PER_PARSEC: u64 = 10_000;
 pub const STEERAGE_PASSAGE_RATE_PER_PARSEC: u64 = 5_000;
 pub const LOW_PASSAGE_RATE: u64 = 2_000;
-pub const ORDINARY_NEGOTIATION_WAIT_SECONDS: u64 = 7 * 24 * 60 * 60;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct NegotiationWindow {
-    pub anchor_second: u64,
-    pub sequence: u64,
-    pub expires_second: u64,
-}
-
-pub fn negotiation_window(anchor_second: u64, current_second: u64) -> NegotiationWindow {
-    let elapsed = current_second.saturating_sub(anchor_second);
-    let sequence = elapsed / ORDINARY_NEGOTIATION_WAIT_SECONDS;
-    NegotiationWindow {
-        anchor_second,
-        sequence,
-        expires_second: anchor_second.saturating_add(
-            sequence
-                .saturating_add(1)
-                .saturating_mul(ORDINARY_NEGOTIATION_WAIT_SECONDS),
-        ),
-    }
-}
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum TradeCode {
@@ -592,16 +567,6 @@ pub enum Legality {
     Prohibited,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct MarketQuote {
-    pub offer_id: u64,
-    pub commodity: CommodityDefinition,
-    pub available_millitons: u64,
-    pub purchase_price_per_ton: u64,
-    pub indicative_sale_price_per_ton: u64,
-    pub legality: Legality,
-}
-
 pub fn commodity(id: u16) -> Option<CommodityDefinition> {
     COMMON_GOODS
         .iter()
@@ -622,6 +587,160 @@ pub fn commodity_by_index(index: u64) -> Option<CommodityDefinition> {
 }
 
 pub const COMMODITY_COUNT: u64 = (COMMON_GOODS.len() + TRADE_GOODS.len()) as u64;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SupplierLot {
+    pub commodity: CommodityDefinition,
+    pub quantity_millitons: u64,
+}
+
+/// Materializes the individual lots revealed by one supplier search.  The
+/// result follows the Bounded Fortune starport lot tables; an optional player
+/// maximum causes the broker to keep canvassing within the same search until
+/// each returned lot fits.
+pub fn supplier_lots(
+    system_seed: [u8; 32],
+    assignment_id: u64,
+    effect: i16,
+    maximum_quantity_millitons: u64,
+    world: &World,
+) -> Result<Vec<SupplierLot>, CryptoError> {
+    if effect <= -6 || world.starport == Starport::X {
+        return Ok(Vec::new());
+    }
+    let mut label = Vec::from(&b"commerce/supplier-search/v1"[..]);
+    label.extend_from_slice(&assignment_id.to_be_bytes());
+    let mut random = SeedStream::new(derive_seed(system_seed, &label)?);
+    let (common_count_dice, common_size_dice, trade_count_dice) = match world.starport {
+        Starport::A => (6, 2, 4),
+        Starport::B => (4, 1, 3),
+        Starport::C => (2, 1, 2),
+        Starport::D | Starport::E => (1, 1, 1),
+        Starport::X => unreachable!(),
+    };
+    let multiplier = if effect >= 6 { 2 } else { 1 };
+    let common_count = roll_dice(&mut random, common_count_dice, 6)? * multiplier;
+    let trade_count = if effect < 0 {
+        0
+    } else {
+        roll_dice(&mut random, trade_count_dice, 6)? * multiplier
+    };
+    let mut lots = Vec::with_capacity((common_count + trade_count) as usize);
+    for _ in 0..common_count {
+        let item = COMMON_GOODS[(random.next_u64()? % COMMON_GOODS.len() as u64) as usize];
+        if let Some(quantity_millitons) = fitting_quantity(
+            &mut random,
+            QuantityDice {
+                dice: common_size_dice,
+                sides: 6,
+                multiplier_tons: 10,
+            },
+            maximum_quantity_millitons,
+        )? {
+            lots.push(SupplierLot {
+                commodity: item,
+                quantity_millitons,
+            });
+        }
+    }
+    for _ in 0..trade_count {
+        let item = TRADE_GOODS[(random.next_u64()? % TRADE_GOODS.len() as u64) as usize];
+        if let Some(quantity_millitons) =
+            fitting_quantity(&mut random, item.quantity, maximum_quantity_millitons)?
+        {
+            lots.push(SupplierLot {
+                commodity: item,
+                quantity_millitons,
+            });
+        }
+    }
+    Ok(lots)
+}
+
+pub fn targeted_supplier_lot(
+    system_seed: [u8; 32],
+    assignment_id: u64,
+    item: CommodityDefinition,
+    maximum_quantity_millitons: u64,
+) -> Result<Option<SupplierLot>, CryptoError> {
+    let mut label = Vec::from(&b"commerce/private-supplier-search/v1"[..]);
+    label.extend_from_slice(&assignment_id.to_be_bytes());
+    let mut random = SeedStream::new(derive_seed(system_seed, &label)?);
+    Ok(
+        fitting_quantity(&mut random, item.quantity, maximum_quantity_millitons)?.map(
+            |quantity_millitons| SupplierLot {
+                commodity: item,
+                quantity_millitons,
+            },
+        ),
+    )
+}
+
+pub fn buyer_lot_quantity(
+    system_seed: [u8; 32],
+    assignment_id: u64,
+    item: CommodityDefinition,
+    maximum_quantity_millitons: u64,
+    world: &World,
+) -> Result<Option<u64>, CryptoError> {
+    let dice = if item.common {
+        QuantityDice {
+            dice: match world.starport {
+                Starport::A => 2,
+                Starport::B | Starport::C | Starport::D | Starport::E => 1,
+                Starport::X => return Ok(None),
+            },
+            sides: 6,
+            multiplier_tons: 10,
+        }
+    } else {
+        item.quantity
+    };
+    let mut label = Vec::from(&b"commerce/buyer-search/v1"[..]);
+    label.extend_from_slice(&assignment_id.to_be_bytes());
+    let mut random = SeedStream::new(derive_seed(system_seed, &label)?);
+    fitting_quantity(&mut random, dice, maximum_quantity_millitons)
+}
+
+fn fitting_quantity(
+    random: &mut SeedStream,
+    dice: QuantityDice,
+    maximum_quantity_millitons: u64,
+) -> Result<Option<u64>, CryptoError> {
+    let minimum = u64::from(dice.dice) * u64::from(dice.multiplier_tons) * MILLITONS_PER_TON;
+    if maximum_quantity_millitons != 0 && maximum_quantity_millitons < minimum {
+        return Ok(None);
+    }
+    for _ in 0..256 {
+        let quantity = roll_quantity(random, dice)? * MILLITONS_PER_TON;
+        if maximum_quantity_millitons == 0 || quantity <= maximum_quantity_millitons {
+            return Ok(Some(quantity));
+        }
+    }
+    Ok(Some(minimum))
+}
+
+pub fn purchase_price_for_effect(
+    item: CommodityDefinition,
+    world: &World,
+    negotiation_effect: i16,
+) -> u64 {
+    let codes = world_trade_codes(world);
+    let effect =
+        negotiation_effect + i16::from(strongest_modifier(&item.purchase_modifiers, &codes));
+    percentage(item.base_price_per_ton, purchase_percent(effect))
+}
+
+pub fn sale_price_for_effect(
+    valuation_basis_per_ton: u64,
+    item: CommodityDefinition,
+    world: &World,
+    negotiation_effect: i16,
+) -> u64 {
+    let codes = world_trade_codes(world);
+    let effect = negotiation_effect + i16::from(strongest_modifier(&item.sale_modifiers, &codes));
+    percentage(valuation_basis_per_ton, 100 + sale_markup_percent(effect))
+}
 
 pub fn world_trade_codes(world: &World) -> Vec<TradeCode> {
     let mut result = Vec::new();
@@ -707,132 +826,6 @@ pub fn sale_proceeds_credits(price_per_ton: u64, quantity_millitons: u64) -> Opt
     credits.try_into().ok()
 }
 
-pub fn quote_market_goods(
-    system_seed: [u8; 32],
-    system_id: u64,
-    game_day: u64,
-    negotiation: NegotiationWindow,
-    identity: &PlayerIdentity,
-    broker_level: i8,
-    charisma: u8,
-    world: &World,
-) -> Result<Vec<MarketQuote>, CryptoError> {
-    let mut stock_label = Vec::with_capacity(48);
-    stock_label.extend_from_slice(b"commerce/market-stock/v1");
-    stock_label.extend_from_slice(&game_day.to_be_bytes());
-    let mut stock_random = SeedStream::new(derive_seed(system_seed, &stock_label)?);
-    let mut stock: BTreeMap<u16, u64> = BTreeMap::new();
-
-    let (common_lot_dice, common_size_dice, trade_lot_dice) = match world.starport {
-        Starport::A => (6, 2, 4),
-        Starport::B => (4, 1, 3),
-        Starport::C => (2, 1, 2),
-        Starport::D | Starport::E => (1, 1, 1),
-        Starport::X => (0, 0, 0),
-    };
-    let common_lots = roll_dice(&mut stock_random, common_lot_dice, 6)?;
-    for _ in 0..common_lots {
-        let item = COMMON_GOODS[(stock_random.next_u64()? % 6) as usize];
-        let size = roll_dice(&mut stock_random, common_size_dice, 6)? * 10;
-        *stock.entry(item.id).or_default() += size * MILLITONS_PER_TON;
-    }
-    let trade_lots = roll_dice(&mut stock_random, trade_lot_dice, 6)?;
-    for _ in 0..trade_lots {
-        let item = TRADE_GOODS[(stock_random.next_u64()? % TRADE_GOODS.len() as u64) as usize];
-        let size = roll_quantity(&mut stock_random, item.quantity)?;
-        *stock.entry(item.id).or_default() += size * MILLITONS_PER_TON;
-    }
-
-    stock
-        .into_iter()
-        .map(|(commodity_id, available_millitons)| {
-            let item = commodity(commodity_id).expect("generated commodity exists");
-            let (purchase_price, indicative_sale) = negotiated_market_prices(
-                system_seed,
-                negotiation,
-                identity,
-                broker_level,
-                charisma,
-                item,
-                world,
-            )?;
-            Ok(MarketQuote {
-                offer_id: market_offer_id(system_id, game_day, item.id),
-                commodity: item,
-                available_millitons,
-                purchase_price_per_ton: purchase_price,
-                indicative_sale_price_per_ton: indicative_sale,
-                legality: commodity_legality(item, world),
-            })
-        })
-        .collect()
-}
-
-pub fn negotiated_market_prices(
-    system_seed: [u8; 32],
-    negotiation: NegotiationWindow,
-    identity: &PlayerIdentity,
-    broker_level: i8,
-    charisma: u8,
-    item: CommodityDefinition,
-    world: &World,
-) -> Result<(u64, u64), CryptoError> {
-    let mut price_label = Vec::with_capacity(80);
-    price_label.extend_from_slice(b"commerce/market-price/v2");
-    price_label.extend_from_slice(&negotiation.anchor_second.to_be_bytes());
-    price_label.extend_from_slice(&negotiation.sequence.to_be_bytes());
-    price_label.extend_from_slice(&identity.bbs_id.to_be_bytes());
-    price_label.extend_from_slice(&identity.player_id.to_be_bytes());
-    price_label.extend_from_slice(&item.id.to_be_bytes());
-    let mut price_random = SeedStream::new(derive_seed(system_seed, &price_label)?);
-    let codes = world_trade_codes(world);
-    let skill_dm = i16::from(broker_level) + i16::from(characteristic_dm(charisma));
-    let purchase_dm = strongest_modifier(&item.purchase_modifiers, &codes);
-    let sale_dm = strongest_modifier(&item.sale_modifiers, &codes);
-    let purchase_effect = task_effect(&mut price_random, skill_dm + i16::from(purchase_dm), -2)?;
-    let sale_effect = task_effect(&mut price_random, skill_dm + i16::from(sale_dm), -2)?;
-    Ok((
-        percentage(item.base_price_per_ton, purchase_percent(purchase_effect)),
-        percentage(
-            item.base_price_per_ton,
-            100 + sale_markup_percent(sale_effect),
-        ),
-    ))
-}
-
-pub fn negotiated_sale_price(
-    system_seed: [u8; 32],
-    negotiation: NegotiationWindow,
-    identity: &PlayerIdentity,
-    cargo_lot_id: u64,
-    broker_level: i8,
-    charisma: u8,
-    item: CommodityDefinition,
-    world: &World,
-) -> Result<u64, CryptoError> {
-    let mut label = Vec::new();
-    label.extend_from_slice(b"commerce/sale-negotiation/v2");
-    label.extend_from_slice(&negotiation.anchor_second.to_be_bytes());
-    label.extend_from_slice(&negotiation.sequence.to_be_bytes());
-    label.extend_from_slice(&identity.bbs_id.to_be_bytes());
-    label.extend_from_slice(&identity.player_id.to_be_bytes());
-    label.extend_from_slice(&cargo_lot_id.to_be_bytes());
-    let mut random = SeedStream::new(derive_seed(system_seed, &label)?);
-    let codes = world_trade_codes(world);
-    let dm = i16::from(broker_level)
-        + i16::from(characteristic_dm(charisma))
-        + i16::from(strongest_modifier(&item.sale_modifiers, &codes));
-    let effect = task_effect(&mut random, dm, -2)?;
-    Ok(percentage(
-        item.base_price_per_ton,
-        100 + sale_markup_percent(effect),
-    ))
-}
-
-pub fn market_offer_id(system_id: u64, game_day: u64, commodity_id: u16) -> u64 {
-    system_id.rotate_left(17) ^ game_day.rotate_left(7) ^ u64::from(commodity_id)
-}
-
 fn roll_dice(random: &mut SeedStream, dice: u8, sides: u8) -> Result<u64, CryptoError> {
     let mut total = 0;
     for _ in 0..dice {
@@ -845,18 +838,6 @@ fn roll_quantity(random: &mut SeedStream, dice: QuantityDice) -> Result<u64, Cry
     Ok(roll_dice(random, dice.dice, dice.sides)? * u64::from(dice.multiplier_tons))
 }
 
-fn characteristic_dm(score: u8) -> i8 {
-    match score {
-        0 => -3,
-        1..=2 => -2,
-        3..=5 => -1,
-        6..=8 => 0,
-        9..=11 => 1,
-        12..=14 => 2,
-        _ => 3,
-    }
-}
-
 fn strongest_modifier(modifiers: &[TradeModifier; 2], codes: &[TradeCode]) -> i8 {
     modifiers
         .iter()
@@ -864,10 +845,6 @@ fn strongest_modifier(modifiers: &[TradeModifier; 2], codes: &[TradeCode]) -> i8
         .map(|modifier| modifier.dm)
         .max()
         .unwrap_or(0)
-}
-
-fn task_effect(random: &mut SeedStream, dm: i16, difficulty: i16) -> Result<i16, CryptoError> {
-    Ok(roll_dice(random, 2, 6)? as i16 + dm + difficulty - 8)
 }
 
 fn purchase_percent(effect: i16) -> u64 {
@@ -939,82 +916,44 @@ mod tests {
     }
 
     #[test]
-    fn market_is_repeatable_and_uses_bounded_price_outcomes() {
-        let identity = PlayerIdentity {
-            bbs_id: 7,
-            player_id: 9,
-        };
-        let negotiation = negotiation_window(0, 4 * 24 * 60 * 60);
-        let first =
-            quote_market_goods([0x42; 32], 31, 4, negotiation, &identity, 2, 9, &world()).unwrap();
-        let second =
-            quote_market_goods([0x42; 32], 31, 4, negotiation, &identity, 2, 9, &world()).unwrap();
-        assert_eq!(first, second);
-        assert!(!first.is_empty());
-        assert!(first.iter().all(|line| {
-            [80, 90, 100, 120]
-                .contains(&(line.purchase_price_per_ton * 100 / line.commodity.base_price_per_ton))
-                && [100, 102, 115, 130].contains(
-                    &(line.indicative_sale_price_per_ton * 100 / line.commodity.base_price_per_ton),
-                )
-                && line.available_millitons % MILLITONS_PER_TON == 0
-        }));
+    fn supplier_search_uses_source_outcomes_and_respects_the_stated_maximum() {
+        let failed = supplier_lots([0x42; 32], 31, -1, u64::MAX, &world()).unwrap();
+        let succeeded = supplier_lots([0x42; 32], 31, 0, u64::MAX, &world()).unwrap();
+        let spectacular = supplier_lots([0x42; 32], 31, 6, u64::MAX, &world()).unwrap();
+        assert!(!failed.is_empty());
+        assert!(failed.iter().all(|lot| lot.commodity.common));
+        assert!(succeeded.iter().any(|lot| !lot.commodity.common));
+        assert_eq!(spectacular.len(), succeeded.len() * 2);
+        assert!(
+            supplier_lots([0x42; 32], 31, -6, u64::MAX, &world())
+                .unwrap()
+                .is_empty()
+        );
+
+        let bounded = supplier_lots([0x42; 32], 31, 0, 20 * MILLITONS_PER_TON, &world()).unwrap();
+        assert!(!bounded.is_empty());
+        assert!(
+            bounded
+                .iter()
+                .all(|lot| lot.quantity_millitons <= 20 * MILLITONS_PER_TON)
+        );
     }
 
     #[test]
-    fn ordinary_sale_negotiation_holds_for_a_week_before_a_new_offer() {
-        let identity = PlayerIdentity {
-            bbs_id: 7,
-            player_id: 9,
-        };
+    fn buyer_lot_size_and_negotiated_prices_use_the_published_boundaries() {
         let item = commodity(1).unwrap();
-        let anchor = 123_456;
-        let first_window = negotiation_window(anchor, anchor);
-        let first = negotiated_sale_price(
-            [0x42; 32],
-            first_window,
-            &identity,
-            88,
-            2,
-            9,
-            item,
-            &world(),
-        )
-        .unwrap();
-        let just_before = negotiated_sale_price(
-            [0x42; 32],
-            negotiation_window(anchor, first_window.expires_second - 1),
-            &identity,
-            88,
-            2,
-            9,
-            item,
-            &world(),
-        )
-        .unwrap();
-        assert_eq!(just_before, first);
-
-        let changed = (1..=64).any(|sequence| {
-            negotiated_sale_price(
-                [0x42; 32],
-                negotiation_window(
-                    anchor,
-                    anchor + sequence * ORDINARY_NEGOTIATION_WAIT_SECONDS,
-                ),
-                &identity,
-                88,
-                2,
-                9,
-                item,
-                &world(),
-            )
-            .unwrap()
-                != first
-        });
-        assert!(
-            changed,
-            "later weekly negotiations must be able to change the offer"
+        assert_eq!(
+            buyer_lot_quantity([0x42; 32], 31, item, MILLITONS_PER_TON, &world(),).unwrap(),
+            None
         );
+        assert_eq!(
+            buyer_lot_quantity([0x42; 32], 31, item, 20 * MILLITONS_PER_TON, &world(),).unwrap(),
+            Some(20 * MILLITONS_PER_TON)
+        );
+        assert_eq!(purchase_price_for_effect(item, &world(), 6), 800);
+        assert_eq!(purchase_price_for_effect(item, &world(), -6), 1_200);
+        assert_eq!(sale_price_for_effect(7_500, item, &world(), 6), 9_750);
+        assert_eq!(sale_price_for_effect(7_500, item, &world(), -6), 7_500);
     }
 
     #[test]
