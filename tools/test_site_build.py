@@ -4127,18 +4127,22 @@ class CatalogRecordTests(unittest.TestCase):
     def test_game_rules_limit_buyer_searches_to_speculative_cargo_aboard(self) -> None:
         page = SITE_BUILD.rules_page()
         self.assertIn(
-            "buyer search requires matching player-owned speculative", page
+            "buyer search names one player-owned speculative cargo lot", page
         )
-        self.assertIn("Freight, contract cargo, and unique objects", page)
-        self.assertIn("cannot cover more matching cargo", page)
+        self.assertIn("Freight, contract cargo, unique objects", page)
+        self.assertIn(
+            "bounded by the physical lot and the captain's maximum", page
+        )
 
-    def test_game_rules_prevent_daily_quote_fishing_and_route_contraband_privately(self) -> None:
+    def test_game_rules_require_timed_counterparties_and_route_contraband_privately(self) -> None:
         page = SITE_BUILD.rules_page()
-        self.assertIn("remain the captain's terms at that market for seven game days", page)
-        self.assertIn("waiting at the berth cannot turn an ordinary local resale", page)
-        self.assertIn("private-introduction supplier or buyer search using Streetwise", page)
-        self.assertIn("It can be performed immediately while available", page)
-        self.assertIn("Each previous supplier or buyer search", page)
+        self.assertIn("separate 1D6-minute", page)
+        self.assertIn("There are no anonymous executable quotes", page)
+        self.assertIn(
+            "private-introduction supplier or buyer search uses Streetwise", page
+        )
+        self.assertIn("Purchased speculative cargo cannot be", page)
+        self.assertIn("Each previous search of that side", page)
 
     def test_game_rules_define_the_world_profile_terms_they_use(self) -> None:
         page = SITE_BUILD.rules_page()
@@ -4186,7 +4190,7 @@ class CatalogRecordTests(unittest.TestCase):
 
         page = SITE_BUILD.rules_page()
         start = page.index('<h3 id="commodity-reference">')
-        end = page.index('<h3 id="research-and-reservations">', start)
+        end = page.index('<h3 id="prohibited-trade">', start)
         commodity_table = page[start:end]
         expected = int(common.group(1)) + int(trade.group(1))
         self.assertEqual(commodity_table.count("<tr>") - 1, expected)
