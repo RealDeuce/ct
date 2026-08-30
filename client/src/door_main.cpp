@@ -3705,13 +3705,9 @@ void print_ship_upkeep_context(const ct::ShipStatusSnapshot& snapshot)
          "%s\n\r",
          game_date(snapshot.maintenance_paid_through_second).c_str());
    } else {
-      door_warning("overdue\n\r");
-      door_label("Missed cycles: ");
+      door_warning("missed\n\r");
+      door_label("Missed upkeep cycles: ");
       door_warning("%u\n\r", snapshot.consecutive_missed_maintenance);
-      door_label("Arrears: ");
-      door_warning(
-         "Cr%llu\n\r",
-         static_cast<unsigned long long>(snapshot.maintenance_arrears_credits));
    }
    door_label("Next upkeep: ");
    door_number("%s\n\r", game_date(snapshot.next_maintenance_second).c_str());
@@ -4423,9 +4419,8 @@ void show_ship_manager(
                     game_date(snapshot.maintenance_paid_through_second).c_str());
       } else {
          door_warning(
-            "%u missed cycle(s), %llu Cr arrears\n\r",
-            snapshot.consecutive_missed_maintenance,
-            static_cast<unsigned long long>(snapshot.maintenance_arrears_credits));
+            "%u consecutive missed upkeep cycle(s)\n\r",
+            snapshot.consecutive_missed_maintenance);
       }
       door_label("Next automatic upkeep: ");
       door_number(

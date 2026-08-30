@@ -959,14 +959,16 @@ services.
 Routine maintenance is continuing onboard work charged every 30 game days at
 one twelfth of 0.1% of ship value. Paying it prevents neglect-related
 degradation; it does not heal combat damage, reset age, conceal a known defect,
-or replace a destroyed component. If it cannot be paid, the normal neglect
-check applies and arrears remain visible.
+or replace a destroyed component. If the operating account cannot cover the
+complete charge, no partial payment is taken, the cycle is recorded as missed,
+and the normal neglect check applies.
 
 The monthly charge is purchase price divided by 12,000, rounded up. On a
 missed cycle roll **2D6 + consecutive missed cycles**. A total below 8 adds no
 damage; on 8 or more a further 1D6 applies one hit on 1-3, two on 4-5, or
-three on 6 to an eligible installation. Paying a later routine charge prevents
-that month's check but does not erase existing neglect hits.
+three on 6 to an eligible installation. Paying a later routine charge resets
+the consecutive-miss count and prevents that month's check, but does not erase
+an earlier missed cycle's neglect hits.
 
 Installations separately record calendar age, operating time, Jump and
 maneuver cycles, and stressful skimming cycles. Hidden construction quirks can

@@ -639,6 +639,7 @@ struct ShipStatusSnapshot {
   monthlyMaintenanceCredits @14 :UInt64;
   nextMaintenanceSecond @15 :UInt64;
   maintenancePaidThroughSecond @16 :UInt64;
+  # Retired monetary-arrears slot; servers send zero for wire compatibility.
   maintenanceArrearsCredits @17 :UInt64;
   completedMaintenanceCycles @18 :UInt32;
   consecutiveMissedMaintenance @19 :UInt16;

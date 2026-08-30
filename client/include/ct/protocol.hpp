@@ -465,7 +465,6 @@ struct ShipStatusSnapshot {
    uint64_t monthly_maintenance_credits;
    uint64_t next_maintenance_second;
    uint64_t maintenance_paid_through_second;
-   uint64_t maintenance_arrears_credits;
    uint32_t completed_maintenance_cycles;
    uint16_t consecutive_missed_maintenance;
    uint64_t commissioned_second;

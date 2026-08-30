@@ -605,6 +605,7 @@ pub struct ShipStatusSnapshot {
     pub monthly_maintenance_credits: u64,
     pub next_maintenance_second: u64,
     pub maintenance_paid_through_second: u64,
+    /// Retired wire slot retained for older encoded outcomes and clients.
     pub maintenance_arrears_credits: u64,
     pub completed_maintenance_cycles: u32,
     pub consecutive_missed_maintenance: u16,

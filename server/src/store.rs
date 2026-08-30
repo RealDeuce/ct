@@ -1343,6 +1343,8 @@ pub struct ShipMaintenanceRecord {
     pub commissioned_second: u64,
     pub next_accounting_second: u64,
     pub paid_through_second: u64,
+    /// Retained only so storage-format-2 ship records remain decodable.
+    /// Monetary upkeep arrears were retired; new accounting keeps this zero.
     pub arrears_credits: u64,
     pub completed_cycles: u32,
     pub consecutive_missed_cycles: u16,
@@ -18115,7 +18117,9 @@ impl Store {
             ),
             next_maintenance_second: ship.maintenance.next_accounting_second,
             maintenance_paid_through_second: ship.maintenance.paid_through_second,
-            maintenance_arrears_credits: ship.maintenance.arrears_credits,
+            // Wire slot 17 is retained for compatibility with older clients.
+            // Missed upkeep is represented by consecutive_missed_maintenance.
+            maintenance_arrears_credits: 0,
             completed_maintenance_cycles: ship.maintenance.completed_cycles,
             consecutive_missed_maintenance: ship.maintenance.consecutive_missed_cycles,
             commissioned_second: ship.maintenance.commissioned_second,
@@ -32530,10 +32534,19 @@ impl Store {
         let charge = crate::ship_condition::monthly_maintenance_credits(
             ship.maintenance.purchase_price_credits,
         );
+        // Storage format 2 included a monetary arrears accumulator, but an
+        // unpaid upkeep cycle is a completed neglect event rather than a debt
+        // that can be cured later. Retire any legacy value at the next cycle.
+        ship.maintenance.arrears_credits = 0;
         let payment = if institution_supplied {
             charge
         } else {
-            apply_operating_account_payment(&mut player, &mut finance, charge)
+            let (restricted, liquid) = operating_account_payment_parts(&player, &finance, charge);
+            if restricted.saturating_add(liquid) == charge {
+                apply_operating_account_payment(&mut player, &mut finance, charge)
+            } else {
+                0
+            }
         };
         let upkeep_paid = if institution_supplied { 0 } else { payment };
         let paid = payment == charge;
@@ -32541,12 +32554,6 @@ impl Store {
             ship.maintenance.paid_through_second = due_second;
             ship.maintenance.consecutive_missed_cycles = 0;
         } else {
-            let unpaid = charge - payment;
-            ship.maintenance.arrears_credits = ship
-                .maintenance
-                .arrears_credits
-                .checked_add(unpaid)
-                .ok_or(StoreError::Corrupt("maintenance arrears overflow"))?;
             ship.maintenance.consecutive_missed_cycles =
                 ship.maintenance.consecutive_missed_cycles.saturating_add(1);
             let entropy =
@@ -61624,7 +61631,7 @@ mod tests {
     }
 
     #[test]
-    fn underfunded_monthly_upkeep_records_only_the_uncovered_remainder() {
+    fn underfunded_monthly_upkeep_records_a_missed_cycle_without_a_partial_charge() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
         initialize_player_fixture(&store);
@@ -61644,18 +61651,33 @@ mod tests {
             crate::wire::ShipTitleKind::SponsorOwned,
             restricted,
         );
+        let mut services = store.crew_services(ship.ship_id).unwrap();
+        let mut txn = store.env.write_txn().unwrap();
+        for service in &mut services {
+            service.monthly_salary_credits = 0;
+            service.arrears_credits = 0;
+            store
+                .crew_services
+                .put(
+                    &mut txn,
+                    &service.person_id,
+                    &encode_crew_service(service).unwrap(),
+                )
+                .unwrap();
+        }
+        txn.commit().unwrap();
         process_monthly_upkeep_test_cycle(&store, &ship);
 
         let player_after = store.player_record(&identity()).unwrap().unwrap();
-        assert_eq!(player_after.credits, 0);
+        assert_eq!(player_after.credits, liquid);
         let ship_after = store.ship_record(ship.ship_id).unwrap().unwrap();
-        assert_eq!(
-            ship_after.maintenance.arrears_credits,
-            upkeep - restricted - liquid
-        );
+        assert_eq!(ship_after.maintenance.arrears_credits, 0);
         assert_eq!(ship_after.maintenance.consecutive_missed_cycles, 1);
         assert_eq!(ship_after.maintenance.paid_through_second, 0);
-        assert_eq!(restricted_credits_for_test_ship(&store, ship.ship_id), 0);
+        assert_eq!(
+            restricted_credits_for_test_ship(&store, ship.ship_id),
+            restricted
+        );
     }
 
     #[test]

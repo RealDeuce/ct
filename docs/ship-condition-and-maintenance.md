@@ -139,7 +139,7 @@ Each subsystem has independent state for:
 
 - combat or accident damage;
 - temporary battlefield repair coverage;
-- routine-maintenance performance and arrears;
+- routine-maintenance performance and consecutive missed upkeep cycles;
 - accumulated calendar and usage wear;
 - installation age and significant duty cycles; and
 - repair, refit, refurbishment, and replacement history.

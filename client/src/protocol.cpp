@@ -873,7 +873,6 @@ ShipStatusSnapshot decode_ship_status_snapshot(
       .next_maintenance_second = source.getNextMaintenanceSecond(),
       .maintenance_paid_through_second =
       source.getMaintenancePaidThroughSecond(),
-            .maintenance_arrears_credits = source.getMaintenanceArrearsCredits(),
             .completed_maintenance_cycles = source.getCompletedMaintenanceCycles(),
             .consecutive_missed_maintenance =
             source.getConsecutiveMissedMaintenance(),
