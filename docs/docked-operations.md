@@ -74,7 +74,9 @@ The docked header is an authoritative snapshot of the commanded ship, system,
 primary world, persistent primary-world facility, UWP-derived
 starport/TL/population/law data, account balance and provisional debt,
 refined/unrefined fuel, accrued departure-settled berth fee, and cargo
-utilization. Facility revision, operational state, fuel depots, chandlery,
+utilization. It also shows the outstanding export tariff on speculative cargo
+purchased at the current port; both that tariff and the berth fee are collected
+when the ship clears the berth. Facility revision, operational state, fuel depots, chandlery,
 licensed ordnance dealer, repair shop, maximum supported hull and component
 TL, medical level, personnel exchange, bank, authority office, and controlled
 traffic status are persistent state. Individual berth assignment and service

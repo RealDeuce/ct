@@ -2406,7 +2406,13 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     );
     assert!(normalized_display_text(&acceptance_prompt).contains("Quotes awaiting acceptance"));
     voyage_door.send_to_menu(b"1\r", "Cargo Exchange -");
-    voyage_door.send_to_menu(b"q", "Docked Operations");
+    let tariff_screen = voyage_door.send_to_menu(b"q", "Docked Operations");
+    let tariff_semantic = normalized_display_text(&tariff_screen);
+    let tariff_page = tariff_semantic
+        .rsplit_once("Docked Operations -")
+        .map(|(_, page)| page)
+        .expect("docked operations page is missing");
+    assert!(tariff_page.contains("Export tariff:"), "{tariff_page:?}");
     voyage_door.send_to_menu(b"d", "Flight Plan\r\n===========");
     voyage_door.send_to_menu(b"a", "Add Charted Leg");
     voyage_door.send(b"1");

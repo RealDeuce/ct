@@ -615,6 +615,7 @@ struct DockedSnapshot {
    uint64_t unrefined_fuel_millitons;
    uint64_t unrefined_fuel_price_per_ton;
    uint64_t accrued_berth_fee_credits;
+   uint64_t export_tariff_due_credits;
    uint64_t facility_revision;
    bool personnel_available;
    bool banking_available;

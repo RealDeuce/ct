@@ -8820,6 +8820,9 @@ void render_docked_snapshot(const ct::DockedSnapshot& snapshot)
    door_label("Berth account: ");
    door_number("Cr%llu due on departure\n\r",
                static_cast<unsigned long long>(snapshot.accrued_berth_fee_credits));
+   door_label("Export tariff: ");
+   door_number("Cr%llu due on departure\n\r",
+               static_cast<unsigned long long>(snapshot.export_tariff_due_credits));
    door_label("Port control: ");
    if(snapshot.clearance_required) {
       door_warning("controlled traffic; clearance is filed with the departure plan\n\r");

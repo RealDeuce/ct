@@ -12,7 +12,7 @@ use crate::ct_rpc_capnp::{
 };
 use crate::i18n::DisplayFormatting;
 
-pub const PROTOCOL_VERSION: u16 = 11;
+pub const PROTOCOL_VERSION: u16 = 12;
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 pub const COMMAND_ID_BYTES: usize = 16;
 pub const MAX_NAME_BYTES: usize = 128;
@@ -818,6 +818,7 @@ pub struct DockedSnapshot {
     pub unrefined_fuel_millitons: u64,
     pub unrefined_fuel_price_per_ton: u64,
     pub accrued_berth_fee_credits: u64,
+    pub export_tariff_due_credits: u64,
     pub facility_revision: u64,
     pub personnel_available: bool,
     pub banking_available: bool,
@@ -5770,6 +5771,7 @@ fn set_docked_snapshot(
     builder.set_unrefined_fuel_millitons(snapshot.unrefined_fuel_millitons);
     builder.set_unrefined_fuel_price_per_ton(snapshot.unrefined_fuel_price_per_ton);
     builder.set_accrued_berth_fee_credits(snapshot.accrued_berth_fee_credits);
+    builder.set_export_tariff_due_credits(snapshot.export_tariff_due_credits);
     builder.set_restricted_credits(snapshot.restricted_credits);
     builder.set_facility_revision(snapshot.facility_revision);
     builder.set_personnel_available(snapshot.personnel_available);

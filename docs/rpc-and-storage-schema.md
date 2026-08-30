@@ -64,7 +64,8 @@ Established connections never interpret legacy envelopes.
 During one release-development cycle, incompatible schema work shares the next
 protocol number. The number advances again only after that contract has shipped
 in a release; intermediate feature commits do not consume additional protocol
-versions. CT-RPC 10 shipped in v0.7.14, and CT-RPC 11 ships in v0.7.15.
+versions. CT-RPC 10 shipped in v0.7.14, CT-RPC 11 shipped in v0.7.15, and
+CT-RPC 12 is the current development contract.
 
 Both builds generate bindings from `protocol/ct_rpc.capnp`.
 `InitialCrewDraft` contains only the authoritative slot ID, name, and
@@ -312,6 +313,11 @@ records use codec 2, market leads use codec 2, and queued commands use codec 4.
 Store open performs one explicit market-counterparty migration: legacy escrow
 is refunded and obsolete searches, leads, observations, events, and daily
 market state are cleared.
+
+CT-RPC 12 adds the server-calculated outstanding export tariff to
+`DockedSnapshot`, allowing Docked Operations to present every charge due when
+the ship clears its berth. Retained outcomes use codec 31; codec 30 snapshots
+decode the new field as zero. No stored ship, market, or account format changes.
 
 ## Persistence contract
 

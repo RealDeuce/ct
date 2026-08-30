@@ -849,6 +849,7 @@ struct DockedSnapshot {
   clearanceRequired @28 :Bool;
   restrictedCredits @29 :UInt64;
   currentGameSecond @30 :UInt64;
+  exportTariffDueCredits @31 :UInt64;
 }
 
 struct KnownSystemSummary {

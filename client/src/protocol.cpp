@@ -21,7 +21,7 @@ namespace ct
 namespace
 {
 
-constexpr uint16_t PROTOCOL_VERSION = 11;
+constexpr uint16_t PROTOCOL_VERSION = 12;
 constexpr size_t MAX_FRAME_BYTES = 1024 * 1024;
 
 void send_frame(TlsConnection& connection, const kj::ArrayPtr<const kj::byte> message)
@@ -1113,6 +1113,7 @@ DockedSnapshot decode_docked_snapshot(const rpc::Response::Reader response)
       .unrefined_fuel_millitons = source.getUnrefinedFuelMillitons(),
       .unrefined_fuel_price_per_ton = source.getUnrefinedFuelPricePerTon(),
       .accrued_berth_fee_credits = source.getAccruedBerthFeeCredits(),
+      .export_tariff_due_credits = source.getExportTariffDueCredits(),
       .facility_revision = source.getFacilityRevision(),
       .personnel_available = source.getPersonnelAvailable(),
       .banking_available = source.getBankingAvailable(),

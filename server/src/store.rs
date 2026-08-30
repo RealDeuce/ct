@@ -18785,6 +18785,7 @@ impl Store {
         let current_second = get_meta_u64(self.meta, txn, META_GAME_SECOND)?.unwrap_or(0);
         let fuel_capacity_millitons = effective_fuel_capacity(&ship, &spec);
         let cargo_capacity_millitons = effective_cargo_capacity(&ship, &spec);
+        let export_tariff_due_credits = self.export_tariff_due_in(txn, &ship)?;
         let restricted_credits = self
             .finances
             .get(txn, &ship_finance_key(ship.ship_id))?
@@ -18821,6 +18822,7 @@ impl Store {
                 arrived_second,
                 current_second,
             ),
+            export_tariff_due_credits,
             facility_revision: facility.revision,
             personnel_available: facility.operational && facility.personnel_exchange,
             banking_available: facility.operational && facility.banking,
@@ -44242,7 +44244,7 @@ fn decode_known_warrant(
 
 fn encode_outcome(outcome: &Outcome) -> Result<Vec<u8>, StoreError> {
     let mut bytes = Vec::new();
-    bytes.push(30);
+    bytes.push(31);
     bytes.extend_from_slice(&outcome.command_id);
     bytes.extend_from_slice(&outcome.committed_sequence.to_be_bytes());
     bytes.extend_from_slice(&outcome.revision.to_be_bytes());
@@ -44564,6 +44566,7 @@ fn decode_outcome(bytes: &[u8]) -> Result<Outcome, StoreError> {
         && version != 28
         && version != 29
         && version != 30
+        && version != 31
     {
         return Err(StoreError::Corrupt("unsupported outcome version"));
     }
@@ -48824,6 +48827,7 @@ fn encode_docked_snapshot_into(
     bytes.push(snapshot.clearance_required as u8);
     bytes.extend_from_slice(&snapshot.restricted_credits.to_be_bytes());
     bytes.extend_from_slice(&snapshot.current_game_second.to_be_bytes());
+    bytes.extend_from_slice(&snapshot.export_tariff_due_credits.to_be_bytes());
     Ok(())
 }
 
@@ -49275,6 +49279,7 @@ fn decode_docked_snapshot(
         unrefined_fuel_millitons: decoder.u64()?,
         unrefined_fuel_price_per_ton: decoder.u64()?,
         accrued_berth_fee_credits: decoder.u64()?,
+        export_tariff_due_credits: 0,
         cargo_used_millitons: decoder.u64()?,
         cargo_capacity_millitons: decoder.u64()?,
         facility_revision: decoder.u64()?,
@@ -49289,6 +49294,9 @@ fn decode_docked_snapshot(
     }
     if outcome_version >= 13 {
         snapshot.current_game_second = decoder.u64()?;
+    }
+    if outcome_version >= 31 {
+        snapshot.export_tariff_due_credits = decoder.u64()?;
     }
     Ok(snapshot)
 }
@@ -51757,7 +51765,7 @@ mod tests {
     }
 
     #[test]
-    fn docked_snapshot_outcome_preserves_clock_and_reads_version_twelve() {
+    fn docked_snapshot_outcome_preserves_tariff_and_reads_legacy_versions() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
         initialize_player_fixture(&store);
@@ -51782,14 +51790,25 @@ mod tests {
         let encoded = encode_outcome(&outcome).unwrap();
         assert_eq!(decode_outcome(&encoded).unwrap(), outcome);
 
+        let mut version_thirty = encoded.clone();
+        version_thirty[0] = 30;
+        version_thirty.truncate(version_thirty.len() - 8);
+        let decoded = decode_outcome(&version_thirty).unwrap();
+        let OutcomeKind::DockedSnapshot(legacy) = decoded.kind else {
+            panic!("expected docked snapshot");
+        };
+        assert_eq!(legacy.current_game_second, snapshot.current_game_second);
+        assert_eq!(legacy.export_tariff_due_credits, 0);
+
         let mut version_twelve = encoded;
         version_twelve[0] = 12;
-        version_twelve.truncate(version_twelve.len() - 8);
+        version_twelve.truncate(version_twelve.len() - 16);
         let decoded = decode_outcome(&version_twelve).unwrap();
         let OutcomeKind::DockedSnapshot(legacy) = decoded.kind else {
             panic!("expected docked snapshot");
         };
         assert_eq!(legacy.current_game_second, 0);
+        assert_eq!(legacy.export_tariff_due_credits, 0);
         assert_eq!(legacy.restricted_credits, snapshot.restricted_credits);
     }
 
@@ -66880,6 +66899,13 @@ mod tests {
             _ => unreachable!(),
         };
         assert!(tariff > 0);
+        assert_eq!(
+            store
+                .docked_snapshot_in(&txn, &identity())
+                .unwrap()
+                .export_tariff_due_credits,
+            tariff
+        );
         assert!(matches!(
             store
                 .begin_locus_transit_in(
