@@ -546,6 +546,13 @@ publicly mapped system also identifies its home BBS and current polity and
 League affiliation when known. Private, withheld, secret, and merely
 dispatched mapping states do not disclose that affiliation.
 
+After choosing the system, choose the first place the ship should reach there:
+the primary starport or a named world, moon, gas giant, or planetoid belt. Then
+choose standard emergence nearest that destination or a more distant private
+offset. Breakout never places the ship at the destination itself; the Flight
+Plan includes the resulting interplanetary maneuver. Use **Add in-system stop**
+for more local destinations, or add another charted leg for the next Jump.
+
 When the ship reaches an unmapped system, you may publish it, file it directly,
 withhold it, or mark it secret. Read the prompt: disclosure choices have
 different privacy and cost consequences.

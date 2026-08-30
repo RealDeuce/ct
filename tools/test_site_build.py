@@ -4209,6 +4209,14 @@ class CatalogRecordTests(unittest.TestCase):
         self.assertIn("The posture DM is +1 for Fight or Board", page)
         self.assertIn("no outcome distinct from that non-surrender", page)
 
+    def test_game_rules_explain_targeted_emergence_and_local_maneuver(self) -> None:
+        page = SITE_BUILD.rules_page()
+        self.assertIn("first in-system destination", page)
+        self.assertIn("nearest the filed first in-system destination", page)
+        self.assertIn("ordinary interplanetary travel", page)
+        self.assertIn("world or moon, gas giant, or belt", page)
+        self.assertIn("A fresh tape is purchased while clearing a berth", page)
+
     def test_game_rules_publish_nav_rank_and_prize_numbers(self) -> None:
         careers = (ROOT / "server" / "src" / "careers.rs").read_text(
             encoding="utf-8"

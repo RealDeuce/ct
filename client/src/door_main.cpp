@@ -10017,7 +10017,9 @@ void remove_unfinished_flight_plan(ct::FlightPlanProposal& proposal,
    proposal.preserve_active_step = false;
 }
 
-bool configure_jump_navigation(ct::FlightPlanAction& action)
+bool configure_jump_navigation(
+   ct::FlightPlanAction& action,
+   const bool offer_advanced_arrival = false)
 {
    door_option_prompt({
       "[O] Plot aboard",
@@ -10048,22 +10050,37 @@ bool configure_jump_navigation(ct::FlightPlanAction& action)
    action.proceed_on_known_bad_plot = risk == 'P';
    if(action.kind == ct::FlightPlanActionKind::Jump) {
       door_information(
-         "Standard arrival uses the published inbound locus. The outbound locus "
-         "conflicts with departing traffic. A private arrival avoids routine locus "
-         "contacts but lengthens the port approach; docking inspection still applies.\n\r");
-      door_option_prompt({
-         "[S/Enter] Standard arrival",
-         "[D] Outbound departure locus",
-         "[R] Private remote arrival",
-         "[Q] Cancel",
-      }, false);
+         offer_advanced_arrival
+         ? "Standard emergence uses the safe point nearest the selected in-system "
+           "destination. A private emergence uses a more distant offset point. "
+           "The outbound locus is an advanced wrong-lane choice that conflicts "
+           "with departing traffic.\n\r"
+         : "Standard emergence uses the safe point nearest the selected in-system "
+           "destination. A private emergence uses a more distant offset point "
+           "and lengthens the normal-space maneuver.\n\r");
+      if(offer_advanced_arrival) {
+         door_option_prompt({
+            "[S/Enter] Standard emergence",
+            "[R] Private offset emergence",
+            "[D] Outbound departure locus",
+            "[Q] Cancel",
+         }, false);
+      } else {
+         door_option_prompt({
+            "[S/Enter] Standard emergence",
+            "[R] Private offset emergence",
+            "[Q] Cancel",
+         }, false);
+      }
       auto arrival = static_cast<char>(
                         std::toupper(static_cast<unsigned char>(od_get_key(TRUE))));
       od_printf("\n\r");
       if(arrival == '\r' || arrival == '\n') {
          arrival = 'S';
       }
-      if(arrival == 'Q' || (arrival != 'S' && arrival != 'D' && arrival != 'R')) {
+      if(arrival == 'Q'
+            || (arrival != 'S' && arrival != 'R'
+                && (!offer_advanced_arrival || arrival != 'D'))) {
          return false;
       }
       action.remote_arrival = arrival == 'R';
@@ -10090,6 +10107,101 @@ ct::FlightPlanStep primary_dock_step(
          .world_id = system_id,
          .facility_id = system_id},
    };
+}
+
+ct::FlightPlanStep body_hold_step(
+   const uint64_t system_id,
+   const uint32_t body_id,
+   const ct::WaypointAuthority authority)
+{
+   return ct::FlightPlanStep{
+      .locus = ct::FlightLocus{
+         .kind = ct::FlightLocusKind::Body,
+         .system_id = system_id,
+         .world_id = 0,
+         .facility_id = 0,
+         .body_id = body_id},
+      .authority = authority,
+      .action = ct::FlightPlanAction{
+         .kind = ct::FlightPlanActionKind::Hold},
+   };
+}
+
+std::optional<ct::FlightPlanStep> select_in_system_destination(
+   const ct::KnownDestinations& destinations,
+   const uint64_t system_id,
+   const char* title,
+   const ct::WaypointAuthority authority)
+{
+   const auto system = std::find_if(
+      destinations.systems.begin(), destinations.systems.end(),
+      [system_id](const auto& candidate) { return candidate.system_id == system_id; });
+   if(system == destinations.systems.end()) {
+      door_warning("That system has no carried in-system navigation catalogue.\n\r");
+      wait_for_enter();
+      return std::nullopt;
+   }
+   door_heading("%s\n\r", title);
+   door_number("1");
+   door_label(". ");
+   door_identifier("%s starport", safe_field(system->world_name).c_str());
+   door_label(" [dock]\n\r");
+   for(size_t index = 0; index < system->navigation_targets.size(); ++index) {
+      const auto& target = system->navigation_targets[index];
+      const char* kind = "world";
+      switch(target.kind) {
+      case ct::InSystemNavigationTargetKind::RockyBody:
+         kind = target.primary_world ? "primary world vicinity" : "world or moon";
+         break;
+      case ct::InSystemNavigationTargetKind::GasGiant:
+         kind = "gas giant";
+         break;
+      case ct::InSystemNavigationTargetKind::PlanetoidBelt:
+         kind = "planetoid belt";
+         break;
+      }
+      door_number("%zu", index + 2);
+      door_label(". ");
+      door_identifier("%s", safe_field(target.name).c_str());
+      door_label(" [%s]\n\r", kind);
+   }
+   const auto selected = input_number(
+      "First destination", 1, system->navigation_targets.size() + 1);
+   if(!selected) {
+      return std::nullopt;
+   }
+   if(*selected == 1) {
+      return primary_dock_step(system_id, authority);
+   }
+   const auto& target = system->navigation_targets[*selected - 2];
+   return body_hold_step(system_id, target.body_id, authority);
+}
+
+std::string in_system_destination_name(
+   const ct::FlightPlanStep& step,
+   const ct::KnownDestinations& destinations)
+{
+   if(step.action.kind == ct::FlightPlanActionKind::Dock) {
+      return "primary starport";
+   }
+   if(step.action.kind == ct::FlightPlanActionKind::Hold
+         && step.locus.kind == ct::FlightLocusKind::Body) {
+      for(const auto& system : destinations.systems) {
+         if(system.system_id != step.locus.system_id) {
+            continue;
+         }
+         const auto target = std::find_if(
+            system.navigation_targets.begin(), system.navigation_targets.end(),
+            [&step](const auto& candidate) {
+               return candidate.body_id == step.locus.body_id;
+            });
+         if(target != system.navigation_targets.end()) {
+            return target->name;
+         }
+      }
+      return "charted body";
+   }
+   return {};
 }
 
 ct::FlightPlanStep purchase_fuel_step(
@@ -10230,7 +10342,9 @@ std::vector<LogicalRouteItem> logical_route_items(const ct::FlightPlanProposal& 
       }
       if(proposal.steps[index].action.kind == ct::FlightPlanActionKind::Jump
             && index + 1 < proposal.steps.size()
-            && proposal.steps[index + 1].action.kind == ct::FlightPlanActionKind::Dock) {
+            && (proposal.steps[index + 1].action.kind == ct::FlightPlanActionKind::Dock
+                || (proposal.steps[index + 1].action.kind == ct::FlightPlanActionKind::Hold
+                    && proposal.steps[index + 1].locus.kind == ct::FlightLocusKind::Body))) {
          index += 2;
       } else if(proposal.steps[index].action.kind == ct::FlightPlanActionKind::BeltCycle
                 && index + 1 < proposal.steps.size()
@@ -10271,9 +10385,20 @@ std::string logical_route_item_name(const ct::FlightPlanProposal& proposal,
                 ? "Hold at conventional arrival locus"
                 : "Hold at conventional departure locus";
       }
+      if(step.action.kind == ct::FlightPlanActionKind::Hold
+            && step.locus.kind == ct::FlightLocusKind::Body) {
+         return "Travel to " + in_system_destination_name(step, destinations);
+      }
       return flight_plan_action_name(proposal.steps[item.begin].action, destinations);
    }
    auto name = flight_plan_action_name(jump->action, destinations);
+   const auto arrival = std::next(jump);
+   if(arrival != proposal.steps.begin() + item.end) {
+      const auto destination = in_system_destination_name(*arrival, destinations);
+      if(!destination.empty()) {
+         name += "; then " + destination;
+      }
+   }
    if(jump != proposal.steps.begin() + item.begin) {
       name += " (fuel first)";
    }
@@ -10350,6 +10475,13 @@ bool rebase_future_route(ct::FlightPlanProposal& proposal,
       };
       const auto destination_system = jump->action.destination_system_id;
       for(auto step = std::next(jump); step != proposal.steps.begin() + item.end; ++step) {
+         if(step->action.kind == ct::FlightPlanActionKind::Hold
+               && step->locus.kind == ct::FlightLocusKind::Body) {
+            if(step->locus.system_id != destination_system) {
+               return false;
+            }
+            continue;
+         }
          if(step->action.kind != ct::FlightPlanActionKind::Dock) {
             return false;
          }
@@ -10488,14 +10620,24 @@ void edit_logical_route_item(ct::FlightPlanProposal& proposal,
          destinations, "Replace Destination", jump->locus.system_id,
          jump->locus.system_id, true);
       if(selected_destination) {
-         jump->action.destination_system_id = (*selected_destination)->system_id;
-         const auto dock = std::find_if(std::next(jump), proposal.steps.begin() + item.end,
-            [](const auto& step) { return step.action.kind == ct::FlightPlanActionKind::Dock; });
-         if(dock != proposal.steps.begin() + item.end) {
-            const auto terminal = dock->terminal;
-            const auto authority = dock->authority;
-            *dock = primary_dock_step((*selected_destination)->system_id, authority);
-            dock->terminal = terminal;
+         const auto destination_system_id = (*selected_destination)->system_id;
+         const auto existing_destination = std::next(jump);
+         const auto authority = existing_destination != proposal.steps.begin() + item.end
+                                ? existing_destination->authority
+                                : ct::WaypointAuthority::Hold;
+         const auto terminal = existing_destination != proposal.steps.begin() + item.end
+                               && existing_destination->terminal;
+         auto local_destination = select_in_system_destination(
+            destinations, destination_system_id, "First In-System Destination", authority);
+         if(!local_destination) {
+            return;
+         }
+         local_destination->terminal = terminal;
+         jump->action.destination_system_id = destination_system_id;
+         if(existing_destination != proposal.steps.begin() + item.end) {
+            *existing_destination = *local_destination;
+         } else {
+            proposal.steps.insert(proposal.steps.begin() + item.end, *local_destination);
          }
          if(active) {
             proposal.preserve_active_step = false;
@@ -10514,7 +10656,7 @@ void edit_logical_route_item(ct::FlightPlanProposal& proposal,
                wait_for_enter();
                return;
             }
-            if(!configure_jump_navigation(action)) {
+            if(!configure_jump_navigation(action, true)) {
                return;
             }
             if(action.kind == ct::FlightPlanActionKind::Jump
@@ -10540,40 +10682,26 @@ void edit_logical_route_item(ct::FlightPlanProposal& proposal,
                      : ct::JumpLocusRole::Departure;
                   step.locus.remote_arrival = false;
                }
-               door_information(
-                  "After emergence the ship may continue to port or hold at the "
-                  "selected arrival point for later orders.\n\r");
-               door_option_prompt({
-                  "[P/Enter] Approach primary port",
-                  "[H] Hold at arrival",
-                  "[Q] Keep current route",
-               }, false);
-               auto arrival_order = static_cast<char>(std::toupper(
-                  static_cast<unsigned char>(door_get_live_key())));
-               od_printf("\n\r");
-               if(arrival_order == '\r' || arrival_order == '\n') {
-                  arrival_order = 'P';
-               }
-               if(arrival_order == 'H') {
-                  proposal.steps.erase(proposal.steps.begin() + index + 1,
-                                       proposal.steps.begin() + item.end);
-                  proposal.steps[index].authority = ct::WaypointAuthority::Hold;
+               const auto destination_index = index + 1;
+               const auto authority = destination_index < item.end
+                                      ? proposal.steps[destination_index].authority
+                                      : ct::WaypointAuthority::Hold;
+               const auto terminal = destination_index < item.end
+                                     && proposal.steps[destination_index].terminal;
+               auto local_destination = select_in_system_destination(
+                  destinations, action.destination_system_id,
+                  "First In-System Destination", authority);
+               if(local_destination) {
+                  local_destination->terminal = terminal;
+                  if(destination_index < item.end) {
+                     proposal.steps[destination_index] = *local_destination;
+                  } else {
+                     proposal.steps.insert(
+                        proposal.steps.begin() + destination_index, *local_destination);
+                  }
                   route_structure_changed = true;
-                  break;
                }
-               if(arrival_order == 'P'
-                     && std::none_of(proposal.steps.begin() + index + 1,
-                                     proposal.steps.begin() + item.end,
-                                     [](const auto& candidate) {
-                        return candidate.action.kind == ct::FlightPlanActionKind::Dock;
-                     })) {
-                  proposal.steps.insert(
-                     proposal.steps.begin() + item.end,
-                     primary_dock_step(action.destination_system_id,
-                                       ct::WaypointAuthority::Hold));
-                  route_structure_changed = true;
-                  break;
-               }
+               break;
             }
             return;
          }
@@ -10604,13 +10732,19 @@ void edit_logical_route_item(ct::FlightPlanProposal& proposal,
       const auto selected_destination = select_known_primary(
          destinations, "Insert Charted Leg", origin, origin, true);
       if(selected_destination) {
-         auto jump = jump_step(origin, (*selected_destination)->system_id);
+         const auto destination_system_id = (*selected_destination)->system_id;
+         auto local_destination = select_in_system_destination(
+            destinations, destination_system_id, "First In-System Destination",
+            ct::WaypointAuthority::Through);
+         if(!local_destination) {
+            return;
+         }
+         auto jump = jump_step(origin, destination_system_id);
          if(!configure_jump_navigation(jump.action)) {
             return;
          }
-         auto dock = primary_dock_step((*selected_destination)->system_id,
-                                       ct::WaypointAuthority::Through);
-         proposal.steps.insert(proposal.steps.begin() + insert_at, {jump, dock});
+         proposal.steps.insert(
+            proposal.steps.begin() + insert_at, {jump, *local_destination});
          route_structure_changed = true;
       }
    }
@@ -10707,6 +10841,7 @@ FlightPlanEditorResult run_flight_plan_editor(
       }
       door_option_prompt({
          "[A] Add charted leg",
+         "[M] Add in-system stop",
          "[C] Import plotted course",
          "[E] Edit route item",
          "[R] Route all assigned tasks",
@@ -10799,6 +10934,12 @@ FlightPlanEditorResult run_flight_plan_editor(
             continue;
          }
          const auto destination_system_id = (*selected)->system_id;
+         auto local_destination = select_in_system_destination(
+            destinations, destination_system_id, "First In-System Destination",
+            generated_waypoint_authority(ordinary_route_authority));
+         if(!local_destination) {
+            continue;
+         }
          auto jump = origin_system_id == 0
                      ? jump_step_from_locus(travel.origin, destination_system_id)
                      : jump_step(origin_system_id, destination_system_id);
@@ -10807,10 +10948,24 @@ FlightPlanEditorResult run_flight_plan_editor(
          }
          jump.authority = generated_waypoint_authority(ordinary_route_authority);
          proposal.steps.push_back(jump);
-         proposal.steps.push_back(primary_dock_step(
-                                     destination_system_id,
-                                     generated_waypoint_authority(
-                                        ordinary_route_authority)));
+         proposal.steps.push_back(*local_destination);
+         mark_final_flight_plan_step(proposal);
+      } else if(key == 'M') {
+         const auto system_id = proposal.steps.empty()
+                                ? destinations.current_system_id
+                                : proposal.steps.back().locus.system_id;
+         if(system_id == 0) {
+            door_warning("Choose a charted system before adding an in-system stop.\n\r");
+            wait_for_enter();
+            continue;
+         }
+         auto local_destination = select_in_system_destination(
+            destinations, system_id, "Add In-System Stop",
+            generated_waypoint_authority(ordinary_route_authority));
+         if(!local_destination) {
+            continue;
+         }
+         proposal.steps.push_back(*local_destination);
          mark_final_flight_plan_step(proposal);
       } else if(key == 'C') {
          if(destinations.current_system_id == 0) {

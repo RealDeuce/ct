@@ -633,6 +633,19 @@ enum class SystemKnowledgeSource : uint8_t {
    DirectDispatch, Withheld, SecretChart,
 };
 
+enum class InSystemNavigationTargetKind : uint8_t {
+   RockyBody,
+   GasGiant,
+   PlanetoidBelt,
+};
+
+struct InSystemNavigationTarget {
+   uint32_t body_id;
+   std::string name;
+   InSystemNavigationTargetKind kind;
+   bool primary_world;
+};
+
 struct KnownSystemSummary {
    uint64_t system_id;
    std::string system_name;
@@ -651,6 +664,7 @@ struct KnownSystemSummary {
    SystemKnowledgeSource knowledge_source;
    uint8_t gas_giant_count;
    std::optional<ServerHello::InstitutionalAffiliation> affiliation;
+   std::vector<InSystemNavigationTarget> navigation_targets;
 };
 
 struct KnownDestinations {

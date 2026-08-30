@@ -189,7 +189,14 @@ The UI and server route planner must distinguish:
 - staged range, based on drive rating, carried fuel, power/life-support
   endurance, and permitted turnaround time; and
 - serviced routes, where fuel, tapes, mail, markets, or rescue are actually
-  available.
+available.
+
+A filed charted leg names both a destination system and its first local
+destination. Standard emergence is the safe 100-diameter-clear point nearest
+that selected port or body; private emergence adds a seeded offset and greater
+standoff. Breakout is followed by an ordinary bounded-thrust interplanetary
+maneuver. Subsequent named body or port stops remain separate Flight Plan
+steps, and the route may then continue with another Jump.
 
 The Known Universe course plotter exposes two ship-specific projections. A
 fastest course minimizes elapsed game time; a cheapest course minimizes

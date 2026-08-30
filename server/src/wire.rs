@@ -843,6 +843,22 @@ pub struct KnownSystemSummary {
     pub knowledge_source: SystemKnowledgeSource,
     pub gas_giant_count: u8,
     pub affiliation: Option<InstitutionalAffiliation>,
+    pub navigation_targets: Vec<InSystemNavigationTarget>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InSystemNavigationTargetKind {
+    RockyBody,
+    GasGiant,
+    PlanetoidBelt,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InSystemNavigationTarget {
+    pub body_id: u32,
+    pub name: String,
+    pub kind: InSystemNavigationTargetKind,
+    pub primary_world: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -5714,10 +5730,30 @@ fn set_known_destinations(
         });
         item.set_gas_giant_count(system.gas_giant_count);
         if let Some(affiliation) = &system.affiliation {
-            let mut wire = item.init_affiliation();
+            let mut wire = item.reborrow().init_affiliation();
             wire.set_polity_name(&affiliation.polity_name);
             wire.set_bbs_name(&affiliation.bbs_name);
             wire.set_league_name(affiliation.league_name.as_deref().unwrap_or(""));
+        }
+        let target_count = u32::try_from(system.navigation_targets.len())
+            .map_err(|_| WireError::Expected("fewer in-system navigation targets"))?;
+        let mut targets = item.reborrow().init_navigation_targets(target_count);
+        for (target_index, target) in system.navigation_targets.iter().enumerate() {
+            let mut wire = targets.reborrow().get(target_index as u32);
+            wire.set_body_id(target.body_id);
+            wire.set_name(&target.name);
+            wire.set_kind(match target.kind {
+                InSystemNavigationTargetKind::RockyBody => {
+                    crate::ct_rpc_capnp::InSystemNavigationTargetKind::RockyBody
+                }
+                InSystemNavigationTargetKind::GasGiant => {
+                    crate::ct_rpc_capnp::InSystemNavigationTargetKind::GasGiant
+                }
+                InSystemNavigationTargetKind::PlanetoidBelt => {
+                    crate::ct_rpc_capnp::InSystemNavigationTargetKind::PlanetoidBelt
+                }
+            });
+            wire.set_primary_world(target.primary_world);
         }
     }
     let count = u32::try_from(snapshot.belts.len())

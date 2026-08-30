@@ -867,6 +867,20 @@ struct KnownSystemSummary {
   gasGiantCount @15 :UInt8;
   # Present only when this system's institutional mapping is public.
   affiliation @16 :InstitutionalAffiliation;
+  navigationTargets @17 :List(InSystemNavigationTarget);
+}
+
+enum InSystemNavigationTargetKind {
+  rockyBody @0;
+  gasGiant @1;
+  planetoidBelt @2;
+}
+
+struct InSystemNavigationTarget {
+  bodyId @0 :UInt32;
+  name @1 :Text;
+  kind @2 :InSystemNavigationTargetKind;
+  primaryWorld @3 :Bool;
 }
 
 enum SystemKnowledgeSource {

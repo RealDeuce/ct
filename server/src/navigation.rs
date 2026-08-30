@@ -200,10 +200,11 @@ pub fn rest_to_rest_travel_days(distance_au: f64, thrust_g: f64) -> f64 {
     seconds / SECONDS_PER_GAME_DAY
 }
 
-fn primary_world_safety_on_ray(
+fn body_safety_on_ray(
     system: &CelestialSystem,
     game_days: f64,
     thrust_g: f64,
+    target_body_id: u32,
     direction: [f64; 3],
     minimum_distance_au: f64,
 ) -> JumpSafetySolution {
@@ -213,12 +214,12 @@ fn primary_world_safety_on_ray(
     let direction = scale(direction, 1.0 / direction_magnitude);
     let star_positions = star_positions(system, game_days);
     let body_positions = body_positions(system, game_days, &star_positions);
-    let primary_index = system
+    let target_index = system
         .bodies
         .iter()
-        .position(|body| body.is_primary_world)
-        .expect("derived systems always contain a primary world body");
-    let origin = body_positions[primary_index];
+        .position(|body| body.local_id == target_body_id)
+        .expect("arrival target must name a generated body");
+    let origin = body_positions[target_index];
 
     let mut spheres = Vec::with_capacity(system.stars.len() + system.bodies.len() + 1);
     for (star, position) in system.stars.iter().zip(&star_positions) {
@@ -252,6 +253,23 @@ fn primary_world_safety_on_ray(
     }
 }
 
+fn primary_world_safety_on_ray(
+    system: &CelestialSystem,
+    game_days: f64,
+    thrust_g: f64,
+    direction: [f64; 3],
+    minimum_distance_au: f64,
+) -> JumpSafetySolution {
+    body_safety_on_ray(
+        system,
+        game_days,
+        thrust_g,
+        system.primary_world_body().local_id,
+        direction,
+        minimum_distance_au,
+    )
+}
+
 /// Find the conventional safe departure locus for the primary world.
 ///
 /// The point is outside the 100-diameter exclusion spheres of every star and
@@ -274,6 +292,23 @@ pub fn primary_world_arrival_safety(
     thrust_g: f64,
 ) -> JumpSafetySolution {
     primary_world_safety_on_ray(system, game_days, thrust_g, [0.0, 0.0, -1.0], 0.0)
+}
+
+/// Find the standard safe arrival locus nearest a selected in-system body.
+pub fn body_arrival_safety(
+    system: &CelestialSystem,
+    game_days: f64,
+    thrust_g: f64,
+    target_body_id: u32,
+) -> JumpSafetySolution {
+    body_safety_on_ray(
+        system,
+        game_days,
+        thrust_g,
+        target_body_id,
+        [0.0, 0.0, -1.0],
+        0.0,
+    )
 }
 
 /// Find a private, deliberately distant arrival point. The seed selects an
@@ -305,6 +340,44 @@ pub fn primary_world_remote_arrival_safety(
     let minimum_distance = primary_world_arrival_safety(system, game_days, thrust_g).distance_au
         + rest_to_rest_distance_au(MINIMUM_JUMP_APPROACH_DAYS, thrust_g);
     primary_world_safety_on_ray(system, game_days, thrust_g, direction, minimum_distance)
+}
+
+/// Find a private offset arrival locus nearest a selected in-system body.
+pub fn body_remote_arrival_safety(
+    system: &CelestialSystem,
+    game_days: f64,
+    thrust_g: f64,
+    target_body_id: u32,
+    seed: u64,
+) -> JumpSafetySolution {
+    fn mixed(mut value: u64) -> u64 {
+        value = (value ^ (value >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        value = (value ^ (value >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        value ^ (value >> 31)
+    }
+    let component = |salt: u64| {
+        let value = mixed(seed ^ salt) >> 11;
+        value as f64 / ((1_u64 << 53) - 1) as f64 * 2.0 - 1.0
+    };
+    let mut direction = [
+        component(0x434f_5245_5741_5244),
+        component(0x5350_494e_5741_5244),
+        component(0x4e4f_5254_4857_4152),
+    ];
+    if magnitude(direction) < 1.0e-6 {
+        direction = [1.0, 1.0, 0.5];
+    }
+    let minimum_distance = body_arrival_safety(system, game_days, thrust_g, target_body_id)
+        .distance_au
+        + rest_to_rest_distance_au(MINIMUM_JUMP_APPROACH_DAYS, thrust_g);
+    body_safety_on_ray(
+        system,
+        game_days,
+        thrust_g,
+        target_body_id,
+        direction,
+        minimum_distance,
+    )
 }
 
 /// Find the quickest gas-giant skimming detour from the primary world's safe
@@ -730,5 +803,37 @@ mod tests {
         assert!(arrival.locus_au[2] < primary[2]);
         assert!(remote.travel_days > arrival.travel_days);
         assert_ne!(remote.locus_au, arrival.locus_au);
+    }
+
+    #[test]
+    fn selected_body_arrivals_clear_every_exclusion_sphere() {
+        let system = sol();
+        let day = 119.0;
+        let target = system
+            .bodies
+            .iter()
+            .find(|body| !body.is_primary_world)
+            .unwrap();
+        let standard = body_arrival_safety(&system, day, 1.0, target.local_id);
+        let remote = body_remote_arrival_safety(&system, day, 1.0, target.local_id, 0xabc1_2345);
+        let stars = star_positions(&system, day);
+        let bodies = body_positions(&system, day, &stars);
+        for locus in [standard.locus_au, remote.locus_au] {
+            for (star, position) in system.stars.iter().zip(&stars) {
+                assert!(
+                    magnitude(subtract(locus, *position))
+                        >= jump_exclusion_radius_au(star.diameter_km())
+                );
+            }
+            for (body, position) in system.bodies.iter().zip(&bodies) {
+                assert!(
+                    magnitude(subtract(locus, *position))
+                        >= jump_exclusion_radius_au(body.diameter_km())
+                );
+            }
+        }
+        let target_position = body_position_au(&system, day, target.local_id).unwrap();
+        assert!(standard.locus_au[2] < target_position[2]);
+        assert!(remote.travel_days > standard.travel_days);
     }
 }

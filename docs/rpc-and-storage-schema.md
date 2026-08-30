@@ -202,8 +202,10 @@ The ship record stores either a docked location or a complete active
 `FlightLegRecord`. A leg owns its plan identity and revision, sequence index,
 typed endpoints, start/due seconds, and typed purpose.
 
-Interstellar travel is three distinct legs: port to departure locus, departure
-locus through Jump to an arrival locus, and arrival locus to port. Frontier fueling is also
+Interstellar travel is three distinct legs: the current local destination to a
+departure locus, that locus through Jump to a safe arrival point associated
+with the filed first in-system destination, and ordinary interplanetary travel
+from emergence to the selected port or body. Frontier fueling is also
 explicitly three legs: port to source body, work at the body, and return to
 port. Each boundary is independently scheduled, so contact checks can attach
 to the correct locus without inferring direction from a Boolean.
@@ -214,8 +216,10 @@ leg states. Global `resource-lodes` records own composition, grade, extent,
 and depletion; `resource-observations` separately key private captain
 knowledge. No record grants an exclusive claim. Ship records retain exact
 power-fuel settlement time and fractional burn, while mined cargo lots retain
-source body and lode IDs. Ship codec version 4 adds distinct conventional and
-private arrival loci; it reads versions 1 through 3 with zero
+source body and lode IDs. Ship codec version 5 adds a targeted arrival locus
+that durably records the selected body, private offset seed, and system while a
+ship is in Jump. Version 4 added distinct conventional and private primary-world
+arrival loci; the reader accepts versions 1 through 5 with zero
 cargo provenance, a no-retroactive-burn timestamp sentinel, and legacy frontier
 work interpreted as refined with no recorded processing Effect. Version 3
 stores explicit collection output, processing Effect/damage, and standalone
@@ -240,8 +244,10 @@ proposal flag that preserves an unchanged active operation while future items
 are revised. Version 4 added the per-collection refine choice and standalone
 refine action; readers retain versions 1 through 6. Authoritative
 preview includes per-step normal and failed fuel-operation timings. Retained
-outcome codec version 28 adds per-source frontier-fuel round-trip distance and
-travel time to docked-service quotations. Version 27 preserves account-ledger
+outcome codec version 29 adds each known system's named rocky-body, gas-giant,
+and planetoid-belt navigation targets, including the primary-world marker.
+Version 28 added per-source frontier-fuel round-trip distance and travel time to
+docked-service quotations. Version 27 preserves account-ledger
 observation replay; version 26 preserves the new locus and maneuver stage in addition
 to the version-25 timings, quotation, and
 activity metadata, terminal reports, BBS/League affiliation, effective fuel

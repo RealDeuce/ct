@@ -1172,7 +1172,17 @@ KnownDestinations decode_known_destinations(const rpc::Response::Reader response
                        ? std::nullopt
                        : std::optional<std::string>{affiliation.getLeagueName().cStr()},
                  }},
+         .navigation_targets = {},
       });
+      auto& decoded = result.systems.back();
+      for(const auto target : system.getNavigationTargets()) {
+         decoded.navigation_targets.push_back(InSystemNavigationTarget{
+            .body_id = target.getBodyId(),
+            .name = target.getName().cStr(),
+            .kind = static_cast<InSystemNavigationTargetKind>(target.getKind()),
+            .primary_world = target.getPrimaryWorld(),
+         });
+      }
    }
    for(const auto belt : source.getBelts()) {
       result.belts.push_back(KnownDestinations::Belt{

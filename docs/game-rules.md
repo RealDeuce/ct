@@ -1051,9 +1051,11 @@ terminal marker is always attached to the last step and ends the plan after
 that step completes. Filing commits only the reviewed revision. Completed
 steps and accepted custody cannot be undone by editing later steps.
 
-The door presents adjacent implementation steps as logical route items: for
-example, a port fuel purchase, Jump, and destination docking form one charted
-leg. Any future item can have its checkpoint authority or settings changed,
+The door presents adjacent implementation steps as logical route items. A new
+charted leg first selects the target system, then its first in-system
+destination (port, world or moon, gas giant, or belt), and finally standard or
+private/offset emergence. The Jump and its first normal-space maneuver form one
+charted leg; further in-system stops or another Jump can follow. Any future item can have its checkpoint authority or settings changed,
 be deleted, or have a charted leg inserted before or after it. The active
 physical operation cannot simply disappear, but an active normal-space
 destination can be redirected. Future items can be reordered and charted
@@ -1195,6 +1197,10 @@ is an Average EDU/Engineer (Jump) task taking 1D6 x 10 seconds. Its Effect
 contributes to the Jump success result. Drive damage and unrefined fuel apply
 normally.
 
+A fresh tape is purchased while clearing a berth. A Jump that follows a body
+or traffic-locus stop without docking must use onboard plotting; returning to
+port makes a new tape purchase possible.
+
 The Jump success total is:
 
 **2D6 + initiation Effect - 2 per Jump-drive hit - 2 if any Jump fuel burned
@@ -1226,15 +1232,16 @@ not one report per damage hit. Combat damage remains aggregated in the combat,
 encounter-result, and Command Loss Report procedures instead of entering this
 non-combat report queue.
 
-A standard emergence uses the published arrival locus and is exposed to its
-ordinary traffic, enforcement, and piracy risks. A private arrival uses a
-seeded unpredictable safe direction and additional standoff distance. It avoids
-the ordinary arrival-locus contact check but lengthens the port approach. It
-does not bypass port law: docking still performs the port contact/inspection
-procedure, and high-law ports require inspection there. Deliberately emerging
-at the published departure locus is also possible, but conflicts with outbound
-traffic and carries the same increased contact risk as using the wrong lane for
-departure.
+A standard emergence uses a safe point outside every 100-diameter exclusion
+zone and nearest the filed first in-system destination. The ship then performs
+ordinary interplanetary travel to that port or named body. A private emergence
+uses a seeded offset direction and additional standoff distance from the same
+target. It avoids the ordinary published-arrival contact check but lengthens
+the normal-space maneuver. It does not bypass port law: a later docking still
+performs the port contact/inspection procedure, and high-law ports require
+inspection there. Deliberately emerging at the primary world's published
+departure locus remains possible, but conflicts with outbound traffic and
+carries the same increased contact risk as using the wrong lane for departure.
 
 ### Staged Jump and frontier fuel
 
