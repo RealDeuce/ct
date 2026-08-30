@@ -20624,8 +20624,12 @@ impl Store {
             {
                 reasons.push("This offer has already been accepted.".into());
             }
-            if unreserved_credits >= offer.collateral_credits
-                && unreserved_credits.saturating_sub(offer.collateral_credits) < liquid_berth_fee
+            if unreserved_credits < offer.collateral_credits {
+                reasons.push(format!(
+                    "The offer requires Cr{} collateral; only Cr{unreserved_credits} is unreserved.",
+                    offer.collateral_credits
+                ));
+            } else if unreserved_credits.saturating_sub(offer.collateral_credits) < liquid_berth_fee
             {
                 let remaining = unreserved_credits.saturating_sub(offer.collateral_credits);
                 reasons.push(format!(
@@ -64260,7 +64264,7 @@ mod tests {
     }
 
     #[test]
-    fn task_ledger_marks_offers_that_leave_insufficient_departure_cash_and_hold_capacity() {
+    fn task_ledger_marks_offers_without_collateral_departure_cash_or_hold_capacity() {
         let dir = TempDir::new().unwrap();
         let store = Store::open(dir.path()).unwrap();
         initialize_player_fixture(&store);
@@ -64330,10 +64334,52 @@ mod tests {
                 .any(|reason| reason.contains("hold space"))
         );
 
+        let existing_task_id = 9_001;
+        let existing_task = test_task(
+            identity(),
+            existing_task_id,
+            test_task_offer(
+                9_002,
+                ship.system_id,
+                ship.system_id,
+                crate::wire::TaskKind::Freight,
+            ),
+            0,
+        );
+        let mut txn = store.env.write_txn().unwrap();
+        store
+            .tasks
+            .put(
+                &mut txn,
+                &existing_task_id.to_be_bytes(),
+                &encode_stored_task(&existing_task).unwrap(),
+            )
+            .unwrap();
+        txn.commit().unwrap();
+        let reserved_ledger = store
+            .task_ledger_in(&store.env.read_txn().unwrap(), &identity())
+            .unwrap();
+        let reserved_listed = reserved_ledger
+            .local_offers
+            .iter()
+            .find(|candidate| candidate.offer_id == offer_id)
+            .unwrap();
+        assert_eq!(reserved_ledger.reserved_credits, 10_000);
+        assert!(
+            reserved_listed
+                .unavailable_reasons
+                .iter()
+                .any(|reason| reason.contains("only Cr") && reason.contains("is unreserved")),
+            "an offer that acceptance would reject must not be projected as available"
+        );
+
         let mut encoded = Vec::new();
-        encode_task_ledger_into(&mut encoded, &ledger).unwrap();
+        encode_task_ledger_into(&mut encoded, &reserved_ledger).unwrap();
         let mut decoder = Decoder::new(&encoded);
-        assert_eq!(decode_task_ledger(&mut decoder, 19).unwrap(), ledger);
+        assert_eq!(
+            decode_task_ledger(&mut decoder, 19).unwrap(),
+            reserved_ledger
+        );
         decoder.finish().unwrap();
     }
 
