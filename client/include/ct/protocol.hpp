@@ -2429,6 +2429,11 @@ MarketSnapshot cancel_work_assignment(TlsConnection&,
                                       uint64_t,
                                       const std::array<uint8_t, 16>&,
                                       uint64_t);
+MarketSnapshot dismiss_work_assignment(TlsConnection&,
+                                       uint64_t,
+                                       uint64_t,
+                                       const std::array<uint8_t, 16>&,
+                                       uint64_t);
 MarketSnapshot reserve_market_lead(
    TlsConnection&,
    uint64_t session_epoch,

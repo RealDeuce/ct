@@ -181,6 +181,7 @@ struct Request {
     beginMarketNegotiation @86 :BeginMarketNegotiationRequest;
     acceptMarketQuote @87 :MarketQuoteActionRequest;
     rejectMarketQuote @88 :MarketQuoteActionRequest;
+    dismissWorkAssignment @89 :DismissWorkAssignmentRequest;
     acknowledgeTerminalReport @77 :AcknowledgeTerminalReportRequest;
     getBrowserAlertStatus @78 :Void;
     createBrowserAlertEnrollment @79 :Void;
@@ -1158,6 +1159,10 @@ struct MarketQuoteActionRequest {
 }
 
 struct CancelWorkAssignmentRequest {
+  assignmentId @0 :UInt64;
+}
+
+struct DismissWorkAssignmentRequest {
   assignmentId @0 :UInt64;
 }
 

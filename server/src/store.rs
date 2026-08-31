@@ -1935,6 +1935,7 @@ fn account_command_summary(command: &Command) -> &'static str {
         Command::AcceptMarketQuote { .. } => "Negotiated market quote accepted",
         Command::RejectMarketQuote { .. } => "Negotiated market quote rejected",
         Command::CancelWorkAssignment { .. } => "Work assignment cancelled",
+        Command::DismissWorkAssignment { .. } => "Work assignment dismissed",
         Command::CommitDockedService(_) => "Dockside service purchased",
         Command::ReserveMarketLead { .. } => "Market purchase funds reserved",
         Command::ReleaseMarketReservation { .. } => "Market reservation released",
@@ -6374,6 +6375,15 @@ impl Store {
             },
             Command::CancelWorkAssignment { assignment_id } => {
                 match self.cancel_work_assignment_in(txn, &queued.identity, assignment_id)? {
+                    RuleResult::Applied(v) => OutcomeKind::Market(v),
+                    RuleResult::Rejected(message) => OutcomeKind::Error {
+                        code: ErrorCode::InvalidCommand,
+                        message,
+                    },
+                }
+            }
+            Command::DismissWorkAssignment { assignment_id } => {
+                match self.dismiss_work_assignment_in(txn, &queued.identity, assignment_id)? {
                     RuleResult::Applied(v) => OutcomeKind::Market(v),
                     RuleResult::Rejected(message) => OutcomeKind::Error {
                         code: ErrorCode::InvalidCommand,
@@ -25419,6 +25429,37 @@ impl Store {
         Ok(RuleResult::Applied(self.market_snapshot_in(txn, identity)?))
     }
 
+    fn dismiss_work_assignment_in(
+        &self,
+        txn: &mut heed::RwTxn<'_>,
+        identity: &PlayerIdentity,
+        assignment_id: u64,
+    ) -> Result<RuleResult<MarketSnapshot>, StoreError> {
+        let Some(stored) = self
+            .work_assignments
+            .get(txn, &assignment_id.to_be_bytes())?
+            .map(decode_stored_work_assignment)
+            .transpose()?
+        else {
+            return Ok(RuleResult::Rejected(
+                "work assignment does not exist".into(),
+            ));
+        };
+        if stored.identity != *identity {
+            return Ok(RuleResult::Rejected(
+                "work assignment belongs to another command".into(),
+            ));
+        }
+        if stored.assignment.state == crate::wire::WorkState::Scheduled {
+            return Ok(RuleResult::Rejected(
+                "active work must be cancelled before it can be dismissed".into(),
+            ));
+        }
+        self.work_assignments
+            .delete(txn, &assignment_id.to_be_bytes())?;
+        Ok(RuleResult::Applied(self.market_snapshot_in(txn, identity)?))
+    }
+
     fn begin_market_negotiation_in(
         &self,
         txn: &mut heed::RwTxn<'_>,
@@ -42047,6 +42088,10 @@ fn encode_queued(command: &QueuedCommand) -> Result<Vec<u8>, StoreError> {
             bytes.push(46);
             bytes.extend_from_slice(&assignment_id.to_be_bytes());
         }
+        Command::DismissWorkAssignment { assignment_id } => {
+            bytes.push(93);
+            bytes.extend_from_slice(&assignment_id.to_be_bytes());
+        }
         Command::GetCombat => bytes.push(47),
         Command::SubmitCombatOrder(ref order) => {
             bytes.push(48);
@@ -42603,6 +42648,9 @@ fn decode_queued(bytes: &[u8]) -> Result<QueuedCommand, StoreError> {
             expected_revision: decoder.u64()?,
         },
         46 => Command::CancelWorkAssignment {
+            assignment_id: decoder.u64()?,
+        },
+        93 => Command::DismissWorkAssignment {
             assignment_id: decoder.u64()?,
         },
         47 => Command::GetCombat,
@@ -66884,6 +66932,28 @@ mod tests {
             "No matching player-owned speculative cargo remained aboard"
         );
         assert!(market.leads.is_empty());
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(
+                    epoch,
+                    220,
+                    Command::DismissWorkAssignment {
+                        assignment_id: first_assignment_id,
+                    },
+                ),
+            })
+            .unwrap();
+        let dismissed = match store.process_next().unwrap().unwrap().outcome.kind {
+            OutcomeKind::Market(value) => value,
+            other => panic!("expected market after dismissing failed work, got {other:?}"),
+        };
+        assert!(
+            dismissed
+                .work_assignments
+                .iter()
+                .all(|assignment| assignment.assignment_id != first_assignment_id)
+        );
 
         ship.cargo.push(cargo_lot(94, CargoTitle::PlayerOwned));
         let mut txn = store.env.write_txn().unwrap();
@@ -66902,6 +66972,23 @@ mod tests {
             .iter()
             .find(|assignment| assignment.state == crate::wire::WorkState::Scheduled)
             .unwrap();
+        store
+            .enqueue(&QueuedCommand {
+                identity: identity(),
+                request: request(
+                    epoch,
+                    221,
+                    Command::DismissWorkAssignment {
+                        assignment_id: second_assignment.assignment_id,
+                    },
+                ),
+            })
+            .unwrap();
+        assert!(matches!(
+            store.process_next().unwrap().unwrap().outcome.kind,
+            OutcomeKind::Error { message, .. }
+                if message == "active work must be cancelled before it can be dismissed"
+        ));
         store
             .advance_simulation_to(second_assignment.due_second)
             .unwrap();
@@ -67866,6 +67953,18 @@ mod tests {
             request: request(22, 205, Command::CureFinanceDefault),
         };
         assert_eq!(decode_queued(&encode_queued(&cure).unwrap()).unwrap(), cure);
+        let dismiss = QueuedCommand {
+            identity: identity(),
+            request: request(
+                22,
+                206,
+                Command::DismissWorkAssignment { assignment_id: 91 },
+            ),
+        };
+        assert_eq!(
+            decode_queued(&encode_queued(&dismiss).unwrap()).unwrap(),
+            dismiss
+        );
     }
 
     #[test]

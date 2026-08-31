@@ -2762,6 +2762,24 @@ MarketSnapshot cancel_work_assignment(
    return decode_market(checked_response(reader.getRoot<rpc::Envelope>(), id));
 }
 
+MarketSnapshot dismiss_work_assignment(
+   TlsConnection& connection,
+   const uint64_t epoch,
+   const uint64_t assignment_id,
+   const std::array<uint8_t, 16>& id,
+   const uint64_t request_id)
+{
+   capnp::MallocMessageBuilder message;
+   auto envelope = message.initRoot<rpc::Envelope>();
+   auto request = envelope.initRequest();
+   initialize_request(envelope, epoch, request_id, id, request);
+   request.initDismissWorkAssignment().setAssignmentId(assignment_id);
+   send_frame(connection, capnp::messageToFlatArray(message).asBytes());
+   const auto words = receive_response(connection, epoch, request_id);
+   capnp::FlatArrayMessageReader reader(words);
+   return decode_market(checked_response(reader.getRoot<rpc::Envelope>(), id));
+}
+
 MarketSnapshot reserve_market_lead(
    TlsConnection& connection,
    const uint64_t epoch,

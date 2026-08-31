@@ -60,7 +60,10 @@ temporarily receive the ordinary association benefit (Average rather than
 Difficult) until the setting-neutral association is implemented. Completion
 is admitted as `MerchantWork` to the single engine-input queue. Cancelling
 work changes the assignment state; a later already-indexed completion safely
-becomes a no-op.
+becomes a no-op. Finished research remains visible as history until the captain
+explicitly dismisses it. Dismissal permanently deletes only a completed,
+failed, or cancelled assignment record; an active assignment must be cancelled
+first, and dismissing history does not remove any counterparty lead it created.
 
 A buyer search requires a positive quantity of matching player-owned
 speculative cargo aboard the commanded ship. Freight, contract cargo, and

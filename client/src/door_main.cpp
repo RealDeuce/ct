@@ -9119,6 +9119,7 @@ void run_cargo_exchange(
          "[A] Accept quote",
          "[J] Reject quote",
          "[C] Commodity catalogue",
+         "[D] Delete research history",
          "[X] Cancel work",
          "[Enter] Refresh",
          "[Q] Docked operations",
@@ -9407,6 +9408,49 @@ void run_cargo_exchange(
             session_epoch,
             lead->lead_id,
             lead->revision,
+            random_command_id(random),
+            request_id++);
+      } else if(key == 'd' || key == 'D') {
+         std::vector<const ct::WorkAssignment*> finished;
+         for(const auto& work : market.work_assignments) {
+            if(work.state != ct::WorkState::Scheduled) {
+               finished.push_back(&work);
+            }
+         }
+         if(finished.empty()) {
+            door_information("No finished research record can be deleted.\n\r");
+            wait_for_enter();
+            continue;
+         }
+         output().resume_paging();
+         door_identifier("\n\rFinished research history\n\r");
+         for(size_t index = 0; index < finished.size(); ++index) {
+            const auto& work = *finished[index];
+            door_number("%zu", index + 1);
+            door_label(". Assignment #");
+            door_identifier("%llu", static_cast<unsigned long long>(work.assignment_id));
+            door_label("  ");
+            door_value("%s\n\r", safe_field(work.result_text).c_str());
+         }
+         const auto selected = input_number(
+            "Research record", 1, static_cast<unsigned>(finished.size()));
+         if(!selected) {
+            continue;
+         }
+         const auto* work = finished[*selected - 1];
+         door_warning("Delete assignment #%llu from research history? [Y/N] ",
+                      static_cast<unsigned long long>(work->assignment_id));
+         const auto confirmation = od_get_key(TRUE);
+         od_printf("\n\r");
+         if(confirmation != 'y' && confirmation != 'Y') {
+            door_information("Research history was not changed.\n\r");
+            wait_for_enter();
+            continue;
+         }
+         market = ct::dismiss_work_assignment(
+            connection,
+            session_epoch,
+            work->assignment_id,
             random_command_id(random),
             request_id++);
       } else if(key == 'x' || key == 'X') {

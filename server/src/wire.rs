@@ -2705,6 +2705,9 @@ pub enum Command {
     CancelWorkAssignment {
         assignment_id: u64,
     },
+    DismissWorkAssignment {
+        assignment_id: u64,
+    },
     GetDockedServices,
     CommitDockedService(DockedServiceOrder),
     ReserveMarketLead {
@@ -2855,7 +2858,8 @@ impl Command {
             | Self::BeginMarketNegotiation { .. }
             | Self::AcceptMarketQuote { .. }
             | Self::RejectMarketQuote { .. }
-            | Self::CancelWorkAssignment { .. } => CommandPersistence::Transaction,
+            | Self::CancelWorkAssignment { .. }
+            | Self::DismissWorkAssignment { .. } => CommandPersistence::Transaction,
             Self::CommitDockedService(_) => CommandPersistence::Transaction,
             Self::ReserveMarketLead { .. }
             | Self::ReleaseMarketReservation { .. }
@@ -3531,6 +3535,9 @@ pub fn decode_request(bytes: &[u8]) -> Result<CommandRequest, WireError> {
         }
         request::CancelWorkAssignment(cancel) => Command::CancelWorkAssignment {
             assignment_id: cancel?.get_assignment_id(),
+        },
+        request::DismissWorkAssignment(dismiss) => Command::DismissWorkAssignment {
+            assignment_id: dismiss?.get_assignment_id(),
         },
         request::GetCombat(()) => Command::GetCombat,
         request::SubmitCombatOrder(order) => {
@@ -4687,6 +4694,9 @@ pub fn encode_request(request: &CommandRequest) -> Result<Vec<u8>, WireError> {
         }
         Command::CancelWorkAssignment { assignment_id } => builder
             .init_cancel_work_assignment()
+            .set_assignment_id(assignment_id),
+        Command::DismissWorkAssignment { assignment_id } => builder
+            .init_dismiss_work_assignment()
             .set_assignment_id(assignment_id),
         Command::GetCombat => builder.set_get_combat(()),
         Command::SubmitCombatOrder(ref order) => {
@@ -8582,6 +8592,12 @@ mod tests {
                     class: AccountTransactionClass::Expense,
                     ship_id: 44,
                 }),
+            },
+            CommandRequest {
+                request_id: 40,
+                session_epoch: 23,
+                command_id: [0xbc; COMMAND_ID_BYTES],
+                command: Command::DismissWorkAssignment { assignment_id: 91 },
             },
         ] {
             let frame = encode_request(&expected).unwrap();

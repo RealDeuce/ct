@@ -2361,6 +2361,15 @@ fn administrator_sysop_and_player_cpp_clients_interoperate_with_server() {
     negotiation_door.send(b"\r");
     finish_docked_login(&mut negotiation_door);
     negotiation_door.send_to_menu(b"c", "Cargo Exchange -");
+    let history_prompt = negotiation_door.send_through_page_prompt(
+        b"d",
+        "Research record (Q to cancel",
+        "Finished research history",
+    );
+    assert!(normalized_display_text(&history_prompt).contains("Search completed"));
+    negotiation_door.send(b"1\r");
+    negotiation_door.wait_for("Delete assignment");
+    negotiation_door.send_to_menu(b"y", "Cargo Exchange -");
     let negotiation_prompt = negotiation_door.send_through_page_prompt(
         b"n",
         "Counterparty (Q to cancel",
