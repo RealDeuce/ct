@@ -46,6 +46,7 @@ use crate::wire::{
 use crate::{admin_wire, league_wire, sysop_wire, wire};
 
 const CONNECTION_QUEUE_DEPTH: usize = 64;
+const ACCEPT_ERROR_RETRY_DELAY: Duration = Duration::from_secs(1);
 const ENGINE_QUEUE_DEPTH: usize = 256;
 const AUTHENTICATION_TIMEOUT: Duration = Duration::from_secs(10);
 const LIVE_CLOCK_PULSE: Duration = Duration::from_secs(1);
@@ -1994,6 +1995,17 @@ enum ListenerRole {
     League,
 }
 
+impl ListenerRole {
+    fn description(self) -> &'static str {
+        match self {
+            Self::Game => "game",
+            Self::Administrator => "administrator",
+            Self::Sysop => "sysop",
+            Self::League => "league coordinator",
+        }
+    }
+}
+
 enum AcceptedConnection {
     Game(TcpStream, SocketAddr),
     Administrator(TcpStream, SocketAddr),
@@ -2051,24 +2063,60 @@ fn listener_address_list(listeners: &[TcpListener]) -> io::Result<String> {
         .map(|addresses| addresses.join(", "))
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum AcceptErrorAction {
+    DiscardConnection,
+    RetryImmediately,
+    RetryAfterDelay,
+}
+
+fn accept_error_action(error: &io::Error) -> AcceptErrorAction {
+    match error.kind() {
+        io::ErrorKind::ConnectionAborted => AcceptErrorAction::DiscardConnection,
+        io::ErrorKind::Interrupted => AcceptErrorAction::RetryImmediately,
+        _ => AcceptErrorAction::RetryAfterDelay,
+    }
+}
+
 fn spawn_accept_tasks(
     listeners: Vec<TcpListener>,
     role: ListenerRole,
-    sender: &mpsc::Sender<Result<AcceptedConnection, io::Error>>,
+    sender: &mpsc::Sender<AcceptedConnection>,
     tasks: &mut Vec<JoinHandle<()>>,
 ) {
     for listener in listeners {
         let sender = sender.clone();
+        let listener_address = listener
+            .local_addr()
+            .map_or_else(|_| "unknown".to_owned(), |address| address.to_string());
         tasks.push(tokio::spawn(async move {
             loop {
-                let result = listener.accept().await.map(|(socket, peer)| match role {
+                let (socket, peer) = match listener.accept().await {
+                    Ok(connection) => connection,
+                    Err(error) => match accept_error_action(&error) {
+                        // The queued connection ended before it could be accepted. There is
+                        // no connection to hand off; continue serving the listener.
+                        AcceptErrorAction::DiscardConnection => continue,
+                        // The accept operation itself was interrupted before completing.
+                        AcceptErrorAction::RetryImmediately => continue,
+                        AcceptErrorAction::RetryAfterDelay => {
+                            server_log!(
+                                "{} listener address={} event=accept-failed error={error}",
+                                role.description(),
+                                listener_address,
+                            );
+                            tokio::time::sleep(ACCEPT_ERROR_RETRY_DELAY).await;
+                            continue;
+                        }
+                    },
+                };
+                let connection = match role {
                     ListenerRole::Game => AcceptedConnection::Game(socket, peer),
                     ListenerRole::Administrator => AcceptedConnection::Administrator(socket, peer),
                     ListenerRole::Sysop => AcceptedConnection::Sysop(socket, peer),
                     ListenerRole::League => AcceptedConnection::League(socket, peer),
-                });
-                let failed = result.is_err();
-                if sender.send(result).await.is_err() || failed {
+                };
+                if sender.send(connection).await.is_err() {
                     break;
                 }
             }
@@ -2316,7 +2364,7 @@ pub async fn run_on_addresses(
     loop {
         tokio::select! {
             result = incoming_receiver.recv() => {
-                let connection = result.ok_or(ServerError::ListenerStopped)??;
+                let connection = result.ok_or(ServerError::ListenerStopped)?;
                 match connection {
                     AcceptedConnection::Game(socket, peer) => {
                         server_log!("game connection peer={peer} event=accepted");
@@ -3644,6 +3692,32 @@ mod tests {
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     }
 
+    #[test]
+    fn aborted_accept_discards_the_dead_queued_connection() {
+        assert_eq!(
+            accept_error_action(&io::Error::from(io::ErrorKind::ConnectionAborted)),
+            AcceptErrorAction::DiscardConnection
+        );
+    }
+
+    #[test]
+    fn interrupted_accept_is_retried() {
+        assert_eq!(
+            accept_error_action(&io::Error::from(io::ErrorKind::Interrupted)),
+            AcceptErrorAction::RetryImmediately
+        );
+    }
+
+    #[test]
+    fn other_accept_errors_are_retried_after_a_delay() {
+        for kind in [io::ErrorKind::InvalidInput, io::ErrorKind::Other] {
+            assert_eq!(
+                accept_error_action(&io::Error::from(kind)),
+                AcceptErrorAction::RetryAfterDelay
+            );
+        }
+    }
+
     #[tokio::test]
     async fn multiple_listeners_feed_one_accept_queue() {
         let addresses = [
@@ -3668,7 +3742,6 @@ mod tests {
         for _ in 0..clients.len() {
             let accepted = tokio::time::timeout(Duration::from_secs(1), receiver.recv())
                 .await
-                .unwrap()
                 .unwrap()
                 .unwrap();
             assert!(matches!(accepted, AcceptedConnection::Game(_, _)));
