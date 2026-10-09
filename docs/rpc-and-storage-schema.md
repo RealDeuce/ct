@@ -1,6 +1,6 @@
 # RPC and Storage Schema
 
-*Current implementation: player CT-RPC 10, sysop/admin protocols 2, League Coordinator protocol 1, storage format 2, and independently versioned record codecs.*
+*Current implementation: player CT-RPC 12, sysop/admin protocols 2, League Coordinator protocol 1, storage format 2, and independently versioned record codecs.*
 
 ## Authority boundary
 
@@ -23,7 +23,7 @@ explain state, but it is never the machine-readable discriminator.
 
 ## Current protocol
 
-CT-RPC 10 is the only accepted player protocol. The sysop and administrator
+CT-RPC 12 is the only accepted player protocol. The sysop and administrator
 protocols likewise accept only version 2. The distinct League Coordinator
 endpoint accepts only CT-League version 1 and authenticates a numeric League
 ID with that League's PSK. Each player, sysop, and administrator TLS connection begins with a
