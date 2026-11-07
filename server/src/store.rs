@@ -4133,6 +4133,10 @@ fn subsystem_operational_effect(kind: ShipSubsystemKind, hits: u16, maximum_hits
     }
 }
 
+/// Sparse address-space ceiling, with headroom above the documented 2.89 TB
+/// two-real-year, fully materialized game projection. Disk usage grows on demand.
+pub const DEFAULT_MAP_SIZE_BYTES: usize = 4 * 1024 * 1024 * 1024 * 1024;
+
 pub struct Store {
     env: Env,
     meta: Database<Str, Bytes>,
@@ -4211,7 +4215,7 @@ pub struct Store {
 
 impl Store {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
-        Self::open_with_map_size(path, 1024 * 1024 * 1024)
+        Self::open_with_map_size(path, DEFAULT_MAP_SIZE_BYTES)
     }
 
     fn put_primary_facility_in(
@@ -4229,7 +4233,7 @@ impl Store {
     ///
     /// The capacity tour uses this to distinguish actual bytes allocated from
     /// the sparse virtual map reserved for a large fixture. Normal server
-    /// operation retains the one-GiB default above.
+    /// operation uses the four-TiB default above.
     pub fn open_with_map_size(
         path: impl AsRef<Path>,
         map_size_bytes: usize,
@@ -51382,6 +51386,72 @@ mod tests {
 
     use super::*;
     use crate::bbs_polity::BBS_POLITY_MINIMUM_NEW_SYSTEMS;
+
+    #[test]
+    fn default_map_recovers_a_full_store_without_preallocating_disk() {
+        let directory = TempDir::new().unwrap();
+        let old_ceiling = 1024 * 1024;
+        let payload = vec![0x5a; old_ceiling / 4];
+        let mut committed = 0;
+        {
+            let store = Store::open_with_map_size(directory.path(), old_ceiling).unwrap();
+            for index in 0..16 {
+                let mut txn = store.env.write_txn().unwrap();
+                match store
+                    .meta
+                    .put(&mut txn, &format!("capacity-{index}"), &payload)
+                {
+                    Ok(()) => {
+                        txn.commit().unwrap();
+                        committed += 1;
+                    }
+                    Err(heed::Error::Mdb(heed::MdbError::MapFull)) => break,
+                    Err(error) => panic!("unexpected write failure: {error}"),
+                }
+            }
+            assert!(committed > 0 && committed < 16, "fixture must fill its map");
+        }
+
+        {
+            let store = Store::open(directory.path()).unwrap();
+            // Cover the documented multi-terabyte game budget, independently
+            // of the exact default chosen by the implementation.
+            assert!(store.env.info().map_size as u64 >= 3_000_000_000_000);
+            let mut txn = store.env.write_txn().unwrap();
+            for index in 0..committed {
+                assert_eq!(
+                    store.meta.get(&txn, &format!("capacity-{index}")).unwrap(),
+                    Some(payload.as_slice())
+                );
+            }
+            assert!(
+                store
+                    .meta
+                    .get(&txn, &format!("capacity-{committed}"))
+                    .unwrap()
+                    .is_none()
+            );
+            // A single value larger than the entire old map must now commit.
+            store
+                .meta
+                .put(&mut txn, "capacity-recovered", &vec![0xa5; old_ceiling * 2])
+                .unwrap();
+            txn.commit().unwrap();
+            assert!(store.storage_bytes().unwrap() > old_ceiling as u64);
+            assert!(store.storage_bytes().unwrap() < (old_ceiling * 8) as u64);
+        }
+
+        let reopened = Store::open(directory.path()).unwrap();
+        let txn = reopened.env.read_txn().unwrap();
+        assert_eq!(
+            reopened
+                .meta
+                .get(&txn, "capacity-recovered")
+                .unwrap()
+                .unwrap(),
+            vec![0xa5; old_ceiling * 2]
+        );
+    }
 
     #[test]
     fn encounter_standing_orders_use_sensor_limited_thresholds() {

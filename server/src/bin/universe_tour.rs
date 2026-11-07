@@ -4,7 +4,9 @@ use std::time::Instant;
 
 use cepheus_trader_server::cpu_time::thread_cpu_time_ns;
 use cepheus_trader_server::simulation::{MessageClass, SECONDS_PER_DAY, SimulationReport};
-use cepheus_trader_server::store::{BbsSettings, ConfigureBbsResult, Store};
+use cepheus_trader_server::store::{
+    BbsSettings, ConfigureBbsResult, DEFAULT_MAP_SIZE_BYTES, Store,
+};
 use cepheus_trader_server::universe::INITIAL_SYSTEMS;
 use cepheus_trader_server::wire::COMMAND_ID_BYTES;
 
@@ -22,7 +24,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut bbs_count = 0_u32;
     let mut list_systems = false;
     let mut shown_system_cpu = 20_usize;
-    let mut map_size_gib = 1_usize;
+    let mut map_size_gib = DEFAULT_MAP_SIZE_BYTES / (1024 * 1024 * 1024);
     let mut settlement_edge = false;
     let mut initialize_only = false;
     let mut maximum_events = None;

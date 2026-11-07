@@ -162,6 +162,14 @@ expected to make bandwidth the limiting resource. CPU progression rate,
 durable-write latency, and retained message volume decide whether a particular
 provider's plan is adequate; the price alone does not.
 
+The server uses a fixed 4 TiB LMDB map ceiling, above the documented 2.89 TB
+two-real-year fully materialized projection. This reserves virtual address
+space; the data file and physical storage grow only as records are written.
+The ceiling also applies when reopening an existing database, so a same-version
+store that reached the former 1 GiB ceiling can resume with the updated server
+without a format migration or reset. Actual disk capacity and retained growth
+still determine the deployment's storage budget.
+
 LMDB data must reside on the VPS's local block filesystem. Do not place the
 live database on NFS, SMB, object-storage mounts, or a synchronized desktop
 folder. Put `--data` and `--backup-dir` on separate local paths, then copy only

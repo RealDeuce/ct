@@ -174,9 +174,9 @@ least one BBS. `--initialize-only` performs and reopens that state without
 processing the due day-zero jobs. `--max-events N` stops an attempted advance
 after exactly that many individually committed events, leaving a valid prefix
 for capacity measurement. `--map-size-gib N` selects the sparse LMDB
-address-space ceiling; it does not preallocate or report that amount as used
-storage. `--list-systems` prints every generated system;
-`--show-system-cpu N|all` controls the descending per-system CPU table. The
+address-space ceiling, defaulting to the server's 4 TiB; it does not preallocate
+or report that amount as used storage. `--list-systems` prints every generated
+system; `--show-system-cpu N|all` controls the descending per-system CPU table. The
 tour also reports LMDB's actual data-file bytes before and after advancement,
 the byte delta, and growth per processed system-day. Growth per completed
 calendar day is printed only when the requested target was actually reached.
